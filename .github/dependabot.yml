@@ -1,0 +1,94 @@
+version: 2
+
+updates:
+  - package-ecosystem: npm
+    directory: '/'
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: 'chore(deps)'
+      prefix-development: 'chore(deps-dev)'
+    # Deliberate holds. Each entry is a decision with a reason, not a
+    # preference — delete an entry to let the upgrade flow again. They live
+    # here rather than in `@dependabot ignore` comments, which are kept in
+    # Dependabot's own state and are invisible in the repo. The toolchain
+    # matches the sibling Minesweeper project, and so do the holds.
+    ignore:
+      # eslint-plugin-jsx-a11y has no ESLint 10 support: its peer range is
+      # `^3 || ... || ^9`, and the plugin has not shipped a release since
+      # v6.10.2 (Jan 2025). An ESLint 10 PR is open, but an earlier attempt was
+      # closed unmerged, so it may never land:
+      #   https://github.com/jsx-eslint/eslint-plugin-jsx-a11y/issues/1075
+      # We therefore stay on ESLint 9 for now. The open question — wait for
+      # upstream, or drop the plugin — is deliberately deferred, not forgotten.
+      - dependency-name: 'eslint'
+        versions: ['>=10']
+      - dependency-name: '@eslint/js'
+        versions: ['>=10']
+
+      # @types/node tracks the runtime we support, rather than running ahead of
+      # it. engines.node is >=22 and CI runs Node 22, so Node 26 typings would
+      # let TypeScript accept APIs that do not exist at runtime — exactly the
+      # class of error the type-checker is there to catch. Raise this in
+      # lockstep with the Node floor, not on its own.
+      - dependency-name: '@types/node'
+        versions: ['>=23']
+
+      # TypeScript 7 is the native Go port, and our own code is already fine on
+      # it: on 7.0.2 both `tsc --noEmit` and `vite build` pass, and the build
+      # emits byte-identical assets. The blocker is the lint toolchain —
+      # typescript-eslint has no TS 7 support and throws on load rather than
+      # degrading, so `npm run lint` dies outright:
+      #   Error: typescript-eslint does not support TS 7.0.
+      # Its peer range is `>=4.8.4 <6.1.0`. Support for TS >=7.1 is tracked at:
+      #   https://github.com/typescript-eslint/typescript-eslint/issues/10940
+      # Revisit when that lands; until then we stay on the TypeScript 6 line,
+      # which still receives releases.
+      - dependency-name: 'typescript'
+        versions: ['>=7']
+    groups:
+      # Security fixes as a single PR. Ungrouped, they arrive one per package
+      # and every one rewrites package-lock.json, so merging the first puts the
+      # rest into conflict.
+      # `applies-to` is required here: groups cover version updates by default.
+      security:
+        applies-to: security-updates
+        patterns: ['*']
+
+      # Toolchains whose packages must move in lockstep — a mismatched
+      # vitest/@vitest/coverage-v8 pair, for instance, fails at runtime.
+      vitest:
+        applies-to: version-updates
+        patterns: ['vitest', '@vitest/*']
+      playwright:
+        applies-to: version-updates
+        patterns: ['playwright', '@playwright/*']
+      eslint:
+        applies-to: version-updates
+        patterns: ['eslint', '@eslint/*', 'eslint-*', 'typescript-eslint', 'globals']
+      react:
+        applies-to: version-updates
+        patterns: ['react', 'react-dom', '@types/react', '@types/react-dom']
+      testing-library:
+        applies-to: version-updates
+        patterns: ['@testing-library/*']
+
+      # Everything else, minor and patch only. Majors are deliberately left
+      # ungrouped so a breaking change never rides along with routine bumps.
+      routine:
+        applies-to: version-updates
+        patterns: ['*']
+        update-types: ['minor', 'patch']
+
+  # Keeps the workflow actions current, so runner deprecations (Node versions
+  # in particular) never pile up unnoticed.
+  - package-ecosystem: github-actions
+    directory: '/'
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: 'ci'
+    groups:
+      github-actions:
+        patterns: ['*']
