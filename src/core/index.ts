@@ -4,3 +4,4 @@ export * from './rng';
 export * from './solver';
 export * from './grader';
 export * from './generator';
+export * from './hint';
