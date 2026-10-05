@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en-GB">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta
+      name="description"
+      content="An NYT-style Sudoku with unlimited Easy, Medium, Hard and Expert puzzles, auto candidates, and links to race your friends."
+    />
+    <!-- SVG for browsers that support it; the PNG covers Safari < 16 and
+         anything else that does not. All of these resolve against Vite's
+         `base`, so they work from the /sudoku/ sub-path on GitHub Pages. -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <!-- Lets the game go on a home screen. Safari also spares a home-screen
+         app's storage from its seven-day wipe, which is where the history
+         lives. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#ffffff" />
+    <title>Sudoku</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

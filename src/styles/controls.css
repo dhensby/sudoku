@@ -1,0 +1,877 @@
+/*
+ * The controls: the Normal/Candidate toggle, the number pad, Erase, Undo and
+ * Redo, the Auto Candidate switch, the "…" menu, the timer and the header's
+ * icon buttons. Colours come only from the tokens in index.css.
+ */
+
+/* ==========================================================================
+   Controls grid
+
+   Every control is a direct child of one grid, so the same buttons can take
+   NYT's arrangements. A phone has the mode toggle beside Undo and Redo, the
+   pad as two rows of five with Erase as the tenth key, then the switch and
+   the menu. A desktop has a column: toggle, 3×3 pad, Erase/Undo/Redo, then
+   the switch and the menu. A phone on its side has a shorter column: the
+   3×3 pad with Erase, Undo and Redo down its right-hand side.
+
+   The row heights are tokens set on .app (layout.css), because the phone
+   layout adds them up to know how much height is left for the board. Every
+   control fills its row: there are no margins inside a row, so a 44px row
+   is a 44px target. Extra air between groups comes from empty rows.
+   ========================================================================== */
+
+.controls {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-areas:
+    'mode mode mode undo redo'
+    'd1 d2 d3 d4 d5'
+    'd6 d7 d8 d9 erase'
+    'switch switch switch switch more';
+  grid-template-rows:
+    var(--row-height) var(--key-height) var(--key-height)
+    minmax(var(--row-height), auto);
+  gap: var(--controls-gap);
+  width: 100%;
+}
+
+@media (min-width: 850px) {
+  .controls {
+    flex: none;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-areas:
+      'mode mode mode'
+      '. . .'
+      'd1 d2 d3'
+      'd4 d5 d6'
+      'd7 d8 d9'
+      'erase undo redo'
+      '. . .'
+      'tools tools tools';
+    grid-template-rows:
+      44px 0 repeat(3, var(--key-height))
+      var(--row-height) 0 minmax(44px, auto);
+    gap: 8px;
+    width: var(--controls-width);
+  }
+}
+
+@media (orientation: landscape) and (max-height: 500px) {
+  .controls {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-areas:
+      'mode mode mode mode'
+      'd1 d2 d3 erase'
+      'd4 d5 d6 undo'
+      'd7 d8 d9 redo'
+      'switch switch switch more';
+    grid-template-rows: repeat(4, var(--key-height)) minmax(var(--key-height), auto);
+    gap: var(--controls-gap);
+    width: var(--controls-width);
+  }
+}
+
+/* ==========================================================================
+   Keys: the shared look of the pad, Erase, Undo and Redo
+   ========================================================================== */
+
+.numpad__key,
+.control,
+.more-button {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--key-bg);
+  color: var(--text);
+  font: inherit;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.numpad__key:disabled,
+.control:disabled,
+.more-button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+@media (hover: hover) {
+  .numpad__key:hover:not(:disabled),
+  .control:hover:not(:disabled),
+  .more-button:hover:not(:disabled) {
+    background: var(--key-bg-active);
+  }
+}
+
+/* Pressed: a shade past hover, so a click shows even under the pointer.
+   After the hover rule, at the same weight, so it wins while held. */
+.numpad__key:active:not(:disabled),
+.control:active:not(:disabled),
+.more-button:active:not(:disabled) {
+  background: var(--key-bg-pressed);
+}
+
+/* ---- Number pad ---- */
+
+.numpad__key--1 {
+  grid-area: d1;
+}
+
+.numpad__key--2 {
+  grid-area: d2;
+}
+
+.numpad__key--3 {
+  grid-area: d3;
+}
+
+.numpad__key--4 {
+  grid-area: d4;
+}
+
+.numpad__key--5 {
+  grid-area: d5;
+}
+
+.numpad__key--6 {
+  grid-area: d6;
+}
+
+.numpad__key--7 {
+  grid-area: d7;
+}
+
+.numpad__key--8 {
+  grid-area: d8;
+}
+
+.numpad__key--9 {
+  grid-area: d9;
+}
+
+/* Never taller than the key: a large default font size grows the digit
+   only as far as the key has room for it. */
+.numpad__key {
+  font-size: min(1.5rem, calc(var(--key-height) * 0.56));
+  font-weight: 500;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Candidate mode on a phone: small, light digits, centred. (The mini-grid
+   spots below only make sense in a 3×3 pad.) */
+.numpad__key--candidate {
+  font-size: min(1rem, calc(var(--key-height) * 0.4));
+  font-weight: 400;
+}
+
+/*
+ * A digit placed nine times: muted, thinner and ticked, but still a working
+ * key — it may be the one that is wrong — so its digit keeps 4.5:1 rather
+ * than fading the whole key. The tick is drawn from two borders, in the
+ * digit's colour.
+ */
+.numpad__key--done {
+  color: var(--text-muted);
+  font-weight: 300;
+}
+
+.numpad__key--done::after {
+  content: '';
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 7px;
+  height: 4px;
+  border-bottom: 1.5px solid currentColor;
+  border-left: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+}
+
+@media (min-width: 850px) {
+  .numpad__key {
+    font-size: min(1.875rem, calc(var(--key-height) * 0.56));
+  }
+
+  .numpad__key--done::after {
+    top: 9px;
+    right: 9px;
+    width: 9px;
+    height: 5px;
+  }
+}
+
+/* Candidate mode in a 3×3 pad (a desktop, or a phone on its side), as NYT
+   draws it: each digit small and light, in the spot it takes in a cell's
+   mini-grid. */
+@media (min-width: 850px), (orientation: landscape) and (max-height: 500px) {
+  .numpad__key--candidate {
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(3, 1fr);
+    padding: 4px 8px;
+    font-size: 0.75rem;
+    font-weight: 500;
+  }
+
+  .numpad__key--candidate .numpad__digit {
+    grid-row: var(--spot-row);
+    grid-column: var(--spot-col);
+  }
+}
+
+@media (min-width: 850px) {
+  .numpad__key--candidate {
+    padding: 8px 12px;
+    font-size: 0.875rem;
+  }
+}
+
+/* ---- Erase, Undo, Redo ---- */
+
+.control--erase {
+  grid-area: erase;
+}
+
+.control--undo {
+  grid-area: undo;
+}
+
+.control--redo {
+  grid-area: redo;
+}
+
+.control {
+  grid-auto-flow: row;
+  align-content: center;
+  gap: 2px;
+}
+
+.control .icon {
+  width: 22px;
+  height: 22px;
+}
+
+/* Icons alone on a phone, where the keys are narrow; the label still names
+   the button for assistive technology. */
+.control__label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (min-width: 850px) {
+  .control__label {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip-path: none;
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+
+  .control .icon {
+    width: 20px;
+    height: 20px;
+  }
+}
+
+/* A phone on its side has no room for the labels, even at 850px and up. */
+@media (orientation: landscape) and (max-height: 500px) {
+  .control__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+}
+
+/* ==========================================================================
+   Normal / Candidate toggle
+
+   The track is the row's full height and each option fills half of it, so
+   a 44px row gives two 44px targets. The pressed option's fill is drawn
+   inside a transparent 3px border (background-clip), which keeps the inset
+   pill look without shrinking what a finger can hit.
+   ========================================================================== */
+
+.mode-toggle {
+  /* The labels size themselves from the toggle's width (cqi), below. */
+  container-type: inline-size;
+  grid-area: mode;
+  display: flex;
+  border-radius: 999px;
+  background: var(--key-bg);
+}
+
+/*
+ * The label is 0.875rem unless half the toggle is too narrow for
+ * "Candidate" (about 4.8em wide, so 5.2em with room to spare) at that size —
+ * a 320px phone, or a large default font size — when it steps down with the
+ * toggle's width instead: half of it, less the 3px borders and padding.
+ * Clipped with an ellipsis as a last resort, never spilling out of its pill.
+ */
+.mode-toggle__option {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0 3px;
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  background-clip: padding-box;
+  color: var(--text-muted);
+  font-size: min(0.875rem, calc((50cqi - 12px) / 5.2));
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* The latched mode is filled dark, as NYT does — and while Shift or Alt is
+   held, the mode it has flipped to. */
+.mode-toggle__option[aria-pressed='true'] {
+  background-color: var(--text);
+  color: var(--bg);
+}
+
+.mode-toggle__option:disabled {
+  cursor: default;
+}
+
+.mode-toggle:has(:disabled) {
+  opacity: 0.55;
+}
+
+@media (hover: hover) {
+  .mode-toggle__option[aria-pressed='false']:hover:not(:disabled) {
+    color: var(--text);
+  }
+}
+
+.mode-toggle__option[aria-pressed='false']:active:not(:disabled) {
+  background-color: var(--key-bg-active);
+  color: var(--text);
+}
+
+/* ==========================================================================
+   Auto Candidate switch
+   ========================================================================== */
+
+/* Its own grid area, so the label (which may wrap at a large font size)
+   can never run under the "…" button beside it. */
+.switch {
+  grid-area: switch;
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0 8px 0 0;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--text);
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-align: left;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Off is a solid --text-muted track, not a pale grey one: the switch's
+   shape, and the white knob on it, keep 3:1 against the page. */
+.switch__track {
+  position: relative;
+  flex: none;
+  width: 40px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--text-muted);
+  transition: background-color 150ms ease;
+}
+
+.switch__thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--bg);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transition: transform 150ms ease;
+}
+
+.switch[aria-checked='true'] .switch__track {
+  background: var(--accent);
+}
+
+.switch[aria-checked='true'] .switch__thumb {
+  transform: translateX(16px);
+}
+
+.switch:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.switch__label {
+  min-width: 0;
+  line-height: 1.2;
+}
+
+@media (hover: hover) {
+  .switch:hover:not(:disabled) .switch__track {
+    background: color-mix(in srgb, var(--text-muted) 80%, var(--text));
+  }
+
+  .switch[aria-checked='true']:hover:not(:disabled) .switch__track {
+    background: color-mix(in srgb, var(--accent) 85%, var(--text));
+  }
+}
+
+.switch:active:not(:disabled) .switch__thumb {
+  transform: scale(0.9);
+}
+
+.switch[aria-checked='true']:active:not(:disabled) .switch__thumb {
+  transform: translateX(16px) scale(0.9);
+}
+
+/* ==========================================================================
+   Menus (the "…" menu, New game, and the phone header's overflow)
+   ========================================================================== */
+
+.menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.menu--more {
+  grid-area: more;
+  justify-self: stretch;
+  justify-content: flex-end;
+  align-self: center;
+}
+
+/* No taller than its row, which is 38px on a short phone with a mouse. */
+.more-button {
+  width: 56px;
+  max-width: 100%;
+  height: min(40px, var(--row-height));
+  border-radius: 999px;
+}
+
+.more-button .icon {
+  width: 24px;
+  height: 24px;
+}
+
+.more-button[aria-expanded='true'] {
+  background: var(--key-bg-active);
+}
+
+/*
+ * The desktop column is too narrow to give the switch and the "…" button a
+ * key's column each: two thirds of it would wrap the switch's label. Both
+ * share the last row instead, the button at its end — and the switch stops
+ * short of the button (max-width), so a label that grows with a large font
+ * wraps rather than running under it.
+ */
+@media (min-width: 850px) {
+  .controls > .switch,
+  .controls > .menu--more {
+    grid-area: tools;
+  }
+
+  .controls > .switch {
+    max-width: calc(100% - 48px - 8px);
+  }
+
+  /* Its own width only: stretched across the row, the wrapper would sit
+     over the switch and take its clicks. */
+  .controls > .menu--more {
+    justify-self: end;
+  }
+
+  .more-button {
+    width: 48px;
+  }
+}
+
+/* On its side the "…" is one of the keys down the pad's right-hand side.
+   A wide phone (932×430) also matches the desktop query, whose shared
+   "tools" area does not exist in this grid: each goes back to its own. */
+@media (orientation: landscape) and (max-height: 500px) {
+  .controls > .switch {
+    grid-area: switch;
+    max-width: 100%;
+  }
+
+  .controls > .menu--more {
+    grid-area: more;
+    justify-self: stretch;
+  }
+
+  .menu--more {
+    align-self: stretch;
+  }
+
+  .more-button {
+    width: 100%;
+    height: auto;
+    border-radius: var(--radius);
+  }
+}
+
+.menu__popup {
+  position: absolute;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  min-width: 200px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-raised);
+  box-shadow: var(--shadow);
+}
+
+.menu__popup--below {
+  top: calc(100% + 6px);
+  right: 0;
+}
+
+.menu__popup--above {
+  bottom: calc(100% + 6px);
+  right: 0;
+}
+
+.menu__popup:focus {
+  outline: none;
+}
+
+.menu__heading {
+  padding: 6px 10px 4px;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.menu__item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 40px;
+  padding: 0 12px 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  text-align: left;
+  white-space: nowrap;
+}
+
+/*
+ * Opening a menu moves focus to its first item. A pointer press shows no
+ * ring (a tap should not look like keyboard focus); the keyboard gets the
+ * app's ring, inset to sit inside the item's rounded corners, over a fill.
+ * Hover is the fill alone — lighter, and different, so a resting mouse and
+ * the keyboard's place can never be mistaken for each other.
+ */
+.menu__item:focus {
+  outline: none;
+}
+
+.menu__item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  background: var(--surface);
+}
+
+.menu__item:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+@media (hover: hover) {
+  .menu__item:hover:not(:disabled) {
+    background: var(--surface);
+  }
+}
+
+.menu__item:active:not(:disabled) {
+  background: var(--key-bg);
+}
+
+.menu__icon {
+  display: inline-grid;
+  place-items: center;
+  color: var(--text-muted);
+}
+
+.menu__icon .icon,
+.menu__check {
+  width: 18px;
+  height: 18px;
+}
+
+.menu__label {
+  flex: 1;
+}
+
+.menu__check {
+  color: var(--accent);
+}
+
+/* The current choice (the tier on show, in New game) is bold and ticked. */
+.menu__item:has(.menu__check) {
+  font-weight: 700;
+}
+
+/* ==========================================================================
+   Header: icon buttons and the timer
+   ========================================================================== */
+
+.icon-button {
+  display: inline-grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text);
+}
+
+.icon-button .icon {
+  width: 22px;
+  height: 22px;
+}
+
+.icon-button[aria-expanded='true'] {
+  background: var(--key-bg);
+}
+
+.icon-button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+@media (hover: hover) {
+  .icon-button:hover:not(:disabled) {
+    background: var(--surface);
+  }
+}
+
+.icon-button:active:not(:disabled) {
+  background: var(--key-bg-active);
+}
+
+/*
+ * The time keeps a width that fits h:mm:ss, so the header does not shift as
+ * the clock passes ten minutes or an hour, and what the header has room for
+ * is decided once (layout.css). Tabular figures make every digit one width;
+ * the time sits against the pause icon.
+ */
+.timer {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 4px 0 6px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  font-size: 1.0625rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.timer__time {
+  min-width: 5.9ch;
+  text-align: end;
+}
+
+.timer__icon {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--key-bg);
+}
+
+.timer__icon .icon {
+  width: 14px;
+  height: 14px;
+  fill: currentColor;
+}
+
+/* Stopped: the button now resumes, and says so with the accent. */
+.timer--stopped .timer__icon {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.timer:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.timer--solved {
+  padding: 0 8px;
+  color: var(--success);
+}
+
+@media (hover: hover) {
+  .timer:hover:not(:disabled) {
+    background: var(--surface);
+  }
+}
+
+.timer:active:not(:disabled) {
+  background: var(--key-bg);
+}
+
+/* ==========================================================================
+   Touch: 44px targets
+   ========================================================================== */
+
+@media (pointer: coarse) {
+  .icon-button {
+    width: 44px;
+    height: 44px;
+  }
+
+  .timer {
+    height: 44px;
+  }
+
+  .more-button {
+    height: 44px;
+  }
+
+  .menu__item {
+    min-height: 44px;
+  }
+
+  /* The pad, Erase, Undo, Redo, the toggle and the switch fill their rows,
+     which are 44px or more under a coarse pointer (layout.css); this holds
+     the line if a row is ever squeezed. */
+  .numpad__key,
+  .control,
+  .switch,
+  .mode-toggle__option {
+    min-height: 44px;
+  }
+}
+
+/* ==========================================================================
+   Windows High Contrast (forced colours)
+
+   Buttons get system borders and colours from the browser. What it cannot
+   know is which of two buttons is the pressed one, or that a track is on:
+   those opt out and paint Highlight themselves.
+   ========================================================================== */
+
+@media (forced-colors: active) {
+  .numpad__key,
+  .control,
+  .more-button {
+    border: 1px solid ButtonText;
+  }
+
+  /* The option's own transparent border draws the inset; in forced colours
+     it becomes the visible edge instead. */
+  .mode-toggle__option {
+    border-color: ButtonText;
+  }
+
+  .numpad__key--done {
+    color: GrayText;
+  }
+
+  .mode-toggle__option[aria-pressed='true'] {
+    forced-color-adjust: none;
+    border-color: Highlight;
+    background-color: Highlight;
+    color: HighlightText;
+  }
+
+  /* The track paints itself: off is an outline with a ButtonText knob, on
+     is a Highlight fill with a HighlightText knob. */
+  .switch__track {
+    forced-color-adjust: none;
+    border: 1px solid ButtonText;
+    background: Canvas;
+  }
+
+  .switch__thumb {
+    top: 2px;
+    left: 2px;
+    background: ButtonText;
+  }
+
+  .switch[aria-checked='true'] .switch__track {
+    border-color: Highlight;
+    background: Highlight;
+  }
+
+  .switch[aria-checked='true'] .switch__thumb {
+    background: HighlightText;
+  }
+
+  .menu__item:focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+
+  .timer__icon {
+    border: 1px solid ButtonText;
+  }
+}
+
+/* A pressed or hovered key keeps its system face and gains a Highlight
+   ring: a Highlight fill would leave the digit on a Canvas backplate. */
+@media (forced-colors: active) and (hover: hover) {
+  .numpad__key:hover:not(:disabled),
+  .control:hover:not(:disabled),
+  .more-button:hover:not(:disabled) {
+    background: ButtonFace;
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+}
+
+@media (forced-colors: active) {
+  .numpad__key:active:not(:disabled),
+  .control:active:not(:disabled),
+  .more-button:active:not(:disabled) {
+    background: ButtonFace;
+    outline: 3px solid Highlight;
+    outline-offset: -3px;
+  }
+}

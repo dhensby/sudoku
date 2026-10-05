@@ -1,0 +1,1222 @@
+/* ==========================================================================
+   Dialogs, and the shared button styles.
+
+   Colours come only from the design tokens in index.css (§6.1 of the spec),
+   so both themes — and any later change to the palette — reach every dialog
+   without a rule here changing. Where a shade the tokens lack is needed (a
+   darker ink for small text on a tint, a pressed primary) it is mixed from
+   two tokens with color-mix, never written out.
+   ========================================================================== */
+
+/* ---- Buttons ------------------------------------------------------------
+   Shared by the whole app, not just the dialogs:
+     .button            neutral (--button-bg: the pad's grey in the light
+                        theme, a step lighter in the dark, where the pad's
+                        grey all but vanishes on a raised sheet)
+     .button--primary   the one thing to do next (accent fill)
+     .button--danger    destructive confirmations (red fill)
+     .button--ghost     low-emphasis (no fill until hovered)
+     .button--small     compact, for rows of actions in a list
+   Pills, because rounded rectangles of the same size are the board's cells. */
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 18px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: var(--button-bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+  /* No double-tap zoom (and no 300ms click delay) on rapid taps. */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.button .icon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-left: -2px;
+}
+
+.button--primary {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+/* Mixed towards the text colour: the raw --danger is a little light for
+   white button text in the light theme (under 4.5:1), and a little dark for
+   the dark text the dark theme puts on it. A step towards --text fixes both. */
+.button--danger {
+  background: color-mix(in srgb, var(--danger) 85%, var(--text));
+  color: var(--accent-text);
+}
+
+.button--ghost {
+  background: transparent;
+}
+
+.button--small {
+  min-height: 32px;
+  padding: 0 12px;
+  font-size: 0.875rem;
+}
+
+.button--small .icon {
+  width: 16px;
+  height: 16px;
+}
+
+/* Hover only where there is a hover: on touch it sticks after the tap.
+   Each shade is a step from the fill towards --text, which darkens in the
+   light theme and lightens in the dark. */
+@media (hover: hover) {
+  .button:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--button-bg) 90%, var(--text));
+  }
+
+  .button--primary:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--accent) 90%, var(--text));
+  }
+
+  .button--danger:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--danger) 78%, var(--text));
+  }
+
+  .button--ghost:hover:not(:disabled) {
+    background: var(--surface);
+  }
+}
+
+/* Pressed: a further step, after the hover rules and at their weight, so a
+   button held under the mouse shows it. */
+.button:active:not(:disabled) {
+  background: color-mix(in srgb, var(--button-bg) 80%, var(--text));
+}
+
+.button--primary:active:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 80%, var(--text));
+}
+
+.button--danger:active:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 70%, var(--text));
+}
+
+.button--ghost:active:not(:disabled) {
+  background: var(--key-bg);
+}
+
+/* A ring outside the button, in the accent, offset so it reads against a
+   primary button's own accent fill too. Never removed, only restyled. */
+.button:focus-visible,
+.dialog__close:focus-visible,
+.tabs__tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ---- Overlay and card ---- */
+
+/* The scrim is the page colour, translucent and blurred: a veil in either
+   theme (white over the light board, near-black over the dark one) that
+   pushes the game back without a hard black wash. */
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  font-family: var(--font);
+}
+
+/* The card scrolls its body, not the overlay: pressing a scrolling overlay's
+   scrollbar would count as pressing the scrim and close the dialog. */
+.dialog {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 440px;
+  max-height: calc(100vh - 48px);
+  max-height: calc(100dvh - 48px);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) * 2);
+  background: var(--surface-raised);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  line-height: 1.45;
+}
+
+/* Clicking body text focuses the container (it has tabindex -1, so Tab can
+   never land there); a ring around the whole card for that would be noise. */
+.dialog:focus {
+  outline: none;
+}
+
+.dialog--wide {
+  max-width: 560px;
+}
+
+.dialog--confirm {
+  max-width: 400px;
+}
+
+.dialog__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 12px 6px 20px;
+}
+
+.dialog__title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.dialog__close {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.dialog__close svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+@media (hover: hover) {
+  .dialog__close:hover {
+    background: var(--surface);
+    color: var(--text);
+  }
+}
+
+.dialog__close:active {
+  background: var(--key-bg);
+  color: var(--text);
+}
+
+.dialog__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  /* A flick that reaches the end of the body must not scroll the page. */
+  overscroll-behavior: contain;
+  padding: 6px 20px 20px;
+}
+
+/* A body too long for the card is a tab stop, so the keyboard can scroll
+   it (Dialog.tsx); its ring is inset, inside the card's rounded edge. */
+.dialog__body--scrollable:focus {
+  outline: none;
+}
+
+.dialog__body--scrollable:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -4px;
+  border-radius: 4px;
+}
+
+/* The body scrolls under the footer whenever it is long; the rule says
+   where it stops, on every dialog, so a cut-off row never looks like the
+   end of the content. */
+.dialog__footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 20px 18px;
+  border-top: 1px solid var(--border);
+}
+
+/* Lists and definition lists inside dialogs start from nothing. */
+.dialog dl,
+.dialog dd {
+  margin: 0;
+}
+
+.dialog kbd {
+  display: inline-block;
+  min-width: 1.6em;
+  padding: 0 5px;
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.8125em;
+  font-weight: 600;
+  line-height: 1.5;
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* ---- Phone: a bottom sheet ----
+   Under 500px a centred card leaves thin margins and puts its buttons
+   mid-screen, out of a thumb's reach. Anchored to the bottom edge, full
+   width, it sits where the thumb already is — and clears the home
+   indicator. */
+@media (max-width: 499px) {
+  /* At least 48px of scrim stays above the tallest sheet: a strip any
+     thinner is too easy to miss, and Android redirects a tap on its edge
+     onto the sheet, so tap-outside-to-close would not work. */
+  .dialog-overlay {
+    align-items: flex-end;
+    padding: calc(48px + env(safe-area-inset-top, 0px)) 0 0;
+  }
+
+  .dialog,
+  .dialog--wide,
+  .dialog--confirm {
+    max-width: none;
+    max-height: calc(100vh - 48px - env(safe-area-inset-top, 0px));
+    max-height: calc(100dvh - 48px - env(safe-area-inset-top, 0px));
+    border-bottom: 0;
+    border-radius: calc(var(--radius) * 3) calc(var(--radius) * 3) 0 0;
+  }
+
+  .dialog__footer {
+    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+  }
+
+  .dialog__body:last-child {
+    padding-bottom: calc(20px + env(safe-area-inset-bottom));
+  }
+
+  /* Full-width actions: bigger targets, and no ragged right edge. */
+  .dialog__footer .button {
+    flex: 1 1 0;
+  }
+}
+
+/* ---- Phone on its side: a short, wide screen ----
+   The card keeps its centred place (there is scrim to either side to tap),
+   but gives the screen's few hundred pixels of height to the content rather
+   than to margins. */
+@media (max-height: 500px) and (min-width: 500px) {
+  .dialog-overlay {
+    padding: 12px 16px;
+  }
+
+  .dialog {
+    max-height: calc(100vh - 24px);
+    max-height: calc(100dvh - 24px);
+  }
+
+  .dialog__header {
+    padding-top: 10px;
+  }
+}
+
+/* ---- Entrance ----
+   Only for those who have not asked for less motion. The sheet slides up from
+   the edge it is attached to; the card rises a little and fades in. */
+@keyframes dialog-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes dialog-rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+
+@keyframes dialog-sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .dialog-overlay {
+    animation: dialog-fade-in 150ms ease-out;
+  }
+
+  .dialog {
+    animation: dialog-rise-in 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  .button,
+  .tabs__tab,
+  .settings__switch,
+  .settings__switch::before {
+    transition:
+      background-color 120ms ease,
+      color 120ms ease,
+      transform 150ms ease;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) and (max-width: 499px) {
+  .dialog {
+    animation: dialog-sheet-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+}
+
+/* ---- Form fields ---- */
+.field {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 16px;
+}
+
+.field__label {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.field__input {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  /* 16px is the threshold below which iOS force-zooms the page on focus. */
+  font-size: 16px;
+}
+
+.field__input:focus-visible {
+  border-color: var(--accent);
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+}
+
+.field__hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+/* ---- Solved: the result ---- */
+.result {
+  padding: 4px 0 18px;
+  text-align: center;
+}
+
+.result__difficulty {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.result__time {
+  margin: 2px 0 0;
+  font-size: 3rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+/* Ink mixed towards --text: the raw --success on its own pale tint falls just
+   short of 4.5:1 at this size. */
+.result__badge {
+  display: inline-block;
+  margin: 10px 0 0;
+  padding: 3px 12px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--success) 12%, transparent);
+  color: color-mix(in srgb, var(--success) 80%, var(--text));
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.result__assists {
+  margin: 8px 0 0;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+/* Why a replay earns no badge: a quiet aside under the time, kept to a
+   comfortable measure so it wraps as two even lines on a desktop card. */
+.result__note {
+  max-width: 34ch;
+  margin: 8px auto 0;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+/* ---- Head to head ---- */
+.comparison {
+  margin: 0 0 18px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) * 2);
+  background: var(--surface);
+}
+
+/*
+ * Two columns sharing three rows — who, time, help — through subgrid, so
+ * the two times always share a baseline, whatever sits above or below
+ * either of them.
+ */
+.comparison__times {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: auto auto auto;
+  column-gap: 12px;
+}
+
+.comparison__entry {
+  display: grid;
+  grid-row: span 3;
+  grid-template-rows: subgrid;
+  align-items: end;
+  min-width: 0;
+  text-align: center;
+}
+
+/* Names are free text from a link: up to 24 characters, perhaps with no
+   space to break at. One line, cut short with an ellipsis if need be — a
+   name broken mid-word leaves a letter or two stranded on a line of their
+   own. The verdict under the times names the challenger in full, and a
+   screen reader hears the whole name here too. */
+.comparison__who {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.comparison__time {
+  font-size: 1.5rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.25;
+}
+
+.comparison__entry--winner .comparison__time {
+  color: color-mix(in srgb, var(--success) 80%, var(--text));
+}
+
+/* Under its time; with no help to report, the third row is simply empty. */
+.comparison__assists {
+  align-self: start;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.comparison__verdict {
+  margin: 12px 0 0;
+  font-weight: 700;
+  text-align: center;
+}
+
+/* ---- Stats: tiles and table ---- */
+.stats {
+  margin: 0 0 4px;
+}
+
+.stats__heading,
+.stats-table__caption {
+  margin: 0 0 8px;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.stats__heading {
+  text-align: center;
+}
+
+.stats__list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+  gap: 8px;
+}
+
+.stats__item {
+  padding: 10px 6px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  text-align: center;
+}
+
+.stats__label {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.stats__value {
+  font-size: 1.25rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.stats-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.stats-table__caption {
+  caption-side: top;
+  text-align: left;
+}
+
+.stats-table th,
+.stats-table td {
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--border);
+  text-align: right;
+}
+
+.stats-table th:first-child {
+  padding-left: 0;
+  text-align: left;
+}
+
+.stats-table td:last-child {
+  padding-right: 0;
+}
+
+.stats-table thead th {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.stats-table tbody th {
+  font-weight: 600;
+}
+
+/* Short screens (an iPhone SE): a smaller hero, so the whole result —
+   the stats included — fits above the footer without scrolling. */
+@media (max-height: 640px) {
+  .result {
+    padding-bottom: 12px;
+  }
+
+  .result__time {
+    font-size: 2.25rem;
+  }
+
+  .result__badge {
+    margin-top: 6px;
+  }
+
+  .result__assists,
+  .result__note {
+    margin-top: 4px;
+  }
+
+  .comparison {
+    margin-bottom: 12px;
+    padding: 10px 14px;
+  }
+
+  .comparison__verdict {
+    margin-top: 8px;
+  }
+
+  .stats__item {
+    padding: 6px;
+  }
+}
+
+/* ---- Share ---- */
+.share__preview {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.share__text {
+  margin: 6px 0 0;
+  font-weight: 600;
+  /* The message is several lines (time, assists, invitation). */
+  white-space: pre-line;
+}
+
+.share__url {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+/* Sized to its message by ShareDialog, so nothing hides behind a scroll. */
+.share__fallback {
+  min-height: 0;
+  overflow: hidden;
+  line-height: 1.4;
+  resize: none;
+}
+
+.share__status {
+  min-height: 1.45em;
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+/* ---- Filter tabs (History) ----
+   A segmented strip. The selected tab is filled in the text colour — the
+   NYT's mode toggle does the same — which inverts cleanly in either theme. */
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin: 0 0 16px;
+  padding: 4px;
+  overflow-x: auto;
+  border-radius: 999px;
+  background: var(--surface);
+  scrollbar-width: none;
+}
+
+.tabs__tab {
+  flex: 1 0 auto;
+  min-width: 44px;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tabs__tab[aria-selected='true'] {
+  background: var(--text);
+  color: var(--bg);
+}
+
+@media (hover: hover) {
+  .tabs__tab[aria-selected='false']:hover {
+    color: var(--text);
+  }
+}
+
+.tabs__tab[aria-selected='false']:active {
+  background: var(--key-bg);
+  color: var(--text);
+}
+
+/* The narrowest phones: tighter tabs, so all five filters fit without the
+   row scrolling "Expert" out of sight. */
+@media (max-width: 374px) {
+  .tabs__tab {
+    padding: 0 7px;
+    font-size: 0.8125rem;
+  }
+}
+
+/* ---- History ---- */
+.history__panel .stats,
+.history__panel .stats-table {
+  margin-bottom: 8px;
+}
+
+.history__list {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+/*
+ * One layout for every row, whatever actions it offers: what it says, then
+ * its actions on a line of their own beneath, wrapping as they need. Beside
+ * the text they zig-zagged — a row with three buttons fitted next to it, one
+ * with four wrapped under it.
+ *
+ * `content-visibility` lets the browser skip laying out and painting rows
+ * that are scrolled out of view — the list can hold a thousand games — and
+ * `auto` in the intrinsic size has it remember each row's real height once
+ * seen, so the scrollbar does not jump.
+ */
+.history-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+  content-visibility: auto;
+  contain-intrinsic-size: auto 112px;
+}
+
+.history-item__info {
+  min-width: 0;
+}
+
+.history-item__heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  margin: 0;
+}
+
+.history-item__difficulty {
+  font-weight: 700;
+}
+
+.history-item__date {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.history-item__current {
+  align-self: center;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.history-item__status {
+  margin: 2px 0 0;
+  font-size: 0.9375rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.history-item__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.history-item__chip {
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  line-height: 1.6;
+}
+
+.history-item__challenge {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.history-item__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* Mixed towards --text for the same contrast reason as .button--danger. */
+.history-item__delete {
+  color: color-mix(in srgb, var(--danger) 85%, var(--text));
+}
+
+.history__more {
+  display: flex;
+  margin: 8px auto 0;
+}
+
+.history__empty {
+  margin: 12px 0;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* The import result sits on a line of its own above the footer buttons. It
+   stays mounted while empty (a live region that appears with its first
+   message is often not announced), so it takes no room until it speaks. */
+.dialog--history .dialog__footer {
+  row-gap: 0;
+}
+
+.history__status {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.history__status:not(:empty) {
+  margin-bottom: 10px;
+}
+
+/* ---- Settings ---- */
+.settings__group {
+  min-width: 0;
+  margin: 0 0 18px;
+  padding: 0;
+  border: 0;
+}
+
+.settings__group:last-child {
+  margin-bottom: 0;
+}
+
+.settings__legend {
+  margin: 0 0 2px;
+  padding: 0;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.settings__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings__row:last-child {
+  border-bottom: 0;
+}
+
+.settings__text {
+  min-width: 0;
+}
+
+.settings__label {
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.settings__description {
+  margin: 2px 0 0;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+/* A native checkbox drawn as a switch. `appearance: none` changes only the
+   look: it is still an <input type="checkbox">, announced as one, toggled
+   by Space, and labelled by its <label>. The track is --text-muted when off
+   (not a pale grey) so an off switch still has 3:1 against the page. */
+.settings__switch {
+  position: relative;
+  flex: none;
+  width: 44px;
+  height: 26px;
+  margin: 0;
+  border-radius: 999px;
+  background: var(--text-muted);
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  touch-action: manipulation;
+}
+
+.settings__switch::before {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--surface-raised);
+}
+
+.settings__switch:checked {
+  background: var(--accent);
+}
+
+.settings__switch:checked::before {
+  background: var(--accent-text);
+  transform: translateX(18px);
+}
+
+.settings__switch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Theme: radios drawn as a segmented control. Each radio covers its whole
+   option, invisible, so the native control is what is clicked and focused. */
+.settings__theme {
+  display: flex;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 4px;
+  border-radius: 999px;
+  background: var(--surface);
+}
+
+.settings__theme-option {
+  position: relative;
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.settings__theme-option input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.settings__theme-option:has(input:checked) {
+  background: var(--text);
+  color: var(--bg);
+}
+
+.settings__theme-option:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ---- Help ---- */
+.help__section + .help__section {
+  margin-top: 20px;
+}
+
+.help__heading {
+  margin: 0 0 6px;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.help__list {
+  margin: 0;
+  padding-left: 1.2em;
+}
+
+.help__list li + li {
+  margin-top: 4px;
+}
+
+/* The controls table can be wider than a phone; it scrolls on its own
+   rather than widening the sheet. */
+.help__table-wrap {
+  overflow-x: auto;
+}
+
+.help__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.help__table th,
+.help__table td {
+  padding: 8px 6px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.help__table th:first-child {
+  padding-left: 0;
+}
+
+.help__table thead th {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.help__table tbody th {
+  font-weight: 600;
+}
+
+.help__combo {
+  white-space: nowrap;
+}
+
+.help__note {
+  margin: 8px 0 0;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+/* ---- Challenge and confirm ---- */
+.challenge {
+  margin: 0 0 16px;
+}
+
+.challenge__summary,
+.confirm__message {
+  margin: 0;
+}
+
+.challenge__assists {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+/* ============================================================
+   Touch support
+   ============================================================ */
+
+/* Finger-sized targets: 44px, Apple's and WCAG's minimum for a tap. */
+@media (pointer: coarse) {
+  .button,
+  .button--small,
+  .tabs__tab,
+  .settings__theme-option {
+    min-height: 44px;
+  }
+
+  .dialog__close {
+    width: 44px;
+    height: 44px;
+  }
+
+  .settings__row {
+    min-height: 56px;
+  }
+}
+
+/* ------------------------------------------------------------------------
+   Windows High Contrast (forced colours).
+
+   Forced colours replaces backgrounds and borders with the user's palette and
+   drops box-shadow outright, so everything here that is told apart by a fill
+   or a shadow needs an edge instead: the card (which would otherwise run into
+   the page behind it), the buttons (which would read as plain text), the
+   tiles and panels, and the badges. State that is shown by a fill — the
+   selected tab, a switch that is on, the chosen theme — opts out of forced
+   colours and is drawn in the Highlight pair, which every theme guarantees
+   to contrast. Outside forced colours none of this applies.
+   ------------------------------------------------------------------------ */
+@media (forced-colors: active) {
+  .dialog {
+    border: 1px solid CanvasText;
+  }
+
+  .button,
+  .dialog__close,
+  .tabs__tab,
+  .settings__theme-option {
+    border: 1px solid ButtonText;
+  }
+
+  /* The primary and danger fills are gone; a heavier edge keeps them first. */
+  .button--primary,
+  .button--danger {
+    border-width: 2px;
+  }
+
+  .button:disabled {
+    border-color: GrayText;
+    color: GrayText;
+  }
+
+  .comparison,
+  .stats__item,
+  .share__preview,
+  .result__badge,
+  .history-item__current,
+  .history-item__chip {
+    border: 1px solid CanvasText;
+  }
+
+  .tabs__tab[aria-selected='true'],
+  .settings__theme-option:has(input:checked) {
+    forced-color-adjust: none;
+    border-color: Highlight;
+    background: Highlight;
+    color: HighlightText;
+  }
+
+  .settings__switch {
+    forced-color-adjust: none;
+    border: 1px solid CanvasText;
+    background: Canvas;
+  }
+
+  .settings__switch::before {
+    top: 2px;
+    left: 2px;
+    background: CanvasText;
+  }
+
+  .settings__switch:checked {
+    border-color: Highlight;
+    background: Highlight;
+  }
+
+  .settings__switch:checked::before {
+    background: HighlightText;
+  }
+
+  /* Focus rings in the system's own focus colour. */
+  .button:focus-visible,
+  .dialog__close:focus-visible,
+  .tabs__tab:focus-visible,
+  .field__input:focus-visible,
+  .settings__switch:focus-visible,
+  .settings__theme-option:has(input:focus-visible) {
+    outline-color: Highlight;
+  }
+}

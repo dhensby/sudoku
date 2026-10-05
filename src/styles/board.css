@@ -1,0 +1,550 @@
+/*
+ * The board: the grid and its box lines, cells and their highlights, digits
+ * and candidates, conflict dots and wrong-answer slashes, the cards shown in
+ * the board's place while paused or loading, and the board's forced-colours
+ * rules. Colours come only from the tokens in index.css.
+ */
+
+/* ==========================================================================
+   Geometry
+
+   The board is nine cells a side with eight lines between them: 1px thin
+   lines inside each box, 3px thick lines between boxes and round the
+   outside (2px on a board under 400px, where 3px looks heavy). The sizes —
+   --cell, --frame, --thick, --thin and --board-outer — are worked out once
+   on .app (layout.css), rounded to whole pixels, so the controls and the
+   header can take the board's exact width too, and the overlay card, sized
+   from the same numbers, is exactly the board's size.
+   ========================================================================== */
+
+.board-area {
+  /* Where the thick lines fall, measured inside the frame. */
+  --box-1: calc(3 * var(--cell) + 2 * var(--thin));
+  --box-2: calc(6 * var(--cell) + 4 * var(--thin) + var(--thick));
+
+  /* The overlay card's type steps down on a small board, which needs to
+     know how big the board is. */
+  container: board-column / inline-size;
+  display: flex;
+  justify-content: center;
+}
+
+/* ==========================================================================
+   Grid
+
+   The thin lines are the board's own background showing through 1px gaps
+   between the cells; the thick ones are four bars painted over it where the
+   gaps widen between boxes. No cell carries a border, so every cell is the
+   same size and its digit sits dead centre.
+   ========================================================================== */
+
+.board {
+  display: flex;
+  flex-direction: column;
+  row-gap: var(--thin);
+  width: var(--board-outer);
+  height: var(--board-outer);
+  border: var(--frame) solid var(--grid-thick);
+  background-color: var(--grid-thin);
+  background-image:
+    linear-gradient(var(--grid-thick), var(--grid-thick)),
+    linear-gradient(var(--grid-thick), var(--grid-thick)),
+    linear-gradient(var(--grid-thick), var(--grid-thick)),
+    linear-gradient(var(--grid-thick), var(--grid-thick));
+  background-repeat: no-repeat;
+  background-size:
+    var(--thick) 100%,
+    var(--thick) 100%,
+    100% var(--thick),
+    100% var(--thick);
+  background-position:
+    var(--box-1) 0,
+    var(--box-2) 0,
+    0 var(--box-1),
+    0 var(--box-2);
+  /* A long press on a cell should never start selecting digits or open the
+     iOS callout. */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.board__row {
+  display: flex;
+  column-gap: var(--thin);
+}
+
+.board__row:nth-child(3),
+.board__row:nth-child(6) {
+  margin-bottom: calc(var(--thick) - var(--thin));
+}
+
+/* ==========================================================================
+   Cells
+
+   Two layers, as NYT paints them: the cell's own background says what it is
+   (a given is grey), and a translucent tint laid over it says how it
+   relates to the selection. Any highlight on any kind of cell then needs no
+   colour of its own.
+   ========================================================================== */
+
+.cell {
+  --tint: transparent;
+
+  position: relative;
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: var(--cell);
+  height: var(--cell);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background-color: var(--cell-bg);
+  background-image: linear-gradient(var(--tint), var(--tint));
+  color: var(--digit-player);
+  font: inherit;
+  font-size: calc(var(--cell) * 0.55);
+  font-weight: 500;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.cell:nth-child(3),
+.cell:nth-child(6) {
+  margin-right: calc(var(--thick) - var(--thin));
+}
+
+.cell--given {
+  background-color: var(--cell-given-bg);
+  color: var(--digit-given);
+  font-weight: 700;
+  cursor: default;
+}
+
+.cell--peer {
+  --tint: var(--hl-peer);
+}
+
+.cell--same {
+  --tint: var(--hl-same);
+}
+
+.cell--correct {
+  color: var(--digit-correct);
+}
+
+.cell--revealed {
+  color: var(--digit-revealed);
+}
+
+/*
+ * The selected cell is marked twice: the strongest tint, and a ring inside
+ * its edge that is there however it was selected — a tap, a click or a key.
+ * The ring alone is 3:1 or better against every neighbour, so the selection
+ * never rests on telling two tints apart. On that tint the inks deepen (or,
+ * in the dark theme, lift) to keep their 4.5:1.
+ */
+.cell--selected {
+  --tint: var(--hl-selected);
+
+  box-shadow: inset 0 0 0 2px var(--hl-ring);
+  color: var(--digit-player-selected);
+}
+
+.cell--selected.cell--given {
+  color: var(--digit-given);
+}
+
+.cell--selected.cell--correct {
+  color: var(--digit-correct-selected);
+}
+
+.cell--selected.cell--revealed {
+  color: var(--digit-revealed-selected);
+}
+
+/* Keyboard focus adds a second ring in the text colour, just inside the
+   selection ring, so where the keys will act is never in doubt. Inset:
+   drawn outside, it would be hidden under the neighbouring cells. */
+.cell:focus-visible {
+  z-index: 1;
+  outline: 2px solid var(--text);
+  outline-offset: -4px;
+}
+
+.cell__value {
+  pointer-events: none;
+}
+
+/* ---- Candidates ---- */
+
+/* A 3×3 mini-grid in a fixed layout: 1 top-left … 9 bottom-right, so a
+   candidate is always found in the same spot. */
+.cell__candidates,
+.cell__ghosts {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  place-items: center;
+  padding: calc(var(--cell) * 0.04);
+  font-size: max(calc(var(--cell) * 0.24), 8px);
+  font-weight: 500;
+  line-height: 1;
+}
+
+.cell__candidates {
+  color: var(--candidate);
+  pointer-events: none;
+}
+
+.cell--selected .cell__candidates {
+  color: var(--text);
+}
+
+/*
+ * Mouse only: in the selected empty cell, each spot shows its digit faintly
+ * under the pointer, and a click there toggles it (Cell.tsx checks the
+ * pointer type too). Without hover the ghosts never show — a finger cannot
+ * aim at a spot it cannot see.
+ */
+.cell__ghost {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  color: var(--text);
+  opacity: 0;
+}
+
+@media (hover: hover) {
+  .cell__ghost:not(.cell__ghost--shown):hover {
+    opacity: 0.4;
+  }
+}
+
+/* ---- Conflicts and wrong answers ---- */
+
+/* A small dot bottom-right on every duplicate, popping in as it appears.
+   The halo in the cell's own colour keeps it 3:1 against its surroundings
+   on any tint — the red alone is not, on the selected cell's blue. */
+.cell__conflict {
+  position: absolute;
+  right: 8%;
+  bottom: 8%;
+  width: max(calc(var(--cell) * 0.13), 5px);
+  height: max(calc(var(--cell) * 0.13), 5px);
+  border-radius: 50%;
+  background: var(--danger);
+  box-shadow: 0 0 0 1.5px var(--cell-bg);
+  animation: conflict-pop 260ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  pointer-events: none;
+}
+
+@keyframes conflict-pop {
+  from {
+    transform: scale(0);
+  }
+
+  to {
+    transform: scale(1);
+  }
+}
+
+/*
+ * A red slash corner to corner, as NYT marks a checked wrong answer. It runs
+ * bottom-left to top-right ('/'), clear of the conflict dot in the
+ * bottom-right corner. (A gradient's stripes cross its direction: "to bottom
+ * right" draws the line between the other two corners.) Edged in the cell's
+ * own colour, like the dot, so it holds 3:1 on any tint.
+ */
+.cell--wrong::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to bottom right,
+    transparent calc(50% - 2px),
+    var(--cell-bg) calc(50% - 2px),
+    var(--cell-bg) calc(50% - 1px),
+    var(--danger) calc(50% - 1px),
+    var(--danger) calc(50% + 1px),
+    var(--cell-bg) calc(50% + 1px),
+    var(--cell-bg) calc(50% + 2px),
+    transparent calc(50% + 2px)
+  );
+  pointer-events: none;
+}
+
+/* ---- The solve ---- */
+
+/* A ripple of light across the board, from the top-left corner outwards
+   (each cell's --wave is its row plus its column). */
+.board--solved .cell::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--accent);
+  opacity: 0;
+  animation: solve-wave 700ms ease-out both;
+  animation-delay: calc(var(--wave) * 45ms);
+  pointer-events: none;
+}
+
+.board--solved .cell__value {
+  animation: solve-bounce 700ms ease-out both;
+  animation-delay: calc(var(--wave) * 45ms);
+}
+
+@keyframes solve-wave {
+  40% {
+    opacity: 0.35;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes solve-bounce {
+  40% {
+    transform: scale(1.18);
+  }
+
+  100% {
+    transform: none;
+  }
+}
+
+/* Hover belongs to pointers that have one; on touch it sticks after a tap.
+   Only an untinted cell of a board still in play answers it, so a hover
+   never hides a highlight that means something. */
+@media (hover: hover) {
+  .board:not([aria-readonly='true'])
+    .cell:not(.cell--given, .cell--peer, .cell--same, .cell--selected):hover {
+    --tint: var(--hl-peer);
+  }
+}
+
+/* ==========================================================================
+   The card in the board's place
+
+   The board's exact size and frame, so nothing around it moves when the
+   board goes. Its faint box lines say "this is where the puzzle is" without
+   showing a single digit of it.
+   ========================================================================== */
+
+.board-overlay {
+  display: grid;
+  place-items: center;
+  width: var(--board-outer);
+  height: var(--board-outer);
+  padding: 20px;
+  border: var(--frame) solid var(--grid-thick);
+  background-color: var(--surface);
+  background-image:
+    linear-gradient(var(--border), var(--border)), linear-gradient(var(--border), var(--border)),
+    linear-gradient(var(--border), var(--border)), linear-gradient(var(--border), var(--border));
+  background-repeat: no-repeat;
+  background-size:
+    var(--thick) 100%,
+    var(--thick) 100%,
+    100% var(--thick),
+    100% var(--thick);
+  background-position:
+    var(--box-1) 0,
+    var(--box-2) 0,
+    0 var(--box-1),
+    0 var(--box-2);
+  text-align: center;
+}
+
+/* Never larger than the frame it sits in: on the smallest boards a long
+   challenge scrolls inside the card rather than spilling over the edge. */
+.board-overlay__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-width: 340px;
+  max-height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 24px 28px;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) * 2);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow);
+}
+
+.board-overlay--loading .board-overlay__card {
+  padding: 22px 26px;
+}
+
+.board-overlay__title {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+.board-overlay__text {
+  margin: 0;
+  color: var(--text);
+  font-size: 1rem;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
+
+.board-overlay__note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.board-overlay__button {
+  min-height: 48px;
+  margin-top: 6px;
+  padding: 0 30px;
+  font-size: 1rem;
+}
+
+.board-overlay__button .icon {
+  width: 16px;
+  height: 16px;
+  margin-left: -4px;
+  fill: currentColor;
+}
+
+/* Small boards — a short phone, or one on its side — step the card down. */
+@container board-column (max-width: 359.98px) {
+  .board-overlay {
+    padding: 12px;
+  }
+
+  .board-overlay__card {
+    gap: 8px;
+    padding: 18px 16px;
+  }
+
+  .board-overlay__title {
+    font-size: 1.375rem;
+  }
+
+  .board-overlay__text {
+    font-size: 0.9375rem;
+  }
+
+  .board-overlay__note {
+    font-size: 0.8125rem;
+  }
+}
+
+/* The smallest (an iPhone SE): the card has to fit in a 240px square. */
+@container board-column (max-width: 289.98px) {
+  .board-overlay {
+    padding: 8px;
+  }
+
+  .board-overlay__card {
+    gap: 6px;
+    padding: 12px;
+  }
+
+  .board-overlay__title {
+    font-size: 1.25rem;
+  }
+
+  .board-overlay__text {
+    font-size: 0.875rem;
+    line-height: 1.35;
+  }
+
+  .board-overlay__note {
+    font-size: 0.75rem;
+  }
+
+  .board-overlay__button {
+    min-height: 44px;
+    margin-top: 2px;
+  }
+}
+
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 800ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ==========================================================================
+   Windows High Contrast (forced colours)
+
+   The browser would repaint every cell Canvas and drop the gradients that
+   draw the thick lines and the highlight tint, flattening the board into
+   something unreadable. So the board opts out of the forcing and paints
+   itself from the tokens, which index.css remaps to system colours in this
+   mode — grid lines CanvasText, givens ButtonFace, the selection Highlight.
+   What is left is setting the text on Highlight to HighlightText, and
+   marking givens by more than a fill that can match Canvas in some themes.
+   ========================================================================== */
+
+@media (forced-colors: active) {
+  .board,
+  .board-overlay {
+    forced-color-adjust: none;
+  }
+
+  .cell--given {
+    outline: 1px solid GrayText;
+    outline-offset: -4px;
+  }
+
+  .cell--selected,
+  .cell--selected.cell--given,
+  .cell--selected .cell__candidates {
+    color: HighlightText;
+  }
+
+  .cell--selected .cell__conflict {
+    background: HighlightText;
+    box-shadow: 0 0 0 1.5px Highlight;
+  }
+
+  .cell--selected.cell--wrong::after {
+    background: linear-gradient(
+      to bottom right,
+      transparent calc(50% - 1px),
+      HighlightText calc(50% - 1px),
+      HighlightText calc(50% + 1px),
+      transparent calc(50% + 1px)
+    );
+  }
+
+  .cell:focus-visible {
+    outline: 3px solid CanvasText;
+    outline-offset: -4px;
+  }
+
+  .cell--selected:focus-visible {
+    outline-color: HighlightText;
+  }
+
+  .board-overlay__card {
+    border-color: CanvasText;
+  }
+}

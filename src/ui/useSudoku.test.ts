@@ -1,0 +1,1534 @@
+import { act, renderHook } from '@testing-library/react';
+import { StrictMode } from 'react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { serialiseGame, type Digit, type Puzzle } from '../core';
+import {
+  computeStats,
+  exportHistory,
+  hasSeen,
+  loadCurrentId,
+  loadGameBlob,
+  loadHistory,
+  upsertRecord,
+  type GameRecord,
+} from '../storage/history';
+import { loadPreferences, setLastDifficulty } from '../storage/prefs';
+import { memoryStorage, type StorageLike } from '../storage/storage';
+import type { PuzzleSource } from './puzzleSource';
+import {
+  FIRST_EMPTY,
+  PUZZLE,
+  answerAt,
+  failingSource,
+  fakeSource,
+  linkFor,
+  nearlySolved,
+} from './testFixtures';
+import {
+  CLOCK_SAVE_MS,
+  COMPLETION_DELAY_MS,
+  SAVE_DELAY_MS,
+  useSudoku,
+  type UseSudokuOptions,
+} from './useSudoku';
+
+const NOW = Date.UTC(2026, 9, 5, 12);
+const NO_HELP = { autoCandidates: false, hints: 0, checks: 0, reveals: 0 };
+
+/** The PUZZLE cell index of the n-th empty cell. */
+const EMPTIES = [...PUZZLE.givens].flatMap((ch, i) => (ch === '0' ? [i] : []));
+
+interface SetupOptions extends Partial<UseSudokuOptions> {
+  storage?: StorageLike;
+  source?: PuzzleSource;
+  strict?: boolean;
+}
+
+function setup({ strict = false, ...options }: SetupOptions = {}) {
+  const storage = options.storage ?? memoryStorage();
+  const source = options.source ?? fakeSource();
+  const view = renderHook(
+    () => useSudoku({ storage, source, search: '', now: () => Date.now(), ...options }),
+    strict ? { wrapper: StrictMode } : undefined,
+  );
+  return { ...view, storage, source };
+}
+
+type Hook = ReturnType<typeof setup>['result'];
+
+/** Let the puzzle source's promise settle and React commit what it caused. */
+async function settle(): Promise<void> {
+  await act(async () => {});
+}
+
+/** Set up and wait for the first puzzle. */
+async function started(options: SetupOptions = {}) {
+  const view = setup(options);
+  await settle();
+  return view;
+}
+
+function advance(ms: number): void {
+  act(() => vi.advanceTimersByTime(ms));
+}
+
+/** Select a cell and type a digit into it — two user events, two acts. */
+function enter(result: Hook, index: number, digit: number): void {
+  act(() => result.current.actions.select(index));
+  act(() => result.current.actions.enterDigit(digit as Digit));
+}
+
+function setVisibility(state: 'hidden' | 'visible'): void {
+  Object.defineProperty(document, 'visibilityState', { value: state, configurable: true });
+  act(() => {
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+}
+
+/** Another puzzle of the same tier, for an earlier game that is not this one. */
+function another(puzzle: Puzzle): Puzzle {
+  const givens = nearlySolved([3, 4, 5]).givens;
+  expect(givens).not.toBe(puzzle.givens);
+  return { ...puzzle, givens };
+}
+
+/** A record of a solved game, for the stats a new solve is compared with. */
+function solvedRecord(puzzle: Puzzle, elapsedMs: number, id = 'old-0001'): GameRecord {
+  return {
+    id,
+    givens: puzzle.givens,
+    difficulty: puzzle.difficulty,
+    source: 'generated',
+    createdAt: NOW - 86_400_000,
+    updatedAt: NOW - 86_400_000,
+    completedAt: NOW - 86_400_000,
+    status: 'solved',
+    elapsedMs,
+    assists: NO_HELP,
+    challenge: null,
+  };
+}
+
+beforeEach(() => {
+  vi.useFakeTimers({ now: NOW });
+  window.history.replaceState(null, '', '/');
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+  setVisibility('visible');
+});
+
+describe('useSudoku', () => {
+  describe('on a first visit', () => {
+    it('generates a puzzle at the last difficulty chosen and starts playing at once', async () => {
+      const storage = memoryStorage();
+      setLastDifficulty(storage, 'hard');
+      const source = fakeSource();
+      const { result } = setup({ storage, source });
+      expect(result.current.phase).toBe('loading');
+      expect(result.current.difficulty).toBe('hard');
+
+      await settle();
+      expect(source.requests).toEqual(['hard']);
+      expect(result.current.phase).toBe('playing');
+      expect(result.current.game?.selected).toBe(FIRST_EMPTY);
+      expect(result.current.announcement?.text).toBe('New Hard puzzle.');
+      // Saved straight away, and remembered as the game on screen.
+      expect(loadCurrentId(storage)).toBe(result.current.record?.id);
+      expect(loadHistory(storage)).toHaveLength(1);
+    });
+
+    it('lines up one puzzle of every tier for the next New game', async () => {
+      const source = fakeSource();
+      await started({ source });
+      expect(source.prefetches).toEqual(['easy', 'medium', 'hard', 'expert']);
+    });
+
+    it('starts only one game under StrictMode', async () => {
+      // StrictMode mounts, unmounts and remounts: the first request must be
+      // dropped, not adopted alongside the second.
+      const { result, storage } = await started({ strict: true });
+      expect(result.current.phase).toBe('playing');
+      expect(loadHistory(storage)).toHaveLength(1);
+    });
+
+    it('starts in auto candidate mode when the setting says so', async () => {
+      const storage = memoryStorage();
+      storage.setItem('sudoku.prefs', JSON.stringify({ settings: { startInAutoCandidate: true } }));
+      const { result } = await started({ storage });
+      expect(result.current.game?.autoCandidates).toBe(true);
+    });
+
+    it('offers to try again when no puzzle can be made at all', async () => {
+      const { result } = await started({ source: failingSource() });
+      expect(result.current.phase).toBe('loading');
+      expect(result.current.isLoadFailed).toBe(true);
+      expect(result.current.notice?.kind).toBe('generationFailed');
+    });
+
+    it('gets a puzzle on a retry once the source recovers', async () => {
+      let isBroken = true;
+      const working = fakeSource();
+      const source: PuzzleSource = {
+        next: (difficulty) =>
+          isBroken ? Promise.reject(new Error('down')) : working.next(difficulty),
+        prefetch: () => {},
+        dispose: () => {},
+      };
+      const { result } = await started({ source });
+      isBroken = false;
+      act(() => result.current.actions.retry());
+      await settle();
+      expect(result.current.phase).toBe('playing');
+      expect(result.current.isLoadFailed).toBe(false);
+    });
+
+    it('disposes of the puzzle source when it unmounts', async () => {
+      const { unmount, source } = await started();
+      unmount();
+      expect((source as ReturnType<typeof fakeSource>).isDisposed).toBe(true);
+    });
+  });
+
+  describe('on a return visit', () => {
+    it('reopens the game on screen, paused, with its time and board', async () => {
+      const storage = memoryStorage();
+      const first = await started({ storage });
+      enter(first.result, FIRST_EMPTY, answerAt(FIRST_EMPTY));
+      advance(65_000);
+      act(() => {
+        window.dispatchEvent(new Event('pagehide'));
+      });
+      first.unmount();
+
+      const { result } = setup({ storage, source: fakeSource() });
+      expect(result.current.phase).toBe('paused');
+      expect(result.current.pauseReason).toBe('restored');
+      expect(result.current.elapsedMs).toBe(65_000);
+      expect(result.current.game?.cells[FIRST_EMPTY].value).toBe(answerAt(FIRST_EMPTY));
+
+      act(() => result.current.actions.resume());
+      expect(result.current.phase).toBe('playing');
+      advance(5000);
+      expect(result.current.elapsedMs).toBe(70_000);
+    });
+
+    it('shows a solved game solved, without its dialog', async () => {
+      const storage = memoryStorage();
+      const first = await started({ storage, source: fakeSource(nearlySolved([0])) });
+      enter(first.result, 0, answerAt(0));
+      first.unmount();
+
+      const { result } = setup({ storage });
+      expect(result.current.phase).toBe('solved');
+      expect(result.current.dialog).toBeNull();
+      // The wave belongs to the solve, not to every visit after it.
+      expect(result.current.isCelebrating).toBe(false);
+    });
+  });
+
+  describe('opening a share link', () => {
+    it('waits behind Start, with the challenger’s time, then starts the clock', async () => {
+      const near = nearlySolved([0, 10, 20]);
+      const search = linkFor(near.givens, { t: '323', n: 'Dan', a: 'h2' });
+      window.history.replaceState(null, '', `/${search}`);
+      const { result, storage } = await started({ search });
+
+      expect(result.current.phase).toBe('ready');
+      expect(result.current.record).toMatchObject({
+        source: 'shared',
+        givens: near.givens,
+        challenge: { name: 'Dan', seconds: 323, assists: { ...NO_HELP, hints: 2 } },
+      });
+      // The link has done its job; a reload must not drag the player back to it.
+      expect(window.location.search).toBe('');
+      expect(loadCurrentId(storage)).toBe(result.current.record?.id);
+
+      advance(10_000);
+      expect(result.current.elapsedMs).toBe(0);
+      act(() => result.current.actions.resume());
+      expect(result.current.phase).toBe('playing');
+      expect(result.current.announcement?.text).toBe('Started.');
+      advance(2000);
+      expect(result.current.elapsedMs).toBe(2000);
+    });
+
+    it('says when a link is broken, and starts a fresh puzzle instead', async () => {
+      const { result, source } = setup({ search: '?p=not-a-puzzle!' });
+      expect(result.current.notice?.text).toBe(
+        "That puzzle link doesn't work — here's a fresh puzzle instead.",
+      );
+      await settle();
+      expect((source as ReturnType<typeof fakeSource>).requests).toHaveLength(1);
+      advance(0);
+      // Said once: a "New Easy puzzle." straight after would be read instead.
+      expect(result.current.announcement).toEqual({
+        text: "That puzzle link doesn't work — here's a fresh puzzle instead.",
+        id: 1,
+      });
+      act(() => result.current.actions.dismissNotice());
+      expect(result.current.notice).toBeNull();
+    });
+
+    it('promises no fresh puzzle when it keeps the game already on screen', async () => {
+      const storage = memoryStorage();
+      const first = await started({ storage });
+      advance(1000);
+      act(() => {
+        window.dispatchEvent(new Event('pagehide'));
+      });
+      first.unmount();
+      const { result } = setup({ storage, search: '?p=AAAA' });
+      expect(result.current.phase).toBe('paused');
+      expect(result.current.notice?.text).toBe(
+        "That puzzle link doesn't work, so here's the game you were playing.",
+      );
+      advance(0);
+      expect(result.current.announcement?.text).toBe(result.current.notice?.text);
+    });
+
+    it('reopens an unfinished attempt at the puzzle, racing the link’s time', async () => {
+      const storage = memoryStorage();
+      const first = await started({ storage });
+      enter(first.result, FIRST_EMPTY, answerAt(FIRST_EMPTY));
+      act(() => first.result.current.actions.pause());
+      const id = first.result.current.record?.id;
+      first.unmount();
+
+      const { result } = setup({ storage, search: linkFor(PUZZLE.givens, { t: '200' }) });
+      expect(result.current.record?.id).toBe(id);
+      expect(result.current.phase).toBe('paused');
+      expect(result.current.record?.challenge?.seconds).toBe(200);
+      expect(result.current.game?.cells[FIRST_EMPTY].value).toBe(answerAt(FIRST_EMPTY));
+    });
+
+    describe('for a puzzle already solved', () => {
+      async function solvedThenLinked() {
+        const storage = memoryStorage();
+        upsertRecord(storage, solvedRecord(PUZZLE, 290_000));
+        const other = nearlySolved([4, 5, 6]);
+        const view = await started({
+          storage,
+          source: fakeSource(other),
+          search: linkFor(PUZZLE.givens, { t: '323', n: 'Dan' }),
+        });
+        return { ...view, other };
+      }
+
+      it('offers a fresh attempt, with the earlier time and the link’s', async () => {
+        const { result, storage } = await solvedThenLinked();
+        expect(result.current.dialog).toMatchObject({
+          kind: 'challenge',
+          offer: { previous: { id: 'old-0001' }, challenge: { name: 'Dan', seconds: 323 } },
+        });
+        // A game is still made for behind the dialog, held until it closes —
+        // and unrecorded until then, as nobody has seen it.
+        expect(result.current.phase).toBe('paused');
+        expect(result.current.pauseReason).toBe('dialog');
+        act(() => {
+          window.dispatchEvent(new Event('pagehide'));
+        });
+        advance(CLOCK_SAVE_MS);
+        expect(loadHistory(storage).map((record) => record.id)).toEqual(['old-0001']);
+        expect(loadCurrentId(storage)).toBeNull();
+      });
+
+      it('records the game behind the offer once the offer is turned down', async () => {
+        const { result, storage, other } = await solvedThenLinked();
+        act(() => result.current.actions.closeDialog());
+        expect(loadCurrentId(storage)).toBe(result.current.record?.id);
+        expect(loadHistory(storage).find((record) => record.givens === other.givens)).toBeDefined();
+      });
+
+      it('plays the puzzle again as a replay, racing the link', async () => {
+        const { result, storage } = await solvedThenLinked();
+        act(() => result.current.actions.playAgain());
+        expect(result.current.dialog).toBeNull();
+        expect(result.current.phase).toBe('playing');
+        expect(result.current.record).toMatchObject({
+          source: 'replay',
+          givens: PUZZLE.givens,
+          challenge: { name: 'Dan' },
+        });
+        // And the game made behind the offer, never seen, leaves no trace.
+        expect(loadHistory(storage)).toHaveLength(2);
+        expect(loadHistory(storage).filter((r) => r.givens === PUZZLE.givens)).toHaveLength(2);
+      });
+
+      it('keeps the game on screen when the offer is turned down', async () => {
+        const { result, other } = await solvedThenLinked();
+        act(() => result.current.actions.closeDialog());
+        expect(result.current.phase).toBe('playing');
+        expect(result.current.record?.givens).toBe(other.givens);
+      });
+    });
+  });
+
+  describe('the clock', () => {
+    it('counts while playing and stops while paused', async () => {
+      const { result } = await started();
+      advance(3000);
+      expect(result.current.elapsedMs).toBe(3000);
+      act(() => result.current.actions.pause());
+      expect(result.current.phase).toBe('paused');
+      expect(result.current.pauseReason).toBe('user');
+      expect(result.current.announcement?.text).toBe('Paused.');
+      advance(60_000);
+      expect(result.current.elapsedMs).toBe(3000);
+      act(() => result.current.actions.resume());
+      expect(result.current.announcement?.text).toBe('Resumed.');
+      advance(1000);
+      expect(result.current.elapsedMs).toBe(4000);
+    });
+
+    it('pauses the moment the tab is hidden, and stays paused when it comes back', async () => {
+      const { result, storage } = await started();
+      advance(2000);
+      setVisibility('hidden');
+      expect(result.current.phase).toBe('paused');
+      expect(result.current.pauseReason).toBe('hidden');
+      // The board is gone; the status region should not still describe it.
+      expect(result.current.announcement?.text).toBe('Paused.');
+      // Banked and saved at once: the tab may never be seen again.
+      expect(loadHistory(storage)[0].elapsedMs).toBe(2000);
+      advance(600_000);
+      setVisibility('visible');
+      expect(result.current.phase).toBe('paused');
+      expect(result.current.elapsedMs).toBe(2000);
+    });
+
+    it('saves a game left paused when the page goes away', async () => {
+      const { result, storage } = await started();
+      act(() => result.current.actions.pause());
+      act(() => result.current.actions.select(FIRST_EMPTY + 1));
+      act(() => {
+        window.dispatchEvent(new Event('pagehide'));
+      });
+      expect(
+        (loadGameBlob(storage, result.current.record!.id) as { selected: number }).selected,
+      ).toBe(result.current.game?.selected);
+    });
+
+    it('ignores game input while the board is hidden', async () => {
+      const { result } = await started();
+      act(() => result.current.actions.pause());
+      const before = result.current.game;
+      act(() => result.current.actions.enterDigit(answerAt(FIRST_EMPTY) as Digit));
+      act(() => result.current.actions.hint());
+      act(() => result.current.actions.requestReset());
+      expect(result.current.game).toBe(before);
+      expect(result.current.dialog).toBeNull();
+    });
+  });
+
+  describe('dialogs', () => {
+    it('pause the game silently while open, and resume it as they close', async () => {
+      const { result } = await started();
+      const said = result.current.announcement;
+      act(() => result.current.actions.openDialog('settings'));
+      expect(result.current.dialog).toEqual({ kind: 'settings' });
+      expect(result.current.phase).toBe('paused');
+      expect(result.current.pauseReason).toBe('dialog');
+      expect(result.current.announcement).toBe(said);
+      advance(30_000);
+      act(() => result.current.actions.closeDialog());
+      expect(result.current.phase).toBe('playing');
+      expect(result.current.elapsedMs).toBe(0);
+    });
+
+    it('leave a game the player paused paused when they close', async () => {
+      const { result } = await started();
+      act(() => result.current.actions.pause());
+      act(() => result.current.actions.openDialog('help'));
+      act(() => result.current.actions.closeDialog());
+      expect(result.current.phase).toBe('paused');
+      expect(result.current.pauseReason).toBe('user');
+    });
+
+    it('share the puzzle alone mid-game', async () => {
+      const { result } = await started();
+      act(() => result.current.actions.openDialog('share'));
+      expect(result.current.dialog).toEqual({
+        kind: 'share',
+        target: { givens: PUZZLE.givens, difficulty: 'easy', result: null },
+        returnTo: null,
+      });
+    });
+
+    it('apply settings and remember them', async () => {
+      const { result, storage } = await started();
+      act(() => result.current.actions.updateSettings({ highlightBox: false }));
+      expect(result.current.settings.highlightBox).toBe(false);
+      expect(loadPreferences(storage).settings.highlightBox).toBe(false);
+    });
+
+    it('remember the player’s name, tidied', async () => {
+      const { result, storage } = await started();
+      act(() => result.current.actions.setPlayerName('  Dan   H  '));
+      expect(result.current.playerName).toBe('Dan H');
+      expect(loadPreferences(storage).playerName).toBe('Dan H');
+    });
+  });
+
+  describe('saving', () => {
+    it('saves moves after a quiet moment rather than on every keystroke', async () => {
+      const { result, storage } = await started();
+      const id = result.current.record!.id;
+      enter(result, FIRST_EMPTY, answerAt(FIRST_EMPTY));
+      const blob = () => loadGameBlob(storage, id) as { values: string };
+      expect(blob().values[FIRST_EMPTY]).toBe('0');
+      advance(SAVE_DELAY_MS);
+      expect(blob().values[FIRST_EMPTY]).toBe(String(answerAt(FIRST_EMPTY)));
+      expect(blob()).toEqual(serialiseGame(result.current.game!));
+    });
+  });
+
+  describe('moves', () => {
+    it('announce what they did', async () => {
+      const { result } = await started();
+      enter(result, FIRST_EMPTY, answerAt(FIRST_EMPTY));
+      expect(result.current.announcement?.text).toMatch(/in row 1, column \d\.$/);
+    });
+
+    it('flip the mode while Shift or Alt is held', async () => {
+      const { result } = await started();
+      act(() => result.current.actions.setModifier('Shift', true));
+      expect(result.current.effectiveMode).toBe('candidate');
+      act(() => result.current.actions.enterDigit(4));
+      expect(result.current.game?.cells[FIRST_EMPTY]).toMatchObject({ value: 0, notes: 0b1000 });
+      // Both held: one let go keeps the other's flip.
+      act(() => result.current.actions.setModifier('Alt', true));
+      act(() => result.current.actions.setModifier('Shift', false));
+      expect(result.current.effectiveMode).toBe('candidate');
+      act(() => result.current.actions.setModifier('Alt', false));
+      expect(result.current.effectiveMode).toBe('normal');
+      act(() => result.current.actions.setModifier('Alt', false));
+      expect(result.current.effectiveMode).toBe('normal');
+    });
+
+    it('drop held modifiers when the window loses them', async () => {
+      const { result } = await started();
+      act(() => result.current.actions.setModifier('Shift', true));
+      act(() => result.current.actions.clearModifiers());
+      expect(result.current.effectiveMode).toBe('normal');
+      act(() => result.current.actions.setModifier('Shift', true));
+      setVisibility('hidden');
+      expect(result.current.effectiveMode).toBe('normal');
+    });
+
+    it('toggle a candidate by its spot whatever the mode', async () => {
+      const { result } = await started();
+      act(() => result.current.actions.toggleCandidate(FIRST_EMPTY, 7));
+      expect(result.current.game?.cells[FIRST_EMPTY].notes).toBe(0b1000000);
+      expect(result.current.game?.mode).toBe('normal');
+    });
+
+    it('pass the clear-peer-notes setting on with each digit', async () => {
+      const { result } = await started();
+      const peer = EMPTIES[1];
+      act(() => result.current.actions.toggleCandidate(peer, answerAt(FIRST_EMPTY) as Digit));
+      act(() => result.current.actions.updateSettings({ clearPeerNotes: true }));
+      enter(result, FIRST_EMPTY, answerAt(FIRST_EMPTY));
+      expect(result.current.game?.cells[peer].notes).toBe(0);
+    });
+
+    it('run the rest of the controls', async () => {
+      const { result } = await started();
+      act(() => result.current.actions.setMode('candidate'));
+      expect(result.current.game?.mode).toBe('candidate');
+      act(() => result.current.actions.toggleMode());
+      expect(result.current.game?.mode).toBe('normal');
+      act(() => result.current.actions.move('right'));
+      expect(result.current.game?.selected).toBe(FIRST_EMPTY + 1);
+      act(() => result.current.actions.setAutoCandidates(true));
+      expect(result.current.game?.autoCandidates).toBe(true);
+      act(() => result.current.actions.undo());
+      expect(result.current.game?.autoCandidates).toBe(false);
+      act(() => result.current.actions.redo());
+      expect(result.current.game?.autoCandidates).toBe(true);
+      enter(result, FIRST_EMPTY, 9);
+      act(() => result.current.actions.erase());
+      expect(result.current.game?.cells[FIRST_EMPTY].value).toBe(0);
+      enter(result, FIRST_EMPTY, 9);
+      act(() => result.current.actions.check('cell'));
+      expect(result.current.game?.cells[FIRST_EMPTY].mark).toBe('wrong');
+      act(() => result.current.actions.reveal());
+      expect(result.current.game?.cells[FIRST_EMPTY]).toMatchObject({
+        value: answerAt(FIRST_EMPTY),
+        mark: 'revealed',
+      });
+    });
+
+    it('point a hint at a cell and name the technique, without filling it', async () => {
+      const { result } = await started();
+      act(() => result.current.actions.hint());
+      const hint = result.current.game?.hint;
+      expect(hint?.kind).toBe('single');
+      expect(result.current.game?.selected).toBe(hint?.kind === 'single' ? hint.index : -1);
+      expect(result.current.game?.assists.hints).toBe(1);
+      expect(result.current.announcement?.text).toMatch(/single|full house/i);
+    });
+
+    it('point a hint at a mistake first', async () => {
+      const { result } = await started();
+      enter(result, FIRST_EMPTY, answerAt(FIRST_EMPTY) === 9 ? 1 : 9);
+      act(() => result.current.actions.hint());
+      expect(result.current.game?.hint).toEqual({ kind: 'mistake', index: FIRST_EMPTY });
+    });
+  });
+
+  describe('solving', () => {
+    it('stops the clock at the solving move and records the time', async () => {
+      const near = nearlySolved([0]);
+      const { result, storage } = await started({ source: fakeSource(near) });
+      advance(83_400);
+      enter(result, 0, answerAt(0));
+
+      expect(result.current.phase).toBe('solved');
+      expect(result.current.isCelebrating).toBe(true);
+      expect(result.current.announcement?.text).toBe('Solved in 1:23.');
+      const [record] = loadHistory(storage);
+      expect(record).toMatchObject({
+        status: 'solved',
+        elapsedMs: 83_400,
+        completedAt: NOW + 83_400,
+      });
+      advance(10_000);
+      expect(result.current.elapsedMs).toBe(83_400);
+    });
+
+    it('opens the completion dialog a beat after the solve', async () => {
+      const { result } = await started({ source: fakeSource(nearlySolved([0])) });
+      advance(5000);
+      enter(result, 0, answerAt(0));
+      expect(result.current.dialog).toBeNull();
+      advance(COMPLETION_DELAY_MS - 1);
+      expect(result.current.dialog).toBeNull();
+      advance(1);
+      expect(result.current.dialog).toMatchObject({
+        kind: 'completion',
+        result: {
+          elapsedMs: 5000,
+          isNewBest: false,
+          stats: { played: 1, solved: 1, bestMs: 5000, averageMs: 5000 },
+          challenge: null,
+        },
+      });
+      act(() => result.current.actions.closeDialog());
+      expect(result.current.phase).toBe('solved');
+    });
+
+    it('calls a time a new best only when it beats an earlier best', async () => {
+      const near = nearlySolved([0]);
+      const storage = memoryStorage();
+      upsertRecord(storage, solvedRecord(another(near), 600_000));
+      const { result } = await started({ storage, source: fakeSource(near) });
+      advance(5000);
+      enter(result, 0, answerAt(0));
+      advance(COMPLETION_DELAY_MS);
+      expect(result.current.dialog).toMatchObject({ result: { isNewBest: true } });
+    });
+
+    it('never calls a revealed solve a new best', async () => {
+      const near = nearlySolved([0]);
+      const storage = memoryStorage();
+      upsertRecord(storage, solvedRecord(another(near), 600_000));
+      const { result } = await started({ storage, source: fakeSource(near) });
+      act(() => result.current.actions.select(0));
+      act(() => result.current.actions.reveal());
+      expect(result.current.phase).toBe('solved');
+      advance(COMPLETION_DELAY_MS);
+      expect(result.current.dialog).toMatchObject({ result: { isNewBest: false } });
+    });
+
+    it('does not open the completion dialog over another', async () => {
+      const { result } = await started({ source: fakeSource(nearlySolved([0])) });
+      enter(result, 0, answerAt(0));
+      act(() => result.current.actions.openDialog('help'));
+      advance(COMPLETION_DELAY_MS);
+      expect(result.current.dialog).toEqual({ kind: 'help' });
+    });
+
+    it('shares the time once solved', async () => {
+      const { result } = await started({ source: fakeSource(nearlySolved([0])) });
+      advance(61_000);
+      enter(result, 0, answerAt(0));
+      advance(COMPLETION_DELAY_MS);
+      act(() => result.current.actions.shareResult());
+      expect(result.current.dialog).toMatchObject({
+        kind: 'share',
+        target: { result: { seconds: 61, assists: NO_HELP } },
+      });
+    });
+
+    it('says when a full board is not right, until it is no longer full', async () => {
+      const near = nearlySolved([0, 1]);
+      const { result } = await started({ source: fakeSource(near) });
+      enter(result, 0, answerAt(1));
+      enter(result, 1, answerAt(0));
+      expect(result.current.phase).toBe('playing');
+      expect(result.current.notice?.kind).toBe('boardFull');
+      expect(result.current.announcement?.text).toMatch(/something isn't right\.$/);
+      act(() => result.current.actions.erase());
+      expect(result.current.notice).toBeNull();
+    });
+
+    it('clears the full-board notice when the board is finally solved', async () => {
+      const near = nearlySolved([0, 1]);
+      const { result } = await started({ source: fakeSource(near) });
+      enter(result, 0, answerAt(0));
+      enter(result, 1, answerAt(0));
+      expect(result.current.notice?.kind).toBe('boardFull');
+      enter(result, 1, answerAt(1));
+      expect(result.current.phase).toBe('solved');
+      expect(result.current.notice).toBeNull();
+    });
+  });
+
+  describe('reset', () => {
+    it('asks first, holding the clock while it asks', async () => {
+      const { result } = await started();
+      act(() => result.current.actions.requestReset());
+      expect(result.current.dialog).toEqual({ kind: 'confirmReset' });
+      expect(result.current.pauseReason).toBe('dialog');
+      act(() => result.current.actions.closeDialog());
+      expect(result.current.phase).toBe('playing');
+    });
+
+    it('clears the board but not the clock, which carries on as the confirmation closes', async () => {
+      // Otherwise a player could study the board, reset, and bank a time that
+      // left the studying out.
+      const { result, storage } = await started();
+      enter(result, FIRST_EMPTY, answerAt(FIRST_EMPTY));
+      advance(30_000);
+      act(() => result.current.actions.requestReset());
+      advance(5000);
+      act(() => result.current.actions.confirmReset());
+      expect(result.current.dialog).toBeNull();
+      expect(result.current.phase).toBe('playing');
+      expect(result.current.game?.cells[FIRST_EMPTY].value).toBe(0);
+      expect(result.current.elapsedMs).toBe(30_000);
+      expect(loadHistory(storage)[0].elapsedMs).toBe(30_000);
+      expect(result.current.announcement?.text).toBe('Puzzle reset.');
+      advance(1000);
+      expect(result.current.elapsedMs).toBe(31_000);
+    });
+  });
+
+  describe('a new game', () => {
+    it('keeps the old game resumable and starts the new one at once', async () => {
+      const second = nearlySolved([1, 2, 3]);
+      const { result, storage, source } = await started({ source: fakeSource(PUZZLE, second) });
+      const first = result.current.record!.id;
+      enter(result, FIRST_EMPTY, answerAt(FIRST_EMPTY));
+      advance(12_000);
+      act(() => result.current.actions.newGame('expert'));
+      expect(result.current.phase).toBe('loading');
+      expect(result.current.difficulty).toBe('expert');
+      expect(loadPreferences(storage).lastDifficulty).toBe('expert');
+
+      await settle();
+      expect((source as ReturnType<typeof fakeSource>).requests).toEqual(['easy', 'expert']);
+      expect(result.current.phase).toBe('playing');
+      expect(result.current.record?.givens).toBe(second.givens);
+      expect(result.current.elapsedMs).toBe(0);
+      const old = loadHistory(storage).find((record) => record.id === first)!;
+      expect(old).toMatchObject({ status: 'playing', elapsedMs: 12_000 });
+      expect(loadGameBlob(storage, first)).not.toBeNull();
+    });
+
+    it('falls back to the old game, paused, when the new one cannot be made', async () => {
+      let calls = 0;
+      const working = fakeSource();
+      const source: PuzzleSource = {
+        next: (difficulty) =>
+          ++calls === 1 ? working.next(difficulty) : Promise.reject(new Error('down')),
+        prefetch: () => {},
+        dispose: () => {},
+      };
+      const { result } = await started({ source });
+      act(() => result.current.actions.newGame('hard'));
+      await settle();
+      expect(result.current.phase).toBe('paused');
+      expect(result.current.isLoadFailed).toBe(false);
+      expect(result.current.notice?.kind).toBe('generationFailed');
+    });
+
+    it('closes the completion dialog it was started from', async () => {
+      const { result } = await started({ source: fakeSource(nearlySolved([0]), PUZZLE) });
+      enter(result, 0, answerAt(0));
+      advance(COMPLETION_DELAY_MS);
+      act(() => result.current.actions.newGame('easy'));
+      expect(result.current.dialog).toBeNull();
+      await settle();
+      expect(result.current.phase).toBe('playing');
+    });
+
+    it('ignores a puzzle that arrives after a newer request', async () => {
+      const resolvers: ((puzzle: Puzzle) => void)[] = [];
+      const source: PuzzleSource = {
+        next: () => new Promise((resolve) => resolvers.push(resolve)),
+        prefetch: () => {},
+        dispose: () => {},
+      };
+      const { result } = setup({ source });
+      act(() => result.current.actions.newGame('medium'));
+      await act(async () => resolvers[1]({ ...PUZZLE, difficulty: 'medium' }));
+      await act(async () => resolvers[0]({ ...nearlySolved([0]), difficulty: 'easy' }));
+      expect(result.current.record?.difficulty).toBe('medium');
+    });
+  });
+
+  describe('history', () => {
+    /** Two games in history: an older one and the one on screen. */
+    async function twoGames() {
+      const second = nearlySolved([30, 31, 32, 33]);
+      const view = await started({ source: fakeSource(PUZZLE, second) });
+      const { result } = view;
+      enter(result, FIRST_EMPTY, answerAt(FIRST_EMPTY));
+      advance(20_000);
+      const older = result.current.record!.id;
+      act(() => result.current.actions.newGame('easy'));
+      await settle();
+      // Played, not just glimpsed, so it is kept when another game replaces it.
+      enter(result, 33, answerAt(33));
+      advance(7000);
+      return { ...view, older, current: result.current.record!.id };
+    }
+
+    it('lists every game when opened, with the ones that can be resumed', async () => {
+      const { result, older, current } = await twoGames();
+      act(() => result.current.actions.openDialog('history'));
+      expect(result.current.history.records.map((record) => record.id)).toEqual([current, older]);
+      expect([...result.current.history.resumableIds].sort()).toEqual([current, older].sort());
+      expect(result.current.history.now).toBe(Date.now());
+      // The game on screen is listed as it stands, not as it was last saved.
+      expect(result.current.history.records[0].elapsedMs).toBe(7000);
+    });
+
+    it('resumes an older game, leaving the one on screen saved and stopped', async () => {
+      const { result, storage, older, current } = await twoGames();
+      act(() => result.current.actions.openDialog('history'));
+      act(() => result.current.actions.resumeRecord(older));
+      expect(result.current.dialog).toBeNull();
+      expect(result.current.record?.id).toBe(older);
+      expect(result.current.phase).toBe('playing');
+      expect(result.current.elapsedMs).toBe(20_000);
+      expect(result.current.game?.cells[FIRST_EMPTY].value).toBe(answerAt(FIRST_EMPTY));
+      expect(loadCurrentId(storage)).toBe(older);
+
+      advance(60_000);
+      // Two clocks must never run at once: the game left behind kept its 7s.
+      const left = loadHistory(storage).find((record) => record.id === current)!;
+      expect(left.elapsedMs).toBe(7000);
+    });
+
+    it('treats resuming the game on screen as closing the list', async () => {
+      const { result, current } = await twoGames();
+      act(() => result.current.actions.openDialog('history'));
+      act(() => result.current.actions.resumeRecord(current));
+      expect(result.current.dialog).toBeNull();
+      expect(result.current.phase).toBe('playing');
+    });
+
+    it('says so when a game cannot be resumed', async () => {
+      const { result } = await twoGames();
+      act(() => result.current.actions.openDialog('history'));
+      act(() => result.current.actions.resumeRecord('nope-0000'));
+      expect(result.current.notice?.kind).toBe('resumeFailed');
+      expect(result.current.dialog).toBeNull();
+    });
+
+    it('replays a solved game as a new one of the same puzzle', async () => {
+      const storage = memoryStorage();
+      upsertRecord(storage, solvedRecord(PUZZLE, 290_000));
+      const { result } = await started({ storage, source: fakeSource(another(PUZZLE)) });
+      act(() => result.current.actions.openDialog('history'));
+      act(() => result.current.actions.replayRecord('old-0001'));
+      expect(result.current.record).toMatchObject({ source: 'replay', givens: PUZZLE.givens });
+      expect(result.current.record?.id).not.toBe('old-0001');
+      expect(result.current.game?.cells[FIRST_EMPTY].value).toBe(0);
+      expect(result.current.phase).toBe('playing');
+      expect(result.current.announcement?.text).toBe('Playing this Easy puzzle again.');
+      // The solve and the replay: the game on screen was only glimpsed, so it went.
+      expect(loadHistory(storage)).toHaveLength(2);
+    });
+
+    it('plays a puzzle again by resuming its unfinished attempt, never beginning a second', async () => {
+      // With two, one could be studied while the other sat at 0:00.
+      const { result, storage, older } = await twoGames();
+      act(() => result.current.actions.openDialog('history'));
+      act(() => result.current.actions.replayRecord(older));
+      expect(result.current.record?.id).toBe(older);
+      expect(result.current.game?.cells[FIRST_EMPTY].value).toBe(answerAt(FIRST_EMPTY));
+      expect(result.current.elapsedMs).toBe(20_000);
+      expect(result.current.phase).toBe('playing');
+      expect(result.current.announcement?.text).toBe('Resumed Easy puzzle.');
+      expect(loadHistory(storage)).toHaveLength(2);
+    });
+
+    it('starts afresh, as a replay, when the unfinished attempt cannot be reopened', async () => {
+      const storage = memoryStorage();
+      // An unfinished attempt whose saved board has been pruned.
+      upsertRecord(storage, { ...solvedRecord(PUZZLE, 40_000, 'gone-0001'), status: 'playing' });
+      const { result } = await started({ storage, source: fakeSource(another(PUZZLE)) });
+      act(() => result.current.actions.openDialog('history'));
+      act(() => result.current.actions.replayRecord('gone-0001'));
+      expect(result.current.record).toMatchObject({ source: 'replay', givens: PUZZLE.givens });
+      expect(result.current.record?.id).not.toBe('gone-0001');
+    });
+
+    it('plays the puzzle on screen again by carrying on with it', async () => {
+      const { result, storage, current } = await twoGames();
+      enter(result, 30, answerAt(30));
+      act(() => result.current.actions.openDialog('history'));
+      act(() => result.current.actions.replayRecord(current));
+      expect(result.current.record?.id).toBe(current);
+      // As it stood on screen, not as it was last saved.
+      expect(result.current.game?.cells[30].value).toBe(answerAt(30));
+      expect(result.current.phase).toBe('playing');
+      expect(loadHistory(storage)).toHaveLength(2);
+    });
+
+    it('plays a shared puzzle never started by starting it', async () => {
+      const storage = memoryStorage();
+      const near = nearlySolved([0, 10, 20]);
+      const linked = setup({ storage, search: linkFor(near.givens, { t: '95', n: 'Dan' }) });
+      const shared = linked.result.current.record!.id;
+      linked.unmount();
+      const { result } = setup({ storage, source: fakeSource() });
+      act(() => result.current.actions.openDialog('history'));
+      act(() => result.current.actions.replayRecord(shared));
+      expect(result.current.record).toMatchObject({ id: shared, source: 'shared' });
+      expect(result.current.phase).toBe('playing');
+      expect(result.current.announcement?.text).toBe('Started Easy puzzle.');
+      expect(loadHistory(storage)).toHaveLength(1);
+    });
+
+    it('says so when a game cannot be replayed', async () => {
+      const { result } = await twoGames();
+      act(() => result.current.actions.replayRecord('nope-0000'));
+      expect(result.current.notice?.kind).toBe('resumeFailed');
+    });
+
+    it('shares a game from the list and comes back to it', async () => {
+      const { result, older } = await twoGames();
+      act(() => result.current.actions.openDialog('history'));
+      act(() => result.current.actions.shareRecord(older));
+      expect(result.current.dialog).toMatchObject({
+        kind: 'share',
+        target: { givens: PUZZLE.givens, result: null },
+        returnTo: 'history',
+      });
+      act(() => result.current.actions.closeDialog());
+      expect(result.current.dialog).toEqual({ kind: 'history' });
+      // Still paused for the list.
+      expect(result.current.pauseReason).toBe('dialog');
+      act(() => result.current.actions.shareRecord('nope-0000'));
+      expect(result.current.dialog).toEqual({ kind: 'history' });
+    });
+
+    it('deletes an older game', async () => {
+      const { result, storage, older, current } = await twoGames();
+      act(() => result.current.actions.openDialog('history'));
+      act(() => result.current.actions.deleteRecord(older));
+      expect(result.current.history.records.map((record) => record.id)).toEqual([current]);
+      expect(loadHistory(storage)).toHaveLength(1);
+      expect(result.current.record?.id).toBe(current);
+    });
+
+    it('replaces the game on screen when it is deleted, once the list closes', async () => {
+      const { result, storage, current, source } = await twoGames();
+      act(() => result.current.actions.newGame('hard'));
+      await settle();
+      const hard = result.current.record!.id;
+      act(() => result.current.actions.openDialog('history'));
+      act(() => result.current.actions.deleteRecord(hard));
+      // Nothing is made behind the list: it would be a game the player never saw.
+      await settle();
+      expect(result.current.record).toBeNull();
+      expect(result.current.difficulty).toBe('hard');
+      expect((source as ReturnType<typeof fakeSource>).requests).toEqual(['easy', 'easy', 'hard']);
+      expect(result.current.history.records.map((record) => record.id)).not.toContain(hard);
+      expect(loadCurrentId(storage)).toBeNull();
+      expect(loadHistory(storage).some((record) => record.id === current)).toBe(true);
+      act(() => result.current.actions.closeDialog());
+      expect(result.current.phase).toBe('loading');
+      await settle();
+      expect(result.current.phase).toBe('playing');
+      expect(result.current.record?.difficulty).toBe('hard');
+      expect(loadCurrentId(storage)).toBe(result.current.record?.id);
+    });
+
+    it('can be emptied', async () => {
+      const { result, storage, older, current } = await twoGames();
+      act(() => result.current.actions.openDialog('history'));
+      act(() => result.current.actions.deleteRecord(current));
+      act(() => result.current.actions.deleteRecord(older));
+      await settle();
+      expect(result.current.history.records).toEqual([]);
+      expect(loadHistory(storage)).toEqual([]);
+    });
+
+    it('resumes another game after the one on screen was deleted, making none', async () => {
+      const { result, storage, older, current, source } = await twoGames();
+      act(() => result.current.actions.openDialog('history'));
+      act(() => result.current.actions.deleteRecord(current));
+      act(() => result.current.actions.resumeRecord(older));
+      await settle();
+      expect(result.current.record?.id).toBe(older);
+      expect((source as ReturnType<typeof fakeSource>).requests).toHaveLength(2);
+      expect(loadHistory(storage).map((record) => record.id)).toEqual([older]);
+    });
+
+    it('exports the history, and imports one back', async () => {
+      const { result, storage } = await twoGames();
+      const json = result.current.actions.exportHistory();
+      expect(JSON.parse(json).records).toHaveLength(2);
+
+      const other = memoryStorage();
+      upsertRecord(other, solvedRecord(nearlySolved([0, 1]), 99_000, 'imp-0001'));
+      act(() => result.current.actions.openDialog('history'));
+      let outcome: ReturnType<typeof result.current.actions.importHistory> | undefined;
+      act(() => {
+        outcome = result.current.actions.importHistory(exportHistory(other, NOW));
+      });
+      expect(outcome).toEqual({ ok: true, added: 1, updated: 0 });
+      expect(result.current.history.records).toHaveLength(3);
+      expect(loadHistory(storage)).toHaveLength(3);
+      expect(result.current.actions.importHistory('not json')).toEqual({ ok: false });
+    });
+  });
+  describe('honest times', () => {
+    /** A source whose puzzles arrive only when the test says so. */
+    function deferredSource() {
+      const pending: ((puzzle: Puzzle) => void)[] = [];
+      const source: PuzzleSource = {
+        next: (difficulty) =>
+          new Promise((resolve) => pending.push((puzzle) => resolve({ ...puzzle, difficulty }))),
+        prefetch: () => {},
+        dispose: () => {},
+      };
+      const deliver = async (puzzle: Puzzle = PUZZLE) => {
+        await act(async () => pending.shift()!(puzzle));
+      };
+      return { source, deliver };
+    }
+
+    it('holds a puzzle that arrives in a hidden tab behind Start, counting nothing', async () => {
+      // A first visit opened in a background tab.
+      setVisibility('hidden');
+      const { result, storage } = await started();
+      expect(result.current.phase).toBe('ready');
+      expect(result.current.record?.source).toBe('generated');
+      advance(5000);
+      setVisibility('visible');
+      expect(result.current.elapsedMs).toBe(0);
+      // It is the player's game, waiting for them: saved, and current.
+      expect(loadCurrentId(storage)).toBe(result.current.record?.id);
+      act(() => result.current.actions.resume());
+      expect(result.current.announcement?.text).toBe('Started.');
+      advance(2000);
+      expect(result.current.elapsedMs).toBe(2000);
+    });
+
+    it('holds a new game the player switched away from behind Start', async () => {
+      const { source, deliver } = deferredSource();
+      const { result } = setup({ source });
+      await deliver();
+      act(() => result.current.actions.newGame('expert'));
+      setVisibility('hidden');
+      await deliver(nearlySolved([1, 2, 3]));
+      advance(5000);
+      setVisibility('visible');
+      expect(result.current.phase).toBe('ready');
+      expect(result.current.difficulty).toBe('expert');
+      expect(result.current.elapsedMs).toBe(0);
+    });
+
+    it('keeps counting when the system clock is set back, and banks the whole time', async () => {
+      const near = nearlySolved([0]);
+      const { result, storage } = await started({ source: fakeSource(near) });
+      advance(30_000);
+      // The device clock moved back an hour: play is timed by a monotonic clock.
+      act(() => vi.setSystemTime(Date.now() - 3_600_000));
+      advance(120_000);
+      expect(result.current.elapsedMs).toBe(150_000);
+      enter(result, 0, answerAt(0));
+      expect(result.current.announcement?.text).toBe('Solved in 2:30.');
+      const [record] = loadHistory(storage);
+      expect(record.elapsedMs).toBe(150_000);
+      // Dates still come from the wall clock (stored no earlier than the
+      // game's creation, which the history insists on).
+      expect(result.current.record?.completedAt).toBe(Date.now());
+      expect(record.completedAt).toBe(record.createdAt);
+    });
+
+    it('saves once, not twice, when the clock’s save beats a move’s', async () => {
+      const { result, storage } = await started();
+      advance(CLOCK_SAVE_MS - 200);
+      enter(result, FIRST_EMPTY, answerAt(FIRST_EMPTY));
+      const writes = vi.spyOn(storage, 'setItem');
+      advance(200);
+      const saved = writes.mock.calls.length;
+      expect(saved).toBeGreaterThan(0);
+      advance(SAVE_DELAY_MS);
+      expect(writes.mock.calls.length).toBe(saved);
+    });
+
+    it('saves the time on a running clock every few seconds, with no move to save it', async () => {
+      // A crash or a force-quit fires no event to save on.
+      const { result, storage } = await started();
+      advance(CLOCK_SAVE_MS);
+      expect(loadHistory(storage)[0].elapsedMs).toBe(CLOCK_SAVE_MS);
+      advance(CLOCK_SAVE_MS);
+      expect(loadHistory(storage)[0].elapsedMs).toBe(2 * CLOCK_SAVE_MS);
+      act(() => result.current.actions.pause());
+      const saved = storage.getItem('sudoku.history');
+      advance(3 * CLOCK_SAVE_MS);
+      expect(storage.getItem('sudoku.history')).toBe(saved);
+    });
+
+    it('reopens a shared puzzle never started behind Start again, with its challenge', async () => {
+      const storage = memoryStorage();
+      const near = nearlySolved([0, 10, 20]);
+      const search = linkFor(near.givens, { t: '95', n: 'Dan' });
+      const first = setup({ storage, search });
+      const id = first.result.current.record?.id;
+      first.unmount();
+      for (const again of ['', search]) {
+        const view = setup({ storage, search: again });
+        expect(view.result.current.record?.id).toBe(id);
+        expect(view.result.current.phase).toBe('ready');
+        expect(view.result.current.record?.challenge).toMatchObject({ name: 'Dan', seconds: 95 });
+        view.unmount();
+      }
+    });
+
+    it('records a game that arrived behind a dialog only once the player can see it', async () => {
+      const { source, deliver } = deferredSource();
+      const { result, storage } = setup({ source });
+      await deliver();
+      const first = result.current.record!.id;
+      enter(result, FIRST_EMPTY, answerAt(FIRST_EMPTY));
+      act(() => result.current.actions.newGame('medium'));
+      act(() => result.current.actions.openDialog('help'));
+      await deliver(nearlySolved([1, 2, 3]));
+      expect(result.current.pauseReason).toBe('dialog');
+      advance(CLOCK_SAVE_MS);
+      expect(loadHistory(storage).map((record) => record.id)).toEqual([first]);
+      expect(loadCurrentId(storage)).toBe(first);
+      act(() => result.current.actions.closeDialog());
+      expect(result.current.phase).toBe('playing');
+      expect(loadHistory(storage)).toHaveLength(2);
+      expect(loadCurrentId(storage)).toBe(result.current.record?.id);
+    });
+
+    it('calls a puzzle already in the history a replay, which never sets a record', async () => {
+      const near = nearlySolved([0]);
+      const storage = memoryStorage();
+      upsertRecord(storage, solvedRecord(near, 600_000));
+      // The generator happens to hand out a puzzle played before.
+      const { result } = await started({ storage, source: fakeSource(near) });
+      expect(result.current.record?.source).toBe('replay');
+      advance(5000);
+      enter(result, 0, answerAt(0));
+      advance(COMPLETION_DELAY_MS);
+      expect(result.current.dialog).toMatchObject({
+        kind: 'completion',
+        result: {
+          isReplay: true,
+          isNewBest: false,
+          stats: { played: 2, solved: 2, bestMs: 600_000, averageMs: 600_000 },
+        },
+      });
+    });
+  });
+
+  describe('puzzles seen', () => {
+    it('keeps a puzzle seen after its attempt is deleted, so its link is a replay that sets no best', async () => {
+      const storage = memoryStorage();
+      // An Easy best to beat.
+      upsertRecord(storage, solvedRecord(another(PUZZLE), 5000));
+      const near = nearlySolved([0, 1]);
+      const search = linkFor(near.givens);
+
+      // Open the link, start, and study the board for six seconds…
+      const study = await started({ storage, search });
+      act(() => study.result.current.actions.resume());
+      advance(6000);
+      // …then delete the attempt from History.
+      act(() => study.result.current.actions.openDialog('history'));
+      act(() => study.result.current.actions.deleteRecord(study.result.current.record!.id));
+      expect(loadHistory(storage).some((record) => record.givens === near.givens)).toBe(false);
+      study.unmount();
+
+      // The same link again: a replay, however quickly it is solved.
+      const { result } = await started({ storage, search });
+      expect(result.current.record?.source).toBe('replay');
+      act(() => result.current.actions.resume());
+      enter(result, 0, answerAt(0));
+      enter(result, 1, answerAt(1));
+      advance(COMPLETION_DELAY_MS);
+      expect(result.current.dialog).toMatchObject({
+        kind: 'completion',
+        result: { isReplay: true, isNewBest: false, stats: { bestMs: 5000 } },
+      });
+    });
+
+    it('marks a puzzle seen as its board first shows, not while it waits behind Start', async () => {
+      const storage = memoryStorage();
+      const near = nearlySolved([0, 10, 20]);
+      const { result } = await started({ storage, search: linkFor(near.givens) });
+      expect(result.current.phase).toBe('ready');
+      expect(hasSeen(storage, [], near.givens)).toBe(false);
+      act(() => result.current.actions.resume());
+      // At once: not left to the next save.
+      expect(hasSeen(storage, [], near.givens)).toBe(true);
+    });
+
+    it('lets a link never started be deleted and opened again as the fresh puzzle it still is', async () => {
+      const storage = memoryStorage();
+      const near = nearlySolved([0, 10, 20]);
+      const search = linkFor(near.givens, { t: '95', n: 'Dan' });
+      const first = await started({ storage, search });
+      act(() => first.result.current.actions.openDialog('history'));
+      act(() => first.result.current.actions.deleteRecord(first.result.current.record!.id));
+      first.unmount();
+      const { result } = await started({ storage, search });
+      expect(result.current.record?.source).toBe('shared');
+    });
+
+    it('marks a generated puzzle seen as it arrives on show', async () => {
+      const { storage } = await started();
+      expect(hasSeen(storage, [], PUZZLE.givens)).toBe(true);
+    });
+
+    it('shares a replay’s solve as the puzzle alone, never as a time to beat', async () => {
+      const near = nearlySolved([0]);
+      const storage = memoryStorage();
+      upsertRecord(storage, solvedRecord(near, 600_000));
+      const { result } = await started({ storage, source: fakeSource(near) });
+      expect(result.current.record?.source).toBe('replay');
+      enter(result, 0, answerAt(0));
+      advance(COMPLETION_DELAY_MS);
+      act(() => result.current.actions.shareResult());
+      expect(result.current.dialog).toMatchObject({
+        kind: 'share',
+        target: { givens: near.givens, result: null },
+      });
+    });
+  });
+
+  describe('glimpsed games', () => {
+    it('discards a generated game nobody touched once the next one arrives, keeping it seen', async () => {
+      const second = nearlySolved([1, 2, 3]);
+      const { result, storage } = await started({ source: fakeSource(PUZZLE, second) });
+      const glimpsed = result.current.record!.id;
+      advance(3000);
+      act(() => result.current.actions.newGame('medium'));
+      await settle();
+      expect(result.current.record?.givens).toBe(second.givens);
+      expect(loadHistory(storage).map((record) => record.id)).toEqual([result.current.record!.id]);
+      expect(loadGameBlob(storage, glimpsed)).toBeNull();
+      // Not played, so not counted as played…
+      expect(computeStats(loadHistory(storage)).easy.played).toBe(0);
+      // …but seen: meeting it again is a replay.
+      expect(hasSeen(storage, loadHistory(storage), PUZZLE.givens)).toBe(true);
+    });
+
+    it('keeps the glimpsed game while its replacement is on its way, and if none comes', async () => {
+      let calls = 0;
+      const working = fakeSource();
+      const source: PuzzleSource = {
+        next: (difficulty) =>
+          ++calls === 1 ? working.next(difficulty) : Promise.reject(new Error('down')),
+        prefetch: () => {},
+        dispose: () => {},
+      };
+      const { result, storage } = await started({ source });
+      const glimpsed = result.current.record!.id;
+      act(() => result.current.actions.newGame('hard'));
+      await settle();
+      expect(result.current.record?.id).toBe(glimpsed);
+      expect(loadHistory(storage).map((record) => record.id)).toEqual([glimpsed]);
+      expect(loadCurrentId(storage)).toBe(glimpsed);
+    });
+
+    it('discards a glimpsed game when History switches to another', async () => {
+      const storage = memoryStorage();
+      const older = await started({ storage, source: fakeSource(nearlySolved([30, 31, 32])) });
+      enter(older.result, 30, answerAt(30));
+      const olderId = older.result.current.record!.id;
+      act(() => {
+        window.dispatchEvent(new Event('pagehide'));
+      });
+      older.unmount();
+
+      const { result } = await started({ storage, source: fakeSource(PUZZLE) });
+      act(() => result.current.actions.newGame('easy'));
+      await settle();
+      const glimpsed = result.current.record!.id;
+      act(() => result.current.actions.openDialog('history'));
+      act(() => result.current.actions.resumeRecord(olderId));
+      expect(result.current.record?.id).toBe(olderId);
+      expect(loadHistory(storage).some((record) => record.id === glimpsed)).toBe(false);
+    });
+
+    it('keeps a game with anything done to it, and a shared one even untouched', async () => {
+      const storage = memoryStorage();
+      const near = nearlySolved([0, 10, 20]);
+      const linked = await started({ storage, search: linkFor(near.givens) });
+      act(() => linked.result.current.actions.resume());
+      const shared = linked.result.current.record!.id;
+      act(() => linked.result.current.actions.newGame('easy'));
+      await settle();
+      const noted = linked.result.current.record!.id;
+      act(() => linked.result.current.actions.setMode('candidate'));
+      enter(linked.result, FIRST_EMPTY, 4);
+      act(() => linked.result.current.actions.newGame('easy'));
+      await settle();
+      const ids = loadHistory(storage).map((record) => record.id);
+      expect(ids).toContain(shared);
+      expect(ids).toContain(noted);
+    });
+
+    it('discards a glimpsed game a link’s game takes the place of', async () => {
+      const storage = memoryStorage();
+      const first = await started({ storage });
+      const glimpsed = first.result.current.record!.id;
+      act(() => {
+        window.dispatchEvent(new Event('pagehide'));
+      });
+      first.unmount();
+      const near = nearlySolved([0, 10, 20]);
+      const { result } = await started({ storage, search: linkFor(near.givens) });
+      expect(result.current.record?.givens).toBe(near.givens);
+      expect(loadHistory(storage).map((record) => record.id)).toEqual([result.current.record!.id]);
+      expect(loadGameBlob(storage, glimpsed)).toBeNull();
+    });
+  });
+
+  describe('storage', () => {
+    /** Memory storage that refuses saved games while `isFull` is set. */
+    function fillableStorage() {
+      const inner = memoryStorage();
+      const storage = {
+        isFull: false,
+        getItem: (key: string) => inner.getItem(key),
+        removeItem: (key: string) => inner.removeItem(key),
+        setItem: (key: string, value: string) => {
+          if (storage.isFull && key.startsWith('sudoku.game')) {
+            throw new DOMException('Full', 'QuotaExceededError');
+          }
+          inner.setItem(key, value);
+        },
+      };
+      return storage;
+    }
+
+    it('names a new game current only once its board is saved', async () => {
+      const storage = fillableStorage();
+      const { result } = await started({
+        storage,
+        source: fakeSource(PUZZLE, nearlySolved([1, 2, 3])),
+      });
+      const first = result.current.record!.id;
+      enter(result, FIRST_EMPTY, answerAt(FIRST_EMPTY));
+      expect(loadCurrentId(storage)).toBe(first);
+      storage.isFull = true;
+      act(() => result.current.actions.newGame('medium'));
+      await settle();
+      const second = result.current.record!.id;
+      // A reload can still reopen the game that was saved.
+      expect(loadCurrentId(storage)).toBe(first);
+      storage.isFull = false;
+      advance(CLOCK_SAVE_MS);
+      expect(loadCurrentId(storage)).toBe(second);
+    });
+  });
+
+  describe('a full board that is not right', () => {
+    /** A game whose board is full, with two answers swapped. */
+    async function fullButWrong(storage: StorageLike) {
+      const near = nearlySolved([0, 1]);
+      const view = await started({ storage, source: fakeSource(near, nearlySolved([5, 6])) });
+      enter(view.result, 0, answerAt(1));
+      enter(view.result, 1, answerAt(0));
+      expect(view.result.current.notice?.kind).toBe('boardFull');
+      return view;
+    }
+
+    it('says so again on a return visit, as the game resumes', async () => {
+      const storage = memoryStorage();
+      const first = await fullButWrong(storage);
+      act(() => first.result.current.actions.dismissNotice());
+      act(() => {
+        window.dispatchEvent(new Event('pagehide'));
+      });
+      first.unmount();
+      const { result } = setup({ storage });
+      expect(result.current.phase).toBe('paused');
+      expect(result.current.notice?.kind).toBe('boardFull');
+      act(() => result.current.actions.resume());
+      expect(result.current.announcement?.text).toBe(
+        "Resumed. The board is full, but something isn't right.",
+      );
+    });
+
+    it('says so again when the game is resumed from History', async () => {
+      const storage = memoryStorage();
+      const { result } = await fullButWrong(storage);
+      const wrong = result.current.record!.id;
+      act(() => result.current.actions.newGame('easy'));
+      await settle();
+      expect(result.current.notice).toBeNull();
+      act(() => result.current.actions.openDialog('history'));
+      act(() => result.current.actions.resumeRecord(wrong));
+      expect(result.current.notice?.kind).toBe('boardFull');
+      expect(result.current.announcement?.text).toBe(
+        "Resumed Easy puzzle. The board is full, but something isn't right.",
+      );
+    });
+
+    it('lets the notice go with the game when another one is resumed', async () => {
+      const storage = memoryStorage();
+      const { result } = await fullButWrong(storage);
+      const wrong = result.current.record!.id;
+      act(() => result.current.actions.newGame('easy'));
+      await settle();
+      const other = result.current.record!.id;
+      enter(result, 5, answerAt(5));
+      act(() => result.current.actions.openDialog('history'));
+      act(() => result.current.actions.resumeRecord(wrong));
+      act(() => result.current.actions.openDialog('history'));
+      act(() => result.current.actions.resumeRecord(other));
+      expect(result.current.notice).toBeNull();
+    });
+
+    it('lets the notice go with the game when it is deleted', async () => {
+      const storage = memoryStorage();
+      const { result } = await fullButWrong(storage);
+      act(() => result.current.actions.openDialog('history'));
+      act(() => result.current.actions.deleteRecord(result.current.record!.id));
+      expect(result.current.notice).toBeNull();
+    });
+  });
+
+  describe('guards', () => {
+    it('reads the address bar and localStorage when not told otherwise', () => {
+      const near = nearlySolved([0, 1]);
+      window.history.replaceState(null, '', `/${linkFor(near.givens)}`);
+      localStorage.clear();
+      const { result } = renderHook(() => useSudoku());
+      expect(result.current.phase).toBe('ready');
+      expect(localStorage.getItem('sudoku.current')).toBe(result.current.record?.id);
+      localStorage.clear();
+    });
+
+    it('flips candidate mode back to normal while a modifier is held', async () => {
+      const { result } = await started();
+      act(() => result.current.actions.setMode('candidate'));
+      act(() => result.current.actions.setModifier('Shift', true));
+      expect(result.current.effectiveMode).toBe('normal');
+    });
+
+    it('saves nothing new when the page goes away with nothing changed', async () => {
+      const { result, storage } = await started();
+      act(() => result.current.actions.pause());
+      const saved = storage.getItem('sudoku.history');
+      act(() => {
+        window.dispatchEvent(new Event('pagehide'));
+      });
+      expect(storage.getItem('sudoku.history')).toBe(saved);
+    });
+
+    it('has nothing to save while the first puzzle is still on its way', () => {
+      const { result, storage } = setup({
+        source: { ...fakeSource(), next: () => new Promise(() => {}) },
+      });
+      act(() => {
+        window.dispatchEvent(new Event('pagehide'));
+      });
+      expect(result.current.phase).toBe('loading');
+      expect(storage.getItem('sudoku.history')).toBeNull();
+      // Nor anything to share, or to pause.
+      act(() => result.current.actions.openDialog('share'));
+      act(() => result.current.actions.shareResult());
+      act(() => result.current.actions.pause());
+      expect(result.current.dialog).toBeNull();
+      expect(result.current.announcement).toBeNull();
+    });
+
+    it('saves a game with nothing running when the tab is hidden', async () => {
+      // A solved board can still be looked around; the selection is saved.
+      const { result, storage } = await started({ source: fakeSource(nearlySolved([0])) });
+      enter(result, 0, answerAt(0));
+      act(() => result.current.actions.select(40));
+      setVisibility('hidden');
+      const blob = loadGameBlob(storage, result.current.record!.id) as { selected: number };
+      expect(blob.selected).toBe(40);
+      expect(result.current.phase).toBe('solved');
+    });
+
+    it('says nothing for a pause or a resume that changes nothing', async () => {
+      const { result } = await started();
+      const said = result.current.announcement;
+      act(() => result.current.actions.resume());
+      expect(result.current.announcement).toBe(said);
+      act(() => result.current.actions.pause());
+      const paused = result.current.announcement;
+      act(() => result.current.actions.pause());
+      expect(result.current.announcement).toBe(paused);
+    });
+
+    it('lists a paused game in History without saving it again', async () => {
+      const { result, storage } = await started();
+      act(() => result.current.actions.pause());
+      const saved = storage.getItem('sudoku.history');
+      act(() => result.current.actions.openDialog('history'));
+      expect(storage.getItem('sudoku.history')).toBe(saved);
+      expect(result.current.history.records).toHaveLength(1);
+    });
+
+    it('clears the full-board notice on a reset', async () => {
+      const near = nearlySolved([0, 1]);
+      const { result } = await started({ source: fakeSource(near) });
+      enter(result, 0, answerAt(1));
+      enter(result, 1, answerAt(0));
+      act(() => result.current.actions.requestReset());
+      act(() => result.current.actions.confirmReset());
+      expect(result.current.notice).toBeNull();
+    });
+
+    it('cannot reset a solved game', async () => {
+      const { result } = await started({ source: fakeSource(nearlySolved([0])) });
+      enter(result, 0, answerAt(0));
+      const solved = result.current.game;
+      act(() => result.current.actions.confirmReset());
+      expect(result.current.game).toBe(solved);
+    });
+
+    it('ignores Play again with no offer open', async () => {
+      const { result } = await started();
+      const record = result.current.record;
+      act(() => result.current.actions.playAgain());
+      expect(result.current.record).toBe(record);
+    });
+
+    it('plays a linked puzzle again before any other game has arrived', async () => {
+      const storage = memoryStorage();
+      upsertRecord(storage, solvedRecord(PUZZLE, 290_000));
+      const { result } = setup({
+        storage,
+        source: { ...fakeSource(), next: () => new Promise(() => {}) },
+        search: linkFor(PUZZLE.givens),
+      });
+      expect(result.current.phase).toBe('loading');
+      act(() => result.current.actions.playAgain());
+      expect(result.current.phase).toBe('playing');
+      expect(result.current.record?.source).toBe('replay');
+    });
+  });
+});

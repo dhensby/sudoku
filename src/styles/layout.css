@@ -1,0 +1,577 @@
+/*
+ * Page layout: the header bar, the board-and-controls row, the hint bar, and
+ * how they rearrange between the phone, phone-landscape and desktop (≥ 850px)
+ * layouts. Colours come only from the tokens in index.css.
+ */
+
+/* ==========================================================================
+   Sizing
+
+   Everything is sized from one number, --board-size: the most the board may
+   take. It is rounded down to whole-pixel cells once, here (--cell and
+   --board-outer), so the board's lines land on pixel boundaries and stay
+   crisp — and the board, the controls under it and the header above it all
+   take that same rounded width, so their edges line up.
+
+   Phones size the board by whichever runs out first: the width, 500px, or
+   the height left over once everything else in the column is counted
+   (--chrome). --chrome is summed from the same named heights the header,
+   hint bar and controls are drawn with, so it cannot drift from them: that
+   is what keeps a 375×667 or a 320×568 screen free of scrolling. The floor
+   stops an unexpectedly short screen shrinking the board to nothing (it
+   scrolls instead).
+   ========================================================================== */
+
+.app {
+  --gutter: 8px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+
+  /* The phone column, top to bottom. */
+  --header-height: 52px;
+  --main-pad-top: 4px;
+  --main-pad-bottom: 8px;
+  /* Board to hint bar, then the bar itself: always two lines tall. */
+  --hint-gap: 6px;
+  --hint-font: 0.8125rem;
+  --hint-line: 1.3;
+  --hint-pad: 4px;
+  --hint-height: calc(2 * var(--hint-line) * var(--hint-font) + 2 * var(--hint-pad));
+  /* Hint bar to controls. */
+  --play-gap: 6px;
+  /* The controls: the mode row and the switch row, and two rows of keys. */
+  --row-height: 44px;
+  --key-height: 46px;
+  --controls-gap: 6px;
+  --controls-height: calc(2 * var(--row-height) + 2 * var(--key-height) + 3 * var(--controls-gap));
+  --chrome: calc(
+    var(--header-height) + var(--main-pad-top) + var(--main-pad-bottom) + var(--hint-gap) +
+      var(--hint-height) + var(--play-gap) + var(--controls-height)
+  );
+  --board-floor: 240px;
+
+  --board-size: min(
+    calc(100vw - 2 * var(--gutter) - var(--safe-left) - var(--safe-right)),
+    500px,
+    max(calc(100dvh - var(--chrome) - var(--safe-top) - var(--safe-bottom)), var(--board-floor))
+  );
+
+  /*
+   * The board's geometry (board.css draws with it): nine cells and eight
+   * lines a side — 1px thin lines inside each box, thick ones between boxes
+   * and round the outside. The thick lines are 3px, or 2px on a board under
+   * 400px where 3px looks heavy: the clamp() turns the board's size into a
+   * step, 2px below 400px and 3px from there up.
+   */
+  --frame: clamp(2px, (var(--board-size) - 399.98px) * 1000, 3px);
+  --thick: var(--frame);
+  --thin: 1px;
+  --lines: calc(2 * var(--frame) + 2 * var(--thick) + 6 * var(--thin));
+  --cell: calc((var(--board-size) - var(--lines)) / 9);
+  --board-outer: calc(9 * var(--cell) + var(--lines));
+  /* The whole play area: the board alone on a phone, plus the controls
+     column beside it elsewhere. */
+  --play-width: var(--board-outer);
+
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
+  /* The game is touch-first on a phone: no double-tap zoom, no grey flash,
+     no text selection or callout from a long press on the board or keys. */
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/* Where round() is known: whole-pixel cells. Elsewhere the board is merely
+   a fraction of a pixel softer. */
+@supports (width: round(down, 10.5px, 1px)) {
+  .app {
+    --cell: round(down, calc((var(--board-size) - var(--lines)) / 9), 1px);
+  }
+}
+
+/* Short phones (an iPhone SE at 320×568): everything around the board
+   tightens a little, so the board keeps as much of the height as it can. */
+@media (max-height: 620px) and (max-width: 849.98px) {
+  .app {
+    --header-height: 48px;
+    --main-pad-top: 2px;
+    --main-pad-bottom: 6px;
+    --hint-gap: 4px;
+    --play-gap: 4px;
+    --row-height: 38px;
+    --key-height: 40px;
+    --controls-gap: 4px;
+  }
+}
+
+/* …but never below a finger's 44px. */
+@media (max-height: 620px) and (max-width: 849.98px) and (pointer: coarse) {
+  .app {
+    --row-height: 44px;
+    --key-height: 44px;
+  }
+}
+
+@media (min-width: 850px) {
+  .app {
+    --gutter: 24px;
+    --header-height: 64px;
+    --main-pad-top: 24px;
+    --main-pad-bottom: 24px;
+    --hint-gap: 12px;
+    --hint-font: 0.875rem;
+    --row-height: 52px;
+    --key-height: 64px;
+    --controls-width: 260px;
+    --play-gap: 40px;
+    --board-size: max(
+      320px,
+      min(
+        calc(100dvh - 176px),
+        600px,
+        calc(100vw - 2 * var(--gutter) - var(--controls-width) - var(--play-gap))
+      )
+    );
+    --play-width: calc(var(--board-outer) + var(--play-gap) + var(--controls-width));
+  }
+}
+
+/*
+ * A phone on its side (667×375, 844×390): far too short for the board with
+ * the controls below it, so the controls stand beside the board, which takes
+ * the full height left under a compact header. Wider phones (932×430) also
+ * match the desktop query above; this block comes later, so it wins.
+ */
+@media (orientation: landscape) and (max-height: 500px) {
+  .app {
+    --gutter: 12px;
+    --header-height: 44px;
+    --main-pad-top: 4px;
+    --main-pad-bottom: 4px;
+    --hint-gap: 6px;
+    --hint-font: 0.8125rem;
+    --play-gap: 20px;
+    --key-height: 44px;
+    --controls-gap: 6px;
+    --controls-width: 288px;
+    --board-size: max(
+      200px,
+      min(
+        calc(
+          100dvh - var(--header-height) - var(--main-pad-top) - var(--main-pad-bottom) -
+            var(--safe-top) - var(--safe-bottom)
+        ),
+        calc(
+          100vw - 2 * var(--gutter) - var(--safe-left) - var(--safe-right) - var(--play-gap) -
+            var(--controls-width)
+        ),
+        500px
+      )
+    );
+    --play-width: calc(var(--board-outer) + var(--play-gap) + var(--controls-width));
+  }
+}
+
+/* ==========================================================================
+   Header
+   ========================================================================== */
+
+.header {
+  flex: none;
+}
+
+/*
+ * One row on every screen: wordmark and tier on the left, timer and actions
+ * on the right. On a phone it may be wider than the board — a board held
+ * back by a short screen must not squeeze the header too — but never wider
+ * than the screen, and never so wide on a tablet that it outruns the board.
+ *
+ * A container, so what it shows can follow the room it really has (see
+ * below) rather than the screen's width: a larger default font size or an
+ * hour-long time needs the room as much as a narrow phone does.
+ */
+.header__inner {
+  container: header / inline-size;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  max-width: max(calc(var(--play-width) + 2 * var(--gutter)), min(100%, 440px));
+  min-height: var(--header-height);
+  margin: 0 auto;
+  padding: 0 var(--gutter);
+}
+
+/* Centred on a whole pixel, like the board under it. */
+@supports (width: round(down, 10.5px, 1px)) {
+  .header__inner {
+    margin-left: max(
+      0px,
+      round(
+        down,
+        calc((100% - max(calc(var(--play-width) + 2 * var(--gutter)), min(100%, 440px))) / 2),
+        1px
+      )
+    );
+  }
+}
+
+/*
+ * The wordmark and the tier are the parts that give way. The breakpoints
+ * below hide or shorten them before that is needed; the shrinking here is
+ * the backstop, so that whatever the font or the time, the row clips its
+ * least useful text rather than pushing the Menu button off the screen.
+ * The wordmark shrinks first and furthest (flex-shrink 1000), the tier only
+ * once the wordmark has gone.
+ */
+.header__title {
+  flex: 0 1000 auto;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font-size: 1.25rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.header__difficulty {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  padding: 3px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* The short tier name ("Med") stands in only when there is no room. */
+.header__tier-short {
+  display: none;
+}
+
+/* Right-aligned, whatever the wordmark and tier take. */
+.header__timer {
+  flex: none;
+  margin-left: auto;
+}
+
+.header__actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+}
+
+/* On a phone the four less-used actions fold into one overflow menu, so the
+   header fits on a single row and the board keeps that row's height.
+   Qualified by the parent to outrank the buttons' own display. */
+.header__actions .header__wide {
+  display: none;
+}
+
+/*
+ * Making room, decided on the header's own width (its content box, inside
+ * the padding). Each breakpoint is what the row needs, written as its fixed
+ * part (buttons, gaps, the pause icon) plus the part that grows with the
+ * font (wordmark, tier, a timer sized for h:mm:ss) in em — so a larger
+ * default font size moves the breakpoint with it. A phone row needs about
+ * 163px + 11.8em, wordmark included: below that the wordmark goes from view
+ * (it stays the page's heading for assistive technology); then, below
+ * about 158px + 7.4em, the tier shortens to three letters.
+ */
+@container header (max-width: calc(168px + 11.8em)) {
+  .header__title {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    clip-path: inset(50%);
+  }
+}
+
+@container header (max-width: calc(162px + 7.4em)) {
+  .header__tier {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .header__tier-short {
+    display: inline;
+  }
+}
+
+@media (min-width: 850px) {
+  .header {
+    border-bottom: 1px solid var(--border);
+  }
+
+  .header__inner {
+    max-width: calc(var(--play-width) + 2 * var(--gutter));
+    gap: 12px;
+  }
+
+  @supports (width: round(down, 10.5px, 1px)) {
+    .header__inner {
+      margin-left: max(
+        0px,
+        round(down, calc((100% - var(--play-width) - 2 * var(--gutter)) / 2), 1px)
+      );
+    }
+  }
+
+  .header__title {
+    font-size: 1.625rem;
+  }
+
+  .header__difficulty {
+    padding: 3px 9px;
+  }
+
+  .header__actions .header__wide {
+    display: inline-grid;
+  }
+
+  .header__actions .header__narrow {
+    display: none;
+  }
+
+  /* Five icon buttons rather than two, a larger wordmark and roomier gaps:
+     about 308px + 13.2em (more for a finger's 44px buttons on a tablet). */
+  @container header (max-width: calc(328px + 13.2em)) {
+    .header__title {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      clip-path: inset(50%);
+    }
+  }
+}
+
+/* A phone on its side: one tight row, the full width of board and controls. */
+@media (orientation: landscape) and (max-height: 500px) {
+  .header {
+    border-bottom: 0;
+  }
+
+  .header__inner {
+    max-width: calc(var(--play-width) + 2 * var(--gutter));
+    gap: 8px;
+  }
+
+  @supports (width: round(down, 10.5px, 1px)) {
+    .header__inner {
+      margin-left: max(
+        0px,
+        round(down, calc((100% - var(--play-width) - 2 * var(--gutter)) / 2), 1px)
+      );
+    }
+  }
+
+  .header__title {
+    font-size: 1.25rem;
+  }
+}
+
+/* ==========================================================================
+   Main: board column and controls
+   ========================================================================== */
+
+.main {
+  flex: 1 0 auto;
+  display: flex;
+  justify-content: center;
+  padding: var(--main-pad-top) var(--gutter) var(--main-pad-bottom);
+}
+
+/* Phone: one column, everything the board's width. */
+.play {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: var(--play-gap);
+  width: var(--play-width);
+}
+
+/* A flex container would centre the column on a half pixel whenever the
+   space left over is odd, blurring every line of the board; this puts the
+   column's left edge on a whole pixel instead. */
+@supports (width: round(down, 10.5px, 1px)) {
+  .main {
+    justify-content: flex-start;
+  }
+
+  .play {
+    margin-left: max(0px, round(down, calc((100% - var(--play-width)) / 2), 1px));
+  }
+}
+
+.play__board {
+  flex: none;
+  width: var(--board-outer);
+}
+
+/*
+ * A tall phone has height to spare once the board has all the width: the
+ * column stretches to the bottom of the screen, and the controls sit at the
+ * foot of it, under the thumb, rather than leaving a dead band beneath them.
+ * Where there is none to spare (a 375×667 or 320×568 screen, whose board is
+ * sized by the height) this changes nothing. Phones only: on a tablet held
+ * upright the spare height is far larger, and pinning the controls to the
+ * bottom would strand them a hand's width below the board they work.
+ */
+@media (max-width: 599.98px) {
+  .play > .controls {
+    margin-top: auto;
+  }
+}
+
+@media (min-width: 850px) {
+  .play {
+    flex-direction: row;
+    align-items: flex-start;
+  }
+
+  /* Beside the board, the controls stay at the top of the row. */
+  .play > .controls {
+    margin-top: 0;
+  }
+}
+
+/*
+ * Landscape: a grid of the board on the left, and the controls with the
+ * hint bar under them on the right. `display: contents` lifts the board and
+ * the hint bar out of their shared wrapper, so each takes its own cell.
+ */
+@media (orientation: landscape) and (max-height: 500px) {
+  .play {
+    display: grid;
+    grid-template-columns: var(--board-outer) var(--controls-width);
+    grid-template-rows: auto 1fr;
+    grid-template-areas:
+      'board controls'
+      'board hint';
+    align-items: start;
+    column-gap: var(--play-gap);
+    row-gap: 0;
+  }
+
+  .play__board {
+    display: contents;
+  }
+
+  .play .board-area {
+    grid-area: board;
+  }
+
+  /* Nothing sits below the hint bar here for a hint to push down, so it
+     holds no empty space in reserve: on the shortest phones on their side
+     (an iPhone SE, 568×320) that reserve alone was what made the page
+     scroll. */
+  .play .hint-bar {
+    grid-area: hint;
+    min-height: 0;
+  }
+
+  .play .controls {
+    grid-area: controls;
+    margin-top: 0;
+  }
+}
+
+/* ==========================================================================
+   Hint bar
+   ========================================================================== */
+
+/* Holds two lines' height even when empty, so a hint arriving never pushes
+   the controls down (or off the bottom of a phone). The height is one of
+   the parts --chrome adds up. */
+.hint-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--hint-height);
+  margin-top: var(--hint-gap);
+}
+
+.hint-bar__message {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  margin: 0;
+  padding: var(--hint-pad) 6px var(--hint-pad) 12px;
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--hint-font);
+  line-height: var(--hint-line);
+}
+
+.hint-bar__message--hint {
+  padding-right: 12px;
+}
+
+.hint-bar__icon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  color: var(--accent);
+}
+
+.hint-bar__dismiss {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.hint-bar__dismiss .icon {
+  width: 16px;
+  height: 16px;
+}
+
+/* A full-size target for a finger, without making the bar any taller. */
+@media (pointer: coarse) {
+  .hint-bar__dismiss {
+    width: 44px;
+    height: 44px;
+    margin: -8px -6px -8px -4px;
+  }
+}
+
+@media (hover: hover) {
+  .hint-bar__dismiss:hover {
+    background: var(--key-bg);
+    color: var(--text);
+  }
+}
+
+.hint-bar__dismiss:active {
+  background: var(--key-bg-active);
+  color: var(--text);
+}
