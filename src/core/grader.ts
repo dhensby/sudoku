@@ -1,8 +1,14 @@
 import { countFilled } from './grid';
-import { TECHNIQUES, createBoard, type SolveStep } from './techniques';
+import {
+  TECHNIQUES,
+  cloneBoard,
+  createBoard,
+  type SolveStep,
+  type SolverBoard,
+} from './techniques';
 import type { Difficulty, TechniqueId, Values } from './types';
 
-export type { SolveStep } from './techniques';
+export type { Elimination, PatternCell, SolveStep } from './techniques';
 
 /*
  * The grader: a human-style solve that always reaches for the easiest
@@ -109,6 +115,15 @@ export interface Grade {
   solveOrder: number[];
 }
 
+/** Apply the easiest of `techniques` that does something, or return null if none does. */
+function nextStep(board: SolverBoard, techniques: readonly TechniqueId[]): SolveStep | null {
+  for (const id of techniques) {
+    const step = TECHNIQUES[id](board);
+    if (step) return step;
+  }
+  return null;
+}
+
 /**
  * Grade from the given values (givens, or givens + correct player values).
  * Pure; does not mutate input. Assumes a consistent grid — one that agrees
@@ -126,11 +141,7 @@ export function grade(values: Values, techniques: readonly TechniqueId[] = TECHN
   let filled = countFilled(board.values);
 
   while (filled < 81) {
-    let step: SolveStep | null = null;
-    for (const id of techniques) {
-      step = TECHNIQUES[id](board);
-      if (step) break;
-    }
+    const step = nextStep(board, techniques);
     if (!step) break;
     steps.push(step);
     score += TECHNIQUE_SCORE[step.technique];
@@ -152,4 +163,43 @@ export function grade(values: Values, techniques: readonly TechniqueId[] = TECHN
  */
 export function rate(values: Values): Difficulty {
   return grade(values).difficulty ?? 'expert';
+}
+
+/** A technique caught at work: the board just before one of its steps, and the step. */
+export interface TechniqueTrace {
+  /** The placed digits at that moment: the givens and every earlier placement. */
+  values: Uint8Array;
+  /**
+   * The candidates as the solver had them at that moment: naked candidates
+   * less every earlier elimination. 0 for a filled cell.
+   */
+  candidates: Uint16Array;
+  /** The step, found on exactly that board. */
+  step: SolveStep;
+}
+
+/**
+ * Run the grader's solve from `values` — every technique, easiest first — and
+ * stop just before the first step made by one of `techniques`. Null if the
+ * solve finishes, or stalls, without one. Pure; does not mutate input.
+ *
+ * The trace shows a technique where a player following the easiest-first
+ * route would meet it, so every easier technique is exhausted on that board.
+ */
+export function traceTechnique(
+  values: Values,
+  techniques: readonly TechniqueId[],
+): TechniqueTrace | null {
+  const board = createBoard(values);
+  let filled = countFilled(board.values);
+  while (filled < 81) {
+    const before = cloneBoard(board);
+    const step = nextStep(board, TECHNIQUE_ORDER);
+    if (!step) return null;
+    if (techniques.includes(step.technique)) {
+      return { values: before.values, candidates: before.candidates, step };
+    }
+    if (step.placement) filled++;
+  }
+  return null;
 }

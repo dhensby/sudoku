@@ -5,9 +5,10 @@ import {
   grade,
   harderTechnique,
   rate,
+  traceTechnique,
   type Grade,
 } from './grader';
-import { formatGrid, parseGrid } from './grid';
+import { countFilled, formatGrid, parseGrid } from './grid';
 import { TECHNIQUES, cloneBoard, createBoard } from './techniques';
 import type { Difficulty, TechniqueId } from './types';
 import { EMPTY_GRID, WIKIPEDIA_PUZZLE, WIKIPEDIA_SOLUTION } from '../test/grids';
@@ -118,6 +119,9 @@ describe('grade', () => {
       placement: { index: 5, digit: 8 },
       eliminations: [],
       unit: { kind: 'box', index: 1 },
+      pattern: [{ index: 5, mask: 1 << 7 }],
+      houses: [{ kind: 'box', index: 1 }],
+      digit: 8,
     });
     checkAccounting(values, result);
   });
@@ -231,5 +235,78 @@ describe('rate', () => {
 
   it('rates a puzzle beyond the technique set expert, never lower', () => {
     expect(rate(solvedPuzzle(BEYOND_THE_SET).givens)).toBe('expert');
+  });
+});
+
+describe('traceTechnique', () => {
+  /** The grader's board just before step `k` of its solve, replayed step by step. */
+  function boardBefore(values: Uint8Array, k: number) {
+    const board = createBoard(values);
+    for (const step of grade(values).steps.slice(0, k)) TECHNIQUES[step.technique](board);
+    return board;
+  }
+
+  it.each<keyof typeof HARDEST>(['pointing', 'nakedPair', 'xWing', 'xyzWing'])(
+    'catches the first %s step on the board the grader found it on',
+    (id) => {
+      const { givens } = solvedPuzzle(HARDEST[id]);
+      const { steps } = grade(givens);
+      const k = steps.findIndex((step) => step.technique === id);
+      const before = boardBefore(givens, k);
+      expect(traceTechnique(givens, [id])).toEqual({
+        values: before.values,
+        candidates: before.candidates,
+        step: steps[k],
+      });
+    },
+  );
+
+  it('stops at whichever of several techniques comes first', () => {
+    const { givens } = solvedPuzzle(HARDEST.xWing);
+    const { steps } = grade(givens);
+    const k = steps.findIndex(
+      (step) => step.technique === 'xWing' || step.technique === 'pointing',
+    );
+    expect(traceTechnique(givens, ['xWing', 'pointing'])?.step).toEqual(steps[k]);
+  });
+
+  it('catches a step at the very start, on the givens themselves', () => {
+    const values = parseGrid(WIKIPEDIA_PUZZLE);
+    const trace = traceTechnique(values, ['hiddenSingleBox']);
+    expect(trace?.values).toEqual(values);
+    expect(trace?.step).toEqual(grade(values).steps[0]);
+  });
+
+  it('solves with every technique, whichever it is looking for', () => {
+    // The X-Wing puzzle needs easier techniques before its fish; tracing the
+    // fish alone still has to use them to get there.
+    const { givens } = solvedPuzzle(HARDEST.xWing);
+    const trace = traceTechnique(givens, ['xWing'])!;
+    expect(countFilled(trace.values)).toBeGreaterThan(countFilled(givens));
+  });
+
+  it('finds nothing when the solve never needs the technique', () => {
+    expect(traceTechnique(parseGrid(WIKIPEDIA_PUZZLE), ['xWing'])).toBeNull();
+  });
+
+  it('finds nothing when the solve stalls first', () => {
+    const { givens } = solvedPuzzle(BEYOND_THE_SET);
+    const used = new Set(grade(givens).steps.map((step) => step.technique));
+    const unused = TECHNIQUE_ORDER.filter((id) => !used.has(id));
+    expect(unused.length).toBeGreaterThan(0);
+    expect(traceTechnique(givens, unused)).toBeNull();
+  });
+
+  it('finds nothing on a complete grid', () => {
+    expect(traceTechnique(parseGrid(WIKIPEDIA_SOLUTION), TECHNIQUE_ORDER)).toBeNull();
+  });
+
+  it('does not modify its input, and accepts plain arrays', () => {
+    const { givens } = solvedPuzzle(HARDEST.pointing);
+    const before = formatGrid(givens);
+    const trace = traceTechnique(givens, ['pointing']);
+    expect(formatGrid(givens)).toBe(before);
+    expect(trace?.values).not.toBe(givens);
+    expect(traceTechnique(Array.from(givens), ['pointing'])).toEqual(trace);
   });
 });

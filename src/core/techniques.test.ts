@@ -7,9 +7,12 @@ import {
   eliminate,
   place,
   type Elimination,
+  type PatternCell,
+  type SolveStep,
   type SolverBoard,
+  type Technique,
 } from './techniques';
-import type { TechniqueId, Unit } from './types';
+import type { Digit, TechniqueId, Unit } from './types';
 import { WIKIPEDIA_PUZZLE, WIKIPEDIA_SOLUTION } from '../test/grids';
 import {
   HARDEST,
@@ -23,18 +26,50 @@ const row = (index: number): Unit => ({ kind: 'row', index });
 const column = (index: number): Unit => ({ kind: 'column', index });
 const box = (index: number): Unit => ({ kind: 'box', index });
 
-/** The same digits struck from each of `indices`. */
-function struck(digits: number[], indices: number[]): Elimination[] {
+/** The same digits in each of `indices`, as cell masks. */
+function cellMasks(digits: number[], indices: number[]): { index: number; mask: number }[] {
   const mask = digits.reduce((m, d) => m | bit(d), 0);
   return indices.map((index) => ({ index, mask }));
 }
 
-function eliminationStep(technique: TechniqueId, eliminations: Elimination[], unit: Unit | null) {
-  return { technique, placement: null, eliminations, unit };
+/** The same digits struck from each of `indices`. */
+const struck: (digits: number[], indices: number[]) => Elimination[] = cellMasks;
+
+/** The same digits held by each of `indices`, as pattern cells. */
+const holding: (digits: number[], indices: number[]) => PatternCell[] = cellMasks;
+
+/** What lies behind an elimination step. */
+interface Behind {
+  pattern: PatternCell[];
+  houses: Unit[];
+  digit: Digit | null;
 }
 
-function placementStep(technique: TechniqueId, index: number, digit: number, unit: Unit | null) {
-  return { technique, placement: { index, digit }, eliminations: [], unit };
+function eliminationStep(
+  technique: TechniqueId,
+  eliminations: Elimination[],
+  unit: Unit | null,
+  behind: Behind,
+): SolveStep {
+  return { technique, placement: null, eliminations, unit, ...behind };
+}
+
+/** A single: its pattern is the cell and the digit, its houses the one it lives in (if any). */
+function placementStep(
+  technique: TechniqueId,
+  index: number,
+  digit: Digit,
+  unit: Unit | null,
+): SolveStep {
+  return {
+    technique,
+    placement: { index, digit },
+    eliminations: [],
+    unit,
+    pattern: [{ index, mask: bit(digit) }],
+    houses: unit ? [unit] : [],
+    digit,
+  };
 }
 
 /** A row of nine open cells, to keep layouts down to the cells that matter. */
@@ -225,7 +260,11 @@ describe('pointing', () => {
       ${OPEN}
     `);
     expect(TECHNIQUES.pointing(board)).toEqual(
-      eliminationStep('pointing', struck([5], [3, 4, 5, 6, 7, 8]), box(0)),
+      eliminationStep('pointing', struck([5], [3, 4, 5, 6, 7, 8]), box(0), {
+        pattern: holding([5], [0, 1]),
+        houses: [box(0), row(0)],
+        digit: 5,
+      }),
     );
     expect(board.candidates[3]).toBe(ALL_DIGITS & ~bit(5));
   });
@@ -243,7 +282,11 @@ describe('pointing', () => {
       ${OPEN}
     `);
     expect(TECHNIQUES.pointing(board)).toEqual(
-      eliminationStep('pointing', struck([5], [27, 36, 45, 54, 63, 72]), box(0)),
+      eliminationStep('pointing', struck([5], [27, 36, 45, 54, 63, 72]), box(0), {
+        pattern: holding([5], [0, 9]),
+        houses: [box(0), column(0)],
+        digit: 5,
+      }),
     );
   });
 
@@ -293,7 +336,11 @@ describe('pointing', () => {
       ${OPEN}
     `);
     expect(TECHNIQUES.pointing(board)).toEqual(
-      eliminationStep('pointing', struck([5], [36, 37, 38, 42, 43, 44]), box(4)),
+      eliminationStep('pointing', struck([5], [36, 37, 38, 42, 43, 44]), box(4), {
+        pattern: holding([5], [39, 40]),
+        houses: [box(4), row(4)],
+        digit: 5,
+      }),
     );
   });
 });
@@ -313,7 +360,11 @@ describe('claiming', () => {
       ${OPEN}
     `);
     expect(TECHNIQUES.claiming(board)).toEqual(
-      eliminationStep('claiming', struck([5], [9, 10, 11, 18, 19, 20]), row(0)),
+      eliminationStep('claiming', struck([5], [9, 10, 11, 18, 19, 20]), row(0), {
+        pattern: holding([5], [0, 1]),
+        houses: [row(0), box(0)],
+        digit: 5,
+      }),
     );
   });
 
@@ -330,7 +381,11 @@ describe('claiming', () => {
       -5 . . | . . . | . . .
     `);
     expect(TECHNIQUES.claiming(board)).toEqual(
-      eliminationStep('claiming', struck([5], [1, 2, 10, 11, 19, 20]), column(0)),
+      eliminationStep('claiming', struck([5], [1, 2, 10, 11, 19, 20]), column(0), {
+        pattern: holding([5], [0, 9]),
+        houses: [column(0), box(0)],
+        digit: 5,
+      }),
     );
   });
 
@@ -394,7 +449,11 @@ describe('naked subsets', () => {
       ${OPEN}
     `);
     expect(TECHNIQUES.nakedPair(board)).toEqual(
-      eliminationStep('nakedPair', struck([1, 2], [1, 2, 3, 5, 6, 7, 8]), row(0)),
+      eliminationStep('nakedPair', struck([1, 2], [1, 2, 3, 5, 6, 7, 8]), row(0), {
+        pattern: holding([1, 2], [0, 4]),
+        houses: [row(0)],
+        digit: null,
+      }),
     );
   });
 
@@ -459,7 +518,11 @@ describe('naked subsets', () => {
       ${OPEN}
     `);
     expect(TECHNIQUES.nakedPair(board)).toEqual(
-      eliminationStep('nakedPair', struck([1, 2], [9, 10, 11, 18, 19, 20]), box(0)),
+      eliminationStep('nakedPair', struck([1, 2], [9, 10, 11, 18, 19, 20]), box(0), {
+        pattern: holding([1, 2], [0, 1]),
+        houses: [box(0)],
+        digit: null,
+      }),
     );
   });
 
@@ -476,7 +539,12 @@ describe('naked subsets', () => {
       ${OPEN}
     `);
     expect(TECHNIQUES.nakedTriple(board)).toEqual(
-      eliminationStep('nakedTriple', struck([1, 2, 3], [1, 2, 3, 5, 6, 7]), row(0)),
+      eliminationStep('nakedTriple', struck([1, 2, 3], [1, 2, 3, 5, 6, 7]), row(0), {
+        // Each cell with the digits it actually holds — none holds all three.
+        pattern: [...holding([1, 2], [0]), ...holding([2, 3], [4]), ...holding([1, 3], [8])],
+        houses: [row(0)],
+        digit: null,
+      }),
     );
   });
 
@@ -526,7 +594,12 @@ describe('hidden subsets', () => {
       ${OPEN}
     `);
     expect(TECHNIQUES.hiddenPair(board)).toEqual(
-      eliminationStep('hiddenPair', struck([3, 4, 5, 6, 7, 8, 9], [0, 4]), row(0)),
+      eliminationStep('hiddenPair', struck([3, 4, 5, 6, 7, 8, 9], [0, 4]), row(0), {
+        // Just the pair's digits: the rest is what goes.
+        pattern: holding([1, 2], [0, 4]),
+        houses: [row(0)],
+        digit: null,
+      }),
     );
   });
 
@@ -610,7 +683,11 @@ describe('hidden subsets', () => {
       ${OPEN}
     `);
     expect(TECHNIQUES.hiddenTriple(board)).toEqual(
-      eliminationStep('hiddenTriple', struck([4, 5, 6, 7, 8, 9], [0, 4, 8]), row(0)),
+      eliminationStep('hiddenTriple', struck([4, 5, 6, 7, 8, 9], [0, 4, 8]), row(0), {
+        pattern: [...holding([1, 3], [0]), ...holding([1, 2], [4]), ...holding([2, 3], [8])],
+        houses: [row(0)],
+        digit: null,
+      }),
     );
   });
 
@@ -681,6 +758,12 @@ describe('fish', () => {
         'xWing',
         struck([1], [1, 19, 28, 37, 46, 55, 73, 7, 25, 34, 43, 52, 61, 79]),
         null,
+        {
+          // Base row by base row, then the base rows and the cover columns.
+          pattern: holding([1], [10, 16, 64, 70]),
+          houses: [row(1), row(7), column(1), column(7)],
+          digit: 1,
+        },
       ),
     );
   });
@@ -703,6 +786,11 @@ describe('fish', () => {
         'xWing',
         struck([1], [9, 11, 12, 13, 14, 15, 17, 63, 65, 66, 67, 68, 69, 71]),
         null,
+        {
+          pattern: holding([1], [10, 64, 16, 70]),
+          houses: [column(1), column(7), row(1), row(7)],
+          digit: 1,
+        },
       ),
     );
   });
@@ -788,6 +876,11 @@ describe('fish', () => {
         'swordfish',
         struck([1], [9, 18, 27, 45, 54, 63, 13, 22, 31, 49, 58, 67, 17, 26, 35, 53, 62, 71]),
         null,
+        {
+          pattern: holding([1], [0, 4, 40, 44, 72, 80]),
+          houses: [row(0), row(4), row(8), column(0), column(4), column(8)],
+          digit: 1,
+        },
       ),
     );
   });
@@ -809,6 +902,11 @@ describe('fish', () => {
         'swordfish',
         struck([1], [1, 2, 3, 5, 6, 7, 37, 38, 39, 41, 42, 43, 73, 74, 75, 77, 78, 79]),
         null,
+        {
+          pattern: holding([1], [0, 36, 40, 76, 8, 80]),
+          houses: [column(0), column(4), column(8), row(0), row(4), row(8)],
+          digit: 1,
+        },
       ),
     );
   });
@@ -863,7 +961,12 @@ describe('wings', () => {
 
   it('finds an XY-Wing and clears z from the cells that see both pincers', () => {
     expect(TECHNIQUES.xyWing(pencilmarks(XY_WING('23')))).toEqual(
-      eliminationStep('xyWing', struck([3], [40]), null),
+      eliminationStep('xyWing', struck([3], [40]), null, {
+        // The pivot first, then the pincers, each with every candidate it holds.
+        pattern: [...holding([1, 2], [0]), ...holding([1, 3], [4]), ...holding([2, 3], [36])],
+        houses: [],
+        digit: null,
+      }),
     );
   });
 
@@ -895,7 +998,11 @@ describe('wings', () => {
 
   it('finds an XYZ-Wing and clears z from the cells that see all three', () => {
     expect(TECHNIQUES.xyzWing(pencilmarks(XYZ_WING('13')))).toEqual(
-      eliminationStep('xyzWing', struck([3], [1, 2]), null),
+      eliminationStep('xyzWing', struck([3], [1, 2]), null, {
+        pattern: [...holding([1, 2, 3], [0]), ...holding([1, 3], [4]), ...holding([2, 3], [10])],
+        houses: [],
+        digit: null,
+      }),
     );
   });
 
@@ -937,7 +1044,7 @@ describe('soundness', () => {
   // Digs and grades a hundred puzzles: well under a second on its own, but
   // coverage instrumentation on a busy machine or CI runner can make it many
   // times slower, so it gets the generator property tests' generous timeout.
-  it('never places a wrong digit or strikes a right one across a hundred real puzzles', () => {
+  it('never places a wrong digit, strikes a right one or misdescribes a pattern across a hundred real puzzles', () => {
     const corpus = [...minimalPuzzles(100), ...Object.values(HARDEST).map(solvedPuzzle)];
     const problems: string[] = [];
     const fired = new Set<TechniqueId>();
@@ -951,4 +1058,35 @@ describe('soundness', () => {
     // check to mean anything.
     expect([...fired].sort()).toEqual([...TECHNIQUE_ORDER].sort());
   }, 60_000);
+
+  /*
+   * The pattern checks only mean something if they can fail. Each case
+   * misdescribes the steps of one technique, which is otherwise left alone,
+   * and the harness has to notice on a puzzle that needs that technique.
+   */
+  it.each<[TechniqueId, string, (step: SolveStep) => void]>([
+    ['fullHouse', 'says it is about no digit at all', (step) => (step.digit = null)],
+    ['pointing', 'leaves a cell out of its pattern', (step) => step.pattern.pop()],
+    ['claiming', 'names its houses the wrong way round', (step) => step.houses.reverse()],
+    ['nakedPair', 'claims a candidate its cell lacks', (step) => (step.pattern[0].mask = 0x1ff)],
+    ['swordfish', 'forgets a cover line', (step) => step.houses.pop()],
+    ['xyzWing', 'puts a pincer where the pivot goes', (step) => step.pattern.reverse()],
+  ])('flags a %s step that %s', (id, _, misdescribe) => {
+    const techniques = TECHNIQUES as Record<TechniqueId, Technique>;
+    const original = techniques[id];
+    const spy = vi.spyOn(techniques, id).mockImplementation((board) => {
+      const step = original(board);
+      if (step) misdescribe(step);
+      return step;
+    });
+    try {
+      // Full houses turn up in every solve; the rest have a fixture of their own.
+      const fixture = id === 'fullHouse' ? HARDEST.hiddenSingleBox : HARDEST[id];
+      const { problems } = checkSoundness(solvedPuzzle(fixture));
+      expect(problems.length).toBeGreaterThan(0);
+      expect(problems.every((problem) => problem.startsWith(`${id} `))).toBe(true);
+    } finally {
+      spy.mockRestore();
+    }
+  });
 });
