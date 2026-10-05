@@ -14,6 +14,17 @@ export const DIFFICULTY_LABEL: Readonly<Record<Difficulty, string>> = {
   expert: 'Expert',
 };
 
+/** "hidden single" → "Hidden single": the first letter only, so "X-Wing" keeps its own capitals. */
+export function capitalise(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/** "a", "a and b", "a, b and c" — no Oxford comma, in British style. */
+export function joinList(items: readonly string[]): string {
+  if (items.length <= 1) return items.join('');
+  return `${items.slice(0, -1).join(', ')} and ${items.at(-1)}`;
+}
+
 /**
  * "an Easy", "a Hard", "an XY-Wing": the article follows the label's sound,
  * so a vowel takes "an" and so does a leading X, which is said "ex".

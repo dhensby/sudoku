@@ -1,10 +1,12 @@
 import {
   DIFFICULTY_LABEL,
   TECHNIQUE_LABEL,
+  capitalise,
   count,
   describeAssists,
   formatDate,
   hasAssists,
+  joinList,
   withArticle,
 } from './format';
 
@@ -30,6 +32,19 @@ describe('labels', () => {
     // X is said "ex".
     expect(withArticle('XY-Wing')).toBe('an XY-Wing');
     expect(withArticle('Swordfish')).toBe('a Swordfish');
+  });
+
+  it('capitalises the first letter only, so a name keeps its own capitals', () => {
+    expect(capitalise('hidden single')).toBe('Hidden single');
+    expect(capitalise('X-Wing')).toBe('X-Wing');
+    expect(capitalise('')).toBe('');
+  });
+
+  it('joins a list the British way, with no comma before the "and"', () => {
+    expect(joinList([])).toBe('');
+    expect(joinList(['a'])).toBe('a');
+    expect(joinList(['a', 'b'])).toBe('a and b');
+    expect(joinList(['a', 'b', 'c'])).toBe('a, b and c');
   });
 
   it('counts a noun, plural unless there is exactly one', () => {

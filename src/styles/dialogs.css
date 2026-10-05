@@ -1114,6 +1114,573 @@
   font-size: 0.875rem;
 }
 
+/* ---- Help: the way into the technique guide ---- */
+.help__guide {
+  margin-top: 10px;
+}
+
+/* ==========================================================================
+   The technique guide
+
+   A phone (and any narrow window) gets the open entry under a native
+   picker; from 720px the entries are listed beside it, and the list stays
+   in view as the entry scrolls. The worked example sits beside its caption
+   where the entry is wide enough, and above it where it is not — decided
+   on the entry's own width, so the list's share never squeezes the board.
+   ========================================================================== */
+
+.dialog--techniques {
+  max-width: 560px;
+  /*
+   * What the list beside an entry gives up of the screen's height (below):
+   * the scrim's padding above and below the card, and the top padding and
+   * close button that make up most of the header. Each mirrors the rule that
+   * draws it, and changes where that rule does: the short screen of a phone
+   * on its side, and the 44px close button of a touch screen.
+   */
+  --guide-scrim: 48px;
+  --guide-header-top: 14px;
+  --guide-close: 36px;
+}
+
+@media (max-height: 500px) and (min-width: 500px) {
+  .dialog--techniques {
+    --guide-scrim: 24px;
+    --guide-header-top: 10px;
+  }
+}
+
+@media (pointer: coarse) {
+  .dialog--techniques {
+    --guide-close: 44px;
+  }
+}
+
+.guide__nav {
+  display: none;
+}
+
+@media (min-width: 720px) {
+  .dialog--techniques {
+    max-width: 920px;
+  }
+
+  .guide {
+    display: grid;
+    grid-template-columns: 196px minmax(0, 1fr);
+    align-items: start;
+    column-gap: 32px;
+  }
+
+  /* The card's height (the screen less the scrim and the card's 2px of
+     border), less its header (6px under the close button) and the body's
+     26px of padding: a list too long for a short window scrolls on its own,
+     and ends where the entry beside it does. */
+  .guide__nav {
+    position: sticky;
+    top: 0;
+    display: block;
+    max-height: calc(
+      100dvh - var(--guide-scrim) - 2px - var(--guide-header-top) - var(--guide-close) - 6px - 26px
+    );
+    margin: 0 -4px;
+    padding: 4px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .guide__picker {
+    display: none;
+  }
+}
+
+.guide__group + .guide__group {
+  margin-top: 14px;
+}
+
+.guide__group-label {
+  margin: 0 0 4px;
+  padding: 0 10px;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.guide__list {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* The open entry is filled in the text colour, like the selected History
+   tab, which inverts cleanly in either theme. */
+.guide__link {
+  display: block;
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text);
+  font-size: 0.9375rem;
+  line-height: 1.3;
+  text-align: left;
+}
+
+.guide__link[aria-current='true'] {
+  background: var(--text);
+  color: var(--bg);
+  font-weight: 600;
+}
+
+@media (hover: hover) {
+  .guide__link:not([aria-current='true']):hover {
+    background: var(--surface);
+  }
+}
+
+.guide__link:not([aria-current='true']):active {
+  background: var(--key-bg);
+}
+
+/* A native select, so the platform's own picker opens on a phone; drawn
+   flat, with a chevron in the text colour that the select's own arrow
+   would not take. */
+.guide__picker {
+  position: relative;
+  margin: 2px 0 16px;
+}
+
+.guide__picker::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: 16px;
+  width: 8px;
+  height: 8px;
+  margin-top: -6px;
+  border-right: 2px solid var(--text-muted);
+  border-bottom: 2px solid var(--text-muted);
+  transform: rotate(45deg);
+  pointer-events: none;
+}
+
+.guide__select {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 40px 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+  /* 16px is the threshold below which iOS force-zooms the page on focus. */
+  font-size: 16px;
+  font-weight: 600;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.guide__select:focus-visible {
+  border-color: var(--accent);
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+}
+
+/* ---- An entry ---- */
+
+.guide__entry {
+  container: guide-entry / inline-size;
+  min-width: 0;
+}
+
+.guide__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+}
+
+.guide__title {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+
+/* Focused from script as the entry changes; the ring only follows a key. */
+.guide__title:focus {
+  outline: none;
+}
+
+.guide__title:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: 2px;
+}
+
+.guide__tiers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+}
+
+/* The tier as the header shows it: a small uppercase pill. */
+.guide__tier {
+  padding: 2px 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.guide__tier-name {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.guide__aka {
+  margin: 6px 0 0;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.guide__summary {
+  max-width: 62ch;
+  margin: 12px 0 0;
+  font-size: 1.0625rem;
+  line-height: 1.45;
+}
+
+.guide__examples {
+  display: grid;
+  gap: 24px;
+  margin: 20px 0 0;
+}
+
+.guide__section {
+  margin-top: 22px;
+}
+
+.guide__heading {
+  margin: 0 0 6px;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.guide__text {
+  max-width: 62ch;
+  margin: 0;
+}
+
+.guide__text + .guide__text {
+  margin-top: 8px;
+}
+
+/* Previous and Next, each naming where it goes. */
+.guide__pager {
+  display: flex;
+  gap: 12px;
+  margin-top: 28px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.guide__step {
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+  max-width: calc(50% - 6px);
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) * 2);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+
+.guide__step--next {
+  align-items: flex-end;
+  margin-left: auto;
+  text-align: right;
+}
+
+.guide__step-label {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.guide__step-title {
+  font-weight: 600;
+}
+
+@media (hover: hover) {
+  .guide__step:hover {
+    background: var(--surface);
+  }
+}
+
+.guide__step:active {
+  background: var(--key-bg);
+}
+
+/* ---- The worked example ----
+   A small board drawn in SVG, in user units of a 40-unit cell (see
+   TechniqueDiagram), so text sizes here are in those units and scale with
+   the board. The board's own tokens draw it: its lines and inks, the
+   same-number tint for where to look and the lighter peer tint for where a
+   step clears, the player blue for the copies of a lone digit, a ring in
+   the accent for the pattern, a slash in the danger red for what goes, and
+   the answer framed in the success green. A wing's pivot is framed in the
+   accent, and the digit it forces filled with it. */
+
+.technique-diagram {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+@container guide-entry (min-width: 600px) {
+  .technique-diagram {
+    grid-template-columns: 360px minmax(0, 1fr);
+    align-items: start;
+    gap: 22px;
+  }
+}
+
+.technique-diagram__board {
+  display: block;
+  width: 100%;
+  max-width: 360px;
+  height: auto;
+  font-family: var(--font);
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.technique-diagram__board text {
+  dominant-baseline: central;
+  text-anchor: middle;
+}
+
+.technique-diagram__cells rect {
+  fill: var(--cell-bg);
+}
+
+.technique-diagram__shading rect {
+  fill: var(--hl-same);
+}
+
+.technique-diagram__shading rect[data-shade='clear'] {
+  fill: var(--hl-peer);
+}
+
+/* Outlines stand in for the shading in forced colours only (below). */
+.technique-diagram__outlines {
+  display: none;
+}
+
+.technique-diagram__thin line {
+  stroke: var(--grid-thin);
+  stroke-width: 1;
+}
+
+.technique-diagram__thick line,
+.technique-diagram__thick rect {
+  fill: none;
+  stroke: var(--grid-thick);
+  stroke-width: 2.5;
+}
+
+.technique-diagram__thick rect {
+  stroke-width: 3;
+}
+
+.technique-diagram__rings circle {
+  fill: color-mix(in srgb, var(--accent) 22%, var(--cell-bg));
+  stroke: var(--accent);
+  stroke-width: 1.4;
+}
+
+/* The digit a wing forces: a solid disc, its digit in the accent's own ink. */
+.technique-diagram__rings circle[data-ring='forced'] {
+  fill: var(--accent);
+}
+
+.technique-diagram__pivot rect {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2.5;
+}
+
+.technique-diagram__candidate {
+  fill: var(--candidate);
+  font-weight: 500;
+}
+
+.technique-diagram__candidate--small {
+  font-size: 11px;
+}
+
+.technique-diagram__candidate--large {
+  font-size: 14px;
+}
+
+.technique-diagram__candidate[data-mark='pattern'] {
+  fill: var(--text);
+  font-weight: 700;
+}
+
+.technique-diagram__candidate[data-mark='forced'] {
+  fill: var(--accent-text);
+  font-weight: 700;
+}
+
+/* A step towards --text: the raw red is a shade light for text this small. */
+.technique-diagram__candidate[data-mark='removed'] {
+  fill: color-mix(in srgb, var(--danger) 80%, var(--text));
+  font-weight: 700;
+}
+
+.technique-diagram__strikes line {
+  stroke: var(--danger);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
+
+.technique-diagram__digits text {
+  fill: var(--digit-given);
+  font-size: 23px;
+  font-weight: 600;
+}
+
+.technique-diagram__digits text[data-mark='copy'] {
+  fill: var(--digit-player);
+  font-weight: 800;
+}
+
+.technique-diagram__answer rect {
+  fill: color-mix(in srgb, var(--success) 14%, var(--cell-bg));
+  stroke: var(--success);
+  stroke-width: 2;
+}
+
+.technique-diagram__answer text {
+  fill: color-mix(in srgb, var(--success) 85%, var(--text));
+  font-size: 24px;
+  font-weight: 800;
+}
+
+.technique-diagram__labels text {
+  fill: var(--text-muted);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.technique-diagram__text {
+  min-width: 0;
+}
+
+.technique-diagram__caption {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+}
+
+.technique-diagram__key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+.technique-diagram__key li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Each swatch is the mark it stands for, in miniature. */
+.technique-diagram__swatch {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--grid-thin);
+  border-radius: 3px;
+  background: var(--cell-bg);
+}
+
+.technique-diagram__swatch--look {
+  background: linear-gradient(var(--hl-same), var(--hl-same)), var(--cell-bg);
+}
+
+.technique-diagram__swatch--clear {
+  background: linear-gradient(var(--hl-peer), var(--hl-peer)), var(--cell-bg);
+}
+
+.technique-diagram__swatch--pattern {
+  border: 1.5px solid var(--accent);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 22%, var(--cell-bg));
+}
+
+.technique-diagram__swatch--forced {
+  border: 1.5px solid var(--accent);
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.technique-diagram__swatch--pivot {
+  border: 2px solid var(--accent);
+}
+
+/* "To bottom right" draws a '/', as on the board's wrong answers. */
+.technique-diagram__swatch--removed {
+  background: linear-gradient(
+    to bottom right,
+    transparent calc(50% - 1px),
+    var(--danger) calc(50% - 1px),
+    var(--danger) calc(50% + 1px),
+    transparent calc(50% + 1px)
+  );
+}
+
+.technique-diagram__swatch--answer {
+  border: 2px solid var(--success);
+  background: color-mix(in srgb, var(--success) 14%, var(--cell-bg));
+}
+
+.technique-diagram__copy {
+  flex: none;
+  width: 14px;
+  color: var(--digit-player);
+  font-weight: 800;
+  text-align: center;
+}
+
 /* ============================================================
    Touch support
    ============================================================ */
@@ -1134,6 +1701,10 @@
 
   .settings__row {
     min-height: 56px;
+  }
+
+  .guide__link {
+    min-height: 44px;
   }
 }
 
@@ -1177,8 +1748,57 @@
   .share__preview,
   .result__badge,
   .history-item__current,
-  .history-item__chip {
+  .history-item__chip,
+  .guide__tier,
+  .guide__step {
     border: 1px solid CanvasText;
+  }
+
+  .guide__link[aria-current='true'] {
+    forced-color-adjust: none;
+    border-color: Highlight;
+    background: Highlight;
+    color: HighlightText;
+  }
+
+  /*
+   * The worked example paints itself from the tokens, which index.css maps
+   * to system colours here, as the board does. The shading has none, so the
+   * houses are outlined instead, dashed or dotted for its two shades, and so
+   * are a wing's pincers (its pivot has its frame); the ring, the disc, the
+   * slash, the framed answer and the bold copies already differ by shape.
+   */
+  .technique-diagram__board,
+  .technique-diagram__swatch {
+    forced-color-adjust: none;
+  }
+
+  .technique-diagram__shading {
+    display: none;
+  }
+
+  .technique-diagram__outlines {
+    display: inline;
+  }
+
+  .technique-diagram__outlines rect {
+    fill: none;
+    stroke: CanvasText;
+    stroke-width: 2;
+    stroke-dasharray: 5 3;
+  }
+
+  /* Where a step clears is dotted, where to look dashed: the two shades. */
+  .technique-diagram__outlines rect[data-shade='clear'] {
+    stroke-dasharray: 1.5 3;
+  }
+
+  .technique-diagram__swatch--look {
+    border: 1px dashed CanvasText;
+  }
+
+  .technique-diagram__swatch--clear {
+    border: 1px dotted CanvasText;
   }
 
   .tabs__tab[aria-selected='true'],
@@ -1215,6 +1835,7 @@
   .dialog__close:focus-visible,
   .tabs__tab:focus-visible,
   .field__input:focus-visible,
+  .guide__select:focus-visible,
   .settings__switch:focus-visible,
   .settings__theme-option:has(input:focus-visible) {
     outline-color: Highlight;

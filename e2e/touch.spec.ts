@@ -228,7 +228,7 @@ test.describe('touch', () => {
 
   test('every dialog fits the screen', async ({ page }) => {
     await tapStart(page, NEARLY_DONE.givens);
-    for (const name of ['History', 'Share', 'Settings', 'Help']) {
+    for (const name of ['History', 'Share', 'Settings', 'Solving techniques', 'Help']) {
       const dialog = await openFromMenu(page, name);
       await expectOnScreen(page, dialog);
       expect((await overflow(page)).x).toBe(0);
@@ -296,6 +296,94 @@ test.describe('touch', () => {
       await expect(dialog).toBeHidden();
       await waitForPlaying(page);
     }
+  });
+
+  test('the technique guide is a bottom sheet with a picker, nothing to scroll sideways and finger-sized targets', async ({
+    page,
+  }) => {
+    await tapStart(page);
+    const sheet = await openFromMenu(page, 'Solving techniques');
+    await expectOnScreen(page, sheet);
+    const viewport = await page.evaluate(() => document.documentElement.clientWidth);
+    const box = (await sheet.boundingBox())!;
+    // Edge to edge, anchored to the foot of the screen.
+    expect(box.x).toBeLessThanOrEqual(0.5);
+    expect(box.width).toBeGreaterThanOrEqual(viewport - 1);
+    expect(box.y + box.height).toBeGreaterThanOrEqual(
+      (await page.evaluate(() => document.documentElement.clientHeight)) - 1,
+    );
+
+    // A picker in place of the list, which a phone has no room for.
+    const picker = sheet.getByRole('combobox', { name: 'Technique' });
+    await expect(picker).toBeVisible();
+    await expect(sheet.getByRole('navigation', { name: 'Techniques', exact: true })).toBeHidden();
+    await picker.selectOption('swordfish');
+    await expect(sheet.getByRole('heading', { level: 3 })).toHaveText('Swordfish');
+
+    // The worked example takes the sheet's width, and nothing scrolls sideways.
+    const body = sheet.locator('.dialog__body');
+    const diagram = (await sheet.getByRole('img').boundingBox())!;
+    const inner = await body.evaluate((el) => {
+      const style = getComputedStyle(el);
+      return el.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+    });
+    expect(diagram.width).toBeGreaterThanOrEqual(Math.min(inner, 360) - 1);
+    expect(diagram.x + diagram.width).toBeLessThanOrEqual(viewport);
+    expect((await overflow(page)).x).toBe(0);
+    expect(await body.evaluate((el) => el.scrollWidth - el.clientWidth)).toBe(0);
+
+    const targets = [
+      picker,
+      sheet.getByRole('button', { name: 'Close' }),
+      sheet.getByRole('button', { name: /^Previous/ }),
+      sheet.getByRole('button', { name: /^Next/ }),
+    ];
+    for (const target of targets) {
+      await target.scrollIntoViewIfNeeded();
+      const size = (await target.boundingBox())!;
+      expect(size.height, (await target.textContent()) ?? '').toBeGreaterThanOrEqual(44);
+      expect(size.width).toBeGreaterThanOrEqual(44);
+    }
+
+    await sheet.getByRole('button', { name: /^Next/ }).tap();
+    await expect(sheet.getByRole('heading', { level: 3 })).toHaveText('XY-Wing');
+    await expect(picker).toHaveValue('xyWing');
+  });
+
+  test("a hint's question opens the guide at its technique", async ({ page }) => {
+    await tapStart(page);
+    await page.getByRole('button', { name: 'More' }).tap();
+    await page.getByRole('menu', { name: 'More' }).getByRole('menuitem', { name: 'Hint' }).tap();
+    const question = page.locator('.hint-bar').getByRole('button', { name: /^What's a/ });
+
+    // A finger-sized press area round the words (it reaches past them, so it
+    // is found by hit-testing), clear of the board's cells and the controls.
+    const area = await question.evaluate((button) => {
+      const rect = button.getBoundingClientRect();
+      const hits = (x: number, y: number) => button.contains(document.elementFromPoint(x, y));
+      const [x, y] = [rect.left + rect.width / 2, rect.top + rect.height / 2];
+      const ys: number[] = [];
+      const xs: number[] = [];
+      for (let at = rect.top - 40; at <= rect.bottom + 40; at += 0.5) if (hits(x, at)) ys.push(at);
+      for (let at = rect.left - 40; at <= rect.right + 40; at += 0.5) if (hits(at, y)) xs.push(at);
+      const [top, bottom] = [Math.min(...ys), Math.max(...ys) + 0.5];
+      const [left, right] = [Math.min(...xs), Math.max(...xs) + 0.5];
+      const neighbours = document.querySelectorAll('[role="gridcell"], .controls button');
+      const overlapping = [...neighbours].filter((element) => {
+        const box = element.getBoundingClientRect();
+        return box.left < right && box.right > left && box.top < bottom && box.bottom > top;
+      });
+      return { width: right - left, height: bottom - top, overlapping: overlapping.length };
+    });
+    expect(area.width).toBeGreaterThanOrEqual(44);
+    expect(area.height).toBeGreaterThanOrEqual(44);
+    expect(area.overlapping).toBe(0);
+
+    const name = (await question.textContent())!.replace(/^What's an? |\?$/g, '');
+    await question.tap();
+    const sheet = page.getByRole('dialog', { name: 'Solving techniques' });
+    await expect(sheet.getByRole('heading', { level: 3 })).toHaveText(new RegExp(`^${name}$`, 'i'));
+    expect((await overflow(page)).x).toBe(0);
   });
 
   test('rapid taps do not zoom the page, and the board is insulated from selection', async ({
@@ -491,7 +579,7 @@ for (const viewport of [
 
     test('fits every dialog', async ({ page }) => {
       await tapStart(page);
-      for (const name of ['History', 'Share', 'Settings', 'Help']) {
+      for (const name of ['History', 'Share', 'Settings', 'Solving techniques', 'Help']) {
         const dialog = await openFromMenu(page, name);
         await expectOnScreen(page, dialog);
         await expectOnScreen(page, dialog.getByRole('button', { name: 'Close' }).first());

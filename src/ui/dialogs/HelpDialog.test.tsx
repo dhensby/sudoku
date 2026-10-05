@@ -3,7 +3,7 @@ import { HelpDialog } from './HelpDialog';
 
 describe('HelpDialog', () => {
   it('covers each topic under its own heading', () => {
-    render(<HelpDialog onClose={vi.fn()} />);
+    render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={vi.fn()} />);
     const dialog = screen.getByRole('dialog', { name: 'Help' });
     expect(
       within(dialog)
@@ -22,7 +22,7 @@ describe('HelpDialog', () => {
   });
 
   it('gives the controls for keyboard and for mouse or touch', () => {
-    render(<HelpDialog onClose={vi.fn()} />);
+    render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={vi.fn()} />);
     const table = screen.getByRole('table');
     expect(
       within(table)
@@ -37,13 +37,14 @@ describe('HelpDialog', () => {
   });
 
   it('says where the menus are for what has no key', () => {
-    render(<HelpDialog onClose={vi.fn()} />);
+    render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={vi.fn()} />);
     const table = screen.getByRole('table');
     const rows = [
       ['Pause or resume', 'The timer'],
       ['Hint, check, reveal, reset', 'The “…” menu'],
       ['New game', 'The + button'],
       ['History, share, settings, help', 'on a phone, the ☰ menu'],
+      ['Solving techniques', 'The header, or the question after a hint'],
     ];
     for (const [action, pointer] of rows) {
       const row = within(table).getByRole('row', { name: new RegExp(`^${action}`) });
@@ -52,7 +53,7 @@ describe('HelpDialog', () => {
   });
 
   it('says when the clock runs, and what waits behind Start', () => {
-    render(<HelpDialog onClose={vi.fn()} />);
+    render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={vi.fn()} />);
     expect(screen.getByText(/the board hides until it runs again/)).toBeInTheDocument();
     expect(screen.getByText(/arrives while this tab is hidden/)).toHaveTextContent(
       'waits behind Start',
@@ -66,14 +67,14 @@ describe('HelpDialog', () => {
   });
 
   it('says that nothing leaves the browser and times are on trust', () => {
-    render(<HelpDialog onClose={vi.fn()} />);
+    render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={vi.fn()} />);
     expect(screen.getByText(/Nothing is uploaded/)).toBeInTheDocument();
     expect(screen.getByText(/honour system/)).toBeInTheDocument();
     expect(screen.getByText(/Everything stays in this browser/)).toBeInTheDocument();
   });
 
   it('says Reset keeps the clock, and replays keep out of the records', () => {
-    render(<HelpDialog onClose={vi.fn()} />);
+    render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={vi.fn()} />);
     expect(
       screen.getByText(
         'Reset clears the board but not the clock, so a time is always the whole time.',
@@ -86,15 +87,28 @@ describe('HelpDialog', () => {
   });
 
   it('says what a second Erase does, and that it leaves auto candidates alone', () => {
-    render(<HelpDialog onClose={vi.fn()} />);
+    render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={vi.fn()} />);
     expect(screen.getByText(/pressing it again clears your own candidates/)).toHaveTextContent(
       'Erase clears a number first; pressing it again clears your own candidates (in Auto Candidate Mode it leaves the candidates alone).',
     );
   });
 
+  it('leads from Difficulty to the guide to the solving techniques', () => {
+    const onBrowseTechniques = vi.fn();
+    render(<HelpDialog onBrowseTechniques={onBrowseTechniques} onClose={vi.fn()} />);
+    expect(screen.getByText(/A hint names the technique for the next step/)).toHaveTextContent(
+      "What's a hidden single?",
+    );
+    const browse = screen.getByRole('button', { name: 'Browse the solving techniques' });
+    // In the Difficulty section, after its points.
+    expect(browse.closest('section')).toHaveTextContent(/^Difficulty/);
+    fireEvent.click(browse);
+    expect(onBrowseTechniques).toHaveBeenCalledOnce();
+  });
+
   it('closes from its close button', () => {
     const onClose = vi.fn();
-    render(<HelpDialog onClose={onClose} />);
+    render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={onClose} />);
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(onClose).toHaveBeenCalledOnce();
   });

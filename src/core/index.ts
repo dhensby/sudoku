@@ -3,6 +3,7 @@ export * from './grid';
 export * from './rng';
 export * from './solver';
 export * from './grader';
+export * from './examples';
 export * from './generator';
 export * from './hint';
 export * from './game';

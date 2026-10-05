@@ -107,9 +107,9 @@ export function MoreIcon(props: IconProps) {
 }
 
 /**
- * Three bars: the app's menu (History, Share, Settings, Help) on a phone.
- * Deliberately unlike the "…" of the game's help menu at the foot of the
- * screen, so the two are never mistaken for each other.
+ * Three bars: the app's menu (History, Share, Settings, Solving techniques,
+ * Help) on a phone. Deliberately unlike the "…" of the game's help menu at
+ * the foot of the screen, so the two are never mistaken for each other.
  */
 export function MenuIcon(props: IconProps) {
   return (
@@ -158,6 +158,16 @@ export function HelpIcon(props: IconProps) {
       <circle cx="12" cy="12" r="9.5" />
       <path d="M9.5 9.5a2.5 2.5 0 1 1 3.6 2.24c-.66.33-1.1.97-1.1 1.7v.56" />
       <path d="M12 17.25h.01" />
+    </Icon>
+  );
+}
+
+/** An open book: the guide to the solving techniques. */
+export function BookIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M12 6.5C10.5 5.17 8.33 4.5 5.5 4.5H3v14h2.5c2.83 0 5 .67 6.5 2 1.5-1.33 3.67-2 6.5-2H21v-14h-2.5c-2.83 0-5 .67-6.5 2z" />
+      <path d="M12 6.5v14" />
     </Icon>
   );
 }

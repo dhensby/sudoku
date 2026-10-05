@@ -1,6 +1,15 @@
 import { digMinimal, generatePuzzle, randomSolution } from '../core/generator';
 import { TECHNIQUE_ORDER } from '../core/grader';
-import { ALL_DIGITS, PEERS, bit, gridValues, maskOf } from '../core/grid';
+import {
+  ALL_DIGITS,
+  PEERS,
+  POPCOUNT,
+  bit,
+  gridValues,
+  isPeer,
+  maskOf,
+  unitCells,
+} from '../core/grid';
 import { mulberry32 } from '../core/rng';
 import {
   TECHNIQUES,
@@ -9,7 +18,7 @@ import {
   type SolveStep,
   type SolverBoard,
 } from '../core/techniques';
-import type { Difficulty, TechniqueId } from '../core/types';
+import type { Difficulty, TechniqueId, Unit } from '../core/types';
 
 /*
  * Fixtures for the technique, grader, generator and hint tests.
@@ -176,11 +185,196 @@ export const ALL_FIXTURES: readonly (readonly [label: string, fixture: PuzzleFix
  * classic kind — a no-op step counted, a placement that guesses, an
  * elimination that strikes the answer, a step that changes more than it says,
  * a technique that touches the board and then reports nothing — comes back as
- * a list of violations rather than as a puzzle quietly rated wrong.
+ * a list of violations rather than as a puzzle quietly rated wrong. So does a
+ * step whose stated pattern is not really there, or does not really justify
+ * what it removed: the technique guide draws those patterns for players.
  *
  * Plain comparisons collected into strings, not `expect` per step: a few
  * hundred puzzles make for hundreds of thousands of checks.
  */
+
+/** The subset techniques: how many cells, and whether the subset is naked or hidden. */
+const SUBSETS: Partial<Record<TechniqueId, { size: number; isNaked: boolean }>> = {
+  nakedPair: { size: 2, isNaked: true },
+  hiddenPair: { size: 2, isNaked: false },
+  nakedTriple: { size: 3, isNaked: true },
+  hiddenTriple: { size: 3, isNaked: false },
+};
+
+/** The fish techniques, by how many base lines they have. */
+const FISH: Partial<Record<TechniqueId, number>> = { xWing: 2, swordfish: 3 };
+
+const isLine = (unit: Unit) => unit.kind === 'row' || unit.kind === 'column';
+const isIn = (index: number, unit: Unit) => unitCells(unit).includes(index);
+const isSameSet = (a: readonly number[], b: readonly number[]) =>
+  a.length === b.length && a.every((x) => b.includes(x));
+
+/** The cells of a house whose candidates on `board` include any of `mask`. */
+function holders(board: SolverBoard, unit: Unit, mask: number): number[] {
+  return unitCells(unit).filter((i) => (board.candidates[i] & mask) !== 0);
+}
+
+/**
+ * Check what a step says lies behind it — its pattern, houses and digit —
+ * against the board it was found on, independently of how the technique
+ * searched: the pattern's candidates are really there, they really form the
+ * technique's pattern, and every elimination is one that pattern justifies
+ * (a subset never strikes its own cells, a fish never its base lines, a wing
+ * only cells that see its pincers).
+ */
+function checkPattern(id: TechniqueId, step: SolveStep, before: SolverBoard): string[] {
+  const problems: string[] = [];
+  const fail = (what: string) => problems.push(`${id} ${what}`);
+  const { pattern, houses, digit } = step;
+  const cells = pattern.map((p) => p.index);
+  const union = pattern.reduce((m, p) => m | p.mask, 0);
+
+  if (pattern.length === 0) fail('described no pattern');
+  if (new Set(cells).size !== cells.length) fail('listed a pattern cell twice');
+  for (const { index, mask } of pattern) {
+    if (before.values[index] !== 0) fail(`put the filled cell ${index} in its pattern`);
+    if (mask === 0 || (before.candidates[index] & mask) !== mask) {
+      fail(`claimed cell ${index} held ${mask}`);
+    }
+  }
+  // `unit` is the house a hint names: the first of the houses, bar a fish's
+  // lines, none of which is "the" house.
+  const unit = FISH[id] ? null : (houses[0] ?? null);
+  if (step.unit?.kind !== unit?.kind || step.unit?.index !== unit?.index) {
+    fail('named a unit other than its first house');
+  }
+
+  if (step.placement) {
+    const { index, digit: placed } = step.placement;
+    if (digit !== placed) fail(`placed ${placed} but says it is about ${digit}`);
+    if (pattern.length !== 1 || cells[0] !== index || pattern[0].mask !== bit(placed)) {
+      fail('described a pattern other than the cell it filled');
+    }
+    if (id === 'nakedSingle') {
+      if (houses.length !== 0) fail('gave a naked single a house');
+      if (before.candidates[index] !== bit(placed)) fail(`placed at ${index}, which had others`);
+      return problems;
+    }
+    const [house] = houses;
+    if (houses.length !== 1 || !isIn(index, house)) return [...problems, `${id} left its house`];
+    if (id === 'fullHouse') {
+      if (unitCells(house).some((i) => i !== index && before.values[i] === 0)) {
+        fail(`filled a house with another gap`);
+      }
+    } else {
+      if ((house.kind === 'box') !== (id === 'hiddenSingleBox')) {
+        fail(`found its single in a ${house.kind}`);
+      }
+      if (holders(before, house, bit(placed)).length !== 1) {
+        fail(`placed a digit with other places`);
+      }
+    }
+    return problems;
+  }
+
+  const struck = step.eliminations;
+  const subset = SUBSETS[id];
+  const fishSize = FISH[id];
+  if (id === 'pointing' || id === 'claiming') {
+    // Pointing: the box's candidates for the digit, all in one line, clear the
+    // rest of that line. Claiming: the other way about.
+    const [from, to] = houses;
+    const isRightShape =
+      houses.length === 2 &&
+      digit !== null &&
+      (id === 'pointing' ? from.kind === 'box' && isLine(to) : isLine(from) && to.kind === 'box');
+    if (!isRightShape) return [...problems, `${id} gave the wrong houses or digit`];
+    const d = bit(digit);
+    if (!isSameSet(cells, holders(before, from, d)) || cells.length < 2) {
+      fail(`described other than every candidate for ${digit} in its ${from.kind}`);
+    }
+    if (pattern.some((p) => p.mask !== d || !isIn(p.index, to))) {
+      fail(`strayed out of its ${to.kind}`);
+    }
+    if (struck.some((e) => e.mask !== d || !isIn(e.index, to) || isIn(e.index, from))) {
+      fail('struck outside the rest of its second house');
+    }
+  } else if (subset) {
+    const [house] = houses;
+    if (houses.length !== 1 || digit !== null) return [...problems, `${id} gave the wrong houses`];
+    if (cells.length !== subset.size || POPCOUNT[union] !== subset.size) {
+      fail(`described ${cells.length} cells holding ${POPCOUNT[union]} digits`);
+    }
+    if (cells.some((i) => !isIn(i, house))) fail('strayed out of its house');
+    if (subset.isNaked) {
+      // Naked: the cells hold nothing else, and their digits go from the rest of the house.
+      if (pattern.some((p) => p.mask !== before.candidates[p.index])) fail('left out a candidate');
+      if (struck.some((e) => cells.includes(e.index) || !isIn(e.index, house) || e.mask & ~union)) {
+        fail('struck somewhere a naked subset does not reach');
+      }
+    } else {
+      // Hidden: the digits go nowhere else in the house, and everything else goes from the cells.
+      if (!isSameSet(cells, holders(before, house, union))) {
+        fail('hid digits that have other places');
+      }
+      if (pattern.some((p) => p.mask !== (before.candidates[p.index] & union))) {
+        fail('left out a subset digit');
+      }
+      if (struck.some((e) => !cells.includes(e.index) || e.mask & union)) {
+        fail('struck somewhere a hidden subset does not reach');
+      }
+    }
+  } else if (fishSize) {
+    const base = houses.slice(0, fishSize);
+    const cover = houses.slice(fishSize);
+    const baseKind = base[0]?.kind;
+    const isRightShape =
+      digit !== null &&
+      houses.length === 2 * fishSize &&
+      isLine(base[0]) &&
+      base.every((u) => u.kind === baseKind) &&
+      cover.every((u) => isLine(u) && u.kind !== baseKind) &&
+      new Set(houses.map((u) => `${u.kind}${u.index}`)).size === houses.length;
+    if (!isRightShape) return [...problems, `${id} gave the wrong houses or digit`];
+    const d = bit(digit);
+    const inBase = (i: number) => base.some((u) => isIn(i, u));
+    const inCover = (i: number) => cover.some((u) => isIn(i, u));
+    const baseCells = base.flatMap((u) => holders(before, u, d));
+    if (!isSameSet(cells, baseCells)) {
+      fail(`described other than every candidate for ${digit} in its base lines`);
+    }
+    if (pattern.some((p) => p.mask !== d || !inCover(p.index))) {
+      fail('strayed out of its cover lines');
+    }
+    if (cover.some((u) => !cells.some((i) => isIn(i, u)))) fail('named an empty cover line');
+    if (struck.some((e) => e.mask !== d || inBase(e.index) || !inCover(e.index))) {
+      fail('struck somewhere a fish does not reach');
+    }
+  } else {
+    // XY-Wing: pivot {x, y}, pincers {x, z} and {y, z}; XYZ-Wing: pivot
+    // {x, y, z}, pincers {x, z} and {y, z}. Either way z goes from every cell
+    // that sees both pincers (and, for XYZ, the pivot).
+    const isXyz = id === 'xyzWing';
+    if (houses.length !== 0 || digit !== null || pattern.length !== 3) {
+      return [...problems, `${id} gave the wrong houses, digit or cells`];
+    }
+    const [pivot, first, second] = pattern;
+    if (pattern.some((p) => p.mask !== before.candidates[p.index])) fail('left out a candidate');
+    const z = first.mask & second.mask & (isXyz ? ALL_DIGITS : ~pivot.mask);
+    const isWing =
+      POPCOUNT[pivot.mask] === (isXyz ? 3 : 2) &&
+      [first, second].every(
+        (p) =>
+          POPCOUNT[p.mask] === 2 &&
+          isPeer(pivot.index, p.index) &&
+          POPCOUNT[p.mask & pivot.mask] === (isXyz ? 2 : 1),
+      ) &&
+      first.mask !== second.mask &&
+      POPCOUNT[z] === 1;
+    if (!isWing) fail('described no wing');
+    const sees = (i: number) =>
+      isPeer(first.index, i) && isPeer(second.index, i) && (!isXyz || isPeer(pivot.index, i));
+    if (struck.some((e) => e.mask !== z || !sees(e.index))) {
+      fail('struck somewhere its wing does not reach');
+    }
+  }
+  return problems;
+}
 
 function checkStep(
   id: TechniqueId,
@@ -222,6 +416,7 @@ function checkStep(
   if (!after.candidates.every((m, i) => m === expected[i])) {
     problems.push(`${id} changed candidates it did not report`);
   }
+  problems.push(...checkPattern(id, step, before));
   return problems;
 }
 

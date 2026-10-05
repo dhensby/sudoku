@@ -1,7 +1,7 @@
 import type { Difficulty } from '../core';
 import { DifficultyMenu } from './DifficultyMenu';
 import { DIFFICULTY_LABEL } from './format';
-import { HelpIcon, HistoryIcon, MenuIcon, SettingsIcon, ShareIcon } from './icons';
+import { BookIcon, HelpIcon, HistoryIcon, MenuIcon, SettingsIcon, ShareIcon } from './icons';
 import { keepFocus } from './keepFocus';
 import { Menu } from './Menu';
 import type { Phase } from './session';
@@ -24,6 +24,7 @@ const ACTIONS: readonly { kind: HeaderDialog; label: string; Icon: typeof HelpIc
   { kind: 'history', label: 'History', Icon: HistoryIcon },
   { kind: 'share', label: 'Share', Icon: ShareIcon },
   { kind: 'settings', label: 'Settings', Icon: SettingsIcon },
+  { kind: 'techniques', label: 'Solving techniques', Icon: BookIcon },
   { kind: 'help', label: 'Help', Icon: HelpIcon },
 ];
 
@@ -41,7 +42,7 @@ const SHORT_LABEL: Readonly<Record<Difficulty, string>> = {
 
 /**
  * The bar across the top: the wordmark and the tier on the left, the timer
- * and the app's actions on the right. On a phone the four less-used actions
+ * and the app's actions on the right. On a phone the five less-used actions
  * fold into an overflow menu (the stylesheet shows one or the other), so the
  * header stays one row and the board keeps the height a second would take.
  * The overflow has a menu icon of its own, so it is never confused with the

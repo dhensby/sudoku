@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { Header, type HeaderProps } from './Header';
-import { MenuIcon, MoreIcon } from './icons';
+import { BookIcon, MenuIcon, MoreIcon } from './icons';
 
 function renderHeader(overrides: Partial<HeaderProps> = {}) {
   const props: HeaderProps = {
@@ -38,13 +38,26 @@ describe('Header', () => {
     expect(screen.getByText('Expert')).not.toHaveAttribute('aria-hidden');
   });
 
-  it.each(['History', 'Share', 'Settings', 'Help'])('opens %s', (label) => {
+  it.each([
+    ['History', 'history'],
+    ['Share', 'share'],
+    ['Settings', 'settings'],
+    ['Solving techniques', 'techniques'],
+    ['Help', 'help'],
+  ])('opens %s', (label, kind) => {
     const props = renderHeader();
     fireEvent.click(screen.getByRole('button', { name: label }));
-    expect(props.onOpenDialog).toHaveBeenCalledWith(label.toLowerCase());
+    expect(props.onOpenDialog).toHaveBeenCalledWith(kind);
   });
 
-  it.each(['History', 'Share', 'Settings', 'Help'])(
+  it('draws the guide to the solving techniques as a book', () => {
+    renderHeader();
+    expect(screen.getByRole('button', { name: 'Solving techniques' }).innerHTML).toBe(
+      drawing(<BookIcon />),
+    );
+  });
+
+  it.each(['History', 'Share', 'Settings', 'Solving techniques', 'Help'])(
     'does not take focus from the board when %s is clicked',
     (label) => {
       // Focus left on a cell keeps Space for the mode toggle, instead of
@@ -69,9 +82,12 @@ describe('Header', () => {
       within(menu)
         .getAllByRole('menuitem')
         .map((item) => item.textContent),
-    ).toEqual(['History', 'Share', 'Settings', 'Help']);
+    ).toEqual(['History', 'Share', 'Settings', 'Solving techniques', 'Help']);
     fireEvent.click(within(menu).getByRole('menuitem', { name: 'Settings' }));
     expect(props.onOpenDialog).toHaveBeenCalledWith('settings');
+    fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Solving techniques' }));
+    expect(props.onOpenDialog).toHaveBeenCalledWith('techniques');
   });
 
   it("draws the phone menu unlike the game's … menu, so the two cannot be confused", () => {

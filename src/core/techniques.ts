@@ -49,7 +49,21 @@ export interface Elimination {
   mask: number;
 }
 
-/** One deduction: what was found, and what it changed. */
+/** Candidates in one cell that make up the pattern behind a step. */
+export interface PatternCell {
+  /** The cell, empty when the step was found. */
+  index: number;
+  /** The digits of the pattern in that cell, as a mask. Never 0. */
+  mask: number;
+}
+
+/**
+ * One deduction: what was found, why, and what it changed.
+ *
+ * `pattern`, `houses` and `digit` describe the deduction the way a player
+ * would see it, for showing a technique at work; the solve itself only ever
+ * needs `placement` and `eliminations`.
+ */
 export interface SolveStep {
   /** Which technique found the step. */
   technique: TechniqueId;
@@ -59,9 +73,36 @@ export interface SolveStep {
   eliminations: Elimination[];
   /**
    * The house the step was found in, when it has one (full house, hidden
-   * single, locked candidates, subsets).
+   * single, locked candidates, subsets): the first of `houses`.
    */
   unit: Unit | null;
+  /**
+   * The candidates that make up the pattern, as they stood when it was found
+   * — what a player has to see to make the deduction:
+   *
+   * - singles: the cell and the digit it takes;
+   * - pointing: the box's cells for the digit, all in one line;
+   * - claiming: the line's cells for the digit, all in one box;
+   * - naked and hidden subsets: the subset's cells, each with the subset
+   *   digits it holds;
+   * - fish: the base lines' cells for the digit, line by line;
+   * - XY-Wing and XYZ-Wing: the pivot, then the two pincers, each with every
+   *   candidate it holds.
+   */
+  pattern: PatternCell[];
+  /**
+   * The houses involved, most telling first: singles and subsets → their
+   * unit (none for a naked single, which is about the cell alone); pointing →
+   * the box, then the line; claiming → the line, then the box; fish → the
+   * base lines, then the cover lines; wings → none.
+   */
+  houses: Unit[];
+  /**
+   * The one digit the step is about: the digit placed by a single, or the
+   * digit of locked candidates and fish. Null for subsets and wings, which
+   * work with several.
+   */
+  digit: Digit | null;
 }
 
 /**
@@ -122,6 +163,7 @@ function strike(
   if (removed !== 0) eliminations.push({ index, mask: removed });
 }
 
+/** Place a single and describe it: the pattern is the cell itself, with the digit it takes. */
 function placementStep(
   board: SolverBoard,
   technique: TechniqueId,
@@ -130,16 +172,45 @@ function placementStep(
   unit: Unit | null,
 ): SolveStep {
   place(board, index, digit);
-  return { technique, placement: { index, digit }, eliminations: [], unit };
+  return {
+    technique,
+    placement: { index, digit },
+    eliminations: [],
+    unit,
+    pattern: [{ index, mask: bit(digit) }],
+    houses: unit ? [unit] : [],
+    digit,
+  };
 }
 
-/** An elimination step, or null when the pattern removed nothing — such a step never counts. */
+/** What lies behind an elimination step: its `pattern`, `houses` and `digit`. */
+type Finding = Pick<SolveStep, 'pattern' | 'houses' | 'digit'>;
+
+/**
+ * An elimination step, or null when the pattern removed nothing — such a step
+ * never counts. `describe` runs only for a step that does count, so a search
+ * that walks past dozens of empty patterns builds no descriptions for them.
+ * Every technique strikes only outside its own pattern's candidates, so
+ * describing it after the strikes sees the pattern exactly as it was found.
+ */
 function eliminationStep(
   technique: TechniqueId,
   eliminations: Elimination[],
   unit: Unit | null,
+  describe: () => Finding,
 ): SolveStep | null {
-  return eliminations.length === 0 ? null : { technique, placement: null, eliminations, unit };
+  if (eliminations.length === 0) return null;
+  return { technique, placement: null, eliminations, unit, ...describe() };
+}
+
+/** The cells of `cells` that hold any of `mask`, each with the part of `mask` it holds. */
+function patternOf(board: SolverBoard, cells: readonly number[], mask: number): PatternCell[] {
+  const pattern: PatternCell[] = [];
+  for (const index of cells) {
+    const held = board.candidates[index] & mask;
+    if (held !== 0) pattern.push({ index, mask: held });
+  }
+  return pattern;
 }
 
 /**
@@ -263,13 +334,17 @@ const pointing: Technique = (board) => {
       // One cell is a hidden single, not a pointing pair — counting it here
       // would rate the puzzle harder than it is.
       if (count < 2) continue;
-      let line: readonly number[];
-      if (POPCOUNT[rows] === 1) line = UNITS[bitIndex(rows)];
-      else if (POPCOUNT[cols] === 1) line = UNITS[9 + bitIndex(cols)];
+      let line: number;
+      if (POPCOUNT[rows] === 1) line = bitIndex(rows);
+      else if (POPCOUNT[cols] === 1) line = 9 + bitIndex(cols);
       else continue;
       const eliminations: Elimination[] = [];
-      for (const i of line) if (BOX[i] !== b) strike(board, eliminations, i, digitBit);
-      const step = eliminationStep('pointing', eliminations, unitOf(18 + b));
+      for (const i of UNITS[line]) if (BOX[i] !== b) strike(board, eliminations, i, digitBit);
+      const step = eliminationStep('pointing', eliminations, unitOf(18 + b), () => ({
+        pattern: patternOf(board, box, digitBit),
+        houses: [unitOf(18 + b), unitOf(line)],
+        digit: d as Digit,
+      }));
       if (step) return step;
     }
   }
@@ -294,12 +369,17 @@ const claiming: Technique = (board) => {
       }
       // As with pointing, a lone cell is a hidden single.
       if (count < 2 || POPCOUNT[boxes] !== 1) continue;
+      const box = 18 + bitIndex(boxes);
       const eliminations: Elimination[] = [];
-      for (const i of UNITS[18 + bitIndex(boxes)]) {
+      for (const i of UNITS[box]) {
         const isInLine = u < 9 ? ROW[i] === u : COL[i] === u - 9;
         if (!isInLine) strike(board, eliminations, i, digitBit);
       }
-      const step = eliminationStep('claiming', eliminations, unitOf(u));
+      const step = eliminationStep('claiming', eliminations, unitOf(u), () => ({
+        pattern: patternOf(board, UNITS[u], digitBit),
+        houses: [unitOf(u), unitOf(box)],
+        digit: d as Digit,
+      }));
       if (step) return step;
     }
   }
@@ -334,7 +414,11 @@ function nakedSubset(board: SolverBoard, technique: TechniqueId, size: number): 
       const members = picked.map((p) => cells[p]);
       const eliminations: Elimination[] = [];
       for (const i of empties) if (!members.includes(i)) strike(board, eliminations, i, digits);
-      return eliminationStep(technique, eliminations, unitOf(u));
+      return eliminationStep(technique, eliminations, unitOf(u), () => ({
+        pattern: patternOf(board, members, digits),
+        houses: [unitOf(u)],
+        digit: null,
+      }));
     });
     if (step) return step;
   }
@@ -376,7 +460,12 @@ function hiddenSubset(board: SolverBoard, technique: TechniqueId, size: number):
       for (let p = 0; p < 9; p++) {
         if (positions & (1 << p)) strike(board, eliminations, unit[p], ALL_DIGITS & ~kept);
       }
-      return eliminationStep(technique, eliminations, unitOf(u));
+      // The kept digits appear in exactly the subset's cells, nowhere else in the unit.
+      return eliminationStep(technique, eliminations, unitOf(u), () => ({
+        pattern: patternOf(board, unit, kept),
+        houses: [unitOf(u)],
+        digit: null,
+      }));
     });
     if (step) return step;
   }
@@ -401,6 +490,9 @@ function fishIn(
   isRowBase: boolean,
 ): SolveStep | null {
   const cell = (line: number, cross: number) => (isRowBase ? line * 9 + cross : cross * 9 + line);
+  // Where the base and cross lines sit in `UNITS`.
+  const baseOffset = isRowBase ? 0 : 9;
+  const crossOffset = isRowBase ? 9 : 0;
   const lines: number[] = [];
   const covers: number[] = [];
   for (let line = 0; line < 9; line++) {
@@ -431,7 +523,18 @@ function fishIn(
         if ((base & (1 << line)) === 0) strike(board, eliminations, cell(line, cross), digitBit);
       }
     }
-    return eliminationStep(technique, eliminations, null);
+    return eliminationStep(technique, eliminations, null, () => {
+      const baseLines = picked.map((x) => lines[x]);
+      const crossLines = [0, 1, 2, 3, 4, 5, 6, 7, 8].filter((cross) => cover & (1 << cross));
+      return {
+        pattern: baseLines.flatMap((line) => patternOf(board, UNITS[baseOffset + line], digitBit)),
+        houses: [
+          ...baseLines.map((line) => unitOf(baseOffset + line)),
+          ...crossLines.map((cross) => unitOf(crossOffset + cross)),
+        ],
+        digit: lowestDigit(digitBit),
+      };
+    });
   });
 }
 
@@ -474,7 +577,11 @@ const xyWing: Technique = (board) => {
         // pivot can be one, but it has no z to lose.
         const eliminations: Elimination[] = [];
         for (const t of PEERS[first]) if (isPeer(second, t)) strike(board, eliminations, t, z);
-        const step = eliminationStep('xyWing', eliminations, null);
+        const step = eliminationStep('xyWing', eliminations, null, () => ({
+          pattern: patternOf(board, [pivot, first, second], ALL_DIGITS),
+          houses: [],
+          digit: null,
+        }));
         if (step) return step;
       }
     }
@@ -508,7 +615,11 @@ const xyzWing: Technique = (board) => {
         for (const t of PEERS[pivot]) {
           if (isPeer(first, t) && isPeer(second, t)) strike(board, eliminations, t, z);
         }
-        const step = eliminationStep('xyzWing', eliminations, null);
+        const step = eliminationStep('xyzWing', eliminations, null, () => ({
+          pattern: patternOf(board, [pivot, first, second], ALL_DIGITS),
+          houses: [],
+          digit: null,
+        }));
         if (step) return step;
       }
     }
