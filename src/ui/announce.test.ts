@@ -14,6 +14,7 @@ import {
   describeChange,
   describeHint,
   describePosition,
+  describeUnit,
   type CellLabelParams,
   type DescribedAction,
 } from './announce';
@@ -57,6 +58,16 @@ describe('describePosition', () => {
     [80, 'row 9, column 9'],
   ])('names cell %i "%s", counting from one', (index, text) => {
     expect(describePosition(index)).toBe(text);
+  });
+});
+
+describe('describeUnit', () => {
+  it.each([
+    ['row', 3, 'row 4'],
+    ['column', 7, 'column 8'],
+    ['box', 4, 'box 5'],
+  ] as const)('names %s %i "%s", counting from one, boxes included', (kind, index, text) => {
+    expect(describeUnit({ kind, index })).toBe(text);
   });
 });
 

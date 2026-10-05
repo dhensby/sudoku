@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { FocusHomeContext, trackInputModality } from '../keepFocus';
 import { Dialog } from './Dialog';
@@ -145,6 +146,70 @@ describe('Dialog focus management', () => {
     screen.getByRole('button', { name: 'One' }).focus();
     expect(press('Tab')).toBe(false);
     expect(press('Tab', { shiftKey: true })).toBe(false);
+  });
+
+  it('lets Tab and Shift+Tab move on from a script-focused element between stops', () => {
+    // The guide's entry heading takes focus from script (tabindex -1), between
+    // its list and its Previous and Next. Tab from there goes on to Next, as
+    // the browser would — not round to the close button at the top.
+    renderDialog(
+      <>
+        <button type="button">Before</button>
+        <h3 tabIndex={-1}>Heading</h3>
+        <button type="button">After</button>
+      </>,
+    );
+    const heading = screen.getByRole('heading', { name: 'Heading' });
+    heading.focus();
+    expect(press('Tab')).toBe(false);
+    expect(heading).toHaveFocus();
+    expect(press('Tab', { shiftKey: true })).toBe(false);
+  });
+
+  it('moves focus on from a script-focused element in document order', async () => {
+    const user = userEvent.setup();
+    renderDialog(
+      <>
+        <button type="button">Before</button>
+        <h3 tabIndex={-1}>Heading</h3>
+        <button type="button">After</button>
+      </>,
+    );
+    const heading = screen.getByRole('heading', { name: 'Heading' });
+    heading.focus();
+    await user.tab();
+    expect(screen.getByRole('button', { name: 'After' })).toHaveFocus();
+    heading.focus();
+    await user.tab({ shift: true });
+    expect(screen.getByRole('button', { name: 'Before' })).toHaveFocus();
+  });
+
+  it('wraps from a script-focused element with no stop after it', () => {
+    renderDialog(
+      <>
+        <button type="button">Before</button>
+        <h3 tabIndex={-1}>Heading</h3>
+      </>,
+    );
+    screen.getByRole('heading', { name: 'Heading' }).focus();
+    expect(press('Tab')).toBe(true);
+    expect(screen.getByRole('button', { name: 'Close' })).toHaveFocus();
+  });
+
+  it('treats a control the stylesheet hides as no tab stop', () => {
+    // The guide's list is display: none on a phone, and its picker on a
+    // desktop; the browser skips them, so wrapping must too.
+    renderDialog(
+      <>
+        <button type="button">Real last</button>
+        <button type="button">Styled away</button>
+      </>,
+    );
+    const styledAway = screen.getByRole('button', { name: 'Styled away' });
+    styledAway.checkVisibility = () => false;
+    screen.getByRole('button', { name: 'Real last' }).focus();
+    expect(press('Tab')).toBe(true);
+    expect(screen.getByRole('button', { name: 'Close' })).toHaveFocus();
   });
 
   it('holds Shift+Tab when focus is on the dialog container itself', () => {

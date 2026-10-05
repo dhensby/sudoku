@@ -268,10 +268,67 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: 'More' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Hint' }));
     expect(
-      screen.getByText(/single|full house/i, { selector: '.hint-bar span' }),
+      screen.getByText(/single|full house/i, { selector: '.hint-bar__message > span' }),
     ).toBeInTheDocument();
     press(' ');
     expect(document.querySelector('.hint-bar')).toBeEmptyDOMElement();
+  });
+
+  it('explains the technique a hint names, in the guide, with the board hidden meanwhile', async () => {
+    await startApp();
+    fireEvent.click(screen.getByRole('button', { name: 'More' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Hint' }));
+    const question = screen.getByRole('button', { name: /^What's a / });
+    const technique = question.textContent!.replace(/^What's an? |\?$/g, '');
+    fireEvent.click(question);
+
+    const guide = screen.getByRole('dialog', { name: 'Solving techniques' });
+    expect(within(guide).getByRole('heading', { level: 3 })).toHaveTextContent(
+      new RegExp(`^${technique}$`, 'i'),
+    );
+    expect(within(guide).getAllByRole('img').length).toBeGreaterThan(0);
+    // A dialog like any other: the board is hidden, and comes back as it closes.
+    expect(screen.queryByRole('grid')).not.toBeInTheDocument();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.getByRole('grid')).toBeInTheDocument();
+    // The hint is still there: nothing on the board changed.
+    expect(screen.getByRole('button', { name: /^What's a / })).toBeInTheDocument();
+  });
+
+  it('keeps a hint behind the guide its question opened, and behind no other dialog', async () => {
+    await startApp();
+    fireEvent.click(screen.getByRole('button', { name: 'More' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Hint' }));
+    const hintBar = document.querySelector('.hint-bar')!;
+    expect(hintBar).not.toBeEmptyDOMElement();
+
+    // With the board hidden there is no cell for it to point at.
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    expect(screen.getByRole('dialog', { name: 'Settings' })).toBeInTheDocument();
+    expect(hintBar).toBeEmptyDOMElement();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(hintBar).not.toBeEmptyDOMElement();
+
+    // The guide is the exception: it gives focus back to the question.
+    fireEvent.click(screen.getByRole('button', { name: /^What's a / }));
+    expect(screen.getByRole('dialog', { name: 'Solving techniques' })).toBeInTheDocument();
+    expect(hintBar).not.toBeEmptyDOMElement();
+  });
+
+  it('opens the guide from the header, and from Help in place of Help', async () => {
+    await startApp();
+    fireEvent.click(screen.getByRole('button', { name: 'Solving techniques' }));
+    const guide = screen.getByRole('dialog', { name: 'Solving techniques' });
+    expect(within(guide).getByRole('heading', { level: 3 })).toHaveTextContent('Full house');
+    fireEvent.click(within(guide).getByRole('button', { name: 'Close' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Help' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Browse the solving techniques' }));
+    expect(screen.queryByRole('dialog', { name: 'Help' })).not.toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Solving techniques' })).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByRole('grid')).toBeInTheDocument();
   });
 
   it('asks before resetting the puzzle', async () => {
@@ -671,6 +728,32 @@ describe('App', () => {
       cells()[FIRST_EMPTY].focus();
       clickWithMouse(screen.getByRole('button', { name: 'Settings' }));
       expect(screen.getByRole('dialog', { name: 'Settings' })).toBeInTheDocument();
+      fireEvent.keyDown(document, { key: 'Escape' });
+      expect(selectedCell()).toHaveFocus();
+    });
+
+    it('comes back to a hint’s question from the guide it opened from the keyboard', async () => {
+      // The board goes while the guide is open; the hint, and its question,
+      // wait behind it.
+      await startApp();
+      fireEvent.click(screen.getByRole('button', { name: 'More' }));
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Hint' }));
+      const question = screen.getByRole('button', { name: /^What's a / });
+      question.focus();
+      fireEvent.keyDown(question, { key: 'Enter' });
+      fireEvent.click(question);
+      expect(screen.getByRole('dialog', { name: 'Solving techniques' })).toBeInTheDocument();
+      expect(screen.queryByRole('grid')).not.toBeInTheDocument();
+      fireEvent.keyDown(document, { key: 'Escape' });
+      expect(question).toHaveFocus();
+    });
+
+    it('comes back to the board from the guide opened from a hint with the mouse', async () => {
+      await startApp();
+      fireEvent.click(screen.getByRole('button', { name: 'More' }));
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Hint' }));
+      clickWithMouse(screen.getByRole('button', { name: /^What's a / }));
+      expect(screen.getByRole('dialog', { name: 'Solving techniques' })).toBeInTheDocument();
       fireEvent.keyDown(document, { key: 'Escape' });
       expect(selectedCell()).toHaveFocus();
     });

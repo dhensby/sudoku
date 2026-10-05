@@ -278,7 +278,7 @@
   gap: 2px;
 }
 
-/* On a phone the four less-used actions fold into one overflow menu, so the
+/* On a phone the five less-used actions fold into one overflow menu, so the
    header fits on a single row and the board keeps that row's height.
    Qualified by the parent to outrank the buttons' own display. */
 .header__actions .header__wide {
@@ -354,9 +354,9 @@
     display: none;
   }
 
-  /* Five icon buttons rather than two, a larger wordmark and roomier gaps:
-     about 308px + 13.2em (more for a finger's 44px buttons on a tablet). */
-  @container header (max-width: calc(328px + 13.2em)) {
+  /* Six icon buttons rather than two, a larger wordmark and roomier gaps:
+     about 350px + 13.2em (more for a finger's 44px buttons on a tablet). */
+  @container header (max-width: calc(370px + 13.2em)) {
     .header__title {
       position: absolute;
       width: 1px;
@@ -503,8 +503,10 @@
 
 /* Holds two lines' height even when empty, so a hint arriving never pushes
    the controls down (or off the bottom of a phone). The height is one of
-   the parts --chrome adds up. */
+   the parts --chrome adds up. A container, so the question after a hint can
+   fit itself to the room the bar really has (below). */
 .hint-bar {
+  container: hint-bar / inline-size;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -574,4 +576,106 @@
 .hint-bar__dismiss:active {
   background: var(--key-bg-active);
   color: var(--text);
+}
+
+/*
+ * The question after a hint that names a technique ("What's a hidden
+ * single?"): a link-like button that opens the guide. It flows with the
+ * hint's words and wraps as one piece. The ink is a step from the accent
+ * towards --text, as the raw accent is a shade light for small text on the
+ * bar's grey. Its press area reaches a little round the words without making
+ * the bar taller, and stops short of the board and the controls (on a touch
+ * screen, a finger's 44px: below).
+ */
+.hint-bar__question {
+  position: relative;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: color-mix(in srgb, var(--accent) 80%, var(--text));
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+  white-space: nowrap;
+}
+
+.hint-bar__question::after {
+  content: '';
+  position: absolute;
+  inset: -5px -3px;
+}
+
+.hint-bar__question-icon {
+  display: none;
+}
+
+/*
+ * The narrowest bars (a 320px phone, or a board held back by a short
+ * screen, or a larger default font): the longest question, after the longest
+ * hint, would take the bar to a third line and scroll the page, so a
+ * question-mark icon stands in, its words kept for assistive technology.
+ * Measured: the words fit a 338px bar and not a 329px one (boards come in
+ * whole-pixel cells, so nothing falls between). In em, so a larger font moves
+ * the breakpoint with it.
+ */
+@container hint-bar (max-width: 21em) {
+  .hint-bar__question-text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  /* Sized to sit inside the line, so the bar keeps its height. */
+  .hint-bar__question-icon {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    vertical-align: -3px;
+  }
+
+  .hint-bar__question::after {
+    inset: -12px -10px;
+  }
+}
+
+/*
+ * A finger's 44px on a touch screen, still without making the bar taller.
+ * The question always ends the hint, so it sits on the bar's last line: the
+ * area reaches up over the line above, which holds only words, and a little
+ * below, into the gap before the controls — short of the controls, and of the
+ * board above the bar (touch.spec.ts measures all three). A one-line hint
+ * sits at the foot of the bar here rather than in its middle, so its
+ * question is where a two-line hint's would be, and its area as clear of the
+ * board.
+ */
+@media (pointer: coarse) {
+  .hint-bar:has(.hint-bar__question) {
+    align-items: flex-end;
+  }
+
+  .hint-bar__question::after {
+    inset: -20px -8px -7px;
+  }
+
+  @container hint-bar (max-width: 21em) {
+    .hint-bar__question::after {
+      inset: -21px -14px -7px;
+    }
+  }
+}
+
+@media (hover: hover) {
+  .hint-bar__question:hover {
+    text-decoration-thickness: 2px;
+  }
+}
+
+@media (forced-colors: active) {
+  .hint-bar__question {
+    color: LinkText;
+  }
 }

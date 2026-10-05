@@ -42,6 +42,7 @@ import { DIFFICULTIES, browserStorage, type StorageLike } from '../storage/stora
 import { describeChange, type DescribedAction } from './announce';
 import { DIFFICULTY_LABEL } from './format';
 import { createPuzzleSource, type PuzzleSource } from './puzzleSource';
+import type { GuideId } from './techniqueGuide';
 import {
   attemptSource,
   hasBoardShown,
@@ -129,11 +130,13 @@ export type DialogState =
   | { kind: 'history' }
   | { kind: 'settings' }
   | { kind: 'help' }
+  /** The technique guide, open at the entry a hint named (null: its first entry). */
+  | { kind: 'techniques'; initial: GuideId | null }
   | { kind: 'challenge'; offer: ChallengeOffer }
   | { kind: 'confirmReset' };
 
 /** The dialogs the header opens. */
-export type HeaderDialog = 'history' | 'settings' | 'help' | 'share';
+export type HeaderDialog = 'history' | 'settings' | 'techniques' | 'help' | 'share';
 
 /** What the History dialog lists, read from storage when it opens. */
 export interface HistoryView {
@@ -169,6 +172,11 @@ export interface SudokuActions {
   newGame: (difficulty: Difficulty) => void;
   retry: () => void;
   openDialog: (kind: HeaderDialog) => void;
+  /**
+   * Open the technique guide at an entry — the one a hint named — or at its
+   * start. From Help, it takes Help's place.
+   */
+  openTechniques: (initial: GuideId | null) => void;
   closeDialog: () => void;
   /** From the completion dialog: share the time just set. */
   shareResult: () => void;
@@ -852,12 +860,22 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
         setDialog({ kind, target: shareTargetOf(current), returnTo: null });
         return;
       }
+      if (kind === 'techniques') {
+        setDialog({ kind, initial: null });
+        return;
+      }
       if (kind === 'history') {
         // Its list should show the game on screen as it is now.
         if (current !== null && savedRef.current !== current) persist(current, t);
         setHistory(readHistory(t.wall));
       }
       setDialog({ kind });
+    },
+    openTechniques: (initial) => {
+      // Reading the guide is not help with this puzzle: the clock stops, as
+      // for any dialog, and nothing is recorded.
+      pauseFor('dialog');
+      setDialog({ kind: 'techniques', initial });
     },
     closeDialog: () => {
       if (dialog?.kind === 'share' && dialog.returnTo === 'history') {

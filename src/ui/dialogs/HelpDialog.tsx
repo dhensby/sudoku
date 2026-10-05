@@ -1,7 +1,10 @@
 import { Fragment, type ReactNode } from 'react';
+import { BookIcon } from '../icons';
 import { Dialog } from './Dialog';
 
 export interface HelpDialogProps {
+  /** Swap Help for the guide to the solving techniques. */
+  onBrowseTechniques: () => void;
   onClose: () => void;
 }
 
@@ -92,13 +95,19 @@ const CONTROLS: readonly Control[] = [
     keyboard: null,
     pointer: 'The header (on a phone, the ☰ menu)',
   },
+  {
+    action: 'Solving techniques',
+    keyboard: null,
+    pointer: 'The header, or the question after a hint',
+  },
 ];
 
 /**
  * How to play, written to be scanned: short sections, bullets, and a controls
- * table with a column per way of playing.
+ * table with a column per way of playing. The Difficulty section leads on to
+ * the guide to the solving techniques, which takes Help's place.
  */
-export function HelpDialog({ onClose }: HelpDialogProps) {
+export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
   return (
     <Dialog title="Help" onClose={onClose} className="dialog--wide dialog--help">
       <div className="help">
@@ -155,7 +164,20 @@ export function HelpDialog({ onClose }: HelpDialogProps) {
               <strong>Expert</strong> goes further, into techniques such as X-Wing and XY-Wing.
             </li>
             <li>Every puzzle is graded by the hardest step it needs, so the label never lies.</li>
+            <li>
+              A hint names the technique for the next step. Not sure what that is? The question
+              after it — <strong>What&apos;s a hidden single?</strong> — opens the guide to the
+              solving techniques, which explains each one with a worked example.
+            </li>
           </ul>
+          <button
+            type="button"
+            className="button button--small help__guide"
+            onClick={onBrowseTechniques}
+          >
+            <BookIcon />
+            Browse the solving techniques
+          </button>
         </section>
 
         <section className="help__section">

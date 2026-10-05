@@ -8,6 +8,7 @@ describe('icons', () => {
   it('exports every icon the UI asks for', () => {
     expect(ICONS.map(([name]) => name).sort()).toEqual(
       [
+        'BookIcon',
         'CheckIcon',
         'CloseIcon',
         'CopyIcon',

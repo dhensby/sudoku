@@ -17,7 +17,7 @@ import {
   type TechniqueId,
   type Unit,
 } from '../core';
-import { TECHNIQUE_LABEL, withArticle } from './format';
+import { TECHNIQUE_LABEL, capitalise, joinList, withArticle } from './format';
 
 /*
  * The words the game speaks: cell names for the grid, a line for the status
@@ -65,14 +65,14 @@ const MARK_WORD: Readonly<Record<CellMark, string | null>> = {
   revealed: 'revealed',
 };
 
-function capitalise(text: string): string {
-  return text.charAt(0).toUpperCase() + text.slice(1);
-}
-
-/** "a", "a and b", "a, b and c" — no Oxford comma, in British style. */
-function joinList(items: readonly string[]): string {
-  if (items.length <= 1) return items.join('');
-  return `${items.slice(0, -1).join(', ')} and ${items.at(-1)}`;
+/**
+ * A row, column or box by number, counted from one: "row 4", "column 8",
+ * "box 5", boxes in reading order. The technique guide's worked examples
+ * speak this way: they have no selected cell to call "this box", and their
+ * diagrams are numbered.
+ */
+export function describeUnit(unit: Unit): string {
+  return `${unit.kind} ${unit.index + 1}`;
 }
 
 /**
@@ -81,7 +81,7 @@ function joinList(items: readonly string[]): string {
  * selected anyway.
  */
 function unitName(unit: Unit): string {
-  return unit.kind === 'box' ? 'this box' : `${unit.kind} ${unit.index + 1}`;
+  return unit.kind === 'box' ? 'this box' : describeUnit(unit);
 }
 
 /** A cell's position, as spoken: "row 3, column 5". */

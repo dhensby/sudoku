@@ -1,6 +1,7 @@
-import type { Hint } from '../core';
+import type { Hint, TechniqueId } from '../core';
 import { describeHint } from './announce';
-import { CloseIcon, HintIcon } from './icons';
+import { CloseIcon, HelpIcon, HintIcon } from './icons';
+import { guideIdFor, techniqueQuestion, type GuideId } from './techniqueGuide';
 import type { Notice } from './useSudoku';
 
 export interface HintBarProps {
@@ -9,6 +10,13 @@ export interface HintBarProps {
   /** A message for the player, until they dismiss it. A hint takes the bar first. */
   notice: Notice | null;
   onDismissNotice: () => void;
+  /** Open the technique guide at the entry a hint's "What's a …?" asks about. */
+  onOpenGuide: (entry: GuideId) => void;
+}
+
+/** The technique a hint names, if it names one. */
+function namedTechnique(hint: Hint): TechniqueId | null {
+  return hint.kind === 'single' || hint.kind === 'deduction' ? hint.technique : null;
 }
 
 /**
@@ -17,16 +25,37 @@ export interface HintBarProps {
  * board that is not right. Always rendered, and holding its height when
  * empty, so a message arriving never shoves the controls down the page.
  *
+ * A hint that names a technique ends with a question — "What's a hidden
+ * single?" — that opens the guide at it. On the narrowest phones, where the
+ * words would push the bar to a third line, it is a question-mark icon that
+ * keeps the words as its name (see layout.css).
+ *
  * Not a live region: the hook already speaks every hint and notice through
  * the app's status region, and saying them twice would talk over the next.
  */
-export function HintBar({ hint, notice, onDismissNotice }: HintBarProps) {
+export function HintBar({ hint, notice, onDismissNotice, onOpenGuide }: HintBarProps) {
   if (hint !== null) {
+    const technique = namedTechnique(hint);
     return (
       <div className="hint-bar">
         <p className="hint-bar__message hint-bar__message--hint">
           <HintIcon className="hint-bar__icon" />
-          <span>{describeHint(hint)}</span>
+          <span>
+            {describeHint(hint)}
+            {technique !== null && (
+              <>
+                {' '}
+                <button
+                  type="button"
+                  className="hint-bar__question"
+                  onClick={() => onOpenGuide(guideIdFor(technique))}
+                >
+                  <span className="hint-bar__question-text">{techniqueQuestion(technique)}</span>
+                  <HelpIcon className="hint-bar__question-icon" />
+                </button>
+              </>
+            )}
+          </span>
         </p>
       </div>
     );

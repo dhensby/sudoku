@@ -270,3 +270,50 @@ describe('the dialogs', () => {
     expect(rule(DIALOGS, '.history-item__actions')).toMatch(/flex-wrap:\s*wrap/);
   });
 });
+
+describe('the technique guide', () => {
+  it('draws its worked examples itself in forced colours, outlining the shaded houses', () => {
+    expect(DIALOGS).toMatch(
+      /\.technique-diagram__board,\s*\.technique-diagram__swatch\s*\{\s*forced-color-adjust:\s*none/,
+    );
+    expect(rule(DIALOGS, '.technique-diagram__outlines rect')).toMatch(/stroke-dasharray/);
+    // Hidden until then: the shading says it in colour.
+    expect(rule(DIALOGS, '.technique-diagram__outlines')).toMatch(/display:\s*none/);
+  });
+
+  it('keeps a hint’s question in one piece, and swaps it for an icon on the narrowest bars', () => {
+    expect(rule(LAYOUT, '.hint-bar__question')).toMatch(/white-space:\s*nowrap/);
+    expect(LAYOUT).toMatch(/@container hint-bar \(max-width: 21em\)/);
+    expect(rule(LAYOUT, '.hint-bar')).toMatch(/container:\s*hint-bar \/ inline-size/);
+  });
+
+  it('fits the list of entries to the card, whatever its scrim and header', () => {
+    // Every part of the height the list gives up is a property that the
+    // short screen and the touch screen change, so no rule can override it.
+    expect(rule(DIALOGS, '.guide__nav')).toMatch(
+      /max-height:\s*calc\(\s*100dvh - var\(--guide-scrim\) - 2px - var\(--guide-header-top\) - var\(--guide-close\)/,
+    );
+    const values = (property: string) =>
+      [...DIALOGS.matchAll(new RegExp(`--guide-${property}:\\s*(\\d+px)`, 'g'))].map(([, v]) => v);
+    // As the overlay's padding, the header's top padding and the close button.
+    expect(values('scrim')).toEqual(['48px', '24px']);
+    expect(values('header-top')).toEqual(['14px', '10px']);
+    expect(values('close')).toEqual(['36px', '44px']);
+  });
+
+  it('gives a hint’s question a finger’s 44px on a touch screen', () => {
+    const touch = LAYOUT.slice(LAYOUT.lastIndexOf('@media (pointer: coarse)'));
+    // The words: 17px tall, plus 20px above and 7px below.
+    expect(touch).toMatch(/\.hint-bar__question::after\s*\{\s*inset:\s*-20px -8px -7px/);
+    // The 16px icon on the narrowest bars: 16 + 21 + 7 tall, 16 + 2 × 14 wide.
+    expect(touch).toMatch(/\.hint-bar__question::after\s*\{\s*inset:\s*-21px -14px -7px/);
+  });
+
+  it('gives the list of entries a finger’s height on a touch screen', () => {
+    expect(rule(DIALOGS, '.guide__link')).toMatch(/min-height:\s*44px/);
+  });
+
+  it('sizes the picker’s text at 16px, below which iOS zooms the page on focus', () => {
+    expect(rule(DIALOGS, '.guide__select')).toMatch(/font-size:\s*16px/);
+  });
+});

@@ -11,6 +11,7 @@ import {
   HistoryDialog,
   SettingsDialog,
   ShareDialog,
+  TechniquesDialog,
 } from './dialogs';
 import { Header } from './Header';
 import { HintBar } from './HintBar';
@@ -274,10 +275,14 @@ export function App({ options }: AppProps = {}) {
                 )}
               </div>
               <HintBar
-                // A hint points at a cell; with the board hidden there is none to see.
-                hint={isPlaying ? (game?.hint ?? null) : null}
+                // A hint points at a cell; with the board hidden there is none
+                // to see. Behind the technique guide alone it stays, under the
+                // scrim, so the guide its question opened can give focus back
+                // to the question.
+                hint={isPlaying || dialog?.kind === 'techniques' ? (game?.hint ?? null) : null}
                 notice={sudoku.notice}
                 onDismissNotice={actions.dismissNotice}
+                onOpenGuide={actions.openTechniques}
               />
             </div>
 
@@ -346,7 +351,15 @@ export function App({ options }: AppProps = {}) {
             onClose={actions.closeDialog}
           />
         )}
-        {dialog?.kind === 'help' && <HelpDialog onClose={actions.closeDialog} />}
+        {dialog?.kind === 'help' && (
+          <HelpDialog
+            onBrowseTechniques={() => actions.openTechniques(null)}
+            onClose={actions.closeDialog}
+          />
+        )}
+        {dialog?.kind === 'techniques' && (
+          <TechniquesDialog initial={dialog.initial ?? undefined} onClose={actions.closeDialog} />
+        )}
         {dialog?.kind === 'challenge' && (
           <ChallengeDialog
             difficulty={dialog.offer.puzzle.difficulty}

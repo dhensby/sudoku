@@ -446,6 +446,43 @@ describe('useSudoku', () => {
       expect(result.current.pauseReason).toBe('user');
     });
 
+    it('open the technique guide at an entry, pausing silently, with no help recorded', async () => {
+      const { result } = await started();
+      const said = result.current.announcement;
+      act(() => result.current.actions.openTechniques('xWing'));
+      expect(result.current.dialog).toEqual({ kind: 'techniques', initial: 'xWing' });
+      expect(result.current.phase).toBe('paused');
+      expect(result.current.pauseReason).toBe('dialog');
+      expect(result.current.announcement).toBe(said);
+      advance(30_000);
+      act(() => result.current.actions.closeDialog());
+      expect(result.current.phase).toBe('playing');
+      expect(result.current.elapsedMs).toBe(0);
+      // Reading about a technique is not help with this puzzle.
+      expect(result.current.game?.assists).toEqual(NO_HELP);
+    });
+
+    it('open the technique guide from the header at its start', async () => {
+      const { result } = await started();
+      act(() => result.current.actions.openDialog('techniques'));
+      expect(result.current.dialog).toEqual({ kind: 'techniques', initial: null });
+      expect(result.current.pauseReason).toBe('dialog');
+    });
+
+    it('let the technique guide take Help’s place, staying paused until it closes', async () => {
+      const { result } = await started();
+      act(() => result.current.actions.openDialog('help'));
+      advance(5_000);
+      act(() => result.current.actions.openTechniques(null));
+      expect(result.current.dialog).toEqual({ kind: 'techniques', initial: null });
+      expect(result.current.phase).toBe('paused');
+      advance(5_000);
+      act(() => result.current.actions.closeDialog());
+      expect(result.current.dialog).toBeNull();
+      expect(result.current.phase).toBe('playing');
+      expect(result.current.elapsedMs).toBe(0);
+    });
+
     it('share the puzzle alone mid-game', async () => {
       const { result } = await started();
       act(() => result.current.actions.openDialog('share'));

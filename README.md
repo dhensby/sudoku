@@ -42,13 +42,19 @@ the same puzzle. Built with React, TypeScript and Vite, and runs entirely in you
   ("Hidden single: there's only one place for a number in this box"), without ever giving the
   number away. Check cell, Check puzzle and Reveal cell are in the "…" menu. Any help you take
   (auto candidates included) is recorded next to your time, so comparisons stay fair.
+- **A guide to the solving techniques** — every technique the grader knows, from a full house to
+  the XYZ-Wing: its other names, what it is, why it works, how to spot it, and a worked example
+  from a real puzzle, drawn with the pattern ringed, the candidates it removes struck out and a
+  caption that walks through it. A hint that names a technique asks "What's a hidden single?" —
+  press it and the guide opens at that entry. It is in the header too (the book; on a phone, the
+  ☰ menu), and in Help. Reading it pauses the clock like any dialog, and is not counted as help.
 - **Keyboard and screen-reader friendly** — the board is a real ARIA grid, every move is
   announced in a status region, dialogs take and trap focus, and the whole game can be played
   from the keyboard.
 - **At home on a phone** — the whole game fits a 320×568 screen, or a phone turned on its side,
   without scrolling, and on a taller phone the controls sit at the foot of the screen, under your
-  thumb; History, Share, Settings and Help fold into a ☰ menu so the header stays one row; touch
-  targets are at least 44px; and the game can be added to your home screen.
+  thumb; History, Share, Settings, the technique guide and Help fold into a ☰ menu so the header
+  stays one row; touch targets are at least 44px; and the game can be added to your home screen.
 - **Dark mode and high contrast** — follows your system (or pick Light/Dark in Settings), and
   stays playable in Windows High Contrast.
 
@@ -60,9 +66,10 @@ See [`package.json`](package.json) for exact versions.
 The design keeps a hard line between logic and presentation:
 
 - **`src/core/`** — a pure, framework-free engine: grid geometry, a bitmask solver, a human-style
-  logical grader, the puzzle generator, hints, share-link codec, clock arithmetic and the game
-  reducer. No DOM, no React and no English; `reduce(state, action)` is a pure function, randomness
-  is passed in, and the whole directory is held to 100% coverage.
+  logical grader (with a worked example of every technique it knows), the puzzle generator, hints,
+  share-link codec, clock arithmetic and the game reducer. No DOM, no React and no English;
+  `reduce(state, action)` is a pure function, randomness is passed in, and the whole directory is
+  held to 100% coverage.
 - **`src/storage/`** — a thin, injectable `localStorage` layer for preferences, the history and
   saved games, which validates everything it reads back and never lets a full or broken storage
   stop play.
@@ -173,8 +180,8 @@ puzzles seen, are merged with what is already there.
   many seeds. Components and hooks are tested through real interactions. Coverage thresholds are
   enforced in CI, with the engine held to 100%.
 - **End-to-end** (`e2e/`, Playwright): full journeys against the built app — playing and solving,
-  pausing and reloading, share links between two browsers, the history, and the phone layout
-  from 320px wide up and on its side. Three projects:
+  pausing and reloading, share links between two browsers, the history, the technique guide and
+  the phone layout from 320px wide up and on its side. Three projects:
 
   | Project    | Device         | Engine   | Specs                             |
   | ---------- | -------------- | -------- | --------------------------------- |
@@ -210,3 +217,4 @@ no change is needed — the base is derived from the repository name at build ti
 | Hint, check, reveal, reset     | —                                                                                        | The "…" menu                         |
 | New game                       | —                                                                                        | The + button                         |
 | History, share, settings, help | —                                                                                        | The header (on a phone, the ☰ menu) |
+| Solving techniques             | —                                                                                        | The header, or a hint's question     |

@@ -42,6 +42,10 @@ function tabStops(node: HTMLElement): HTMLElement[] {
     if (element.tabIndex < 0 || element.hasAttribute('disabled')) return false;
     // The History import's file input is `hidden`, and clicked through a button.
     if (element.closest('[hidden]') !== null) return false;
+    // Nor does the browser stop on what a stylesheet hides: the guide's list
+    // on a phone, its picker on a desktop. (Where checkVisibility is missing,
+    // as in jsdom, nothing is taken to be hidden this way.)
+    if (element.checkVisibility?.() === false) return false;
     if (!(element instanceof HTMLInputElement) || element.type !== 'radio') return true;
     // Tab visits a radio group once — at its checked radio, or at the first
     // one while none is checked — never at each option.
@@ -157,7 +161,17 @@ export function Dialog({ title, onClose, children, footer, className, describedB
       // is inside itself and is focusable, so clicking the title or any body
       // text lands focus on it — and treating that as "already contained" let
       // Shift+Tab walk straight out of an open modal onto the board.
-      const at = stops.indexOf(document.activeElement as HTMLElement);
+      const active = document.activeElement;
+      const at = stops.indexOf(active as HTMLElement);
+      // Focus resting inside on something only a script can focus — the
+      // guide's entry heading — has a place in the order all the same: Tab
+      // goes on to the stop after it, Shift+Tab back to the one before, as
+      // the browser does by itself. Only from the far end does it wrap.
+      if (at === -1 && active instanceof HTMLElement && active !== node && node.contains(active)) {
+        const isAfter = (stop: HTMLElement) =>
+          (active.compareDocumentPosition(stop) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+        if (event.shiftKey ? !stops.every(isAfter) : stops.some(isAfter)) return;
+      }
       if (event.shiftKey && at <= 0) {
         event.preventDefault();
         last.focus();

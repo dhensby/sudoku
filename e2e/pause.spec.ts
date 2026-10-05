@@ -291,7 +291,7 @@ test.describe('a puzzle made in a hidden tab', () => {
 });
 
 test.describe('dialogs', () => {
-  for (const name of ['Settings', 'Help', 'History', 'Share'] as const) {
+  for (const name of ['Settings', 'Help', 'History', 'Share', 'Solving techniques'] as const) {
     test(`${name} holds the clock silently, and closing it starts it again`, async ({ page }) => {
       await page.clock.install();
       await startPuzzle(page, EASY);
