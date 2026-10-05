@@ -7,3 +7,4 @@ export * from './generator';
 export * from './hint';
 export * from './game';
 export * from './codec';
+export * from './clock';
