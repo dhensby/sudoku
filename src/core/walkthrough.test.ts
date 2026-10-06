@@ -1,7 +1,7 @@
 import { isDeepStrictEqual } from 'node:util';
 import { decodeGivens } from './codec';
 import { EXAMPLE_PUZZLES } from './examples';
-import { grade } from './grader';
+import { TECHNIQUE_TIER, grade } from './grader';
 import { bit, computeCandidates, gridValues, maskOf, parseGrid } from './grid';
 import { findHint } from './hint';
 import { isStepValid } from './patterns';
@@ -27,8 +27,10 @@ import {
 import { WIKIPEDIA_PUZZLE, WIKIPEDIA_SOLUTION } from '../test/grids';
 import {
   BEYOND_THE_SET,
+  EXPERT_SAMPLE,
   STUCK_ON_A_HIDDEN_PAIR,
   minimalPuzzles,
+  solvedPuzzle,
   stuckOnAHiddenPair,
   tierPuzzles,
   type SolvedPuzzle,
@@ -92,6 +94,27 @@ function problemsWith(
   }
   return problems;
 }
+
+describe('the stored Expert sample', () => {
+  // The sweeps below read their Expert puzzles from EXPERT_SAMPLE instead of
+  // generating them. Make sure each is still a sound Expert: one solution,
+  // the one stored, and a fish or wing needed with 40 cells still open.
+  it.each(EXPERT_SAMPLE.map((fixture, k) => [k, fixture] as const))(
+    'holds a genuine Expert puzzle at %i',
+    (_k, fixture) => {
+      const { givens, solution } = solvedPuzzle(fixture);
+      expect(solve(givens)).toEqual(solution);
+      const result = grade(givens);
+      expect(result.difficulty).toBe('expert');
+      let empty = givens.filter((v) => v === 0).length;
+      for (const step of result.steps) {
+        if (TECHNIQUE_TIER[step.technique] === 'expert') break;
+        if (step.placement) empty--;
+      }
+      expect(empty).toBeGreaterThanOrEqual(40);
+    },
+  );
+});
 
 describe('explainCell', () => {
   describe('where the player got stuck on a hidden pair', () => {
@@ -355,7 +378,8 @@ describe('explainCell', () => {
       const puzzles = [
         ...minimalPuzzles(30, 500),
         ...tierPuzzles('hard', 6, 700),
-        ...tierPuzzles('expert', 6, 800),
+        // Stored, not generated: an Expert takes about a hundred attempts.
+        ...EXPERT_SAMPLE.map(solvedPuzzle),
       ];
       const problems: string[] = [];
       let explained = 0;

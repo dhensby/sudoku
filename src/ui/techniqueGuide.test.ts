@@ -9,7 +9,13 @@ import {
   type TechniqueId,
   type TechniqueTrace,
 } from '../core';
-import { STUCK_ON_A_HIDDEN_PAIR, stuckOnAHiddenPair, tierPuzzles } from '../test/logic-fixtures';
+import {
+  EXPERT_SAMPLE,
+  STUCK_ON_A_HIDDEN_PAIR,
+  solvedPuzzle,
+  stuckOnAHiddenPair,
+  tierPuzzles,
+} from '../test/logic-fixtures';
 import { DIFFICULTY_LABEL, TECHNIQUE_LABEL, capitalise } from './format';
 import {
   GUIDE,
@@ -550,9 +556,6 @@ describe('walkthrough captions', () => {
     });
   });
 
-  // Deals Hard and Expert puzzles and walks through hundreds of cells: a few
-  // seconds on its own, but coverage instrumentation on a CI runner can make
-  // it many times slower, so it gets the walkthrough tests' generous timeout.
   it('leave no candidate unexplained and credit only earlier steps, over many walkthroughs', () => {
     // Every empty cell of Hard and Expert puzzles, from the givens and part
     // way through: a walkthrough can run to dozens of steps.
@@ -560,7 +563,8 @@ describe('walkthrough captions', () => {
     let credited = 0;
     for (const { givens, solution } of [
       ...tierPuzzles('hard', 3, 700),
-      ...tierPuzzles('expert', 3, 800),
+      // Stored, not generated: an Expert takes about a hundred attempts.
+      ...EXPERT_SAMPLE.slice(0, 3).map(solvedPuzzle),
     ]) {
       const placements = grade(givens).steps.filter((step) => step.placement !== null);
       for (const count of [0, 12, 24]) {
@@ -585,5 +589,5 @@ describe('walkthrough captions', () => {
     }
     expect(walkthroughs).toBeGreaterThan(500);
     expect(credited).toBeGreaterThan(50);
-  }, 60_000);
+  });
 });

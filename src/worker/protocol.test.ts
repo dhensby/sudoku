@@ -9,19 +9,20 @@ vi.mock('../core', async (importOriginal) => {
 });
 
 describe('respond', () => {
-  // Each case deals its puzzle twice. An Expert can take a hundred attempts
-  // or more to find, and coverage instrumentation on a CI runner makes each
-  // one cost tens of milliseconds — hence the generous timeout.
-  it.each<Difficulty>(['easy', 'medium', 'hard', 'expert'])(
-    'deals the %s puzzle the seed names, exactly as the main thread would',
-    (difficulty) => {
-      const response = respond({ id: 7, difficulty, seed: 'abc123' });
-      // Same seed, same puzzle on either thread: that is what lets the
-      // fallback stand in for the worker without anyone noticing.
-      expect(response).toEqual({ id: 7, puzzle: generatePuzzle(difficulty, createRng('abc123')) });
-    },
-    60_000,
-  );
+  it.each<[Difficulty, string]>([
+    ['easy', 'abc123'],
+    ['medium', 'abc123'],
+    ['hard', 'abc123'],
+    // An Expert takes about a hundred attempts, and this test deals each
+    // puzzle twice; under coverage on CI that ran past the time limit. This
+    // seed finds its Expert within a few attempts.
+    ['expert', 'seed-25'],
+  ])('deals the %s puzzle the seed names, exactly as the main thread would', (difficulty, seed) => {
+    const response = respond({ id: 7, difficulty, seed });
+    // Same seed, same puzzle on either thread: that is what lets the
+    // fallback stand in for the worker without anyone noticing.
+    expect(response).toEqual({ id: 7, puzzle: generatePuzzle(difficulty, createRng(seed)) });
+  });
 
   it('answers with a real puzzle of the tier asked for', () => {
     const response = respond({ id: 1, difficulty: 'easy', seed: 'seed' });
