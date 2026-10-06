@@ -550,6 +550,9 @@ describe('walkthrough captions', () => {
     });
   });
 
+  // Deals Hard and Expert puzzles and walks through hundreds of cells: a few
+  // seconds on its own, but coverage instrumentation on a CI runner can make
+  // it many times slower, so it gets the walkthrough tests' generous timeout.
   it('leave no candidate unexplained and credit only earlier steps, over many walkthroughs', () => {
     // Every empty cell of Hard and Expert puzzles, from the givens and part
     // way through: a walkthrough can run to dozens of steps.
@@ -582,5 +585,5 @@ describe('walkthrough captions', () => {
     }
     expect(walkthroughs).toBeGreaterThan(500);
     expect(credited).toBeGreaterThan(50);
-  });
+  }, 60_000);
 });
