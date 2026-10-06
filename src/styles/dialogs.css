@@ -790,16 +790,29 @@
  * `content-visibility` lets the browser skip laying out and painting rows
  * that are scrolled out of view — the list can hold a thousand games — and
  * `auto` in the intrinsic size has it remember each row's real height once
- * seen, so the scrollbar does not jump.
+ * seen, so the scrollbar does not jump. It also clips whatever the row
+ * paints outside itself, so the row reaches 4px past the list each side,
+ * given back in padding, for a focus ring's reach (2px, 2px out) on the
+ * buttons at its edges; the rule between rows keeps to the list's width.
  */
 .history-item {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 12px 0;
-  border-top: 1px solid var(--border);
+  margin: 0 -4px;
+  padding: 12px 4px;
   content-visibility: auto;
   contain-intrinsic-size: auto 112px;
+}
+
+.history-item::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 4px;
+  left: 4px;
+  border-top: 1px solid var(--border);
 }
 
 .history-item__info {

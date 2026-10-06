@@ -263,6 +263,14 @@ describe('the dialogs', () => {
     expect(rule(DIALOGS, '.tabs__tab')).toMatch(/min-width:\s*44px/);
   });
 
+  it('leaves a History row room for its buttons’ focus rings, which it would otherwise clip', () => {
+    // content-visibility contains the row's paint; a ring reaches 4px out.
+    const row = rule(DIALOGS, '.history-item');
+    expect(row).toMatch(/content-visibility:\s*auto/);
+    expect(row).toMatch(/padding:\s*12px 4px/);
+    expect(row).toMatch(/margin:\s*0 -4px/);
+  });
+
   it('puts every History row’s actions on a line of their own, however many it has', () => {
     expect(rule(DIALOGS, '.history-item')).toMatch(/flex-direction:\s*column/);
     expect(rule(DIALOGS, '.history-item__actions')).toMatch(/flex-wrap:\s*wrap/);
