@@ -49,6 +49,7 @@ export const TECHNIQUE_ORDER: readonly TechniqueId[] = [
   'twoStringKite',
   'xyChain',
   'wWing',
+  'alternatingChain',
 ];
 
 /**
@@ -76,6 +77,7 @@ export const TECHNIQUE_TIER: Readonly<Record<TechniqueId, Difficulty>> = {
   twoStringKite: 'expert',
   xyChain: 'expert',
   wWing: 'expert',
+  alternatingChain: 'expert',
 };
 
 /** HoDoKu's default score for each technique; a grade's score is their sum over its steps. */
@@ -98,6 +100,7 @@ export const TECHNIQUE_SCORE: Readonly<Record<TechniqueId, number>> = {
   twoStringKite: 150,
   xyChain: 260,
   wWing: 150,
+  alternatingChain: 280,
 };
 
 const TECHNIQUE_RANK = Object.fromEntries(TECHNIQUE_ORDER.map((id, rank) => [id, rank])) as Record<

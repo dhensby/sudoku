@@ -108,6 +108,10 @@ describe('techniqueExample', () => {
     ['twoStringKite', '1 | row 2, column 4, box 2 | r2c7{1} r2c6{1} r3c4{1} r4c4{1} | r4c7 -1'],
     ['xyChain', '6 | - | r1c3{16} r1c1{13} r2c1{38} r2c4{68} | r1c4 -6'],
     ['wWing', '3 | column 7 | r4c6{39} r4c7{9} r7c7{9} r7c5{39} | r6c5 -3'],
+    [
+      'alternatingChain',
+      '- | row 7, row 2, column 7 | r7c6{8} r7c5{8} r2c5{8} r2c7{8} r2c7{9} r7c7{9} | r7c6 -9',
+    ],
   ])('shows a %s exactly as the guide describes it', (id, expected) => {
     const { step } = techniqueExample(id);
     expect(step.technique).toBe(id);
@@ -151,6 +155,7 @@ describe('techniqueExample', () => {
       twoStringKite: 4,
       xyChain: 4,
       wWing: 4,
+      alternatingChain: 6,
     };
     if (id === 'xWing') {
       expect([step.pattern.length, rows, cols]).toEqual([4, 2, 2]);

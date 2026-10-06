@@ -49,7 +49,8 @@ export type TechniqueId =
   | 'skyscraper'
   | 'twoStringKite'
   | 'xyChain'
-  | 'wWing';
+  | 'wWing'
+  | 'alternatingChain';
 
 /** Which kind of unit a row/column/box index refers to. */
 export type UnitKind = 'row' | 'column' | 'box';

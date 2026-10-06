@@ -1563,17 +1563,25 @@
 }
 
 /* A chain's links run from candidate to candidate, under the rings: solid
-   where one or other must be the digit, dashed where they can't both be. */
-.technique-diagram__links line {
+   where one or other must be the digit, dashed where they can't both be —
+   straight between cells, a shallow arc between two candidates of one. */
+.technique-diagram__links line,
+.technique-diagram__links path {
+  fill: none;
   stroke: var(--accent);
   stroke-width: 2;
   stroke-linecap: round;
 }
 
-.technique-diagram__links line[data-link='weak'] {
+.technique-diagram__links [data-link='weak'] {
   stroke-width: 1.6;
   stroke-dasharray: 4 3.5;
   stroke-linecap: butt;
+}
+
+/* An arc inside a cell is short: finer dashes, so it still reads as dashed. */
+.technique-diagram__links path[data-link='weak'] {
+  stroke-dasharray: 2.5 2;
 }
 
 .technique-diagram__candidate {

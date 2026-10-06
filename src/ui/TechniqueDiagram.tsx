@@ -173,6 +173,27 @@ function cornerMarks(x: number, y: number, size: number, inset: number, arm: num
   ].join('');
 }
 
+/** How far an arc between two candidates of one cell bows from the straight line. */
+const ARC_BOW = 26;
+
+/**
+ * A link between two candidates of one cell: an arc bowed in towards the
+ * middle of the cell, at right angles to the straight line between them, so
+ * it shows clear of the two rings even when the candidates sit side by side
+ * — and stays inside the cell, where a cell with two candidates has room.
+ */
+function cellArc(index: number, from: Digit, to: Digit, pull: number): string {
+  const [x1, y1] = spot(index, from, pull);
+  const [x2, y2] = spot(index, to, pull);
+  const [mx, my] = [(x1 + x2) / 2, (y1 + y2) / 2];
+  const length = Math.hypot(x2 - x1, y2 - y1);
+  let [nx, ny] = [(y1 - y2) / length, (x2 - x1) / length];
+  // Towards the middle of the cell; straight across it, either way does.
+  const [ox, oy] = [mx - (cellX(index) + CELL / 2), my - (cellY(index) + CELL / 2)];
+  if (nx * ox + ny * oy > 0) [nx, ny] = [-nx, -ny];
+  return `M${x1} ${y1}Q${mx + nx * ARC_BOW} ${my + ny * ARC_BOW} ${x2} ${y2}`;
+}
+
 /** The row, column and box of a cell. */
 function housesOf(index: number): Unit[] {
   return [
@@ -207,12 +228,22 @@ interface Marks {
    */
   chainCells: number[];
   /**
-   * The digit one of a wing's or a chain's cells must be, and the cells it is
-   * filled in at: a wing's cells that hold it, a chain's two ends.
+   * What one of a wing's or a chain's cells must be, filled in where it is:
+   * per cell, the digits filled in — a wing's cells that hold the digit it
+   * forces, a chain's two ends — and the one digit they share, if they do.
    */
-  forced: { digit: Digit; cells: ReadonlySet<number> } | null;
-  /** A chain's links, end to end: between which two cells, on which digit, and how. */
-  links: { from: number; to: number; digit: Digit; isStrong: boolean }[];
+  forced: { digit: Digit | null; cells: Map<number, number> } | null;
+  /**
+   * A chain's links, end to end, each between two candidates: in two cells,
+   * on the digit they share, or in one cell, between two of its digits.
+   */
+  links: { from: Spot; to: Spot; isStrong: boolean }[];
+}
+
+/** A candidate a link runs to or from. */
+interface Spot {
+  index: number;
+  digit: Digit;
 }
 
 /** How strongly a cell is shaded: where to look, or where the step clears. */
@@ -232,15 +263,19 @@ function lookCount(technique: TechniqueId, houses: readonly Unit[]): number {
 function marksOf({ step }: TechniqueTrace): Marks {
   const answer = step.placement;
   const isChain = CHAINS.has(step.technique);
+  const isAlternating = step.technique === 'alternatingChain';
   // A naked single is about everything its cell sees: its own three houses.
   // A chain's strong links lie in its first two; its weak link is drawn, not
-  // shaded.
+  // shaded. An alternating chain's links are all drawn, and only its cells
+  // shaded: the houses it runs through would cover half the board.
   const houses =
     step.technique === 'nakedSingle' && answer !== null
       ? housesOf(answer.index)
       : isChain
         ? step.houses.slice(0, 2)
-        : step.houses;
+        : isAlternating
+          ? []
+          : step.houses;
   const shaded = new Map<number, Shade>();
   const isWing = step.technique === 'xyWing' || step.technique === 'xyzWing';
   const isXyChain = step.technique === 'xyChain';
@@ -254,7 +289,9 @@ function marksOf({ step }: TechniqueTrace): Marks {
     ? step.pattern.map((cell) => cell.index)
     : isWWing
       ? [step.pattern[0].index, step.pattern[3].index]
-      : [];
+      : isAlternating
+        ? [...new Set(step.pattern.map((cell) => cell.index))]
+        : [];
   if (isWing) for (const cell of step.pattern) shaded.set(cell.index, 'look');
   for (const index of ownCells) shaded.set(index, 'look');
   const looks = lookCount(step.technique, houses);
@@ -262,12 +299,21 @@ function marksOf({ step }: TechniqueTrace): Marks {
   for (const { unit, shade } of shades) {
     for (const index of unitCells(unit)) if (!shaded.has(index)) shaded.set(index, shade);
   }
+  // A single's pattern is its answer, which is drawn as the answer. An
+  // alternating chain's can name a cell twice, for two of its digits.
+  const pattern = new Map<number, number>();
+  if (answer === null) {
+    for (const p of step.pattern) pattern.set(p.index, (pattern.get(p.index) ?? 0) | p.mask);
+  }
   return {
-    focus: SINGLE_DIGIT.has(step.technique) ? step.digit : null,
+    focus: SINGLE_DIGIT.has(step.technique)
+      ? step.digit
+      : isAlternating
+        ? alternatingFocus(step.pattern)
+        : null,
     houses: shades,
     shaded,
-    // A single's pattern is its answer, which is drawn as the answer.
-    pattern: new Map(answer === null ? step.pattern.map((p) => [p.index, p.mask]) : []),
+    pattern,
     removed: new Map(step.eliminations.map((e) => [e.index, e.mask])),
     answer,
     pivot: pivot ?? null,
@@ -276,21 +322,33 @@ function marksOf({ step }: TechniqueTrace): Marks {
     forced: isWing
       ? wingForced(step.pattern, step.eliminations[0].mask)
       : isChain || isXyChain || isWWing
-        ? chainForced(step)
-        : null,
+        ? chainForced(step, step.digit!, step.digit!)
+        : isAlternating
+          ? chainForced(
+              step,
+              lowestDigit(step.pattern[0].mask),
+              lowestDigit(step.pattern.at(-1)!.mask),
+            )
+          : null,
     links: isChain
       ? step.pattern.slice(1).map((cell, i) => ({
-          from: step.pattern[i].index,
-          to: cell.index,
-          digit: step.digit!,
+          from: { index: step.pattern[i].index, digit: step.digit! },
+          to: { index: cell.index, digit: step.digit! },
           isStrong: i % 2 === 0,
         }))
       : isXyChain
         ? xyChainLinks(step)
         : isWWing
           ? wWingLinks(step)
-          : [],
+          : isAlternating
+            ? alternatingLinks(step)
+            : [],
   };
+}
+
+/** The one digit an alternating chain is about, if every candidate in it is that digit. */
+function alternatingFocus(pattern: readonly PatternCell[]): Digit | null {
+  return pattern.every((p) => p.mask === pattern[0].mask) ? lowestDigit(pattern[0].mask) : null;
 }
 
 /**
@@ -301,9 +359,8 @@ function marksOf({ step }: TechniqueTrace): Marks {
 function wWingLinks({ pattern }: TechniqueTrace['step']): Marks['links'] {
   const digit = lowestDigit(pattern[1].mask);
   return pattern.slice(1).map((cell, i) => ({
-    from: pattern[i].index,
-    to: cell.index,
-    digit,
+    from: { index: pattern[i].index, digit },
+    to: { index: cell.index, digit },
     isStrong: i === 1,
   }));
 }
@@ -317,19 +374,41 @@ function xyChainLinks({ pattern, digit }: TechniqueTrace['step']): Marks['links'
   let carried = bit(digit!);
   return pattern.slice(1).map((cell, i) => {
     carried = pattern[i].mask & ~carried;
-    return { from: pattern[i].index, to: cell.index, digit: lowestDigit(carried), isStrong: false };
+    const shared = lowestDigit(carried);
+    return {
+      from: { index: pattern[i].index, digit: shared },
+      to: { index: cell.index, digit: shared },
+      isStrong: false,
+    };
   });
+}
+
+/** An alternating chain's links: every one, strong and weak in turn, candidate to candidate. */
+function alternatingLinks({ pattern }: TechniqueTrace['step']): Marks['links'] {
+  return pattern.slice(1).map((cell, i) => ({
+    from: { index: pattern[i].index, digit: lowestDigit(pattern[i].mask) },
+    to: { index: cell.index, digit: lowestDigit(cell.mask) },
+    isStrong: i % 2 === 0,
+  }));
 }
 
 /** A wing removes only the digit it forces, from wherever its cells hold it. */
 function wingForced(pattern: readonly PatternCell[], removed: number): Marks['forced'] {
-  const cells = pattern.filter((cell) => cell.mask & removed).map((cell) => cell.index);
-  return { digit: digitsOf(removed)[0] as Digit, cells: new Set(cells) };
+  const cells = new Map<number, number>();
+  for (const cell of pattern) if (cell.mask & removed) cells.set(cell.index, removed);
+  return { digit: lowestDigit(removed), cells };
 }
 
-/** A chain forces its digit into one of its two ends. */
-function chainForced({ pattern, digit }: TechniqueTrace['step']): Marks['forced'] {
-  return { digit: digit!, cells: new Set([pattern[0].index, pattern[pattern.length - 1].index]) };
+/** A chain's two ends, one of which is right: `first` at its first cell, `last` at its last. */
+function chainForced(
+  { pattern }: TechniqueTrace['step'],
+  first: Digit,
+  last: Digit,
+): Marks['forced'] {
+  const [start, end] = [pattern[0].index, pattern[pattern.length - 1].index];
+  const cells = new Map([[start, bit(first)]]);
+  cells.set(end, (cells.get(end) ?? 0) | bit(last));
+  return { digit: first === last ? first : null, cells };
 }
 
 /** One layer of the drawing, hidden from assistive technology like every layer. */
@@ -395,8 +474,12 @@ export function TechniqueDiagram({
 
   // The digits the links are on, strong and weak: one each for a chain about
   // one digit, which the key can name.
-  const strongDigits = new Set(marks.links.filter((l) => l.isStrong).map((l) => l.digit));
-  const weakDigits = new Set(marks.links.filter((l) => !l.isStrong).map((l) => l.digit));
+  const digitsOfLinks = (isStrong: boolean) =>
+    new Set(
+      marks.links.filter((l) => l.isStrong === isStrong).flatMap((l) => [l.from.digit, l.to.digit]),
+    );
+  const strongDigits = digitsOfLinks(true);
+  const weakDigits = digitsOfLinks(false);
 
   const gone = new Map<number, number>();
   for (const { index, mask } of ruledOut) gone.set(index, (gone.get(index) ?? 0) | mask);
@@ -432,7 +515,7 @@ export function TechniqueDiagram({
       const [x, y] = spot(index, digit, scale.pull);
       const isStruck = (struck & bit(digit)) !== 0;
       const isRinged = (ringed & bit(digit)) !== 0;
-      const isForced = isRinged && digit === marks.forced?.digit && marks.forced.cells.has(index);
+      const isForced = isRinged && ((marks.forced?.cells.get(index) ?? 0) & bit(digit)) !== 0;
       const mark = isStruck ? 'removed' : isForced ? 'forced' : isRinged ? 'pattern' : 'plain';
       if (isRinged) {
         rings.push(
@@ -530,19 +613,16 @@ export function TechniqueDiagram({
           </Layer>
         )}
         <Layer name="links">
-          {marks.links.map(({ from, to, digit, isStrong }) => {
-            const [x1, y1] = spot(from, digit, scale.pull);
-            const [x2, y2] = spot(to, digit, scale.pull);
-            return (
-              <line
-                key={`${from}-${to}`}
-                x1={x1}
-                y1={y1}
-                x2={x2}
-                y2={y2}
-                data-link={isStrong ? 'strong' : 'weak'}
-              />
-            );
+          {marks.links.map(({ from, to, isStrong }) => {
+            const key = `${from.index}-${from.digit}-${to.index}-${to.digit}`;
+            const kind = isStrong ? 'strong' : 'weak';
+            if (from.index === to.index) {
+              const d = cellArc(from.index, from.digit, to.digit, scale.pull);
+              return <path key={key} d={d} data-link={kind} />;
+            }
+            const [x1, y1] = spot(from.index, from.digit, scale.pull);
+            const [x2, y2] = spot(to.index, to.digit, scale.pull);
+            return <line key={key} x1={x1} y1={y1} x2={x2} y2={y2} data-link={kind} />;
           })}
         </Layer>
         <Layer name="ruled-out">{ghosts}</Layer>
@@ -655,23 +735,25 @@ export function TechniqueDiagram({
           {strongDigits.size > 0 && (
             <li>
               <Swatch kind="strong" />
-              If one isn&apos;t {[...strongDigits][0]}, the other is
+              {strongDigits.size === 1
+                ? `If one isn't ${[...strongDigits][0]}, the other is`
+                : "If one isn't right, the other is"}
             </li>
           )}
           {weakDigits.size > 0 && (
             <li>
               <Swatch kind="weak" />
-              {weakDigits.size === 1 ? (
-                <>If one is {[...weakDigits][0]}, the other isn&apos;t</>
-              ) : (
-                <>Can&apos;t both be the digit they share</>
-              )}
+              {weakDigits.size === 1
+                ? `If one is ${[...weakDigits][0]}, the other isn't`
+                : "Can't both be right"}
             </li>
           )}
           {marks.forced !== null && (
             <li>
               <Swatch kind="forced" />
-              At least one of these is {marks.forced.digit}
+              {marks.forced.digit !== null
+                ? `At least one of these is ${marks.forced.digit}`
+                : 'At least one of these is right'}
             </li>
           )}
           {marks.removed.size > 0 && (

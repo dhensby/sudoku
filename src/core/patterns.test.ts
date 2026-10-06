@@ -10,7 +10,7 @@ import {
   type SolverBoard,
 } from './techniques';
 import type { Digit, TechniqueId, Unit } from './types';
-import { HARDEST, minimalPuzzles, solvedPuzzle } from '../test/logic-fixtures';
+import { HARDEST, minimalPuzzles, pencilmarks, solvedPuzzle } from '../test/logic-fixtures';
 
 /** A technique's worked example, as a board and a step that are safe to change. */
 function example(id: TechniqueId): { board: SolverBoard; step: SolveStep } {
@@ -691,9 +691,87 @@ describe('isStepValid', () => {
         step.eliminations.push({ index, mask: bit(step.digit!) });
       },
     ],
+    [
+      'alternatingChain',
+      'names a unit, which no alternating chain has',
+      (step) => (step.unit = step.houses[0]),
+    ],
+    ['alternatingChain', 'is about one digit', (step) => (step.digit = 8)],
+    ['alternatingChain', 'ends on a weak link', (step) => step.pattern.pop()],
+    [
+      'alternatingChain',
+      'lists a candidate twice',
+      (step) => step.pattern.splice(2, 2, step.pattern[0], step.pattern[1]),
+    ],
+    [
+      'alternatingChain',
+      'claims a cell for two of its digits at once',
+      (step, board) => (step.pattern[1].mask = board.candidates[step.pattern[1].index]),
+    ],
+    [
+      'alternatingChain',
+      'switches digits between two cells',
+      (step, board) => {
+        const { index, mask } = step.pattern[2];
+        step.pattern[2] = { index, mask: bit(lowestDigit(board.candidates[index] & ~mask)) };
+      },
+    ],
+    ['alternatingChain', 'names too few houses', (step) => step.houses.pop()],
+    [
+      'alternatingChain',
+      'names one house too many',
+      (step) => step.houses.push({ kind: 'row', index: 0 }),
+    ],
+    [
+      'alternatingChain',
+      'joins a strong link through a house with a third place',
+      (step, board) => {
+        const index = firstCell(
+          (i) => board.values[i] === 0 && isIn(i, step.houses[0]) && !cellsOf(step).includes(i),
+        );
+        board.candidates[index] |= step.pattern[0].mask;
+      },
+    ],
+    [
+      'alternatingChain',
+      'strikes a candidate only one end rules out',
+      (step, board) => {
+        const [first, last] = [step.pattern[0], step.pattern[step.pattern.length - 1]];
+        const index = firstCell(
+          (i) =>
+            board.values[i] === 0 &&
+            isPeer(first.index, i) &&
+            !isPeer(last.index, i) &&
+            !cellsOf(step).includes(i),
+        );
+        board.candidates[index] |= first.mask;
+        step.eliminations.push({ index, mask: first.mask });
+      },
+    ],
   ])('rejects a %s step that %s', (id, _name, misdescribe) => {
     const { board, step } = example(id);
     misdescribe(step, board);
+    expect(isStepValid(board, step)).toBe(false);
+  });
+
+  it('holds a strong link inside a cell to a cell with just those two candidates', () => {
+    // The technique tests' hand-built chain, which starts inside r0c0 {1, 2}.
+    const layout = Array.from({ length: 81 }, (_, i) =>
+      i === 0
+        ? '12'
+        : i === 40
+          ? '23'
+          : [13, 22, 31, 49, 58, 67, 76].includes(i)
+            ? '-2'
+            : [37, 38, 39, 41, 42, 43, 44].includes(i)
+              ? '-3'
+              : '.',
+    ).join(' ');
+    const board = pencilmarks(layout);
+    const step = TECHNIQUES.alternatingChain(cloneBoard(board))!;
+    expect(step.pattern[0].index).toBe(step.pattern[1].index);
+    expect(isStepValid(board, step)).toBe(true);
+    addDigit(board, 0);
     expect(isStepValid(board, step)).toBe(false);
   });
 });

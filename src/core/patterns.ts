@@ -1,4 +1,4 @@
-import { ALL_DIGITS, COL, PEERS, POPCOUNT, ROW, bit, isPeer, unitCells } from './grid';
+import { ALL_DIGITS, COL, PEERS, POPCOUNT, ROW, bit, digitsOf, isPeer, unitCells } from './grid';
 import type { Elimination, PatternCell, SolveStep, SolverBoard } from './techniques';
 import type { TechniqueId, Unit } from './types';
 
@@ -98,6 +98,30 @@ function wingTargets(isXyz: boolean, pivot: number, first: number, second: numbe
     : PEERS[first].filter((t) => isPeer(second, t));
 }
 
+/** Whether two candidates, each a cell and one digit, can't both be right. */
+function isWeaklyLinked(a: PatternCell, b: PatternCell): boolean {
+  return a.index === b.index ? a.mask !== b.mask : a.mask === b.mask && isPeer(a.index, b.index);
+}
+
+/**
+ * What an alternating chain removes on `board`: every candidate weakly
+ * linked to both its ends that isn't in the chain itself, cell by cell.
+ */
+function alternatingTargets(board: SolverBoard, pattern: readonly PatternCell[]): Elimination[] {
+  const [first, last] = [pattern[0], pattern[pattern.length - 1]];
+  const eliminations: Elimination[] = [];
+  for (let index = 0; index < 81; index++) {
+    let mask = 0;
+    for (const d of digitsOf(board.candidates[index])) {
+      const z = { index, mask: bit(d) };
+      const isInChain = pattern.some((p) => p.index === index && p.mask === z.mask);
+      if (!isInChain && isWeaklyLinked(z, first) && isWeaklyLinked(z, last)) mask |= z.mask;
+    }
+    if (mask !== 0) eliminations.push({ index, mask });
+  }
+  return eliminations;
+}
+
 /** The cells a chain's digit can be struck from: every cell that sees both its ends, bar its own. */
 function chainTargets(cells: readonly number[]): number[] {
   const [first, last] = [cells[0], cells[cells.length - 1]];
@@ -129,7 +153,12 @@ function wingDigit(isXyz: boolean, pivot: number, first: number, second: number)
 export function isStepValid(board: SolverBoard, step: SolveStep): boolean {
   const { technique: id, pattern, houses, placement } = step;
   const cells = pattern.map((p) => p.index);
-  if (cells.length === 0 || new Set(cells).size !== cells.length) return false;
+  // An alternating chain can pass through a cell twice, for two of its
+  // digits; its own check holds it to each candidate once.
+  const isRepeatAllowed = id === 'alternatingChain';
+  if (cells.length === 0 || (!isRepeatAllowed && new Set(cells).size !== cells.length)) {
+    return false;
+  }
   for (const { index, mask } of pattern) {
     if (board.values[index] !== 0 || mask === 0 || (board.candidates[index] & mask) !== mask) {
       return false;
@@ -137,7 +166,8 @@ export function isStepValid(board: SolverBoard, step: SolveStep): boolean {
   }
   // `unit` is the house a hint names: the first of the houses, bar a fish's,
   // a chain's or a W-Wing's, none of which is "the" house.
-  const unit = FISH[id] || CHAINS.has(id) || id === 'wWing' ? null : (houses[0] ?? null);
+  const isUnitless = FISH[id] || CHAINS.has(id) || id === 'wWing' || id === 'alternatingChain';
+  const unit = isUnitless ? null : (houses[0] ?? null);
   if (!isSameUnit(step.unit, unit)) return false;
   if (SINGLES.has(id)) return placement !== null && isSingleValid(board, step, placement);
   if (placement !== null || !areEliminationsReal(board, step)) return false;
@@ -149,6 +179,7 @@ export function isStepValid(board: SolverBoard, step: SolveStep): boolean {
   if (CHAINS.has(id)) return isChainValid(board, step);
   if (id === 'xyChain') return isXyChainValid(board, step);
   if (id === 'wWing') return isWWingValid(board, step);
+  if (id === 'alternatingChain') return isAlternatingChainValid(board, step);
   return isWingValid(board, step);
 }
 
@@ -378,6 +409,44 @@ function isWWingValid(board: SolverBoard, step: SolveStep): boolean {
 }
 
 /**
+ * Alternating chain: an even number of candidates, four or more, one digit
+ * each and none twice, linked strongly and weakly in turn. A strong link
+ * inside a cell is a cell holding those two digits and nothing else; one
+ * between cells is the only two places for one digit in the next of the
+ * step's houses. A weak link is two digits of one cell, or one digit in two
+ * cells that see each other. It removes only candidates weakly linked to
+ * both ends, outside the chain.
+ */
+function isAlternatingChainValid(board: SolverBoard, step: SolveStep): boolean {
+  const { pattern, houses, digit } = step;
+  if (digit !== null || pattern.length < 4 || pattern.length % 2 !== 0) return false;
+  const keys = pattern.map((p) => `${p.index}:${p.mask}`);
+  if (new Set(keys).size !== keys.length || pattern.some((p) => POPCOUNT[p.mask] !== 1)) {
+    return false;
+  }
+  let house = 0;
+  for (let k = 0; k + 1 < pattern.length; k++) {
+    const [a, b] = [pattern[k], pattern[k + 1]];
+    if (k % 2 === 1) {
+      if (!isWeaklyLinked(a, b)) return false;
+    } else if (a.index === b.index) {
+      if (board.candidates[a.index] !== (a.mask | b.mask)) return false;
+    } else {
+      const unit = houses[house++];
+      const places = unit === undefined ? [] : holders(board, unitCells(unit), a.mask);
+      if (a.mask !== b.mask || !isSameSet(places, [a.index, b.index])) return false;
+    }
+  }
+  const targets = alternatingTargets(board, pattern);
+  return (
+    house === houses.length &&
+    step.eliminations.every(({ index, mask }) =>
+      targets.some((t) => t.index === index && (mask & ~t.mask) === 0),
+    )
+  );
+}
+
+/**
  * XY-Wing: a pivot {x, y} seeing pincers {x, z} and {y, z}; XYZ-Wing: a
  * pivot {x, y, z} seeing pincers {x, z} and {y, z}. Either way z goes from
  * cells that see both pincers (and, for XYZ, the pivot).
@@ -466,6 +535,12 @@ export function stepOn(board: SolverBoard, step: SolveStep): SolveStep {
     ];
     return { ...step, pattern, eliminations: removable(board, chainTargets(cells), bit(digit!)) };
   }
+  if (id === 'alternatingChain') {
+    // Each candidate of the chain as it stands, gone ones left out for
+    // isStepValid to notice.
+    const pattern = step.pattern.filter((p) => (board.candidates[p.index] & p.mask) !== 0);
+    return { ...step, pattern, eliminations: alternatingTargets(board, step.pattern) };
+  }
   const isXyz = id === 'xyzWing';
   const [pivot, first, second] = step.pattern.map((p) => p.index);
   const { candidates } = board;
@@ -513,7 +588,9 @@ export interface Reliance {
  *   each holds it in its two cells alone;
  * - wings and XY-Chains: every other digit gone from their cells;
  * - W-Wing: every other digit gone from its two-candidate cells, and the
- *   joining digit gone from the rest of its house.
+ *   joining digit gone from the rest of its house;
+ * - alternating chain: for each strong link, every other digit gone from
+ *   the cell it lies in, or its digit gone from the rest of its house.
  *
  * Every candidate a re-read step removes is one its pattern justifies, and
  * every one the original step removed is still there to remove, so the
@@ -557,6 +634,25 @@ export function reliance(step: SolveStep): Reliance {
       [...new Set(strong)].filter((i) => !cells.includes(i)),
       bit(digit!),
     );
+  }
+  if (id === 'alternatingChain') {
+    const gone = new Uint16Array(81);
+    let house = 0;
+    for (let k = 0; k + 1 < pattern.length; k += 2) {
+      const [a, b] = [pattern[k], pattern[k + 1]];
+      if (a.index === b.index) {
+        gone[a.index] |= ALL_DIGITS & ~(a.mask | b.mask);
+      } else {
+        for (const i of unitCells(houses[house++])) {
+          if (i !== a.index && i !== b.index) gone[i] |= a.mask;
+        }
+      }
+    }
+    const absent: Elimination[] = [];
+    for (let index = 0; index < 81; index++) {
+      if (gone[index] !== 0) absent.push({ index, mask: gone[index] });
+    }
+    return { absent, filled: [] };
   }
   if (id === 'wWing') {
     const [first, near, far, second] = pattern;

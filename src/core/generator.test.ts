@@ -52,7 +52,7 @@ function emptyAtFirstExpertStep(givens: ArrayLike<number>, result: Grade): numbe
 
 describe('GENERATOR_VERSION', () => {
   it('is pinned, so a change to generated puzzles has to be deliberate', () => {
-    expect(GENERATOR_VERSION).toBe(6);
+    expect(GENERATOR_VERSION).toBe(7);
   });
 });
 
@@ -138,9 +138,9 @@ describe('generatePuzzle', () => {
     [
       'expert',
       {
-        givens: '600020050000000000305000074100000005200900060037010000000046082000050049004003600',
+        givens: '000000320040502060900800000007084002000000000000000614608000500030605000020970000',
         solution:
-          '679324851421587936385169274196438725248975163537612498913746582762851349854293617',
+          '856741329143592867972836145367184952415269783289357614698423571734615298521978436',
         difficulty: 'expert',
       },
     ],
@@ -295,13 +295,13 @@ describe('generatePuzzle', () => {
     });
 
     it('prefers a puzzle the set solves to one rated the same that it cannot', () => {
-      // Seed 16's first attempt is beyond the set, its second a solved Expert:
+      // Seed 35's first attempt is beyond the set, its second a solved Expert:
       // both Expert, one tier from Hard. The solved one is the easier, so it
       // wins although it came second.
-      const first = generatePuzzle('hard', mulberry32(16), { maxAttempts: 1 });
+      const first = generatePuzzle('hard', mulberry32(35), { maxAttempts: 1 });
       expect(first.difficulty).toBe('expert');
       expect(grade(gridValues(first.givens)).solved).toBe(false);
-      const puzzle = generatePuzzle('hard', mulberry32(16), { maxAttempts: 2 });
+      const puzzle = generatePuzzle('hard', mulberry32(35), { maxAttempts: 2 });
       expect(puzzle.difficulty).toBe('expert');
       expect(grade(gridValues(puzzle.givens)).solved).toBe(true);
     });

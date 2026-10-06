@@ -59,6 +59,7 @@ export const TECHNIQUE_LABEL: Readonly<Record<TechniqueId, string>> = {
   twoStringKite: '2-String Kite',
   xyChain: 'XY-Chain',
   wWing: 'W-Wing',
+  alternatingChain: 'alternating chain',
 };
 
 /** Whether any help was taken. */

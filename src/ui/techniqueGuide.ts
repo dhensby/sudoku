@@ -1,6 +1,7 @@
 import {
   BOX,
   COL,
+  MAX_CHAIN_STRONG_LINKS,
   MAX_XY_CHAIN,
   POPCOUNT,
   ROW,
@@ -57,7 +58,8 @@ export type GuideId =
   | 'skyscraper'
   | 'twoStringKite'
   | 'xyChain'
-  | 'wWing';
+  | 'wWing'
+  | 'alternatingChain';
 
 /** One worked example an entry shows: a technique, and a label when there is more than one. */
 export interface GuideExampleSpec {
@@ -113,6 +115,7 @@ export const GUIDE_ORDER: readonly GuideId[] = [
   'twoStringKite',
   'xyChain',
   'wWing',
+  'alternatingChain',
 ];
 
 const GUIDE_ID: Readonly<Record<TechniqueId, GuideId>> = {
@@ -134,6 +137,7 @@ const GUIDE_ID: Readonly<Record<TechniqueId, GuideId>> = {
   twoStringKite: 'twoStringKite',
   xyChain: 'xyChain',
   wWing: 'wWing',
+  alternatingChain: 'alternatingChain',
 };
 
 /** The guide entry that explains a technique — what a hint's "What's a …?" opens. */
@@ -632,6 +636,37 @@ function wWingCaption({ step }: TechniqueTrace): string {
   );
 }
 
+/**
+ * Alternating chain: link by link, what each candidate must be if the first
+ * end is wrong — each strong link with its reason, each weak link what it
+ * rules out — then what the two ends rule out between them.
+ */
+function alternatingCaption({ step }: TechniqueTrace): string {
+  const nodes = step.pattern.map(({ index, mask }) => ({ index, digit: digitsOf(mask)[0] }));
+  const houses = [...step.houses];
+  const strong = (k: number) => {
+    const [a, b] = [nodes[k], nodes[k + 1]];
+    if (a.index === b.index) return `it's ${b.digit}, its only other candidate`;
+    return (
+      `${describePosition(b.index)} is ${b.digit}, as ${describeUnit(houses.shift()!)} has no ` +
+      `other place for ${aDigit(b.digit)}`
+    );
+  };
+  const [first, last] = [nodes[0], nodes[nodes.length - 1]];
+  let walk = `If ${describePosition(first.index)} isn't ${first.digit}, ${strong(0)}`;
+  for (let k = 2; k < nodes.length; k += 2) {
+    walk += `; so ${describePosition(nodes[k].index)} isn't ${nodes[k].digit}, and ${strong(k)}`;
+  }
+  const conclusion =
+    first.digit === last.digit
+      ? `So one end or the other is ${aDigit(first.digit)}, and a cell that sees both can't ` +
+        `be: remove ${first.digit} from ${cellsPhrase(indexesOf(step.eliminations))}.`
+      : `So either ${describePosition(first.index)} is ${first.digit} or ` +
+        `${describePosition(last.index)} is ${last.digit}, and nothing that would rule out ` +
+        `both can be right: remove ${removals(step.eliminations)}.`;
+  return `${capitalise(walk)}. ${conclusion}`;
+}
+
 // ---- Entries ----------------------------------------------------------------
 
 /** An entry whose title is its technique's label, capitalised, as hints word it. */
@@ -1012,6 +1047,38 @@ export const GUIDE: Readonly<Record<GuideId, GuideEntry>> = {
       'of the two digits, look for a row, column or box where it has just two places, one ' +
       'seen by each cell. Then strike the other digit from every cell that sees both of them.',
     caption: credited(wWingCaption),
+  }),
+
+  alternatingChain: entry('alternatingChain', only('alternatingChain'), {
+    aka: ['alternating inference chain', 'AIC'],
+    summary:
+      'Candidates linked strongly and weakly in turn — through cells with two candidates and ' +
+      'digits with two places — so that one end or the other must be right: anything that ' +
+      'would rule out both can go.',
+    explanation: [
+      'Every chain in this guide is built from two kinds of link. A strong link joins two ' +
+        'candidates of which at least one must be right: the two candidates of a cell that ' +
+        'has only two, or the two places left for a digit in a row, column or box. A weak ' +
+        "link joins two that can't both be right: two digits of the same cell, or the same " +
+        'digit in two cells that see each other.',
+      'Alternate them, strong at both ends, and if the first candidate is wrong, the next is ' +
+        'right, so the one after is wrong, so the next is right — all the way to the last. ' +
+        'Either the first end or the last is right, so any candidate that would rule out both ' +
+        '— one that sees them both, or shares a cell with one and sees the other — can go.',
+      'The Skyscraper, the 2-String Kite, the XY-Chain and the W-Wing are all alternating ' +
+        'chains with shapes of their own. This is the general case, free to switch digits ' +
+        'inside a cell and run through rows, columns, boxes and cells alike — as the example ' +
+        `does. The puzzles here never need one with more than ` +
+        `${NUMBER_WORD[MAX_CHAIN_STRONG_LINKS]} strong links.`,
+    ],
+    spot:
+      'The hardest technique here to see, and easiest with candidates on. Start from a cell ' +
+      'with two candidates, or a digit with two places in a row, column or box. Suppose one ' +
+      'of them is wrong and follow what must then be right (through strong links) and what ' +
+      'that rules out (through weak links). Each candidate you reach through a strong link is ' +
+      'the end of a chain: anything that would rule out both it and the one you started from ' +
+      'can go.',
+    caption: credited(alternatingCaption),
   }),
 };
 

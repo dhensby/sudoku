@@ -91,6 +91,11 @@ export const EXAMPLE_PUZZLES: Readonly<Record<TechniqueId, GridString>> = {
   // lie in their rows; the 3 goes from row 6, column 5, which sees both.
   // Seed 49031, after 36.
   wWing: '829476135541000786637815400058760014016048570074501608182604057495087060763052840',
+  // Row 7's 8s, column 5's, row 2's, then row 2, column 7 switches to 9
+  // and column 7's 9s finish it: row 7, column 6 can't be 9. Seed 56290,
+  // after 13.
+  alternatingChain:
+    '268090400510602003370001200005900000901020700007050009456200007792005084183700500',
 };
 
 /**
