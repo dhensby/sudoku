@@ -1019,6 +1019,71 @@ describe('wings', () => {
   });
 });
 
+describe('chains', () => {
+  // Rows 1 and 7 hold their 1s in column 1 and one other column each, 4 and
+  // 5 — in the same stack, so the cells in its boxes that see both tops are
+  // where the 1 goes from.
+  const SKYSCRAPER = (secondRow = '-1 . -1 | -1 -1 . | -1 -1 -1', targets = '.') => `
+    .  .  .  | .  .  ${targets} | .  .  .
+    -1 .  -1 | -1 .  -1 | -1 -1 -1
+    .  .  .  | .  .  ${targets} | .  .  .
+    ${OPEN}
+    ${OPEN}
+    ${OPEN}
+    .  .  .  | .  ${targets} . | .  .  .
+    ${secondRow}
+    .  .  .  | .  ${targets} . | .  .  .
+  `;
+
+  it('finds a Skyscraper on rows and clears the digit from the cells that see both tops', () => {
+    expect(TECHNIQUES.skyscraper(pencilmarks(SKYSCRAPER()))).toEqual(
+      eliminationStep('skyscraper', struck([1], [5, 23, 58, 76]), null, {
+        // End to end: a top, its base, the other base, the other top.
+        pattern: holding([1], [13, 10, 64, 68]),
+        houses: [row(1), row(7), column(1)],
+        digit: 1,
+      }),
+    );
+  });
+
+  it('finds a Skyscraper on columns', () => {
+    // The same pattern, turned on its side.
+    const board = pencilmarks(`
+      .  -1 .  | .  .  .  | .  -1 .
+      .  .  .  | .  .  .  | .  .  .
+      .  -1 .  | .  .  .  | .  -1 .
+      .  -1 .  | .  .  .  | .  -1 .
+      .  .  .  | .  .  .  | .  -1 .
+      .  -1 .  | .  .  .  | .  .  .
+      .  -1 .  | .  .  .  | .  -1 .
+      .  -1 .  | .  .  .  | .  -1 .
+      .  -1 .  | .  .  .  | .  -1 .
+    `);
+    expect(TECHNIQUES.skyscraper(board)).toEqual(
+      eliminationStep('skyscraper', struck([1], [42, 44, 45, 47]), null, {
+        pattern: holding([1], [37, 10, 16, 52]),
+        houses: [column(1), column(7), row(1)],
+        digit: 1,
+      }),
+    );
+  });
+
+  it('leaves tops that share a cross line too to the X-Wing', () => {
+    const board = pencilmarks(SKYSCRAPER('-1 . -1 | -1 . -1 | -1 -1 -1'));
+    expect(TECHNIQUES.skyscraper(board)).toBeNull();
+  });
+
+  it('does not fire when a line has a third place for the digit', () => {
+    const board = pencilmarks(SKYSCRAPER('-1 . -1 | -1 -1 . | -1 -1 .'));
+    expect(TECHNIQUES.skyscraper(board)).toBeNull();
+  });
+
+  it('never counts a Skyscraper that removes nothing', () => {
+    const board = pencilmarks(SKYSCRAPER(undefined, '-1'));
+    expect(TECHNIQUES.skyscraper(board)).toBeNull();
+  });
+});
+
 describe('every technique', () => {
   const OPEN_BOARD = Array(81).fill('.').join(' ');
 
@@ -1071,6 +1136,7 @@ describe('soundness', () => {
     ['nakedPair', 'claims a candidate its cell lacks', (step) => (step.pattern[0].mask = 0x1ff)],
     ['swordfish', 'forgets a cover line', (step) => step.houses.pop()],
     ['xyzWing', 'puts a pincer where the pivot goes', (step) => step.pattern.reverse()],
+    ['skyscraper', 'runs its chain backwards', (step) => step.pattern.reverse()],
   ])('flags a %s step that %s', (id, _, misdescribe) => {
     const techniques = TECHNIQUES as Record<TechniqueId, Technique>;
     const original = techniques[id];

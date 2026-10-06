@@ -218,6 +218,8 @@ const PAIRS: Pair[] = [
   ['pattern ring against its own fill', 'accent', mixed('accent', 0.22, 'cell-bg'), NON_TEXT],
   ['ringed candidate', 'text', mixed('accent', 0.22, 'cell-bg'), TEXT],
   ['forced digit on its disc', 'accent-text', 'accent', TEXT],
+  ['chain link on where to look', 'accent', 'hl-same', NON_TEXT],
+  ['chain link on paper', 'accent', 'cell-bg', NON_TEXT],
   ...(['cell-bg', 'hl-same', 'hl-peer'] as const).map((fill): Pair => [
     `removed candidate on ${fill}`,
     mixed('danger', 0.8, 'text'),

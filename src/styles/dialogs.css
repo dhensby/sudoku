@@ -1562,6 +1562,20 @@
   stroke-width: 2.5;
 }
 
+/* A chain's links run from candidate to candidate, under the rings: solid
+   where one or other must be the digit, dashed where they can't both be. */
+.technique-diagram__links line {
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.technique-diagram__links line[data-link='weak'] {
+  stroke-width: 1.6;
+  stroke-dasharray: 4 3.5;
+  stroke-linecap: butt;
+}
+
 .technique-diagram__candidate {
   fill: var(--candidate);
   font-weight: 500;
@@ -1717,6 +1731,20 @@
 
 .technique-diagram__swatch--pivot {
   border: 2px solid var(--accent);
+}
+
+/* A link's swatch is a short stretch of line, solid or dashed. */
+.technique-diagram__swatch--strong,
+.technique-diagram__swatch--weak {
+  width: 16px;
+  height: 2px;
+  border: 0;
+  border-radius: 0;
+  background: var(--accent);
+}
+
+.technique-diagram__swatch--weak {
+  background: repeating-linear-gradient(to right, var(--accent) 0 4px, transparent 4px 7px);
 }
 
 /* "To bottom right" draws a '/', as on the board's wrong answers. */

@@ -22,11 +22,17 @@ const candidateText = (layer: Element) =>
 /** Marked candidates' digits, in order. */
 const digits = (marked: NodeListOf<Element>) => [...marked].map((text) => text.textContent).sort();
 
-/** The cell a mark sits in, from its position (40 units a cell). */
-const cellOf = (mark: Element) => {
-  const [x, y] = ['x', 'y'].map((axis) => Number(mark.getAttribute(axis)));
+/** The cell a point of a mark sits in, from its coordinates (40 units a cell). */
+const cellAt = (mark: Element, xAttr: string, yAttr: string) => {
+  const [x, y] = [xAttr, yAttr].map((axis) => Number(mark.getAttribute(axis)));
   return Math.floor(y / 40) * 9 + Math.floor(x / 40);
 };
+
+/** The cell a mark sits in. */
+const cellOf = (mark: Element) => cellAt(mark, 'x', 'y');
+
+/** The cells a line runs between. */
+const endsOf = (line: Element) => [cellAt(line, 'x1', 'y1'), cellAt(line, 'x2', 'y2')];
 
 describe('TechniqueDiagram', () => {
   it('is an image named by its caption, which is not read out a second time', () => {
@@ -140,6 +146,49 @@ describe('TechniqueDiagram', () => {
     });
   });
 
+  describe('a chain', () => {
+    // Skyscraper: columns 3 and 4 hold their 7s in rows 2 and 6, and rows 2
+    // and 5; the 7 goes from r5c1, which sees both tops.
+    const [top1, base1, base2, top2] = [5 * 9 + 2, 1 * 9 + 2, 1 * 9 + 3, 4 * 9 + 3];
+
+    it('links its candidates end to end: solid, dashed, solid', () => {
+      const { layer } = draw('skyscraper');
+      const links = [...layer('links').querySelectorAll('line')];
+      expect(links.map((line) => line.getAttribute('data-link'))).toEqual([
+        'strong',
+        'weak',
+        'strong',
+      ]);
+      expect(links.map(endsOf)).toEqual([
+        [top1, base1],
+        [base1, base2],
+        [base2, top2],
+      ]);
+      expect(screen.getByText("If one isn't 7, the other is")).toBeInTheDocument();
+      expect(screen.getByText("If one is 7, the other isn't")).toBeInTheDocument();
+    });
+
+    it('fills in both ends, one of which is the digit, and rings the cells between', () => {
+      const { layer, marks } = draw('skyscraper');
+      expect([...marks('forced')].map(cellOf)).toEqual([top2, top1]);
+      expect([...marks('pattern')].map(cellOf)).toEqual([base1, base2]);
+      expect(layer('rings').querySelectorAll('circle[data-ring="forced"]')).toHaveLength(2);
+      expect(screen.getByText('At least one of these is 7')).toBeInTheDocument();
+      expect([...marks('removed')].map(cellOf)).toEqual([4 * 9]);
+    });
+
+    it('shades the lines its strong links lie in, and nothing for the weak link', () => {
+      const { marks } = draw('skyscraper');
+      const shaded = [...marks('shaded')];
+      expect(shaded).toHaveLength(18);
+      expect(shaded.every((rect) => rect.getAttribute('data-shade') === 'look')).toBe(true);
+      const columns = new Set(shaded.map((rect) => Number(rect.getAttribute('x')) / 40));
+      expect(columns).toEqual(new Set([2, 3]));
+      expect(marks('house')).toHaveLength(2);
+      expect(screen.queryByText('Where it clears')).not.toBeInTheDocument();
+    });
+  });
+
   describe('a technique about several digits', () => {
     it('shows every candidate, ringing the pair and striking what it clears', () => {
       // {1, 2} twice in row 7, clearing a 2 and a 1 from the cells between.
@@ -208,6 +257,12 @@ describe('TechniqueDiagram', () => {
       expect(digits(marks('forced'))).toEqual(['9', '9', '9']);
       expect(digits(marks('pattern'))).toEqual(['3', '3', '8', '8']);
       expect(screen.getByText('At least one of these is 9')).toBeInTheDocument();
+    });
+
+    it('draws no links for a technique that is not a chain', () => {
+      const { layer } = draw('xyWing');
+      expect(layer('links').querySelectorAll('line')).toHaveLength(0);
+      expect(screen.queryByText(/the other is/)).not.toBeInTheDocument();
     });
 
     it('frames no pivot for a technique that has none', () => {

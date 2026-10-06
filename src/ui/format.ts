@@ -55,6 +55,7 @@ export const TECHNIQUE_LABEL: Readonly<Record<TechniqueId, string>> = {
   swordfish: 'Swordfish',
   xyWing: 'XY-Wing',
   xyzWing: 'XYZ-Wing',
+  skyscraper: 'Skyscraper',
 };
 
 /** Whether any help was taken. */

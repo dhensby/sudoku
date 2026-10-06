@@ -130,11 +130,11 @@ test.describe('browsing', () => {
     await guide(page).getByRole('button', { name: 'Previous: Full house' }).click();
     await expect(entryHeading(page)).toHaveText('Full house');
 
-    await list(page).getByRole('button', { name: 'XYZ-Wing' }).click();
-    await expect(entryHeading(page)).toHaveText('XYZ-Wing');
+    await list(page).getByRole('button', { name: 'Skyscraper' }).click();
+    await expect(entryHeading(page)).toHaveText('Skyscraper');
     await expect(entryHeading(page)).toBeFocused();
     await expect(guide(page).getByRole('button', { name: /^Next/ })).toHaveCount(0);
-    await expect(guide(page).getByRole('button', { name: 'Previous: XY-Wing' })).toBeVisible();
+    await expect(guide(page).getByRole('button', { name: 'Previous: XYZ-Wing' })).toBeVisible();
   });
 
   test('Tab and Shift+Tab carry on from the entry heading, not from the ends of the dialog', async ({
@@ -159,7 +159,7 @@ test.describe('browsing', () => {
     // …and back from it to the list, the picker beside it being hidden here.
     await choose('Hidden pair');
     await page.keyboard.press('Shift+Tab');
-    await expect(list(page).getByRole('button', { name: 'XYZ-Wing' })).toBeFocused();
+    await expect(list(page).getByRole('button', { name: 'Skyscraper' })).toBeFocused();
   });
 
   test('Help hands over to the guide, which closes back to the game', async ({ page }) => {
