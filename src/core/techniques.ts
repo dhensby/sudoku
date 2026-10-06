@@ -95,7 +95,10 @@ export interface SolveStep {
    * - XY-Chain: its cells from end to end, each with both its candidates;
    * - W-Wing: the first two-candidate cell, with both its candidates; the
    *   two places of the digit that joins them, the first seen by that cell
-   *   and the second by the other; and the other two-candidate cell.
+   *   and the second by the other; and the other two-candidate cell;
+   * - alternating chain: its candidates from end to end, one digit each —
+   *   so a cell can appear twice, for two of its digits — linked strongly,
+   *   weakly, and so on, strongly at both ends.
    */
   pattern: PatternCell[];
   /**
@@ -105,14 +108,16 @@ export interface SolveStep {
    * base lines, then the cover lines; XY- and XYZ-Wings → none; chains →
    * the houses of their strong links, then the house of the weak link
    * between them (none for an XY-Chain, whose links are between cells);
-   * W-Wing → the house of the digit that joins its cells.
+   * W-Wing → the house of the digit that joins its cells; alternating chain
+   * → the house of each strong link between two cells, in order (a strong
+   * link inside a cell has none).
    */
   houses: Unit[];
   /**
    * The one digit the step is about: the digit placed by a single, or the
    * digit of locked candidates, fish and chains (for an XY-Chain or a
-   * W-Wing, the digit at both its ends, which it removes). Null for subsets
-   * and the other wings, which work with several.
+   * W-Wing, the digit at both its ends, which it removes). Null for subsets,
+   * the other wings and alternating chains, which work with several.
    */
   digit: Digit | null;
 }
@@ -884,6 +889,164 @@ const wWing: Technique = (board) => {
 };
 
 /**
+ * The most strong links an alternating chain is allowed — seven links in
+ * all, eight candidates: longer ones are hard to follow by eye.
+ */
+export const MAX_CHAIN_STRONG_LINKS = 4;
+
+/** A candidate as a node of an alternating chain: its cell × 9 + its digit − 1. */
+const nodeOf = (index: number, digit: number) => index * 9 + digit - 1;
+const cellOfNode = (node: number) => Math.floor(node / 9);
+const digitOfNode = (node: number) => (node % 9) + 1;
+
+/**
+ * The strong links out of every candidate on the board: to the other
+ * candidate of a cell that has just two, and to the other place of a digit
+ * that has just two in a house — with that house, the first in unit order
+ * when a pair of places shares two. A link inside a cell has no house.
+ */
+function strongLinks(board: SolverBoard): { to: number; house: number | null }[][] {
+  const links: { to: number; house: number | null }[][] = Array.from({ length: 729 }, () => []);
+  const link = (from: number, to: number, house: number | null) => {
+    if (!links[from].some((l) => l.to === to)) links[from].push({ to, house });
+  };
+  for (let i = 0; i < 81; i++) {
+    const mask = board.candidates[i];
+    if (POPCOUNT[mask] !== 2) continue;
+    const [a, b] = digitsOf(mask);
+    link(nodeOf(i, a), nodeOf(i, b), null);
+    link(nodeOf(i, b), nodeOf(i, a), null);
+  }
+  for (let u = 0; u < 27; u++) {
+    for (let d = 1; d <= 9; d++) {
+      const places = UNITS[u].filter((i) => (board.candidates[i] & bit(d)) !== 0);
+      if (places.length !== 2) continue;
+      link(nodeOf(places[0], d), nodeOf(places[1], d), u);
+      link(nodeOf(places[1], d), nodeOf(places[0], d), u);
+    }
+  }
+  return links;
+}
+
+/**
+ * The weak links out of a candidate: the other candidates of its cell, and
+ * the same digit in every cell it sees. Either way, the two can't both be
+ * right.
+ */
+function weakLinks(board: SolverBoard, node: number): number[] {
+  const index = cellOfNode(node);
+  const digit = digitOfNode(node);
+  const links: number[] = [];
+  for (const d of digitsOf(board.candidates[index])) if (d !== digit) links.push(nodeOf(index, d));
+  for (const peer of PEERS[index]) {
+    if ((board.candidates[peer] & bit(digit)) !== 0) links.push(nodeOf(peer, digit));
+  }
+  return links;
+}
+
+/**
+ * Whether `node` is already in the chain that leads to `state`, following
+ * each state back to the one it was reached from (the start is never among
+ * them, so it has to be checked on its own).
+ */
+function isOnChain(
+  before: ReadonlyMap<number, { from: number }>,
+  state: number,
+  node: number,
+): boolean {
+  for (let s = state; before.has(s); s = before.get(s)!.from) if (s >> 1 === node) return true;
+  return false;
+}
+
+/**
+ * Alternating chain: candidates linked strongly (at least one of the two
+ * is right) and weakly (they can't both be) in turn, strongly at both ends.
+ * If the first end is wrong, the next candidate is right, so the one after
+ * is wrong, and so on to the last end, which is right: one end or the other
+ * is. Every candidate that would rule out both — weakly linked to each —
+ * can go.
+ *
+ * Breadth first from every candidate in turn, so the chain found is the
+ * shortest there is (to `MAX_CHAIN_STRONG_LINKS` strong links), the first
+ * in scan order when there are several. The techniques before it are all
+ * chains of particular shapes; this is the general case.
+ */
+const alternatingChain: Technique = (board) => {
+  const { candidates } = board;
+  const strong = strongLinks(board);
+  const maxLinks = 2 * MAX_CHAIN_STRONG_LINKS - 1;
+  let best: { nodes: number[]; houses: number[]; targets: number[] } | null = null;
+  for (let start = 0; start < 729; start++) {
+    if ((candidates[cellOfNode(start)] & bit(digitOfNode(start))) === 0) continue;
+    const ruledOutByStart = new Set(weakLinks(board, start));
+    // Each state is a node and whether it is right (1) or wrong (0) if the
+    // start is wrong; each remembers the state it was reached from and the
+    // house of the link, when that is a strong link between cells.
+    const before = new Map<number, { from: number; house: number | null }>();
+    let frontier: number[] = [];
+    for (const { to, house } of strong[start]) {
+      before.set(2 * to + 1, { from: 2 * start, house });
+      frontier.push(2 * to + 1);
+    }
+    for (let links = 1; links <= maxLinks && frontier.length > 0; links++) {
+      if (best !== null && links >= best.nodes.length - 1) break;
+      if (links % 2 === 1 && links >= 3) {
+        for (const state of frontier) {
+          const end = state >> 1;
+          const nodes = [end];
+          const houses: number[] = [];
+          for (let s = state; s !== 2 * start; s = before.get(s)!.from) {
+            const { from, house } = before.get(s)!;
+            nodes.unshift(from >> 1);
+            if (house !== null) houses.unshift(house);
+          }
+          const targets = weakLinks(board, end).filter(
+            (z) => ruledOutByStart.has(z) && !nodes.includes(z),
+          );
+          if (targets.length > 0) {
+            best = { nodes, houses, targets };
+            break;
+          }
+        }
+        if (best !== null && best.nodes.length - 1 === links) break;
+      }
+      const next: number[] = [];
+      for (const state of frontier) {
+        const node = state >> 1;
+        const isRight = (state & 1) === 1;
+        const out = isRight
+          ? weakLinks(board, node).map((to) => ({ to, house: null }))
+          : strong[node];
+        for (const { to, house } of out) {
+          const reached = 2 * to + (isRight ? 0 : 1);
+          // Each candidate at most once in a chain, the start included.
+          if (before.has(reached) || to === start || isOnChain(before, state, to)) continue;
+          // A weak link between cells needs no house: they see each other.
+          before.set(reached, { from: state, house: isRight ? null : house });
+          next.push(reached);
+        }
+      }
+      frontier = next;
+    }
+  }
+  if (best === null) return null;
+  const { nodes, houses, targets } = best;
+  const masks = new Map<number, number>();
+  for (const z of targets) {
+    masks.set(cellOfNode(z), (masks.get(cellOfNode(z)) ?? 0) | bit(digitOfNode(z)));
+  }
+  const eliminations: Elimination[] = [];
+  for (const [index, mask] of [...masks].sort(([a], [b]) => a - b)) {
+    strike(board, eliminations, index, mask);
+  }
+  return eliminationStep('alternatingChain', eliminations, null, () => ({
+    pattern: nodes.map((node) => ({ index: cellOfNode(node), mask: bit(digitOfNode(node)) })),
+    houses: houses.map(unitOf),
+    digit: null,
+  }));
+};
+
+/**
  * Every technique, by id. Each applies one step to the board, or returns null
  * and changes nothing.
  */
@@ -906,4 +1069,5 @@ export const TECHNIQUES: Readonly<Record<TechniqueId, Technique>> = {
   twoStringKite,
   xyChain,
   wWing,
+  alternatingChain,
 };

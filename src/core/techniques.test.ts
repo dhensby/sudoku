@@ -1218,6 +1218,45 @@ describe('chains', () => {
   it('never counts a W-Wing that removes nothing', () => {
     expect(TECHNIQUES.wWing(pencilmarks(W_WING({ 4: '-1', 36: '-1' })))).toBeNull();
   });
+
+  // r0c0 {1, 2}; column 4's 2s at r0c4 and r4c4 {2, 3}; row 4's 3s at r4c4
+  // and r4c0. If r0c0 isn't 1 it's 2, so r0c4 isn't 2, so r4c4 is 2 and
+  // isn't 3, so r4c0 is 3: either r0c0 is 1 or r4c0 is 3, and r4c0's 1,
+  // which would rule out both, goes.
+  const ALTERNATING = (cells: Record<number, string> = {}) =>
+    layout({
+      ...Object.fromEntries([13, 22, 31, 49, 58, 67, 76].map((i) => [i, '-2'])),
+      ...Object.fromEntries([37, 38, 39, 41, 42, 43, 44].map((i) => [i, '-3'])),
+      0: '12',
+      40: '23',
+      ...cells,
+    });
+
+  it('finds an alternating chain and clears what would rule out both its ends', () => {
+    expect(TECHNIQUES.alternatingChain(pencilmarks(ALTERNATING()))).toEqual(
+      eliminationStep('alternatingChain', struck([1], [36]), null, {
+        // One digit per candidate, end to end: strong, weak, strong, weak,
+        // strong — inside r0c0, from it to r0c4, down column 4, inside
+        // r4c4, along row 4.
+        pattern: [...holding([1], [0]), ...holding([2], [0, 4, 40]), ...holding([3], [40, 36])],
+        // The houses of its strong links between cells, in order.
+        houses: [column(4), row(4)],
+        digit: null,
+      }),
+    );
+  });
+
+  it('does not take a cell with three candidates for a strong link', () => {
+    expect(TECHNIQUES.alternatingChain(pencilmarks(ALTERNATING({ 0: '124' })))).toBeNull();
+  });
+
+  it('does not take a digit with three places for a strong link', () => {
+    expect(TECHNIQUES.alternatingChain(pencilmarks(ALTERNATING({ 13: '.' })))).toBeNull();
+  });
+
+  it('never counts an alternating chain that removes nothing', () => {
+    expect(TECHNIQUES.alternatingChain(pencilmarks(ALTERNATING({ 36: '-1' })))).toBeNull();
+  });
 });
 
 describe('every technique', () => {

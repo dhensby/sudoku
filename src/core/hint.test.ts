@@ -32,9 +32,9 @@ const DEDUCTION_POSITION =
  * r0c3, earlier in reading order, for no reason the player can see.
  */
 const STALLED_POSITION =
-  '003001050095700300400030006200068500000290600030000400018050040000800060900040780';
+  '025000679070609000906070000260450000514090006000061524000936240300000860602708003';
 const STALLED_SOLUTION =
-  '683421957195786324427935816249368571571294638836517492718659243354872169962143785';
+  '825314679471689352936572418268457931514293786793861524187936245349125867652748193';
 
 describe('findHint', () => {
   it('points at the first wrong value in reading order, before anything else', () => {
@@ -104,17 +104,17 @@ describe('findHint', () => {
   it('falls back to the cell showing the fewest candidates when the techniques stall', () => {
     const values = gridValues(STALLED_POSITION);
     // The preconditions: from here the grader makes no placement at all, but
-    // it does strike candidates from r0c3, which shows three to r0c4's two.
+    // it does strike candidates from r0c3, which shows three to r0c5's two.
     const { steps, solveOrder } = grade(values);
     expect(solveOrder).toEqual([]);
     expect(steps.some((step) => step.eliminations.some(({ index }) => index === 3))).toBe(true);
     const naked = computeCandidates(values);
-    expect([POPCOUNT[naked[3]], POPCOUNT[naked[4]]]).toEqual([3, 2]);
+    expect([POPCOUNT[naked[3]], POPCOUNT[naked[5]]]).toEqual([3, 2]);
     // The pick goes by what the board shows, not by eliminations the hint
     // never explains (going by those would make it r0c3).
     expect(findHint(values, gridValues(STALLED_SOLUTION))).toEqual<Hint>({
       kind: 'deduction',
-      index: 4,
+      index: 5,
       technique: null,
     });
   });

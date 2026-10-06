@@ -208,7 +208,7 @@ describe('TechniqueDiagram', () => {
         [0, 9],
         [9, 12],
       ]);
-      expect(screen.getByText("Can't both be the digit they share")).toBeInTheDocument();
+      expect(screen.getByText("Can't both be right")).toBeInTheDocument();
       expect(screen.queryByText(/the other is$/)).not.toBeInTheDocument();
     });
 
@@ -260,6 +260,54 @@ describe('TechniqueDiagram', () => {
       expect(digits(marks('pattern'))).toEqual(['9', '9', '9', '9']);
       expect(screen.getByText('At least one of these is 3')).toBeInTheDocument();
       expect([...marks('removed')].map(cellOf)).toEqual([49]);
+    });
+  });
+
+  describe('an alternating chain', () => {
+    // Row 7's 8s (r7c6, r7c5), column 5 to r2c5, row 2's 8s (r2c5, r2c7),
+    // r2c7 switching to 9, column 7's 9s (r2c7, r7c7): r7c6 can't be 9.
+    const [r7c6, r7c5, r2c5, r2c7, r7c7] = [59, 58, 13, 15, 60];
+
+    it('shades its cells and draws every link, strong and weak in turn', () => {
+      const { layer, marks } = draw('alternatingChain');
+      expect([...marks('shaded')].map(cellOf).sort((a, b) => a - b)).toEqual(
+        [r7c6, r7c5, r2c5, r2c7, r7c7].sort((a, b) => a - b),
+      );
+      expect(marks('house')).toHaveLength(0);
+      const links = [...layer('links').querySelectorAll('line, path')];
+      expect(links.map((link) => link.getAttribute('data-link'))).toEqual([
+        'strong',
+        'weak',
+        'strong',
+        'weak',
+        'strong',
+      ]);
+      // Between cells a straight line; inside r2c7, from its 8 to its 9, an arc.
+      expect(links.map((link) => link.tagName)).toEqual(['line', 'line', 'line', 'path', 'line']);
+      expect(links.filter((link) => link.tagName === 'line').map(endsOf)).toEqual([
+        [r7c6, r7c5],
+        [r7c5, r2c5],
+        [r2c5, r2c7],
+        [r2c7, r7c7],
+      ]);
+      expect(screen.getByText("If one isn't right, the other is")).toBeInTheDocument();
+      expect(screen.getByText("Can't both be right")).toBeInTheDocument();
+    });
+
+    it('fills in its two ends, on different digits, one of which is right', () => {
+      const { marks } = draw('alternatingChain');
+      const forced = [...marks('forced')].map((mark) => [cellOf(mark), mark.textContent]);
+      expect(forced).toEqual(
+        expect.arrayContaining([
+          [r7c6, '8'],
+          [r7c7, '9'],
+        ]),
+      );
+      expect(forced).toHaveLength(2);
+      expect(screen.getByText('At least one of these is right')).toBeInTheDocument();
+      expect([...marks('removed')].map((mark) => [cellOf(mark), mark.textContent])).toEqual([
+        [r7c6, '9'],
+      ]);
     });
   });
 

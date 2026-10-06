@@ -153,6 +153,7 @@ describe('techniqueQuestion', () => {
     ['twoStringKite', "What's a 2-String Kite?"],
     ['xyChain', "What's an XY-Chain?"],
     ['wWing', "What's a W-Wing?"],
+    ['alternatingChain', "What's an alternating chain?"],
     ['claiming', "What's a box/line reduction?"],
     ['pointing', "What's a pointing pair or triple?"],
   ])('asks about %s by its name', (technique, question) => {
@@ -280,6 +281,10 @@ describe('the worked examples', () => {
     [
       'wWing',
       "Row 4, column 6 and row 7, column 5 can each only be 3 or 9. Column 7's 9 can only go in rows 4 and 7: row 4, column 7, which row 4, column 6 sees, or row 7, column 7, which row 7, column 5 sees. Whichever it is, the cell that sees it can't be 9, so it's 3. One of the two cells is a 3, so a cell that sees both can't be: remove 3 from row 6, column 5.",
+    ],
+    [
+      'alternatingChain',
+      "If row 7, column 6 isn't 8, row 7, column 5 is 8, as row 7 has no other place for an 8; so row 2, column 5 isn't 8, and row 2, column 7 is 8, as row 2 has no other place for an 8; so row 2, column 7 isn't 9, and row 7, column 7 is 9, as column 7 has no other place for a 9. So either row 7, column 6 is 8 or row 7, column 7 is 9, and nothing that would rule out both can be right: remove 9 from row 7, column 6.",
     ],
   ])('walk through the %s example', (technique, caption) => {
     const example = guideExamples(guideIdFor(technique)).find((e) => e.technique === technique)!;

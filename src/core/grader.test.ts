@@ -43,6 +43,7 @@ describe('technique tables', () => {
     ['twoStringKite', 'expert', 150],
     ['xyChain', 'expert', 260],
     ['wWing', 'expert', 150],
+    ['alternatingChain', 'expert', 280],
   ])('ranks %s as %s, scoring %i', (id, tier, score) => {
     expect(TECHNIQUE_TIER[id]).toBe(tier);
     expect(TECHNIQUE_SCORE[id]).toBe(score);
@@ -50,7 +51,7 @@ describe('technique tables', () => {
 
   it('tries every technique exactly once, easiest first', () => {
     expect(TECHNIQUE_ORDER).toEqual(Object.keys(TECHNIQUE_TIER));
-    expect(new Set(TECHNIQUE_ORDER).size).toBe(18);
+    expect(new Set(TECHNIQUE_ORDER).size).toBe(19);
     expect(Object.keys(TECHNIQUES).sort()).toEqual([...TECHNIQUE_ORDER].sort());
   });
 
@@ -222,7 +223,8 @@ describe('grade', () => {
       xyWing: 6,
       skyscraper: 6,
       xyChain: 6,
-      unsolved: 20,
+      alternatingChain: 15,
+      unsolved: 5,
     });
   }, 60_000);
 });
