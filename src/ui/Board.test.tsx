@@ -99,6 +99,17 @@ describe('Board', () => {
     expect(cells[0]).toHaveAttribute('aria-selected', 'false');
   });
 
+  it('describes the selected cell, and only it, by the text it is given', () => {
+    const { rerender, props } = renderBoard({ describedBy: 'hint-text' });
+    const cells = screen.getAllByRole('gridcell');
+    expect(cells.filter((cell) => cell.hasAttribute('aria-describedby'))).toEqual([
+      cells[FIRST_EMPTY],
+    ]);
+    expect(cells[FIRST_EMPTY]).toHaveAttribute('aria-describedby', 'hint-text');
+    rerender(<Board {...props} describedBy={undefined} />);
+    expect(cells[FIRST_EMPTY]).not.toHaveAttribute('aria-describedby');
+  });
+
   it('tints the selected cell’s row, column and box', () => {
     // Select row 5, column 5 (index 40), a given 5 in the middle box.
     renderBoard({ game: play({ type: 'select', index: 40 }) });

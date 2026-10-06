@@ -14,6 +14,7 @@ import {
 } from '../storage/history';
 import { loadPreferences, setLastDifficulty } from '../storage/prefs';
 import { memoryStorage, type StorageLike } from '../storage/storage';
+import { STUCK_ON_A_HIDDEN_PAIR } from '../test/logic-fixtures';
 import type { PuzzleSource } from './puzzleSource';
 import {
   FIRST_EMPTY,
@@ -505,6 +506,224 @@ describe('useSudoku', () => {
       act(() => result.current.actions.setPlayerName('  Dan   H  '));
       expect(result.current.playerName).toBe('Dan H');
       expect(loadPreferences(storage).playerName).toBe('Dan H');
+    });
+  });
+
+  describe('hints remembered, and Show me', () => {
+    /** The puzzle a player got stuck on, and their sixteen right entries. */
+    const STUCK: Puzzle = {
+      givens: STUCK_ON_A_HIDDEN_PAIR.givens,
+      solution: STUCK_ON_A_HIDDEN_PAIR.solution,
+      difficulty: 'hard',
+    };
+
+    /** A cell by its row and column, counted from one as the game shows them. */
+    const rc = (row: number, col: number) => (row - 1) * 9 + col - 1;
+
+    async function stuck(options: SetupOptions = {}) {
+      const view = await started({ source: fakeSource(STUCK), ...options });
+      for (const [row, col, digit] of STUCK_ON_A_HIDDEN_PAIR.entries) {
+        enter(view.result, rc(row, col), digit);
+      }
+      return view;
+    }
+
+    it('show a cell’s hint again whenever it is selected, and ask nothing more for it', async () => {
+      const { result } = await started();
+      act(() => result.current.actions.hint());
+      const hint = result.current.game!.hint!;
+      const hinted = result.current.game!.selected;
+      expect(result.current.shownHint).toBe(hint);
+      expect(result.current.game?.assists.hints).toBe(1);
+
+      const elsewhere = EMPTIES.find((index) => index !== hinted)!;
+      act(() => result.current.actions.select(elsewhere));
+      expect(result.current.shownHint).toBeNull();
+      act(() => result.current.actions.select(hinted));
+      expect(result.current.game?.hint).toBeNull();
+      expect(result.current.shownHint).toEqual(hint);
+
+      // Asking again from elsewhere finds the same cell: shown, selected, free.
+      act(() => result.current.actions.select(elsewhere));
+      act(() => result.current.actions.hint());
+      expect(result.current.game?.selected).toBe(hinted);
+      expect(result.current.game?.assists.hints).toBe(1);
+    });
+
+    it('forget a hint once its cell holds its answer', async () => {
+      const { result } = await started();
+      act(() => result.current.actions.hint());
+      const hinted = result.current.game!.selected;
+      act(() => result.current.actions.enterDigit(answerAt(hinted) as Digit));
+      expect(result.current.shownHint).toBeNull();
+      expect(result.current.game?.cellHints.has(hinted)).toBe(false);
+    });
+
+    it('keep a cell’s hint, and what it cost, across a reload', async () => {
+      const storage = memoryStorage();
+      const first = await started({ storage });
+      act(() => first.result.current.actions.hint());
+      const hint = first.result.current.game!.hint!;
+      const hinted = first.result.current.game!.selected;
+      act(() => {
+        window.dispatchEvent(new Event('pagehide'));
+      });
+      first.unmount();
+
+      const { result } = setup({ storage, source: fakeSource() });
+      act(() => result.current.actions.resume());
+      act(() => result.current.actions.select(hinted));
+      expect(result.current.shownHint).toEqual(hint);
+      act(() => result.current.actions.hint());
+      expect(result.current.game?.assists.hints).toBe(1);
+    });
+
+    it('offer the steps for the hint on show, and none for a mistake', async () => {
+      const { result } = await started();
+      expect(result.current.walkthrough).toBeNull();
+      act(() => result.current.actions.hint());
+      // A single: the walkthrough is the single itself.
+      expect(result.current.walkthrough?.target).toBe(result.current.game?.selected);
+      expect(result.current.walkthrough?.steps).toHaveLength(1);
+
+      enter(result, EMPTIES[3], answerAt(EMPTIES[3]) === 9 ? 1 : 9);
+      act(() => result.current.actions.hint());
+      expect(result.current.shownHint?.kind).toBe('mistake');
+      expect(result.current.walkthrough).toBeNull();
+    });
+
+    it('walk the stuck player through their cell, counted as a hint the first time only', async () => {
+      const { result } = await stuck();
+      act(() => result.current.actions.hint());
+      expect(result.current.game?.hint).toEqual({
+        kind: 'deduction',
+        index: STUCK_ON_A_HIDDEN_PAIR.target,
+        technique: 'hiddenPair',
+      });
+      expect(result.current.game?.assists.hints).toBe(1);
+      const said = result.current.announcement;
+
+      act(() => result.current.actions.showMe());
+      const { dialog } = result.current;
+      expect(dialog?.kind).toBe('walkthrough');
+      if (dialog?.kind !== 'walkthrough') return;
+      expect(dialog.step).toBe(0);
+      expect(dialog.walkthrough.target).toBe(STUCK_ON_A_HIDDEN_PAIR.target);
+      expect(dialog.walkthrough.steps.map((trace) => trace.step.technique)).toEqual([
+        'hiddenPair',
+        'pointing',
+        'nakedSingle',
+      ]);
+      // A dialog like any other: the clock stops, silently.
+      expect(result.current.phase).toBe('paused');
+      expect(result.current.pauseReason).toBe('dialog');
+      expect(result.current.announcement).toBe(said);
+      expect(result.current.game?.assists.hints).toBe(2);
+      // The hint stays, behind it.
+      expect(result.current.shownHint?.kind).toBe('deduction');
+
+      advance(30_000);
+      act(() => result.current.actions.closeDialog());
+      expect(result.current.phase).toBe('playing');
+      expect(result.current.elapsedMs).toBe(0);
+
+      act(() => result.current.actions.showMe());
+      expect(result.current.dialog?.kind).toBe('walkthrough');
+      expect(result.current.game?.assists.hints).toBe(2);
+    });
+
+    it('put a remembered hint afresh once the board has moved on, as Show me would show it', async () => {
+      const { result } = await stuck();
+      const { target } = STUCK_ON_A_HIDDEN_PAIR;
+      act(() => result.current.actions.hint());
+      // Two right digits elsewhere, and the hidden pair is no longer needed.
+      enter(result, rc(5, 5), 9);
+      enter(result, rc(5, 6), 5);
+      act(() => result.current.actions.select(target));
+      expect(result.current.shownHint).toEqual({
+        kind: 'single',
+        index: target,
+        technique: 'nakedSingle',
+        unit: null,
+      });
+      expect(result.current.walkthrough?.steps.map((trace) => trace.step.technique)).toEqual([
+        'nakedSingle',
+      ]);
+      // Remembered as it was given, and asked for once.
+      expect(result.current.game?.cellHints.get(target)?.fill).toMatchObject({
+        technique: 'hiddenPair',
+      });
+      expect(result.current.game?.assists.hints).toBe(1);
+    });
+
+    it('offer Show me whatever the rest of the board holds, and point at a mistake when pressed', async () => {
+      const { result } = await stuck();
+      const { target } = STUCK_ON_A_HIDDEN_PAIR;
+      act(() => result.current.actions.hint());
+      // A 6 at row 1, column 1 is wrong (it takes a 9) but breaks no rule,
+      // so nothing on the board gives it away — and neither may Show me.
+      const wrong = rc(1, 1);
+      enter(result, wrong, 6);
+      act(() => result.current.actions.select(target));
+      expect(result.current.walkthrough).not.toBeNull();
+      expect(result.current.game?.assists.hints).toBe(1);
+
+      // Pressed, it does what Hint would: point at the mistake, counted.
+      act(() => result.current.actions.showMe());
+      expect(result.current.dialog).toBeNull();
+      expect(result.current.game?.hint).toEqual({ kind: 'mistake', index: wrong });
+      expect(result.current.game?.selected).toBe(wrong);
+      expect(result.current.game?.cells[wrong].mark).toBe('wrong');
+      expect(result.current.announcement?.text).toMatch(/incorrect\. Row 1, column 1\.$/);
+      expect(result.current.game?.assists.hints).toBe(2);
+      // Pointed out once, it is no news the second time.
+      act(() => result.current.actions.select(target));
+      act(() => result.current.actions.showMe());
+      expect(result.current.game?.hint?.kind).toBe('mistake');
+      expect(result.current.game?.assists.hints).toBe(2);
+
+      // Put right, Show me walks through the cell after all, counted once.
+      enter(result, wrong, 9);
+      act(() => result.current.actions.select(target));
+      act(() => result.current.actions.showMe());
+      expect(result.current.dialog?.kind).toBe('walkthrough');
+      expect(result.current.game?.assists.hints).toBe(3);
+    });
+
+    it('go to the guide from a step and back to that step, the clock stopped throughout', async () => {
+      const { result } = await stuck();
+      act(() => result.current.actions.hint());
+      act(() => result.current.actions.showMe());
+      const walkthrough = result.current.walkthrough!;
+      act(() => result.current.actions.openTechniques('pointing', 1));
+      expect(result.current.dialog).toEqual({
+        kind: 'techniques',
+        initial: 'pointing',
+        returnTo: { kind: 'walkthrough', walkthrough, step: 1 },
+      });
+      act(() => result.current.actions.closeDialog());
+      expect(result.current.dialog).toEqual({ kind: 'walkthrough', walkthrough, step: 1 });
+      expect(result.current.pauseReason).toBe('dialog');
+      // Without a step to go back to, it goes back where it was.
+      act(() => result.current.actions.openTechniques('hiddenPair'));
+      act(() => result.current.actions.closeDialog());
+      expect(result.current.dialog).toEqual({ kind: 'walkthrough', walkthrough, step: 1 });
+      act(() => result.current.actions.closeDialog());
+      expect(result.current.dialog).toBeNull();
+      expect(result.current.phase).toBe('playing');
+      // Reading the guide is still not help.
+      expect(result.current.game?.assists.hints).toBe(2);
+    });
+
+    it('open no walkthrough with none to show, or with the board hidden', async () => {
+      const { result } = await started();
+      act(() => result.current.actions.showMe());
+      expect(result.current.dialog).toBeNull();
+      act(() => result.current.actions.hint());
+      act(() => result.current.actions.pause());
+      act(() => result.current.actions.showMe());
+      expect(result.current.dialog).toBeNull();
+      expect(result.current.game?.assists.hints).toBe(1);
     });
   });
 

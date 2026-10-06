@@ -89,6 +89,7 @@ const CONTROLS: readonly Control[] = [
   },
   { action: 'Pause or resume', keyboard: <kbd>P</kbd>, pointer: 'The timer' },
   { action: 'Hint, check, reveal, reset', keyboard: null, pointer: 'The “…” menu' },
+  { action: 'Show me how to solve a cell', keyboard: null, pointer: 'Show me, after a hint' },
   { action: 'New game', keyboard: null, pointer: 'The + button' },
   {
     action: 'History, share, settings, help',
@@ -154,6 +155,27 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
               Candidates you remove yourself stay removed, even after switching it off and on again.
             </li>
             <li>Using it is recorded as an assist next to your time.</li>
+          </ul>
+        </section>
+
+        <section className="help__section">
+          <h3 className="help__heading">Hints</h3>
+          <ul className="help__list">
+            <li>
+              <strong>Hint</strong>, in the “…” menu, points at a cell you can fill next and names
+              the technique that gets you there, without giving the number away.
+            </li>
+            <li>
+              A cell remembers its hint: select it again and the hint is back, brought up to date if
+              the board has moved on, and asking for it again costs nothing more.
+            </li>
+            <li>
+              Still stuck? <strong>Show me</strong>, beside the hint, walks through the steps that
+              solve that cell, one at a time, each drawn on your own board, and ends with the
+              answer. Opening it counts as one more hint, the first time for each cell. If a number
+              on the board is wrong, it points at that instead, as Hint would.
+            </li>
+            <li>Hints are recorded next to your time, as checks and reveals are.</li>
           </ul>
         </section>
 

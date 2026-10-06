@@ -115,8 +115,11 @@ export interface Grade {
   solveOrder: number[];
 }
 
-/** Apply the easiest of `techniques` that does something, or return null if none does. */
-function nextStep(board: SolverBoard, techniques: readonly TechniqueId[]): SolveStep | null {
+/**
+ * Apply the easiest of `techniques` that does something, or return null if
+ * none does: one step of the grader's solve.
+ */
+export function nextStep(board: SolverBoard, techniques: readonly TechniqueId[]): SolveStep | null {
   for (const id of techniques) {
     const step = TECHNIQUES[id](board);
     if (step) return step;

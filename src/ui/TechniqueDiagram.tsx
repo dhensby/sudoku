@@ -7,6 +7,7 @@ import {
   digitsOf,
   unitCells,
   type Digit,
+  type Elimination,
   type TechniqueId,
   type TechniqueTrace,
   type Unit,
@@ -19,6 +20,23 @@ export interface TechniqueDiagramProps {
   caption: string;
   /** What sets this example apart from the entry's others ("In a box"), if it has any. */
   label?: string | null;
+  /**
+   * The cell a "Show me" walkthrough solves, marked on every step so the
+   * reader never loses it — the step itself may be half a board away.
+   */
+  target?: number | null;
+  /**
+   * Candidates earlier steps of a walkthrough removed that this step relies
+   * on having gone: drawn faintly, struck through with a dashed line, so the
+   * reader sees where the caption says they went.
+   */
+  ruledOut?: readonly Elimination[];
+  /**
+   * What the step comes to, said after the caption — a walkthrough's
+   * answer. Beside the board with the caption, so a step that has one is no
+   * taller than one that does not.
+   */
+  conclusion?: ReactNode;
 }
 
 /*
@@ -41,6 +59,11 @@ export interface TechniqueDiagramProps {
  * - A wing's shape: its pivot framed, and the digit it forces — the one it
  *   removes, which one of its cells must be — filled in rather than ringed,
  *   so the strike on the cell that sees them all follows from the picture.
+ * - In a walkthrough, the cell being solved: inked corner marks, like a
+ *   printer's crop marks, and its row and column numbers set in ink, so it
+ *   can be found on every step. And the candidates earlier steps removed
+ *   that this one relies on, faint and struck through with a dashed line —
+ *   lighter than this step's own strikes, which are its news.
  *
  * Rows and columns are numbered round the edge, as the captions count them.
  * Every mark differs in shape as well as colour — ring, disc, slash, frame,
@@ -117,6 +140,21 @@ function cellRect(index: number): { x: number; y: number; width: number; height:
     width: CELL - 2 * OUTLINE_INSET,
     height: CELL - 2 * OUTLINE_INSET,
   };
+}
+
+/** Corner marks' arms, and their inset from the cell's edge (clear of a candidate's ring). */
+const MARK_ARM = 10;
+const MARK_INSET = 2;
+
+/** The four corner marks round a cell, as one path: each an L hugging its corner. */
+function cornerMarks(x: number, y: number, size: number, inset: number, arm: number): string {
+  const [left, top, right, bottom] = [x + inset, y + inset, x + size - inset, y + size - inset];
+  return [
+    `M${left} ${top + arm}V${top}H${left + arm}`,
+    `M${right - arm} ${top}H${right}V${top + arm}`,
+    `M${right} ${bottom - arm}V${bottom}H${right - arm}`,
+    `M${left + arm} ${bottom}H${left}V${bottom - arm}`,
+  ].join('');
 }
 
 /** The row, column and box of a cell. */
@@ -214,27 +252,78 @@ function Swatch({ kind }: { kind: string }) {
   return <span className={`technique-diagram__swatch technique-diagram__swatch--${kind}`} />;
 }
 
+/** The dashed strike of a candidate an earlier step removed, in miniature, for the key. */
+function RuledOutSwatch() {
+  return (
+    <svg className="technique-diagram__ruled-out-swatch" viewBox="0 0 14 14" aria-hidden="true">
+      <rect x={0.5} y={0.5} width={13} height={13} rx={2} />
+      <line x1={3.5} y1={10.5} x2={10.5} y2={3.5} />
+    </svg>
+  );
+}
+
+/** The corner marks, in miniature, for the key. */
+function TargetSwatch() {
+  return (
+    <svg className="technique-diagram__target-swatch" viewBox="0 0 14 14" aria-hidden="true">
+      <path d={cornerMarks(0, 0, 14, 1, 4.5)} />
+    </svg>
+  );
+}
+
 /**
  * A worked example as a mini board with its caption (see the comment
  * above). The caption is the image's name; shown beside it, it is hidden
  * from assistive technology so it is not read out twice, and so is the key,
  * which only explains the drawing.
  */
-export function TechniqueDiagram({ trace, caption, label = null }: TechniqueDiagramProps) {
+export function TechniqueDiagram({
+  trace,
+  caption,
+  label = null,
+  target = null,
+  ruledOut = [],
+  conclusion = null,
+}: TechniqueDiagramProps) {
   const captionId = useId();
   const { values, candidates } = trace;
   const marks = marksOf(trace);
   const shown = marks.focus === null ? 0x1ff : bit(marks.focus);
   const scale = marks.focus === null ? SCALE.all : SCALE.focus;
   const size = marks.focus === null ? 'small' : 'large';
+  // The answer's frame steps inside the corner marks when it is written in
+  // the cell being solved, so the two never run into each other.
+  const answerInset = marks.answer !== null && marks.answer.index === target ? 4.5 : 2.5;
+
+  const gone = new Map<number, number>();
+  for (const { index, mask } of ruledOut) gone.set(index, (gone.get(index) ?? 0) | mask);
 
   const notes: ReactNode[] = [];
   const rings: ReactNode[] = [];
   const strikes: ReactNode[] = [];
+  const ghosts: ReactNode[] = [];
   for (let index = 0; index < 81; index++) {
     if (values[index] !== 0 || marks.answer?.index === index) continue;
     const ringed = marks.pattern.get(index) ?? 0;
     const struck = marks.removed.get(index) ?? 0;
+    // Gone already, so never one of the cell's candidates.
+    for (const digit of digitsOf((gone.get(index) ?? 0) & shown)) {
+      const [x, y] = spot(index, digit, scale.pull);
+      const d = scale.strike;
+      ghosts.push(
+        <g key={`${index}-${digit}`}>
+          <text
+            x={x}
+            y={y}
+            className={`technique-diagram__candidate technique-diagram__candidate--${size}`}
+            data-mark="ruled-out"
+          >
+            {digit}
+          </text>
+          <line x1={x - d} y1={y + d} x2={x + d} y2={y - d} />
+        </g>,
+      );
+    }
     for (const digit of digitsOf(candidates[index] & (shown | ringed | struck))) {
       const key = `${index}-${digit}`;
       const [x, y] = spot(index, digit, scale.pull);
@@ -329,6 +418,12 @@ export function TechniqueDiagram({ trace, caption, label = null }: TechniqueDiag
             />
           </Layer>
         )}
+        {target !== null && (
+          <Layer name="target">
+            <path d={cornerMarks(cellX(target), cellY(target), CELL, MARK_INSET, MARK_ARM)} />
+          </Layer>
+        )}
+        <Layer name="ruled-out">{ghosts}</Layer>
         <Layer name="rings">{rings}</Layer>
         <Layer name="candidates">{notes}</Layer>
         <Layer name="strikes">{strikes}</Layer>
@@ -349,10 +444,10 @@ export function TechniqueDiagram({ trace, caption, label = null }: TechniqueDiag
         {marks.answer !== null && (
           <Layer name="answer">
             <rect
-              x={cellX(marks.answer.index) + 2.5}
-              y={cellY(marks.answer.index) + 2.5}
-              width={CELL - 5}
-              height={CELL - 5}
+              x={cellX(marks.answer.index) + answerInset}
+              y={cellY(marks.answer.index) + answerInset}
+              width={CELL - 2 * answerInset}
+              height={CELL - 2 * answerInset}
               rx={3}
             />
             <text
@@ -376,10 +471,18 @@ export function TechniqueDiagram({ trace, caption, label = null }: TechniqueDiag
         <Layer name="labels">
           {NUMBERS.map((n) => (
             <g key={n}>
-              <text x={(n - 0.5) * CELL} y={-MARGIN / 2}>
+              <text
+                x={(n - 0.5) * CELL}
+                y={-MARGIN / 2}
+                data-mark={target !== null && COL[target] === n - 1 ? 'target' : undefined}
+              >
                 {n}
               </text>
-              <text x={-MARGIN / 2} y={(n - 0.5) * CELL}>
+              <text
+                x={-MARGIN / 2}
+                y={(n - 0.5) * CELL}
+                data-mark={target !== null && ROW[target] === n - 1 ? 'target' : undefined}
+              >
                 {n}
               </text>
             </g>
@@ -395,7 +498,14 @@ export function TechniqueDiagram({ trace, caption, label = null }: TechniqueDiag
           )}
           {caption}
         </p>
+        {conclusion}
         <ul className="technique-diagram__key" aria-hidden="true">
+          {target !== null && (
+            <li>
+              <TargetSwatch />
+              The cell being solved
+            </li>
+          )}
           {marks.shaded.size > 0 && (
             <li>
               <Swatch kind="look" />
@@ -430,6 +540,12 @@ export function TechniqueDiagram({ trace, caption, label = null }: TechniqueDiag
             <li>
               <Swatch kind="removed" />
               Removed
+            </li>
+          )}
+          {ghosts.length > 0 && (
+            <li>
+              <RuledOutSwatch />
+              Removed in an earlier step
             </li>
           )}
           {marks.answer !== null && (

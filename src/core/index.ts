@@ -6,6 +6,11 @@ export * from './grader';
 export * from './examples';
 export * from './generator';
 export * from './hint';
+export * from './walkthrough';
+// What a step relies on having been ruled out: the walkthrough's captions
+// credit the earlier steps that ruled it out. The rest of patterns.ts is the
+// engine's own business.
+export { reliance, type Reliance } from './patterns';
 export * from './game';
 export * from './codec';
 export * from './clock';

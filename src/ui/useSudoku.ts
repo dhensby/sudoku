@@ -1,20 +1,26 @@
-import { useEffect, useEffectEvent, useRef, useState } from 'react';
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react';
 import {
   STOPPED_CLOCK,
   elapsedMs,
+  explainCell,
+  explainHint,
   findHint,
   formatDuration,
   gridValues,
   isBoardFull,
   reduce,
+  shownHint,
   toSeconds,
   valuesOf,
+  walkthroughHint,
   type Difficulty,
   type Digit,
   type Direction,
   type GameState,
+  type Hint,
   type InputMode,
   type Puzzle,
+  type Walkthrough,
 } from '../core';
 import {
   computeStats,
@@ -122,6 +128,13 @@ export interface CompletionResult {
   challenge: Challenge | null;
 }
 
+/** "Show me" open: the steps that solve the hinted cell, at `step` (from 0). */
+export interface WalkthroughView {
+  kind: 'walkthrough';
+  walkthrough: Walkthrough;
+  step: number;
+}
+
 /** The dialog on show — one at a time. */
 export type DialogState =
   | { kind: 'completion'; result: CompletionResult }
@@ -130,8 +143,13 @@ export type DialogState =
   | { kind: 'history' }
   | { kind: 'settings' }
   | { kind: 'help' }
-  /** The technique guide, open at the entry a hint named (null: its first entry). */
-  | { kind: 'techniques'; initial: GuideId | null }
+  /**
+   * The technique guide, open at the entry a hint named (null: its first
+   * entry). `returnTo` is the walkthrough it was opened from, which takes
+   * its place again as it closes.
+   */
+  | { kind: 'techniques'; initial: GuideId | null; returnTo?: WalkthroughView }
+  | WalkthroughView
   | { kind: 'challenge'; offer: ChallengeOffer }
   | { kind: 'confirmReset' };
 
@@ -161,6 +179,13 @@ export interface SudokuActions {
   undo: () => void;
   redo: () => void;
   hint: () => void;
+  /**
+   * Open "Show me" for the hint on show: the steps that solve its cell. The
+   * first time for a cell it counts as a hint; after that it is free. With
+   * a mistake on the board there is no sound walkthrough, so it points at
+   * the mistake instead, just as Hint would (and counted as Hint counts it).
+   */
+  showMe: () => void;
   check: (scope: 'cell' | 'puzzle') => void;
   reveal: () => void;
   /** Ask before resetting (opens the confirmation). */
@@ -174,9 +199,10 @@ export interface SudokuActions {
   openDialog: (kind: HeaderDialog) => void;
   /**
    * Open the technique guide at an entry — the one a hint named — or at its
-   * start. From Help, it takes Help's place.
+   * start. From Help, it takes Help's place. From a walkthrough, it takes
+   * the walkthrough's place until it closes, and gives it back at `step`.
    */
-  openTechniques: (initial: GuideId | null) => void;
+  openTechniques: (initial: GuideId | null, step?: number) => void;
   closeDialog: () => void;
   /** From the completion dialog: share the time just set. */
   shareResult: () => void;
@@ -203,6 +229,18 @@ export interface Sudoku {
   pauseReason: PauseReason | null;
   /** The game on screen; null until the first puzzle arrives. */
   game: GameState | null;
+  /**
+   * The hint for the hint bar: the one just asked for, until the next
+   * change, and otherwise the selected cell's remembered hint (`shownHint`)
+   * — a fill hint put afresh for the board as it now stands.
+   */
+  shownHint: Hint | null;
+  /**
+   * The steps "Show me" walks through for that hint, if it has any, read
+   * from the board as the player sees it. Pressed with a mistake on the
+   * board, Show me points at the mistake instead, as Hint would.
+   */
+  walkthrough: Walkthrough | null;
   /** The record of the game on screen. */
   record: GameRecord | null;
   /** The tier on show: the one being generated, else the game's. */
@@ -271,6 +309,34 @@ function flip(mode: InputMode): InputMode {
 /** The default play clock: monotonic, so a system clock set back cannot freeze it. */
 function monotonicNow(): number {
   return performance.timeOrigin + performance.now();
+}
+
+/**
+ * The walkthrough for the hint the bar shows, if it has one: none for a
+ * mistake, or for a solve that stalls before the cell (see `explainHint`).
+ *
+ * Read from the board as the player sees it, not held to the solution:
+ * whether "Show me" is on offer must not say, for free, whether a digit
+ * somewhere is wrong — that is what Check is for, and Check is counted. The
+ * solution has its say when Show me is pressed (see `showMe`).
+ */
+function walkthroughFor(game: GameState | null): Walkthrough | null {
+  const hint = game === null ? null : shownHint(game);
+  if (game === null || hint === null) return null;
+  return explainHint(valuesOf(game), hint);
+}
+
+/**
+ * The hint for the hint bar (see `shownHint`), with a cell's remembered
+ * fill hint put afresh from its walkthrough: the board may have moved on
+ * since it was given, and the bar must name what Show me beside it shows —
+ * not the hidden pair a cell needed three moves ago, when a single will do
+ * now. A hint just asked for is shown as it was given (and spoken).
+ */
+function hintOnShow(game: GameState, walkthrough: Walkthrough | null): Hint | null {
+  const hint = shownHint(game);
+  if (game.hint !== null || walkthrough === null || hint === null) return hint;
+  return walkthroughHint(walkthrough);
 }
 
 /** A full board that is not the solution: the case the boardFull notice is for. */
@@ -362,6 +428,9 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
   const game = session?.game ?? null;
   const elapsed = useElapsed(session?.clock ?? STOPPED_CLOCK, session?.record.id ?? null, clock);
   const settings = prefs.settings;
+  // A partial solve, fast enough for every change (see `explainCell`), and
+  // kept while the clock ticks and nothing on the board moves.
+  const walkthrough = useMemo(() => walkthroughFor(game), [game]);
   const effectiveMode: InputMode =
     game === null ? 'normal' : heldModifiers.size > 0 ? flip(game.mode) : game.mode;
 
@@ -795,6 +864,28 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       // Found here, not in the reducer, which only records it.
       run({ type: 'hint', hint: findHint(valuesOf(game), gridValues(game.puzzle.solution)) });
     },
+    showMe: () => {
+      // Only from the hint bar, which offers it only while the board shows.
+      if (session === null || phase !== 'playing' || walkthrough === null) return;
+      const values = valuesOf(session.game);
+      const solution = gridValues(session.game.puzzle.solution);
+      // Held to the solution only now. No sound walkthrough starts from a
+      // mistake, so with one on the board this does what Hint would: point
+      // at it, counted as Hint counts it.
+      const checked = explainCell(values, walkthrough.target, solution);
+      if (checked === null) {
+        run({ type: 'hint', hint: findHint(values, solution) });
+        return;
+      }
+      const t = at();
+      // Counted as a hint the first time for the cell — the reducer keeps
+      // count — and the clock stops silently, as for any dialog.
+      const charged = reduce(session.game, { type: 'walkthrough', index: checked.target });
+      const next = pauseSession({ ...session, game: charged }, 'dialog', t.clock);
+      persist(next, t);
+      setSession(next);
+      setDialog({ kind: 'walkthrough', walkthrough: checked, step: 0 });
+    },
     check: (scope) => run({ type: 'check', scope }),
     reveal: () => run({ type: 'reveal' }),
 
@@ -871,13 +962,23 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       }
       setDialog({ kind });
     },
-    openTechniques: (initial) => {
+    openTechniques: (initial, step) => {
       // Reading the guide is not help with this puzzle: the clock stops, as
       // for any dialog, and nothing is recorded.
       pauseFor('dialog');
+      if (dialog?.kind === 'walkthrough') {
+        const returnTo = { ...dialog, step: step ?? dialog.step };
+        setDialog({ kind: 'techniques', initial, returnTo });
+        return;
+      }
       setDialog({ kind: 'techniques', initial });
     },
     closeDialog: () => {
+      // The guide opened from a walkthrough goes back to it, still paused.
+      if (dialog?.kind === 'techniques' && dialog.returnTo !== undefined) {
+        setDialog(dialog.returnTo);
+        return;
+      }
       if (dialog?.kind === 'share' && dialog.returnTo === 'history') {
         setHistory(readHistory(now()));
         setDialog({ kind: 'history' });
@@ -982,6 +1083,8 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     phase,
     pauseReason: session?.pause ?? null,
     game,
+    shownHint: game === null ? null : hintOnShow(game, walkthrough),
+    walkthrough,
     record: session?.record ?? null,
     difficulty:
       generating?.difficulty ?? session?.record.difficulty ?? vacancy ?? prefs.lastDifficulty,

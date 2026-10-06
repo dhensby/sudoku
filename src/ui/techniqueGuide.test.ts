@@ -2,20 +2,25 @@ import {
   TECHNIQUE_ORDER,
   TECHNIQUE_TIER,
   bit,
+  explainCell,
+  grade,
   maskOf,
   type SolveStep,
   type TechniqueId,
   type TechniqueTrace,
 } from '../core';
+import { STUCK_ON_A_HIDDEN_PAIR, stuckOnAHiddenPair, tierPuzzles } from '../test/logic-fixtures';
 import { DIFFICULTY_LABEL, TECHNIQUE_LABEL, capitalise } from './format';
 import {
   GUIDE,
   GUIDE_ORDER,
+  creditsFor,
   guideExamples,
   guideIdFor,
   guideTier,
   guideTiers,
   techniqueQuestion,
+  walkthroughCaption,
 } from './techniqueGuide';
 
 /** A trace made up for a caption's less common shapes; only what captions read matters. */
@@ -427,5 +432,155 @@ describe('captions in other shapes', () => {
     expect(GUIDE.xWing.caption(trace)).toBe(
       "In columns 2 and 5, the 7 can only go in rows 3 and 7. Each column's 7 is in one of those rows, and the two columns can't use the same one, so they take the 7s of both rows between them. Remove 7 from the rest of those rows: row 3, column 9.",
     );
+  });
+});
+
+/** Every step of a walkthrough in words, each crediting the steps before it. */
+function captionsOf(steps: readonly TechniqueTrace[]): string[] {
+  return steps.map((trace, k) => walkthroughCaption(trace, steps.slice(0, k)));
+}
+
+/** A cell by its row and column, counted from one as the captions count them. */
+const rc = (row: number, col: number) => (row - 1) * 9 + col - 1;
+
+describe('walkthrough captions', () => {
+  it('walk through the hidden pair a player was stuck on, each step crediting what it rests on', () => {
+    const { values, solution } = stuckOnAHiddenPair();
+    const { steps } = explainCell(values, STUCK_ON_A_HIDDEN_PAIR.target, solution)!;
+    expect(captionsOf(steps)).toEqual([
+      'In column 6, the 1 and 7 can only go in rows 4 and 6. Those two cells must hold the 1 ' +
+        'and 7, one each, so nothing else fits in them: remove 5 from row 4, column 6; and 2 ' +
+        'and 8 from row 6, column 6.',
+      "Step 1 removed 5 from row 4, column 6. In box 5, the only places left for a 5 are in row 5, at columns 5 and 6. Box 5's 5 must be one of them, and so it is also row 5's 5: no other cell in row 5 can be a 5. Remove it from row 5, columns 2 and 3.",
+      'Row 5, column 2 sees 1, 3, 6 and 7 in its row; and 2, 4 and 9 in its column. Step 2 ' +
+        'ruled out its 5. So 8 is all it can be.',
+    ]);
+  });
+
+  it('credit an earlier step only with what a later one relies on', () => {
+    const { values, solution } = stuckOnAHiddenPair();
+    const { steps } = explainCell(values, STUCK_ON_A_HIDDEN_PAIR.target, solution)!;
+    const [pair, pointing, single] = steps;
+    expect(creditsFor(pair.step, [])).toEqual([]);
+    // The hidden pair also struck 2 and 8 from row 6, column 6, which the
+    // pointing pair does not need.
+    expect(creditsFor(pointing.step, [pair])).toEqual([
+      { step: 0, eliminations: [{ index: rc(4, 6), mask: bit(5) }] },
+    ]);
+    expect(creditsFor(single.step, [pair, pointing])).toEqual([
+      { step: 1, eliminations: [{ index: rc(5, 2), mask: bit(5) }] },
+    ]);
+  });
+
+  it.each(GUIDE_ORDER)(
+    'leave the %s example as the guide words it, with nothing to credit',
+    (id) => {
+      for (const example of guideExamples(id)) {
+        expect(walkthroughCaption(example.trace, [])).toBe(example.caption);
+        expect(creditsFor(example.trace.step, [])).toEqual([]);
+      }
+    },
+  );
+
+  describe('for a single that rests on an earlier step', () => {
+    // Box 1 holds 1–4 and 6–8, leaving row 1, columns 1 and 2 open; no 5
+    // sees row 1, column 2, so only an earlier step can have ruled it out.
+    const values = grid({ 2: 1, 9: 2, 10: 3, 11: 4, 18: 6, 19: 7, 20: 8 });
+    const single = madeUp(
+      {
+        technique: 'hiddenSingleBox',
+        placement: { index: 0, digit: 5 },
+        unit: { kind: 'box', index: 0 },
+        houses: [{ kind: 'box', index: 0 }],
+      },
+      values,
+    );
+    const struck = (index: number, mask: number) =>
+      madeUp({ technique: 'pointing', eliminations: [{ index, mask }] });
+
+    it('says which step took the digit from a cell no placed copy sees', () => {
+      expect(walkthroughCaption(single, [struck(40, bit(5)), struck(1, bit(5))])).toBe(
+        "Every other empty cell in box 1 lost its 5 in step 2, so box 1's 5 can only go in " +
+          'row 1, column 1.',
+      );
+    });
+
+    it('names the placed copies that rule out the rest', () => {
+      // Row 2, column 1 opened up, and a 5 in column 1 sees it.
+      const opened = values.slice();
+      opened[9] = 0;
+      opened[63] = 5;
+      const trace = { ...single, values: opened };
+      expect(walkthroughCaption(trace, [struck(1, bit(5))])).toBe(
+        'Every other empty cell in box 1 either sees the 5 at row 8, column 1 or lost its 5 ' +
+          "in step 1, so box 1's 5 can only go in row 1, column 1.",
+      );
+      expect(walkthroughCaption(trace, [struck(1, bit(5)), struck(1, bit(5))])).toContain(
+        'or lost its 5 in steps 1 and 2,',
+      );
+    });
+
+    it('says which step ruled out the digits a naked single does not see', () => {
+      // Row 1 holds 1–4 and 7; columns 1 holds nothing; so 5, 6, 8 and 9
+      // are not seen, and two earlier steps struck three of them.
+      const row = grid({ 1: 1, 2: 2, 3: 3, 4: 4, 5: 7 });
+      const trace = madeUp({ technique: 'nakedSingle', placement: { index: 0, digit: 9 } }, row);
+      expect(
+        walkthroughCaption(trace, [
+          struck(0, maskOf([5, 6])),
+          struck(40, bit(8)),
+          struck(0, bit(8)),
+        ]),
+      ).toBe(
+        'Row 1, column 1 sees 1, 2, 3, 4 and 7 in its row. Step 1 ruled out its 5 and 6. ' +
+          'Step 3 ruled out its 8. So 9 is all it can be.',
+      );
+      // Without the steps to credit, it says so plainly.
+      expect(GUIDE.nakedSingle.caption(trace)).toBe(
+        'Row 1, column 1 sees 1, 2, 3, 4 and 7 in its row. Earlier steps ruled out its 5, 6 ' +
+          'and 8. So 9 is all it can be.',
+      );
+    });
+
+    it('needs no placed digit to explain a naked single the steps alone account for', () => {
+      const trace = madeUp({ technique: 'nakedSingle', placement: { index: 0, digit: 9 } });
+      expect(walkthroughCaption(trace, [struck(0, 0xff)])).toBe(
+        'Step 1 ruled out its 1, 2, 3, 4, 5, 6, 7 and 8. So 9 is all it can be.',
+      );
+    });
+  });
+
+  it('leave no candidate unexplained and credit only earlier steps, over many walkthroughs', () => {
+    // Every empty cell of Hard and Expert puzzles, from the givens and part
+    // way through: a walkthrough can run to dozens of steps.
+    let walkthroughs = 0;
+    let credited = 0;
+    for (const { givens, solution } of [
+      ...tierPuzzles('hard', 3, 700),
+      ...tierPuzzles('expert', 3, 800),
+    ]) {
+      const placements = grade(givens).steps.filter((step) => step.placement !== null);
+      for (const count of [0, 12, 24]) {
+        const values = givens.slice();
+        for (const { placement } of placements.slice(0, count)) {
+          values[placement!.index] = placement!.digit;
+        }
+        for (let target = 0; target < 81; target++) {
+          const walkthrough = explainCell(values, target, solution);
+          if (walkthrough === null) continue;
+          walkthroughs++;
+          captionsOf(walkthrough.steps).forEach((caption, k) => {
+            // Said plainly only when there is no step to credit.
+            expect(caption).not.toMatch(/No other empty cell|Earlier steps/);
+            for (const [, numbers] of caption.matchAll(/[Ss]teps? ((?:\d+(?:, | and )?)+)/g)) {
+              credited++;
+              for (const n of numbers.split(/, | and /)) expect(Number(n)).toBeLessThanOrEqual(k);
+            }
+          });
+        }
+      }
+    }
+    expect(walkthroughs).toBeGreaterThan(500);
+    expect(credited).toBeGreaterThan(50);
   });
 });

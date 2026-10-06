@@ -587,6 +587,13 @@
   color: var(--text);
 }
 
+/* The question and "Show me" after a hint, kept together on its last line,
+   which the touch areas below rely on: a press area that reaches up over the
+   line above would reach over the board from a first line. */
+.hint-bar__actions {
+  white-space: nowrap;
+}
+
 /*
  * The question after a hint that names a technique ("What's a hidden
  * single?"): a link-like button that opens the guide. It flows with the
@@ -654,6 +661,123 @@
 }
 
 /*
+ * "Show me", after a hint with a walkthrough: an action, so a pill ruled in
+ * the question's ink, with a play mark — set in the line like a word, and
+ * a line high with its rule, so the bar keeps its height. Its press area
+ * reaches round it as the question's does, but not over the question
+ * beside it.
+ */
+.hint-bar__show {
+  position: relative;
+  display: inline-block;
+  padding: 0 7px 0 5px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  background: none;
+  color: color-mix(in srgb, var(--accent) 80%, var(--text));
+  font-weight: 600;
+  line-height: calc(var(--hint-line) * 1em - 2px);
+  white-space: nowrap;
+}
+
+.hint-bar__show::after {
+  content: '';
+  position: absolute;
+  inset: -5px -3px -5px -1px;
+}
+
+.hint-bar__question:has(+ .hint-bar__show)::after {
+  right: -1px;
+}
+
+.hint-bar__show-icon {
+  width: 0.85em;
+  height: 0.85em;
+  margin-right: 2px;
+  vertical-align: -0.1em;
+  fill: currentColor;
+}
+
+@media (hover: hover) {
+  .hint-bar__show:hover {
+    background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  }
+}
+
+.hint-bar__show:active {
+  background: color-mix(in srgb, var(--accent) 18%, var(--surface));
+}
+
+/*
+ * With "Show me" after it, the question gives way to its icon sooner.
+ * Measured as above: the longest hint, a pointing pair's, fits two lines
+ * with its question and "Show me" on a bar of 367px, not one of 358px (the
+ * bars come in 9px steps), and with the icon in its place on every bar down
+ * to a 320px phone's 304px.
+ */
+@container hint-bar (max-width: 22.75em) {
+  .hint-bar__question:has(+ .hint-bar__show) .hint-bar__question-text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .hint-bar__question:has(+ .hint-bar__show) .hint-bar__question-icon {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    vertical-align: -3px;
+  }
+
+  .hint-bar__question:has(+ .hint-bar__show)::after {
+    inset: -12px -1px -12px -10px;
+  }
+}
+
+/*
+ * On the narrowest bars — a 320×568 phone's 268px (its board shrinks to fit
+ * the height), and a phone on its side's 288px — the hint's own mark gives
+ * way to "Show me", which keeps its words: with the mark, a hidden single's
+ * hint ("…only one place for a number in this box.") takes a third line and
+ * scrolls the page. Measured in the bundled face, in Chromium and WebKit:
+ * without the mark, every hint fits two lines with its question icon and
+ * "Show me" down to a bar of 264px. The question stays: it is the free way
+ * into the guide, and Show me counts as a hint.
+ */
+@container hint-bar (max-width: 18.75em) {
+  .hint-bar__message:has(.hint-bar__show) .hint-bar__icon {
+    display: none;
+  }
+}
+
+/*
+ * Narrower still — no phone we size for, but a short window can make one —
+ * "Show me" is its play mark alone, its words kept as its name: every hint
+ * then fits two lines down to a bar of 243px.
+ */
+@container hint-bar (max-width: 16.5em) {
+  .hint-bar__show {
+    padding: 0 6px;
+  }
+
+  .hint-bar__show-text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .hint-bar__show-icon {
+    margin-right: 0;
+  }
+}
+
+/*
  * A finger's 44px on a touch screen, still without making the bar taller.
  * The question always ends the hint, so it sits on the bar's last line: the
  * area reaches up over the line above, which holds only words, and a little
@@ -664,7 +788,7 @@
  * board.
  */
 @media (pointer: coarse) {
-  .hint-bar:has(.hint-bar__question) {
+  .hint-bar:has(.hint-bar__question, .hint-bar__show) {
     align-items: flex-end;
   }
 
@@ -672,9 +796,29 @@
     inset: -20px -8px -7px;
   }
 
+  /* Inset from inside its rule: 22 + 15 + 8 tall, its rule's 2px within. */
+  .hint-bar__show::after {
+    inset: -22px -8px -8px -1px;
+  }
+
   @container hint-bar (max-width: 21em) {
     .hint-bar__question::after {
       inset: -21px -14px -7px;
+    }
+  }
+
+  /* Beside "Show me", the icon's area reaches back over the words instead:
+     16px, and 28px to its left, short of Show me's on its right. */
+  @container hint-bar (max-width: 22.75em) {
+    .hint-bar__question:has(+ .hint-bar__show)::after {
+      inset: -21px -1px -7px -28px;
+    }
+  }
+
+  /* Its play mark alone reaches right, where nothing follows it. */
+  @container hint-bar (max-width: 16.5em) {
+    .hint-bar__show::after {
+      inset: -22px -21px -8px -1px;
     }
   }
 }
@@ -688,6 +832,11 @@
 @media (forced-colors: active) {
   .hint-bar__question {
     color: LinkText;
+  }
+
+  .hint-bar__show {
+    border-color: ButtonText;
+    color: ButtonText;
   }
 
   /* Held down, Dismiss keeps its face and gains a ring, as the keys do

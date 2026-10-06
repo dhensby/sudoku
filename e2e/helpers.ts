@@ -10,6 +10,7 @@ import {
   type GridString,
   type Puzzle,
 } from '../src/core';
+import { STUCK_ON_A_HIDDEN_PAIR } from '../src/test/logic-fixtures';
 
 /*
  * Shared fixtures and steps for the end-to-end suite.
@@ -337,4 +338,21 @@ export async function openHeaderDialog(
   }
   await page.getByRole('banner').getByRole('button', { name: 'Menu' }).click();
   await page.getByRole('menu', { name: 'Menu' }).getByRole('menuitem', { name: label }).click();
+}
+
+/**
+ * The board behind "Show me": a player sixteen right entries into the
+ * puzzle of share code `O3NLgKqUTeam9ygZMBQVALBbgSY`, opened from its link
+ * and started. Their hint points at row 5, column 2 and names a hidden pair
+ * half a board away, which its walkthrough takes three steps to reach.
+ */
+export async function getStuck(page: Page): Promise<void> {
+  const { code, entries } = STUCK_ON_A_HIDDEN_PAIR;
+  await page.goto(`/?p=${code}`);
+  await startButton(page).click();
+  await waitForPlaying(page);
+  await typeDigits(
+    page,
+    entries.map(([row, col, digit]) => ({ index: (row - 1) * 9 + col - 1, digit })),
+  );
 }
