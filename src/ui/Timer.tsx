@@ -1,4 +1,4 @@
-import { useId } from 'react';
+import { Fragment, useId } from 'react';
 import { formatDuration } from '../core';
 import { PauseIcon, PlayIcon } from './icons';
 import { keepFocus } from './keepFocus';
@@ -12,6 +12,21 @@ export interface TimerProps {
   onPause: () => void;
   /** Resume a paused game, or start one waiting behind its Start button. */
   onResume: () => void;
+}
+
+/**
+ * A ticking time, each colon in a span of its own: the stylesheet keeps the
+ * digits tabular, so the time holds still as it ticks, and lets the colons
+ * keep their natural width — a tabular colon is a digit wide in Schibsted
+ * Grotesk, which opens a gap either side of it.
+ */
+function TickingTime({ time }: { time: string }) {
+  return time.split(':').map((part, i) => (
+    <Fragment key={i}>
+      {i > 0 && <span className="timer__colon">:</span>}
+      {part}
+    </Fragment>
+  ));
 }
 
 /**
@@ -54,7 +69,7 @@ export function Timer({ elapsedMs, phase, showTimer, onPause, onResume }: TimerP
     >
       {showTimer && (
         <span className="timer__time" id={timeId}>
-          {time}
+          <TickingTime time={time} />
         </span>
       )}
       <span className="timer__icon">{isRunning ? <PauseIcon /> : <PlayIcon />}</span>

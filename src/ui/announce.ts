@@ -281,9 +281,12 @@ function describeSingle(technique: SingleTechniqueId, unit: Unit | null): string
         : `Full house: ${unitName(unit)} has one cell left.`;
     case 'hiddenSingleBox':
     case 'hiddenSingleLine':
-      return `Hidden single: there's only one place for a number in ${
-        unit === null ? 'its row, column or box' : unitName(unit)
-      }.`;
+      // Without its unit (the grader always names one) the sentence is
+      // turned round: said as the others are, it would be the longest hint
+      // of all, and take a phone's hint bar to a third line (layout.css).
+      return unit === null
+        ? 'Hidden single: a number fits only here in its row, column or box.'
+        : `Hidden single: there's only one place for a number in ${unitName(unit)}.`;
     case 'nakedSingle':
       return 'Naked single: only one number fits in this cell.';
   }

@@ -10,10 +10,14 @@ import type { ThemePreference } from '../storage/prefs';
  * tag cannot read the stylesheet.
  */
 
-/** The browser chrome's colour for each palette: the page background, so the bar and page meet seamlessly. */
+/**
+ * The browser chrome's colour for each palette: the page background (--bg in
+ * index.css), so the bar and page meet seamlessly. styles.test.ts holds
+ * the two in step.
+ */
 export const THEME_COLOUR: Readonly<Record<'light' | 'dark', string>> = {
-  light: '#ffffff',
-  dark: '#121212',
+  light: '#f4eee2',
+  dark: '#1a1916',
 };
 
 const DARK_QUERY = '(prefers-color-scheme: dark)';

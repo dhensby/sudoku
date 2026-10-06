@@ -142,6 +142,25 @@ describe('Cell', () => {
     expect(cell).toHaveTextContent('4');
   });
 
+  it('ticks a checked-correct digit, out of hearing, and nothing else', () => {
+    // Correct, revealed and the player's own inks differ by hue alone, which
+    // a colour-blind player can lose: the tick says it in shape.
+    const { cell, rerender, props } = renderCell({ value: 4, mark: 'correct', ghosts: 0 });
+    const tick = () => document.querySelector('.cell__tick');
+    expect(tick()).toHaveAttribute('aria-hidden', 'true');
+    expect(cell).toHaveAccessibleName('4, correct');
+    for (const mark of ['none', 'wrong', 'revealed'] as const) {
+      rerender(
+        <div role="grid">
+          <div role="row">
+            <Cell {...props} mark={mark} />
+          </div>
+        </div>,
+      );
+      expect(tick(), mark).toBeNull();
+    }
+  });
+
   it('does not re-render when nothing it shows has changed', () => {
     const { props, rerender } = renderCell();
     const calls = vi.mocked(props.registerRef).mock.calls.length;

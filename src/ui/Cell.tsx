@@ -148,6 +148,9 @@ function CellComponent(props: CellProps) {
           )}
         </span>
       )}
+      {/* A tick for a checked-correct digit, whose ink differs from the
+          player's own by hue alone. Decorative: the name says "correct". */}
+      {mark === 'correct' && <span className="cell__tick" aria-hidden="true" />}
       {conflict && <span className="cell__conflict" />}
     </button>
   );

@@ -25,6 +25,16 @@ describe('Timer', () => {
     expect(props.onPause).toHaveBeenCalledTimes(1);
   });
 
+  it('gives each colon of a ticking time a span of its own, for its natural width', () => {
+    renderTimer({ elapsedMs: (1 * 3600 + 23 * 60 + 45) * 1000 });
+    const time = screen.getByRole('button', { name: 'Pause' }).querySelector('.timer__time')!;
+    expect(time).toHaveTextContent('1:23:45');
+    expect([...time.querySelectorAll('.timer__colon')].map((colon) => colon.textContent)).toEqual([
+      ':',
+      ':',
+    ]);
+  });
+
   it('keeps a mouse press from taking focus, so Space goes on switching the mode', () => {
     renderTimer();
     expect(fireEvent.mouseDown(screen.getByRole('button', { name: 'Pause' }))).toBe(false);

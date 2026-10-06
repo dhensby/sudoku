@@ -60,13 +60,14 @@
 
   /*
    * The board's geometry (board.css draws with it): nine cells and eight
-   * lines a side — 1px thin lines inside each box, thick ones between boxes
-   * and round the outside. The thick lines are 3px, or 2px on a board under
-   * 400px where 3px looks heavy: the clamp() turns the board's size into a
-   * step, 2px below 400px and 3px from there up.
+   * lines a side — 1px thin rules inside each box, 3px ink between boxes,
+   * and a 4px frame round the outside, heavier still, as a printed puzzle
+   * is boxed. On a board under 400px, where those crowd the cells, each
+   * loses a pixel: 2px between boxes, a 3px frame. Each clamp() turns the
+   * board's size into that step.
    */
-  --frame: clamp(2px, (var(--board-size) - 399.98px) * 1000, 3px);
-  --thick: var(--frame);
+  --frame: clamp(3px, 3px + (var(--board-size) - 399.98px) * 1000, 4px);
+  --thick: clamp(2px, 2px + (var(--board-size) - 399.98px) * 1000, 3px);
   --thin: 1px;
   --lines: calc(2 * var(--frame) + 2 * var(--thick) + 6 * var(--thin));
   --cell: calc((var(--board-size) - var(--lines)) / 9);
@@ -234,26 +235,29 @@
   min-width: 0;
   margin: 0;
   overflow: hidden;
+  font-family: var(--font-display);
   font-size: 1.25rem;
   font-weight: 800;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.01em;
   line-height: 1;
   white-space: nowrap;
 }
 
+/* The tier, set like a section label on the page: small capitals boxed in
+   an ink rule. */
 .header__difficulty {
   flex: 0 1 auto;
   min-width: 0;
   margin: 0;
   overflow: hidden;
   padding: 3px 7px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--surface);
-  color: var(--text-muted);
+  border: 1px solid var(--text);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--text);
   font-size: 0.75rem;
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.08em;
   line-height: 1.3;
   text-overflow: ellipsis;
   text-transform: uppercase;
@@ -290,12 +294,15 @@
  * the padding). Each breakpoint is what the row needs, written as its fixed
  * part (buttons, gaps, the pause icon) plus the part that grows with the
  * font (wordmark, tier, a timer sized for h:mm:ss) in em — so a larger
- * default font size moves the breakpoint with it. A phone row needs about
- * 163px + 11.8em, wordmark included: below that the wordmark goes from view
- * (it stays the page's heading for assistive technology); then, below
- * about 158px + 7.4em, the tier shortens to three letters.
+ * default font size moves the breakpoint with it. Measured with the bundled
+ * faces at the widest (Medium, h:mm:ss, a finger's 44px buttons), a phone
+ * row needs 163.5px + 12.1em, wordmark included: below that the wordmark
+ * goes from view (it stays the page's heading for assistive technology);
+ * then, below 158px + 7.7em, the tier shortens to three letters. The faces
+ * are the same on every platform, so each query allows only a pixel to
+ * spare — enough to keep the wordmark on a 375px phone.
  */
-@container header (max-width: calc(168px + 11.8em)) {
+@container header (max-width: calc(165px + 12.1em)) {
   .header__title {
     position: absolute;
     width: 1px;
@@ -304,7 +311,7 @@
   }
 }
 
-@container header (max-width: calc(162px + 7.4em)) {
+@container header (max-width: calc(159px + 7.7em)) {
   .header__tier {
     position: absolute;
     width: 1px;
@@ -319,9 +326,10 @@
   }
 }
 
+/* An ink rule under the bar, as under a newspaper's masthead. */
 @media (min-width: 850px) {
   .header {
-    border-bottom: 1px solid var(--border);
+    border-bottom: 2px solid var(--text);
   }
 
   .header__inner {
@@ -355,8 +363,9 @@
   }
 
   /* Six icon buttons rather than two, a larger wordmark and roomier gaps:
-     about 350px + 13.2em (more for a finger's 44px buttons on a tablet). */
-  @container header (max-width: calc(370px + 13.2em)) {
+     348.5px + 13.5em, and 24px more for a finger's 44px buttons on a
+     tablet. */
+  @container header (max-width: calc(375px + 13.5em)) {
     .header__title {
       position: absolute;
       width: 1px;
@@ -582,8 +591,8 @@
  * The question after a hint that names a technique ("What's a hidden
  * single?"): a link-like button that opens the guide. It flows with the
  * hint's words and wraps as one piece. The ink is a step from the accent
- * towards --text, as the raw accent is a shade light for small text on the
- * bar's grey. Its press area reaches a little round the words without making
+ * towards --text, a shade deeper than the raw accent for small text on the
+ * bar's sheet. Its press area reaches a little round the words without making
  * the bar taller, and stops short of the board and the controls (on a touch
  * screen, a finger's 44px: below).
  */
@@ -615,9 +624,11 @@
  * screen, or a larger default font): the longest question, after the longest
  * hint, would take the bar to a third line and scroll the page, so a
  * question-mark icon stands in, its words kept for assistive technology.
- * Measured: the words fit a 338px bar and not a 329px one (boards come in
- * whole-pixel cells, so nothing falls between). In em, so a larger font moves
- * the breakpoint with it.
+ * Measured in the bundled face, in Chromium and WebKit: every hint's words
+ * fit a bar of 334px or more (the longest is a pointing pair's) and not a
+ * 333px one; a small board is 9 whole-pixel cells and 16px of lines, so the
+ * bars either side are 331px and 340px (an iPhone 15's). In em, so a larger
+ * font moves the breakpoint with it.
  */
 @container hint-bar (max-width: 21em) {
   .hint-bar__question-text {
@@ -677,5 +688,13 @@
 @media (forced-colors: active) {
   .hint-bar__question {
     color: LinkText;
+  }
+
+  /* Held down, Dismiss keeps its face and gains a ring, as the keys do
+     (controls.css): its Highlight fill would sit under ButtonText. */
+  .hint-bar__dismiss:active {
+    background: ButtonFace;
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
   }
 }

@@ -28,8 +28,8 @@ export interface TechniqueDiagramProps {
  *
  * - Placed digits, and the candidates of the empty cells. A technique about
  *   one digit (hidden singles, locked candidates, fish) shows that digit's
- *   candidates alone, larger, and inks its placed copies in the player
- *   blue, so the pattern stands out from the noise and the copies that
+ *   candidates alone, larger, and sets its placed copies heavier and in the
+ *   accent, so the pattern stands out from the noise and the copies that
  *   shape it are easy to follow.
  * - Where to look, shaded: the houses the pattern lies in (a naked
  *   single's own three), or a wing's three cells, which share none — and,

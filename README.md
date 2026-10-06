@@ -55,13 +55,29 @@ the same puzzle. Built with React, TypeScript and Vite, and runs entirely in you
   without scrolling, and on a taller phone the controls sit at the foot of the screen, under your
   thumb; History, Share, Settings, the technique guide and Help fold into a ☰ menu so the header
   stays one row; touch targets are at least 44px; and the game can be added to your home screen.
-- **Dark mode and high contrast** — follows your system (or pick Light/Dark in Settings), and
-  stays playable in Windows High Contrast.
+- **Broadsheet, a theme drawn for clarity** — the puzzle page of a morning paper: warm newsprint,
+  ink-black box lines, one ultramarine spot colour, the selected cell printed as a solid block,
+  givens typeset in a slab and your own numbers in a grotesque. Givens and your own numbers hold
+  at least 7:1 contrast (WCAG AAA) on every cell they can sit on, and checked and revealed numbers
+  and candidates at least 4.5:1; each highlight is a step of lightness as well as of hue — checked
+  under simulated colour-blindness — and checked and revealed numbers carry a tick or an italic as
+  well as a colour. A night edition is drawn for the dark rather than
+  inverted (it follows your system, or pick Light or Dark in Settings), and the game stays
+  playable in Windows High Contrast.
 
 ## Tech stack
 
 React 19 · TypeScript (strict) · Vite · Vitest + Testing Library · Playwright · ESLint + Prettier.
 See [`package.json`](package.json) for exact versions.
+
+### Fonts
+
+[Bitter](https://github.com/solmatas/BitterPro) (Huerta Tipográfica) for the wordmark, titles
+and givens, and [Schibsted Grotesk](https://github.com/schibsted/schibsted-grotesk) (Schibsted /
+Bakken & Bæck) for everything else — both under the
+[SIL Open Font License 1.1](https://openfontlicense.org), and bundled with the app through
+[Fontsource](https://fontsource.org) (`@fontsource-variable/bitter`,
+`@fontsource-variable/schibsted-grotesk`), so no font service is contacted while you play.
 
 The design keeps a hard line between logic and presentation:
 
@@ -177,17 +193,22 @@ puzzles seen, are merged with what is already there.
 - **Unit & component** (`*.test.ts[x]`, Vitest + Testing Library): the engine is tested
   exhaustively, including a soundness harness that checks every placement and elimination the
   grader makes against the known solution, golden puzzles pinned per tier, and property tests over
-  many seeds. Components and hooks are tested through real interactions. Coverage thresholds are
+  many seeds. Components and hooks are tested through real interactions. The palette is read
+  straight from the stylesheet and held to its contrast targets pair by pair, in both themes and
+  under simulated colour-blindness (`src/styles/contrast.test.ts`). Coverage thresholds are
   enforced in CI, with the engine held to 100%.
 - **End-to-end** (`e2e/`, Playwright): full journeys against the built app — playing and solving,
   pausing and reloading, share links between two browsers, the history, the technique guide and
-  the phone layout from 320px wide up and on its side. Three projects:
+  the phone layout from 320px wide up and on its side. An accessibility pass
+  (`a11y.spec.ts`) runs axe-core's WCAG 2.2 A and AA rules over the main states — the board with
+  every kind of mark, the Ready and Paused cards, the menus, every dialog and each guide entry —
+  in both themes, and allows no violations. Three projects:
 
-  | Project    | Device         | Engine   | Specs                             |
-  | ---------- | -------------- | -------- | --------------------------------- |
-  | `chromium` | Desktop Chrome | Chromium | everything except the touch suite |
-  | `iphone`   | iPhone 15      | WebKit   | `touch.spec.ts`                   |
-  | `android`  | Pixel 7        | Chromium | `touch.spec.ts`                   |
+  | Project    | Device         | Engine   | Specs                                                 |
+  | ---------- | -------------- | -------- | ----------------------------------------------------- |
+  | `chromium` | Desktop Chrome | Chromium | everything except the touch suite                     |
+  | `iphone`   | iPhone 15      | WebKit   | `touch.spec.ts`, and the phone pass of `a11y.spec.ts` |
+  | `android`  | Pixel 7        | Chromium | `touch.spec.ts`, and the phone pass of `a11y.spec.ts` |
 
 ## Deployment
 
