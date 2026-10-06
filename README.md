@@ -199,13 +199,16 @@ puzzles seen, are merged with what is already there.
   enforced in CI, with the engine held to 100%.
 - **End-to-end** (`e2e/`, Playwright): full journeys against the built app — playing and solving,
   pausing and reloading, share links between two browsers, the history, the technique guide and
-  the phone layout from 320px wide up and on its side. Three projects:
+  the phone layout from 320px wide up and on its side. An accessibility pass
+  (`a11y.spec.ts`) runs axe-core's WCAG 2.2 A and AA rules over the main states — the board with
+  every kind of mark, the Ready and Paused cards, the menus, every dialog and each guide entry —
+  in both themes, and allows no violations. Three projects:
 
-  | Project    | Device         | Engine   | Specs                             |
-  | ---------- | -------------- | -------- | --------------------------------- |
-  | `chromium` | Desktop Chrome | Chromium | everything except the touch suite |
-  | `iphone`   | iPhone 15      | WebKit   | `touch.spec.ts`                   |
-  | `android`  | Pixel 7        | Chromium | `touch.spec.ts`                   |
+  | Project    | Device         | Engine   | Specs                                                 |
+  | ---------- | -------------- | -------- | ----------------------------------------------------- |
+  | `chromium` | Desktop Chrome | Chromium | everything except the touch suite                     |
+  | `iphone`   | iPhone 15      | WebKit   | `touch.spec.ts`, and the phone pass of `a11y.spec.ts` |
+  | `android`  | Pixel 7        | Chromium | `touch.spec.ts`, and the phone pass of `a11y.spec.ts` |
 
 ## Deployment
 

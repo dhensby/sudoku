@@ -25,17 +25,18 @@ export default defineConfig({
     },
     {
       // Safari is where most phones play, and WebKit is the only engine that
-      // reproduces iOS pointer behaviour and its share/clipboard quirks.
+      // reproduces iOS pointer behaviour and its share/clipboard quirks. The
+      // accessibility spec has a phone pass of its own, for the phone layout.
       name: 'iphone',
       use: { ...devices['iPhone 15'] },
-      testMatch: /touch\.spec\.ts/,
+      testMatch: /(touch|a11y)\.spec\.ts/,
     },
     {
       // The same touch suite on Android Chrome, which reports a different
       // viewport and fires `contextmenu` from a long press.
       name: 'android',
       use: { ...devices['Pixel 7'] },
-      testMatch: /touch\.spec\.ts/,
+      testMatch: /(touch|a11y)\.spec\.ts/,
     },
   ],
   // Build once, then serve the production bundle so e2e exercises the real

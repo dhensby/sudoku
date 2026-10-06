@@ -61,9 +61,11 @@ updates:
       vitest:
         applies-to: version-updates
         patterns: ['vitest', '@vitest/*']
+      # @axe-core/playwright drives the accessibility checks through
+      # Playwright's own page API, so it is tried against each new release.
       playwright:
         applies-to: version-updates
-        patterns: ['playwright', '@playwright/*']
+        patterns: ['playwright', '@playwright/*', '@axe-core/playwright']
       eslint:
         applies-to: version-updates
         patterns: ['eslint', '@eslint/*', 'eslint-*', 'typescript-eslint', 'globals']
