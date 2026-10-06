@@ -329,12 +329,18 @@
  * "Candidate" (about 4.9em wide, so 5.2em with room to spare) at that size —
  * a 320px phone, or a large default font size — when it steps down with the
  * toggle's width instead: half of it, less the 3px borders and padding.
- * Clipped with an ellipsis as a last resort, never spilling out of its half.
+ * As a last resort — the reader's own wider letter or word spacing, which
+ * the step does not allow for — the word breaks onto a second line rather
+ * than losing letters to an ellipsis: never out of its half, and if two
+ * lines are taller than the key, over its edges evenly (the flexbox's
+ * centring, unlike a button's own) rather than cut off.
  */
 .mode-toggle__option {
+  display: flex;
   flex: 1;
+  align-items: center;
+  justify-content: center;
   min-width: 0;
-  overflow: hidden;
   padding: 0 3px;
   border: 3px solid transparent;
   border-radius: var(--radius);
@@ -343,8 +349,8 @@
   color: var(--text-muted);
   font-size: min(0.875rem, calc((50cqi - 12px) / 5.2));
   font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  hyphens: auto;
   -webkit-user-select: none;
   user-select: none;
 }

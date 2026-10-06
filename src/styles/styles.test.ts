@@ -177,6 +177,13 @@ describe('the controls', () => {
     expect(rule(CONTROLS, '.controls > .switch')).toMatch(/max-width:\s*calc\(100% - 48px - 8px\)/);
   });
 
+  it('breaks "Candidate" onto a second line rather than clip it, under a reader’s own spacing', () => {
+    // WCAG 1.4.12: wider letter and word spacing must not cost any letters.
+    const option = rule(CONTROLS, '.mode-toggle__option');
+    expect(option).toMatch(/overflow-wrap:\s*anywhere/);
+    expect(option).not.toMatch(/text-overflow:\s*ellipsis/);
+  });
+
   it.each([
     [CONTROLS, ".more-button[aria-expanded='true']"],
     [CONTROLS, '.icon-button:active:not(:disabled)'],
