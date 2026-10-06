@@ -689,4 +689,12 @@
   .hint-bar__question {
     color: LinkText;
   }
+
+  /* Held down, Dismiss keeps its face and gains a ring, as the keys do
+     (controls.css): its Highlight fill would sit under ButtonText. */
+  .hint-bar__dismiss:active {
+    background: ButtonFace;
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
 }

@@ -1752,10 +1752,34 @@
     border: 1px solid ButtonText;
   }
 
-  /* The primary and danger fills are gone; a heavier edge keeps them first. */
+  /*
+   * The primary and danger fills go, and a heavier edge keeps them first.
+   * Said outright, in the button pair: their fills and inks are system
+   * colours here (Highlight, HighlightText), which the browser keeps — and
+   * then lays its Canvas backplate behind the text, leaving HighlightText
+   * on Canvas, unreadable. The same goes for the History row's "Current".
+   */
   .button--primary,
   .button--danger {
     border-width: 2px;
+    border-color: ButtonText;
+    background: ButtonFace;
+    color: ButtonText;
+  }
+
+  /* Pressed (and hovered, below), they keep that face and their edge turns
+     Highlight. Their usual shades are mixed from system colours here, and
+     the board's cards, which paint themselves, would show that mix as it
+     is, under ButtonText: under 2:1. */
+  .button--primary:active:not(:disabled),
+  .button--danger:active:not(:disabled) {
+    background: ButtonFace;
+    border-color: Highlight;
+  }
+
+  .history-item__current {
+    background: Canvas;
+    color: CanvasText;
   }
 
   .button:disabled {
@@ -1859,5 +1883,13 @@
   .settings__switch:focus-visible,
   .settings__theme-option:has(input:focus-visible) {
     outline-color: Highlight;
+  }
+}
+
+@media (forced-colors: active) and (hover: hover) {
+  .button--primary:hover:not(:disabled),
+  .button--danger:hover:not(:disabled) {
+    background: ButtonFace;
+    border-color: Highlight;
   }
 }

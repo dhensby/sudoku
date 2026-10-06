@@ -178,6 +178,18 @@ describe('the controls', () => {
   });
 
   it.each([
+    [CONTROLS, ".more-button[aria-expanded='true']"],
+    [CONTROLS, '.icon-button:active:not(:disabled)'],
+    [CONTROLS, ".mode-toggle__option[aria-pressed='false']:active:not(:disabled)"],
+    [LAYOUT, '.hint-bar__dismiss:active'],
+  ])('rings %#: %s in forced colours, rather than filling it with Highlight', (css, selector) => {
+    // The fill would sit under ButtonText, under 2.5:1 in either scheme.
+    const forced = css.slice(css.indexOf('@media (forced-colors: active)'));
+    expect(rule(forced, selector)).toMatch(/background:\s*ButtonFace/);
+    expect(rule(forced, selector)).toMatch(/outline:\s*2px solid Highlight/);
+  });
+
+  it.each([
     [CONTROLS, '.numpad__key'],
     [CONTROLS, '.icon-button'],
     [CONTROLS, '.timer'],
@@ -217,6 +229,28 @@ describe('the layout', () => {
 });
 
 describe('the dialogs', () => {
+  it('spells out the primary button and the "Current" badge in forced colours', () => {
+    // Left to their tokens, they are HighlightText on Highlight — which the
+    // browser keeps, then hides behind its Canvas backplate for the text.
+    const forced = DIALOGS.slice(DIALOGS.indexOf('@media (forced-colors: active)'));
+    expect(rule(forced, '.button--primary')).toMatch(/color:\s*ButtonText/);
+    expect(rule(forced, '.button--primary')).toMatch(/background:\s*ButtonFace/);
+    expect(rule(forced, '.history-item__current')).toMatch(/color:\s*CanvasText/);
+  });
+
+  it.each([
+    '.button--primary:hover:not(:disabled)',
+    '.button--primary:active:not(:disabled)',
+    '.button--danger:hover:not(:disabled)',
+    '.button--danger:active:not(:disabled)',
+  ])('keeps %s on its forced-colours face', (selector) => {
+    // Their usual shades are mixed from system colours here, and the board's
+    // cards paint themselves: the mix would show as it is, under ButtonText.
+    const forced = DIALOGS.slice(DIALOGS.indexOf('@media (forced-colors: active)'));
+    expect(rule(forced, selector)).toMatch(/background:\s*ButtonFace/);
+    expect(rule(forced, selector)).toMatch(/border-color:\s*Highlight/);
+  });
+
   it('rules off every footer from the body that scrolls under it', () => {
     expect(rule(DIALOGS, '.dialog__footer')).toMatch(/border-top:\s*1px solid var\(--border\)/);
   });
