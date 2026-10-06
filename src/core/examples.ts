@@ -83,6 +83,10 @@ export const EXAMPLE_PUZZLES: Readonly<Record<TechniqueId, GridString>> = {
   // 42146, after 36.
   twoStringKite:
     '127080600605230008803076200708042060209860000461793582586924317372618495914357826',
+  // Row 1, column 3 {1, 6} to row 2, column 4 {6, 8}, through {1, 3} and
+  // {3, 8}; the 6 goes from row 1, column 4, which sees both ends. Seed
+  // 12207, after 36.
+  xyChain: '040000857092057041750400092030765429274000560965200710427396185583100976619578234',
 };
 
 /**

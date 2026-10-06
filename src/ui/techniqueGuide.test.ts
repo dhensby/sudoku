@@ -151,6 +151,7 @@ describe('techniqueQuestion', () => {
     ['xyzWing', "What's an XYZ-Wing?"],
     ['skyscraper', "What's a Skyscraper?"],
     ['twoStringKite', "What's a 2-String Kite?"],
+    ['xyChain', "What's an XY-Chain?"],
     ['claiming', "What's a box/line reduction?"],
     ['pointing', "What's a pointing pair or triple?"],
   ])('asks about %s by its name', (technique, question) => {
@@ -270,6 +271,10 @@ describe('the worked examples', () => {
     [
       'twoStringKite',
       "Row 2's 1 can only go in columns 6 and 7, and column 4's in rows 3 and 4. Their cells in box 2 — row 2, column 6 and row 3, column 4 — can't both be 1s, so either row 2's 1 is at column 7, or column 4's is at row 4. Either way one of those two cells is a 1, so a cell that sees both can't be: remove 1 from row 4, column 7.",
+    ],
+    [
+      'xyChain',
+      "Row 1, column 3 can only be 1 or 6, and each cell after it — row 1, column 1 (1 or 3); row 2, column 1 (3 or 8); and row 2, column 4 (6 or 8) — sees the one before and shares a digit with it. If row 1, column 3 isn't 6, it's 1; then row 1, column 1 must be 3; row 2, column 1 must be 8; and row 2, column 4 must be 6. So one end of the chain or the other is a 6, and a cell that sees both can't be: remove 6 from row 1, column 4.",
     ],
   ])('walk through the %s example', (technique, caption) => {
     const example = guideExamples(guideIdFor(technique)).find((e) => e.technique === technique)!;

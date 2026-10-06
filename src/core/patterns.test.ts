@@ -9,7 +9,7 @@ import {
   type SolveStep,
   type SolverBoard,
 } from './techniques';
-import type { TechniqueId, Unit } from './types';
+import type { Digit, TechniqueId, Unit } from './types';
 import { HARDEST, minimalPuzzles, solvedPuzzle } from '../test/logic-fixtures';
 
 /** A technique's worked example, as a board and a step that are safe to change. */
@@ -579,6 +579,61 @@ describe('isStepValid', () => {
       'twoStringKite',
       'gives its strong links the wrong way round',
       (step) => step.houses.splice(0, 2, step.houses[1], step.houses[0]),
+    ],
+    [
+      'xyChain',
+      'names a house, which no XY-Chain has',
+      (step) => (step.houses = [{ kind: 'row', index: ROW[step.pattern[0].index] }]),
+    ],
+    ['xyChain', 'is about no digit', (step) => (step.digit = null)],
+    ['xyChain', 'describes three cells', (step) => step.pattern.pop()],
+    [
+      'xyChain',
+      'starts from a digit its first cell would not leave the next',
+      (step) => (step.digit = lowestDigit(step.pattern[0].mask & ~bit(step.digit!)) as Digit),
+    ],
+    [
+      'xyChain',
+      'counts a cell with a third candidate',
+      (step, board) => (step.pattern[1].mask |= addDigit(board, step.pattern[1].index)),
+    ],
+    [
+      'xyChain',
+      'links two cells that do not see each other',
+      (step, board) => {
+        const [, , third, last] = step.pattern;
+        const index = firstCell(
+          (i) => board.values[i] === 0 && !isPeer(third.index, i) && !cellsOf(step).includes(i),
+        );
+        board.candidates[index] = last.mask;
+        step.pattern[3] = { index, mask: last.mask };
+      },
+    ],
+    [
+      'xyChain',
+      'ends on a cell that would not be its digit',
+      (step, board) => {
+        const last = step.pattern[3];
+        const mask = (last.mask & ~bit(step.digit!)) | bit(lowestDigit(ALL_DIGITS & ~union(step)));
+        board.candidates[last.index] = mask;
+        last.mask = mask;
+      },
+    ],
+    [
+      'xyChain',
+      'strikes a cell that sees one end only',
+      (step, board) => {
+        const [first, last] = [step.pattern[0].index, step.pattern[3].index];
+        const index = firstCell(
+          (i) =>
+            board.values[i] === 0 &&
+            isPeer(first, i) &&
+            !isPeer(last, i) &&
+            !cellsOf(step).includes(i),
+        );
+        board.candidates[index] |= bit(step.digit!);
+        step.eliminations.push({ index, mask: bit(step.digit!) });
+      },
     ],
   ])('rejects a %s step that %s', (id, _name, misdescribe) => {
     const { board, step } = example(id);

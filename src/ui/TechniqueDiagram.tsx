@@ -5,6 +5,7 @@ import {
   ROW,
   bit,
   digitsOf,
+  lowestDigit,
   unitCells,
   type Digit,
   type Elimination,
@@ -62,7 +63,10 @@ export interface TechniqueDiagramProps {
  *   so the strike on the cell that sees them all follows from the picture.
  * - A chain's links, candidate to candidate: solid where one or other must
  *   be the digit, dashed where they can't both be. Its two ends are filled
- *   in, as for a wing: one of them is the digit.
+ *   in, as for a wing: one of them is the digit. An XY-Chain's cells are
+ *   shaded, like a wing's, each holding just two candidates — a strong link
+ *   of its own — so its drawn links are the weak ones between them, on the
+ *   digit each shares with the next.
  * - In a walkthrough, the cell being solved: inked corner marks, like a
  *   printer's crop marks, and its row and column numbers set in ink, so it
  *   can be found on every step. And the candidates earlier steps removed
@@ -71,9 +75,10 @@ export interface TechniqueDiagramProps {
  *
  * Rows and columns are numbered round the edge, as the captions count them.
  * Every mark differs in shape as well as colour — ring, disc, slash, frame,
- * bold ink, solid or dashed line — so the board still reads in forced colours, where the
- * stylesheet swaps the shading for outlines of the houses (and of a wing's
- * pincers; its pivot keeps its frame).
+ * bold ink, solid or dashed line — so the board still reads in forced
+ * colours, where the stylesheet swaps the shading for outlines of the houses
+ * (and of a wing's pincers and an XY-Chain's cells; a wing's pivot keeps its
+ * frame).
  *
  * One SVG, drawn in user units of a 40-unit cell and scaled by CSS to its
  * container: a role="img" named by the caption, its layers hidden from
@@ -194,12 +199,14 @@ interface Marks {
   pivot: number | null;
   /** A wing's pincers, outlined in forced colours, where their shading goes. */
   pincers: number[];
+  /** An XY-Chain's cells, outlined in forced colours, where their shading goes. */
+  chainCells: number[];
   /**
    * The digit one of a wing's or a chain's cells must be, and the cells it is
    * filled in at: a wing's cells that hold it, a chain's two ends.
    */
   forced: { digit: Digit; cells: ReadonlySet<number> } | null;
-  /** A chain's links, end to end: between which two cells, for which digit, and how. */
+  /** A chain's links, end to end: between which two cells, on which digit, and how. */
   links: { from: number; to: number; digit: Digit; isStrong: boolean }[];
 }
 
@@ -231,11 +238,12 @@ function marksOf({ step }: TechniqueTrace): Marks {
         : step.houses;
   const shaded = new Map<number, Shade>();
   const isWing = step.technique === 'xyWing' || step.technique === 'xyzWing';
-  // A wing's cells share no house: shading them is what shows its shape.
-  // Its pattern lists the pivot first, and it removes only the digit it
-  // forces.
+  const isXyChain = step.technique === 'xyChain';
+  // A wing's cells share no house, and nor do an XY-Chain's: shading them is
+  // what shows the shape. A wing's pattern lists the pivot first, and it
+  // removes only the digit it forces.
   const [pivot, ...pincers] = isWing ? step.pattern.map((cell) => cell.index) : [];
-  if (isWing) for (const cell of step.pattern) shaded.set(cell.index, 'look');
+  if (isWing || isXyChain) for (const cell of step.pattern) shaded.set(cell.index, 'look');
   const looks = lookCount(step.technique, houses);
   const shades = houses.map((unit, i) => ({ unit, shade: i < looks ? 'look' : 'clear' }) as const);
   for (const { unit, shade } of shades) {
@@ -251,9 +259,10 @@ function marksOf({ step }: TechniqueTrace): Marks {
     answer,
     pivot: pivot ?? null,
     pincers,
+    chainCells: isXyChain ? step.pattern.map((cell) => cell.index) : [],
     forced: isWing
       ? wingForced(step.pattern, step.eliminations[0].mask)
-      : isChain
+      : isChain || isXyChain
         ? chainForced(step)
         : null,
     links: isChain
@@ -263,8 +272,23 @@ function marksOf({ step }: TechniqueTrace): Marks {
           digit: step.digit!,
           isStrong: i % 2 === 0,
         }))
-      : [],
+      : isXyChain
+        ? xyChainLinks(step)
+        : [],
   };
+}
+
+/**
+ * An XY-Chain's weak links: from each cell to the next, on the digit the
+ * first would be if the chain's first end isn't its digit — the one the
+ * next cell then can't be.
+ */
+function xyChainLinks({ pattern, digit }: TechniqueTrace['step']): Marks['links'] {
+  let carried = bit(digit!);
+  return pattern.slice(1).map((cell, i) => {
+    carried = pattern[i].mask & ~carried;
+    return { from: pattern[i].index, to: cell.index, digit: lowestDigit(carried), isStrong: false };
+  });
 }
 
 /** A wing removes only the digit it forces, from wherever its cells hold it. */
@@ -338,6 +362,11 @@ export function TechniqueDiagram({
   // The answer's frame steps inside the corner marks when it is written in
   // the cell being solved, so the two never run into each other.
   const answerInset = marks.answer !== null && marks.answer.index === target ? 4.5 : 2.5;
+
+  // The digits the links are on, strong and weak: one each for a chain about
+  // one digit, which the key can name.
+  const strongDigits = new Set(marks.links.filter((l) => l.isStrong).map((l) => l.digit));
+  const weakDigits = new Set(marks.links.filter((l) => !l.isStrong).map((l) => l.digit));
 
   const gone = new Map<number, number>();
   for (const { index, mask } of ruledOut) gone.set(index, (gone.get(index) ?? 0) | mask);
@@ -448,6 +477,9 @@ export function TechniqueDiagram({
           ))}
           {marks.pincers.map((index) => (
             <rect key={index} {...cellRect(index)} data-mark="pincer" data-shade="look" />
+          ))}
+          {marks.chainCells.map((index) => (
+            <rect key={index} {...cellRect(index)} data-mark="chain-cell" data-shade="look" />
           ))}
         </Layer>
         {marks.pivot !== null && (
@@ -590,17 +622,21 @@ export function TechniqueDiagram({
               The pattern
             </li>
           )}
-          {marks.links.length > 0 && (
-            <>
-              <li>
-                <Swatch kind="strong" />
-                If one isn&apos;t {marks.links[0].digit}, the other is
-              </li>
-              <li>
-                <Swatch kind="weak" />
-                If one is {marks.links[0].digit}, the other isn&apos;t
-              </li>
-            </>
+          {strongDigits.size > 0 && (
+            <li>
+              <Swatch kind="strong" />
+              If one isn&apos;t {[...strongDigits][0]}, the other is
+            </li>
+          )}
+          {weakDigits.size > 0 && (
+            <li>
+              <Swatch kind="weak" />
+              {weakDigits.size === 1 ? (
+                <>If one is {[...weakDigits][0]}, the other isn&apos;t</>
+              ) : (
+                <>Can&apos;t both be the digit they share</>
+              )}
+            </li>
           )}
           {marks.forced !== null && (
             <li>

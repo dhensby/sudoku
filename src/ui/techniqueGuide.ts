@@ -1,6 +1,7 @@
 import {
   BOX,
   COL,
+  MAX_XY_CHAIN,
   POPCOUNT,
   ROW,
   TECHNIQUE_TIER,
@@ -54,7 +55,8 @@ export type GuideId =
   | 'xyWing'
   | 'xyzWing'
   | 'skyscraper'
-  | 'twoStringKite';
+  | 'twoStringKite'
+  | 'xyChain';
 
 /** One worked example an entry shows: a technique, and a label when there is more than one. */
 export interface GuideExampleSpec {
@@ -108,6 +110,7 @@ export const GUIDE_ORDER: readonly GuideId[] = [
   'xyzWing',
   'skyscraper',
   'twoStringKite',
+  'xyChain',
 ];
 
 const GUIDE_ID: Readonly<Record<TechniqueId, GuideId>> = {
@@ -127,6 +130,7 @@ const GUIDE_ID: Readonly<Record<TechniqueId, GuideId>> = {
   xyzWing: 'xyzWing',
   skyscraper: 'skyscraper',
   twoStringKite: 'twoStringKite',
+  xyChain: 'xyChain',
 };
 
 /** The guide entry that explains a technique — what a hint's "What's a …?" opens. */
@@ -581,6 +585,32 @@ function kiteCaption({ step }: TechniqueTrace): string {
   );
 }
 
+/**
+ * XY-Chain: its cells end to end, each with its two candidates, and what
+ * each must be if the first end isn't the chain's digit.
+ */
+function xyChainCaption({ step }: TechniqueTrace): string {
+  const digit = step.digit!;
+  const [first, ...rest] = step.pattern;
+  // What each cell must be if the first isn't the digit: whatever the cell
+  // before would leave it.
+  let carried = bit(digit);
+  const forced = step.pattern.map(({ mask }) => (carried = mask & ~carried));
+  const later = joinClauses(
+    rest.map((cell) => `${describePosition(cell.index)} (${orList(cell.mask)})`),
+  );
+  const then = joinClauses(
+    rest.map((cell, k) => `${describePosition(cell.index)} must be ${digitsOf(forced[k + 1])[0]}`),
+  );
+  return (
+    `${capitalise(describePosition(first.index))} can only be ${orList(first.mask)}, and each ` +
+    `cell after it — ${later} — sees the one before and shares a digit with it. If ` +
+    `${describePosition(first.index)} isn't ${digit}, it's ${digitsOf(forced[0])[0]}; then ` +
+    `${then}. So one end of the chain or the other is ${aDigit(digit)}, and a cell that sees ` +
+    `both can't be: remove ${digit} from ${cellsPhrase(indexesOf(step.eliminations))}.`
+  );
+}
+
 // ---- Entries ----------------------------------------------------------------
 
 /** An entry whose title is its technique's label, capitalised, as hints word it. */
@@ -909,6 +939,33 @@ export const GUIDE: Readonly<Record<GuideId, GuideEntry>> = {
       'outside it, strike the digit from the cell in the row of one far end and the column of ' +
       'the other.',
     caption: credited(kiteCaption),
+  }),
+
+  xyChain: entry('xyChain', only('xyChain'), {
+    aka: [],
+    summary:
+      'A chain of two-candidate cells, each seeing the next and sharing a digit with it, whose ' +
+      "ends both hold one more digit: one end must be it, so a cell that sees both can't.",
+    explanation: [
+      "Take a cell that can only be 1 or 6. If it isn't 6, it's 1 — so a cell it sees that " +
+        "can only be 1 or 3 isn't 1, and must be 3; a cell that one sees that can only be 3 or " +
+        '8 must then be 8; and a cell after that which can only be 8 or 6 must be 6. If the ' +
+        "first cell isn't 6, the last one is: one end or the other is a 6, so any cell that " +
+        "sees both of them can't be.",
+      'An XY-Wing is the shortest XY-Chain, three cells long; a chain just keeps going. Each ' +
+        'cell is a strong link — one of its two digits must be right — and each hop to the ' +
+        "next cell a weak link: two cells that see each other can't both be the digit they " +
+        'share.',
+      `The puzzles here never need one longer than ${NUMBER_WORD[MAX_XY_CHAIN]} cells: ` +
+        'longer chains exist, but are hard to follow by eye.',
+    ],
+    spot:
+      'With candidates on, look for cells with exactly two. Start at one, choose one of its ' +
+      'digits for the end, and hop to a two-candidate cell it sees that shares its other ' +
+      'digit, then on from there the same way, keeping track of what each would be. When you ' +
+      'reach a cell that would be the digit you started with, strike that digit from every ' +
+      'cell that sees both ends.',
+    caption: credited(xyChainCaption),
   }),
 };
 

@@ -52,7 +52,7 @@ function emptyAtFirstExpertStep(givens: ArrayLike<number>, result: Grade): numbe
 
 describe('GENERATOR_VERSION', () => {
   it('is pinned, so a change to generated puzzles has to be deliberate', () => {
-    expect(GENERATOR_VERSION).toBe(4);
+    expect(GENERATOR_VERSION).toBe(5);
   });
 });
 
@@ -160,27 +160,22 @@ describe('generatePuzzle', () => {
   });
 
   /*
-   * Property tests: 25 seeds per tier, bar Expert. Each puzzle is checked
-   * for what a player relies on (one solution, givens from it, the right
-   * label), what calibrates it to NYT (38 Easy givens; Medium needing locked
-   * candidates; the rest minimal) or sets Expert apart (its fish, wing or
-   * chain needed early), and run through the soundness harness — so the techniques
-   * are checked against dozens of real puzzles of every tier.
-   *
-   * Expert gets 10 seeds: each of its puzzles takes about three times the
-   * attempts of a Hard to find, and under coverage on a CI runner an attempt
-   * costs tens of milliseconds. Its techniques get the same soundness check
-   * over random minimal puzzles in the technique tests.
+   * Property tests: 25 seeds per tier. Each puzzle is checked for what a
+   * player relies on (one solution, givens from it, the right label), what
+   * calibrates it to NYT (38 Easy givens; Medium needing locked candidates;
+   * the rest minimal) or sets Expert apart (its fish, wing or chain needed
+   * early), and run through the soundness harness — so the techniques are
+   * checked against dozens of real puzzles of every tier.
    */
   describe.each(DIFFICULTY_ORDER)('%s puzzles', (difficulty) => {
     let puzzles: { puzzle: Puzzle; givens: Uint8Array; solution: Uint8Array }[] = [];
 
     beforeAll(() => {
-      puzzles = Array.from({ length: difficulty === 'expert' ? 10 : 25 }, (_, k) => {
+      puzzles = Array.from({ length: 25 }, (_, k) => {
         const puzzle = generatePuzzle(difficulty, mulberry32(1000 + k));
         return { puzzle, ...solvedPuzzle(puzzle) };
       });
-    }, 120_000);
+    }, 60_000);
 
     it('have exactly one solution, which is the one returned', () => {
       for (const { givens, solution } of puzzles) {
