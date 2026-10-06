@@ -63,12 +63,13 @@ export interface TechniqueDiagramProps {
  *   so the strike on the cell that sees them all follows from the picture.
  * - A chain's links, candidate to candidate: solid where one or other must
  *   be the digit, dashed where they can't both be. Its two ends are filled
- *   in, as for a wing: one of them is the digit. An XY-Chain's cells are
- *   shaded, like a wing's, each holding just two candidates — a strong link
- *   of its own — so its drawn links are the weak ones between them, on the
- *   digit each shares with the next. A W-Wing's two cells are shaded too,
- *   with the house that joins them, and its links run from one cell through
- *   the house's two places for the digit to the other.
+ *   in, as for a wing: one of them is the digit. A link between two
+ *   candidates of one cell — a cell with just two is a strong link of its
+ *   own — is a short arc. An XY-Chain's cells are shaded, like a wing's,
+ *   linked in each cell and from each to the next on the digit they share;
+ *   a W-Wing's two cells are shaded too, with the house that joins them,
+ *   and its links run from one cell through the house's two places for the
+ *   digit to the other.
  * - In a walkthrough, the cell being solved: inked corner marks, like a
  *   printer's crop marks, and its row and column numbers set in ink, so it
  *   can be found on every step. And the candidates earlier steps removed
@@ -331,11 +332,7 @@ function marksOf({ step }: TechniqueTrace): Marks {
             )
           : null,
     links: isChain
-      ? step.pattern.slice(1).map((cell, i) => ({
-          from: { index: step.pattern[i].index, digit: step.digit! },
-          to: { index: cell.index, digit: step.digit! },
-          isStrong: i % 2 === 0,
-        }))
+      ? linksAlong(step.pattern.map(({ index }) => ({ index, digit: step.digit! })))
       : isXyChain
         ? xyChainLinks(step)
         : isWWing
@@ -351,45 +348,51 @@ function alternatingFocus(pattern: readonly PatternCell[]): Digit | null {
   return pattern.every((p) => p.mask === pattern[0].mask) ? lowestDigit(pattern[0].mask) : null;
 }
 
-/**
- * A W-Wing's links, all on the digit that joins its cells: weak from the
- * first cell to the place it sees, strong between the house's two places,
- * and weak on to the other cell.
- */
-function wWingLinks({ pattern }: TechniqueTrace['step']): Marks['links'] {
-  const digit = lowestDigit(pattern[1].mask);
-  return pattern.slice(1).map((cell, i) => ({
-    from: { index: pattern[i].index, digit },
-    to: { index: cell.index, digit },
-    isStrong: i === 1,
-  }));
+/** Links along a chain's candidates, strong and weak in turn, strong at both ends. */
+function linksAlong(spots: readonly Spot[]): Marks['links'] {
+  return spots.slice(1).map((to, i) => ({ from: spots[i], to, isStrong: i % 2 === 0 }));
 }
 
 /**
- * An XY-Chain's weak links: from each cell to the next, on the digit the
- * first would be if the chain's first end isn't its digit — the one the
- * next cell then can't be.
+ * A W-Wing's links: inside its first cell, from the digit it removes to the
+ * one that joins the cells; weak from there to the place that cell sees;
+ * strong between the house's two places; weak on to the other cell; and
+ * inside that cell, back to the digit it removes.
+ */
+function wWingLinks({ pattern, digit }: TechniqueTrace['step']): Marks['links'] {
+  const [first, near, far, second] = pattern.map((cell) => cell.index);
+  const joining = lowestDigit(pattern[1].mask);
+  return linksAlong([
+    { index: first, digit: digit! },
+    { index: first, digit: joining },
+    { index: near, digit: joining },
+    { index: far, digit: joining },
+    { index: second, digit: joining },
+    { index: second, digit: digit! },
+  ]);
+}
+
+/**
+ * An XY-Chain's links: inside each cell, from the digit it would not be if
+ * the chain's first end isn't its digit to the one it would; and from each
+ * cell to the next, on that digit, which the next cell then can't be.
  */
 function xyChainLinks({ pattern, digit }: TechniqueTrace['step']): Marks['links'] {
   let carried = bit(digit!);
-  return pattern.slice(1).map((cell, i) => {
-    carried = pattern[i].mask & ~carried;
-    const shared = lowestDigit(carried);
-    return {
-      from: { index: pattern[i].index, digit: shared },
-      to: { index: cell.index, digit: shared },
-      isStrong: false,
-    };
+  const spots = pattern.flatMap(({ index, mask }) => {
+    const entering = lowestDigit(carried);
+    carried = mask & ~carried;
+    return [
+      { index, digit: entering },
+      { index, digit: lowestDigit(carried) },
+    ];
   });
+  return linksAlong(spots);
 }
 
 /** An alternating chain's links: every one, strong and weak in turn, candidate to candidate. */
 function alternatingLinks({ pattern }: TechniqueTrace['step']): Marks['links'] {
-  return pattern.slice(1).map((cell, i) => ({
-    from: { index: pattern[i].index, digit: lowestDigit(pattern[i].mask) },
-    to: { index: cell.index, digit: lowestDigit(cell.mask) },
-    isStrong: i % 2 === 0,
-  }));
+  return linksAlong(pattern.map(({ index, mask }) => ({ index, digit: lowestDigit(mask) })));
 }
 
 /** A wing removes only the digit it forces, from wherever its cells hold it. */

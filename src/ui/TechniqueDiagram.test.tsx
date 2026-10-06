@@ -34,6 +34,20 @@ const cellOf = (mark: Element) => cellAt(mark, 'x', 'y');
 /** The cells a line runs between. */
 const endsOf = (line: Element) => [cellAt(line, 'x1', 'y1'), cellAt(line, 'x2', 'y2')];
 
+/** The cell an arc, a path, starts in. */
+const arcCell = (path: Element) => {
+  const [x, y] = path
+    .getAttribute('d')!
+    .match(/^M([\d.]+) ([\d.]+)/)!
+    .slice(1)
+    .map(Number);
+  return Math.floor(y / 40) * 9 + Math.floor(x / 40);
+};
+
+/** A diagram's links in order, each as its shape and kind: "line weak", "path strong". */
+const linkKinds = (links: readonly Element[]) =>
+  links.map((link) => `${link.tagName} ${link.getAttribute('data-link')}`);
+
 describe('TechniqueDiagram', () => {
   it('is an image named by its caption, which is not read out a second time', () => {
     const { example } = draw('xWing');
@@ -199,17 +213,26 @@ describe('TechniqueDiagram', () => {
       expect([...marks('shaded')].map(cellOf)).toEqual(cells);
       expect([...marks('chain-cell')].map(cellOf)).toEqual(cells);
       expect(marks('house')).toHaveLength(0);
-      // Each cell is a strong link of its own; the drawn links are the weak
-      // ones between them, on 1, 3 and 8.
-      const links = [...layer('links').querySelectorAll('line')];
-      expect(links.map((line) => line.getAttribute('data-link'))).toEqual(['weak', 'weak', 'weak']);
-      expect(links.map(endsOf)).toEqual([
+      // Each cell is a strong link of its own, an arc between its two
+      // candidates; between cells, weak links on 1, 3 and 8.
+      const links = [...layer('links').querySelectorAll('line, path')];
+      expect(linkKinds(links)).toEqual([
+        'path strong',
+        'line weak',
+        'path strong',
+        'line weak',
+        'path strong',
+        'line weak',
+        'path strong',
+      ]);
+      expect(links.filter((link) => link.tagName === 'path').map(arcCell)).toEqual(cells);
+      expect(links.filter((link) => link.tagName === 'line').map(endsOf)).toEqual([
         [2, 0],
         [0, 9],
         [9, 12],
       ]);
+      expect(screen.getByText("If one isn't right, the other is")).toBeInTheDocument();
       expect(screen.getByText("Can't both be right")).toBeInTheDocument();
-      expect(screen.queryByText(/the other is$/)).not.toBeInTheDocument();
     });
 
     it('fills in the digit at both ends and rings the rest of its cells', () => {
@@ -238,18 +261,22 @@ describe('TechniqueDiagram', () => {
 
     it('links one cell through the two places for its digit to the other', () => {
       const { layer } = draw('wWing');
-      const links = [...layer('links').querySelectorAll('line')];
-      expect(links.map((line) => line.getAttribute('data-link'))).toEqual([
-        'weak',
-        'strong',
-        'weak',
+      // An arc inside each cell, from its 3 to its 9; between them, the 9s.
+      const links = [...layer('links').querySelectorAll('line, path')];
+      expect(linkKinds(links)).toEqual([
+        'path strong',
+        'line weak',
+        'line strong',
+        'line weak',
+        'path strong',
       ]);
-      expect(links.map(endsOf)).toEqual([
+      expect(links.filter((link) => link.tagName === 'path').map(arcCell)).toEqual([first, second]);
+      expect(links.filter((link) => link.tagName === 'line').map(endsOf)).toEqual([
         [first, near],
         [near, far],
         [far, second],
       ]);
-      expect(screen.getByText("If one isn't 9, the other is")).toBeInTheDocument();
+      expect(screen.getByText("If one isn't right, the other is")).toBeInTheDocument();
       expect(screen.getByText("If one is 9, the other isn't")).toBeInTheDocument();
     });
 
@@ -274,16 +301,16 @@ describe('TechniqueDiagram', () => {
         [r7c6, r7c5, r2c5, r2c7, r7c7].sort((a, b) => a - b),
       );
       expect(marks('house')).toHaveLength(0);
-      const links = [...layer('links').querySelectorAll('line, path')];
-      expect(links.map((link) => link.getAttribute('data-link'))).toEqual([
-        'strong',
-        'weak',
-        'strong',
-        'weak',
-        'strong',
-      ]);
       // Between cells a straight line; inside r2c7, from its 8 to its 9, an arc.
-      expect(links.map((link) => link.tagName)).toEqual(['line', 'line', 'line', 'path', 'line']);
+      const links = [...layer('links').querySelectorAll('line, path')];
+      expect(linkKinds(links)).toEqual([
+        'line strong',
+        'line weak',
+        'line strong',
+        'path weak',
+        'line strong',
+      ]);
+      expect(links.filter((link) => link.tagName === 'path').map(arcCell)).toEqual([r2c7]);
       expect(links.filter((link) => link.tagName === 'line').map(endsOf)).toEqual([
         [r7c6, r7c5],
         [r7c5, r2c5],
