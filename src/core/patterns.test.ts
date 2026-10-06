@@ -570,6 +570,16 @@ describe('isStepValid', () => {
         step.eliminations.push({ index, mask: bit(step.digit!) });
       },
     ],
+    [
+      'twoStringKite',
+      'ties its strings together in a line rather than a box',
+      (step) => (step.houses[2] = { kind: 'row', index: ROW[step.pattern[1].index] }),
+    ],
+    [
+      'twoStringKite',
+      'gives its strong links the wrong way round',
+      (step) => step.houses.splice(0, 2, step.houses[1], step.houses[0]),
+    ],
   ])('rejects a %s step that %s', (id, _name, misdescribe) => {
     const { board, step } = example(id);
     misdescribe(step, board);

@@ -53,7 +53,8 @@ export type GuideId =
   | 'swordfish'
   | 'xyWing'
   | 'xyzWing'
-  | 'skyscraper';
+  | 'skyscraper'
+  | 'twoStringKite';
 
 /** One worked example an entry shows: a technique, and a label when there is more than one. */
 export interface GuideExampleSpec {
@@ -106,6 +107,7 @@ export const GUIDE_ORDER: readonly GuideId[] = [
   'xyWing',
   'xyzWing',
   'skyscraper',
+  'twoStringKite',
 ];
 
 const GUIDE_ID: Readonly<Record<TechniqueId, GuideId>> = {
@@ -124,6 +126,7 @@ const GUIDE_ID: Readonly<Record<TechniqueId, GuideId>> = {
   xyWing: 'xyWing',
   xyzWing: 'xyzWing',
   skyscraper: 'skyscraper',
+  twoStringKite: 'twoStringKite',
 };
 
 /** The guide entry that explains a technique — what a hint's "What's a …?" opens. */
@@ -556,6 +559,28 @@ function skyscraperCaption({ step }: TechniqueTrace): string {
   );
 }
 
+/**
+ * 2-String Kite: a chain of four cells, read from the row's far end to the
+ * column's — the row's two places for the digit, joined in the box to the
+ * column's.
+ */
+function kiteCaption({ step }: TechniqueTrace): string {
+  const digit = step.digit!;
+  const [row, column, box] = step.houses;
+  const [rowEnd, rowIn, columnIn, columnEnd] = indexesOf(step.pattern);
+  const [rowName, columnName] = [describeUnit(row), describeUnit(column)];
+  return (
+    `${capitalise(rowName)}'s ${digit} can only go in ${withinPhrase(row, [rowEnd, rowIn])}, ` +
+    `and ${columnName}'s in ${withinPhrase(column, [columnIn, columnEnd])}. Their cells in ` +
+    `${describeUnit(box)} — ${describePosition(rowIn)} and ${describePosition(columnIn)} — ` +
+    `can't both be ${digit}s, so either ${rowName}'s ${digit} is at ` +
+    `${withinPhrase(row, [rowEnd])}, or ${columnName}'s is at ` +
+    `${withinPhrase(column, [columnEnd])}. Either way one of those two cells is ` +
+    `${aDigit(digit)}, so a cell that sees both can't be: remove ${digit} from ` +
+    `${cellsPhrase(indexesOf(step.eliminations))}.`
+  );
+}
+
 // ---- Entries ----------------------------------------------------------------
 
 /** An entry whose title is its technique's label, capitalised, as hints word it. */
@@ -857,6 +882,33 @@ export const GUIDE: Readonly<Record<GuideId, GuideEntry>> = {
       'strike the digit from every cell that sees both of those other two. Then try the same ' +
       'with columns.',
     caption: credited(skyscraperCaption),
+  }),
+
+  twoStringKite: entry('twoStringKite', only('twoStringKite'), {
+    aka: ['kite'],
+    summary:
+      'A row and a column that each have just two places for a digit, one of each in the same ' +
+      "box: one of the other two places must be the digit, so a cell that sees both can't.",
+    explanation: [
+      'Say row 2 can take its 1 only in columns 6 and 7, and column 4 only in rows 3 and 4 — ' +
+        "and two of those cells, one from each, are in box 2. They can't both be 1s, so at " +
+        'least one of the row and the column has its 1 at its far end. One of the two far ' +
+        "ends is a 1 — so any cell that sees both of them can't be.",
+      'The row and the column are the strings: knotted together in the box, and flying out ' +
+        "of it like a kite's. Their far ends are in different boxes, so only one cell that " +
+        'could still be the digit sees both: where the row of one meets the column of the ' +
+        'other.',
+      "Like a Skyscraper, it's a chain of four: a strong link (the row's two places), a weak " +
+        "link (the two cells in the box), and a strong link (the column's two places). If the " +
+        "row's far end isn't the 1, the row's 1 is in the box, so the column's isn't, so the " +
+        "column's far end is.",
+    ],
+    spot:
+      'Pick a digit and look for a row and a column where it has exactly two places each. If ' +
+      'one place of each falls in the same box, as different cells, and the other two are ' +
+      'outside it, strike the digit from the cell in the row of one far end and the column of ' +
+      'the other.',
+    caption: credited(kiteCaption),
   }),
 };
 

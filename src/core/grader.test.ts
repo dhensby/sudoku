@@ -40,6 +40,7 @@ describe('technique tables', () => {
     ['xyWing', 'expert', 160],
     ['xyzWing', 'expert', 180],
     ['skyscraper', 'expert', 130],
+    ['twoStringKite', 'expert', 150],
   ])('ranks %s as %s, scoring %i', (id, tier, score) => {
     expect(TECHNIQUE_TIER[id]).toBe(tier);
     expect(TECHNIQUE_SCORE[id]).toBe(score);
@@ -47,7 +48,7 @@ describe('technique tables', () => {
 
   it('tries every technique exactly once, easiest first', () => {
     expect(TECHNIQUE_ORDER).toEqual(Object.keys(TECHNIQUE_TIER));
-    expect(new Set(TECHNIQUE_ORDER).size).toBe(15);
+    expect(new Set(TECHNIQUE_ORDER).size).toBe(16);
     expect(Object.keys(TECHNIQUES).sort()).toEqual([...TECHNIQUE_ORDER].sort());
   });
 

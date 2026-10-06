@@ -54,12 +54,12 @@ the same puzzle. Built with React, TypeScript and Vite, and runs entirely in you
   puzzle and Reveal cell are in the "…" menu. Any help you take (auto candidates included) is
   recorded next to your time, so comparisons stay fair.
 - **A guide to the solving techniques** — every technique the grader knows, from a full house to
-  the Skyscraper: its other names, what it is, why it works, how to spot it, and a worked example
-  from a real puzzle, drawn with the pattern ringed (and a chain's links traced), the candidates it
-  removes struck out and a caption that walks through it. A hint that names a technique asks
-  "What's a hidden single?" — press it and the guide opens at that entry (each step of Show me
-  asks too, and the guide hands back to the step you were on). It is in the header too (the book;
-  on a phone, the
+  the 2-String Kite: its other names, what it is, why it works, how to spot it, and a worked
+  example from a real puzzle, drawn with the pattern ringed (and a chain's links traced), the
+  candidates it removes struck out and a caption that walks through it. A hint that names a
+  technique asks "What's a hidden single?" — press it and the guide opens at that entry (each step
+  of Show me asks too, and the guide hands back to the step you were on). It is in the header too
+  (the book; on a phone, the
   ☰ menu), and in Help. Reading it pauses the clock like any dialog, and is not counted as help.
 - **Keyboard and screen-reader friendly** — the board is a real ARIA grid, every move is
   announced in a status region, dialogs take and trap focus, and the whole game can be played
@@ -144,12 +144,12 @@ Each new puzzle is generated in a Web Worker, in a fraction of a second:
 2. Solve it the way a person would, always applying the easiest technique that makes progress,
    and grade it by the hardest technique the solve needed:
 
-   | Tier   | Hardest technique needed                                      |
-   | ------ | ------------------------------------------------------------- |
-   | Easy   | Full houses and hidden singles in a box (padded to 38 givens) |
-   | Medium | Pointing pairs or box/line reductions                         |
-   | Hard   | Naked or hidden pairs and triples                             |
-   | Expert | X-Wing, Swordfish, XY-Wing, XYZ-Wing or Skyscraper            |
+   | Tier   | Hardest technique needed                                          |
+   | ------ | ----------------------------------------------------------------- |
+   | Easy   | Full houses and hidden singles in a box (padded to 38 givens)     |
+   | Medium | Pointing pairs or box/line reductions                             |
+   | Hard   | Naked or hidden pairs and triples                                 |
+   | Expert | X-Wing, Swordfish, XY-Wing, XYZ-Wing, Skyscraper or 2-String Kite |
 
 3. Keep it if it is the tier you asked for; otherwise try again. Expert has one more rule: its
    fish, wing or chain must be needed while at least 40 cells are still empty. Left to chance,

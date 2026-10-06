@@ -46,7 +46,8 @@ export type TechniqueId =
   | 'swordfish'
   | 'xyWing'
   | 'xyzWing'
-  | 'skyscraper';
+  | 'skyscraper'
+  | 'twoStringKite';
 
 /** Which kind of unit a row/column/box index refers to. */
 export type UnitKind = 'row' | 'column' | 'box';

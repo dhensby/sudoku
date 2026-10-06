@@ -88,9 +88,9 @@ export interface SolveStep {
    * - fish: the base lines' cells for the digit, line by line;
    * - XY-Wing and XYZ-Wing: the pivot, then the two pincers, each with every
    *   candidate it holds;
-   * - chains (Skyscraper): the chain's candidates from end to end, linked in
-   *   turn strongly (one or other must be the digit), weakly (they can't
-   *   both be), strongly — so one end or the other is the digit.
+   * - chains (Skyscraper, 2-String Kite): the chain's candidates from end to
+   *   end, linked in turn strongly (one or other must be the digit), weakly
+   *   (they can't both be), strongly — so one end or the other is the digit.
    */
   pattern: PatternCell[];
   /**
@@ -720,6 +720,44 @@ const skyscraper: Technique = (board) => {
 };
 
 /**
+ * 2-String Kite: a row and a column that each hold a digit in just two
+ * cells, with one cell of each in the same box. Those two can't both be the
+ * digit, so one of the far ends — one along the row, one down the column —
+ * is, and the digit goes from every cell that sees both: the cell in the
+ * row of one and the column of the other.
+ */
+const twoStringKite: Technique = (board) => {
+  for (let d = 1; d <= 9; d++) {
+    const rows = conjugatePairs(board, bit(d), 0, 9);
+    const columns = conjugatePairs(board, bit(d), 9, 18);
+    for (const [r, ...inRow] of rows) {
+      for (const [c, ...inColumn] of columns) {
+        // A cell on both strings would tie them together at one end.
+        if (inRow.some((i) => inColumn.includes(i))) continue;
+        for (const rowIn of inRow) {
+          for (const columnIn of inColumn) {
+            const b = BOX[rowIn];
+            const rowEnd = inRow.find((i) => i !== rowIn)!;
+            const columnEnd = inColumn.find((i) => i !== columnIn)!;
+            // The strings meet in one box, and both leave it.
+            if (BOX[columnIn] !== b || BOX[rowEnd] === b || BOX[columnEnd] === b) continue;
+            const step = chainStep(
+              board,
+              'twoStringKite',
+              d as Digit,
+              [rowEnd, rowIn, columnIn, columnEnd],
+              [unitOf(r), unitOf(c), unitOf(18 + b)],
+            );
+            if (step) return step;
+          }
+        }
+      }
+    }
+  }
+  return null;
+};
+
+/**
  * Every technique, by id. Each applies one step to the board, or returns null
  * and changes nothing.
  */
@@ -739,4 +777,5 @@ export const TECHNIQUES: Readonly<Record<TechniqueId, Technique>> = {
   xyWing,
   xyzWing,
   skyscraper,
+  twoStringKite,
 };

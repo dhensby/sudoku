@@ -45,7 +45,7 @@ describe('TechniquesDialog', () => {
       Easy: ['Full house', 'Hidden single'],
       Medium: ['Naked single', 'Pointing pair or triple', 'Box/line reduction'],
       Hard: ['Naked pair', 'Hidden pair', 'Naked triple', 'Hidden triple'],
-      Expert: ['X-Wing', 'Swordfish', 'XY-Wing', 'XYZ-Wing', 'Skyscraper'],
+      Expert: ['X-Wing', 'Swordfish', 'XY-Wing', 'XYZ-Wing', 'Skyscraper', '2-String Kite'],
     };
     expect(within(nav()).getAllByRole('list')).toHaveLength(4);
     for (const [tier, titles] of Object.entries(tiers)) {
@@ -143,8 +143,8 @@ describe('TechniquesDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Previous: Full house' }));
     expect(entryHeading()).toHaveTextContent('Full house');
 
-    fireEvent.click(listed('Skyscraper'));
-    expect(screen.getByRole('button', { name: 'Previous: XYZ-Wing' })).toBeInTheDocument();
+    fireEvent.click(listed('2-String Kite'));
+    expect(screen.getByRole('button', { name: 'Previous: Skyscraper' })).toBeInTheDocument();
     // Nor after the last.
     expect(screen.queryByRole('button', { name: /^Next/ })).not.toBeInTheDocument();
   });

@@ -144,6 +144,7 @@ describe('techniqueQuestion', () => {
     ['xWing', "What's an X-Wing?"],
     ['xyzWing', "What's an XYZ-Wing?"],
     ['skyscraper', "What's a Skyscraper?"],
+    ['twoStringKite', "What's a 2-String Kite?"],
     ['claiming', "What's a box/line reduction?"],
     ['pointing', "What's a pointing pair or triple?"],
   ])('asks about %s by its name', (technique, question) => {
@@ -259,6 +260,10 @@ describe('the worked examples', () => {
     [
       'skyscraper',
       "Column 3's 7 can only go in rows 2 and 6, and column 4's in rows 2 and 5. Row 2 can't hold both columns' 7s, so at least one of them is in its other place: column 3's at row 6, or column 4's at row 5. Either way one of those two cells is a 7, so a cell that sees both can't be: remove 7 from row 5, column 1.",
+    ],
+    [
+      'twoStringKite',
+      "Row 2's 1 can only go in columns 6 and 7, and column 4's in rows 3 and 4. Their cells in box 2 — row 2, column 6 and row 3, column 4 — can't both be 1s, so either row 2's 1 is at column 7, or column 4's is at row 4. Either way one of those two cells is a 1, so a cell that sees both can't be: remove 1 from row 4, column 7.",
     ],
   ])('walk through the %s example', (technique, caption) => {
     const example = guideExamples(guideIdFor(technique)).find((e) => e.technique === technique)!;

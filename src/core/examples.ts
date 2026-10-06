@@ -22,8 +22,8 @@ import type { GridString, TechniqueId } from './types';
  *   share only the house the step names, and hidden subsets cluttered with
  *   other candidates (in all but one cell of the triple), so nothing reads
  *   as a different technique;
- * - for the naked pair, the X-Wing and the Skyscraper, whose captions are
- *   mostly numbers, digits that are not also the rows and columns named, so
+ * - for the naked pair, the X-Wing and the chains, whose captions are mostly
+ *   numbers, digits that are not also the rows and columns named, so
  *   "3 from row 1, column 4" never reads as "8 from column 8";
  * - and a hint on the board that names the technique itself, so the hint's
  *   "What's a …?" on an example's own board opens that example's entry
@@ -78,6 +78,11 @@ export const EXAMPLE_PUZZLES: Readonly<Record<TechniqueId, GridString>> = {
   // the 7 goes from row 5, column 1, which sees both tops. Seed 27146,
   // after 34.
   skyscraper: '004108200080032410201400508825310094003004182140289053679821345312945867458673921',
+  // Row 2 and column 4 hold their 1s in two cells each, one apiece in box
+  // 2; the 1 goes from row 4, column 7, which sees both far ends. Seed
+  // 42146, after 36.
+  twoStringKite:
+    '127080600605230008803076200708042060209860000461793582586924317372618495914357826',
 };
 
 /**

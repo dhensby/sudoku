@@ -48,7 +48,7 @@ const SUBSETS: Partial<Record<TechniqueId, { size: number; isNaked: boolean }>> 
 const FISH: Partial<Record<TechniqueId, number>> = { xWing: 2, swordfish: 3 };
 
 /** The chains: four cells of one digit, linked strong, weak, strong. */
-const CHAINS: ReadonlySet<TechniqueId> = new Set<TechniqueId>(['skyscraper']);
+const CHAINS: ReadonlySet<TechniqueId> = new Set<TechniqueId>(['skyscraper', 'twoStringKite']);
 
 const isLine = (unit: Unit) => unit.kind !== 'box';
 const isIn = (index: number, unit: Unit) => unitCells(unit).includes(index);
@@ -287,25 +287,29 @@ function isFishValid(board: SolverBoard, step: SolveStep, size: number): boolean
  * A chain of four cells holding its digit: the first two its only places in
  * the first house, the last two its only places in the second, and the
  * middle two in the third, which they can't both take it in. One end must
- * be the digit, so it goes from cells that see both. A Skyscraper's first
- * two houses are parallel lines and its third a cross line through both,
- * with its ends in different cross lines (or it would be an X-Wing).
+ * be the digit, so it goes from cells that see both. Neither end is in the
+ * third house. A Skyscraper's first two houses are parallel lines and its
+ * third a cross line through both, with its ends in different cross lines
+ * (or it would be an X-Wing); a 2-String Kite's are a row, a column and the
+ * box they meet in.
  */
 function isChainValid(board: SolverBoard, step: SolveStep): boolean {
-  const { pattern, houses, digit } = step;
+  const { technique: id, pattern, houses, digit } = step;
   if (digit === null || pattern.length !== 4 || houses.length !== 3) return false;
   const d = bit(digit);
   const [strong1, strong2, weak] = houses;
   const cells = pattern.map((p) => p.index);
   const [end1, inner1, inner2, end2] = cells;
   const isRightShape =
-    isLine(strong1) &&
-    strong2.kind === strong1.kind &&
-    isLine(weak) &&
-    weak.kind !== strong1.kind &&
     !isIn(end1, weak) &&
     !isIn(end2, weak) &&
-    (strong1.kind === 'row' ? COL[end1] !== COL[end2] : ROW[end1] !== ROW[end2]);
+    (id === 'skyscraper'
+      ? isLine(strong1) &&
+        strong2.kind === strong1.kind &&
+        isLine(weak) &&
+        weak.kind !== strong1.kind &&
+        (strong1.kind === 'row' ? COL[end1] !== COL[end2] : ROW[end1] !== ROW[end2])
+      : strong1.kind === 'row' && strong2.kind === 'column' && weak.kind === 'box');
   const targets = chainTargets(cells);
   return (
     isRightShape &&

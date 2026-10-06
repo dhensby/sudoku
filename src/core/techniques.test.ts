@@ -1082,6 +1082,48 @@ describe('chains', () => {
     const board = pencilmarks(SKYSCRAPER(undefined, '-1'));
     expect(TECHNIQUES.skyscraper(board)).toBeNull();
   });
+
+  /**
+   * Row 1 holds its 1s in `rowLine`'s open cells, and column 0 in the rows
+   * listed; r7c6, where a far end's column meets the other's row, is
+   * `target`.
+   */
+  const KITE = (rowLine = '-1 . -1 | -1 -1 -1 | . -1 -1', columnRows = [2, 7], target = '.') =>
+    Array.from({ length: 9 }, (_, r) => {
+      if (r === 1) return rowLine;
+      const first = columnRows.includes(r) ? '.' : '-1';
+      return `${first} . . | . . . | ${r === 7 ? target : '.'} . .`;
+    }).join('\n');
+
+  it('finds a 2-String Kite and clears the digit where its far ends cross', () => {
+    expect(TECHNIQUES.twoStringKite(pencilmarks(KITE()))).toEqual(
+      eliminationStep('twoStringKite', struck([1], [69]), null, {
+        // End to end: the row's far end, its cell in the box, the column's
+        // cell in the box, the column's far end.
+        pattern: holding([1], [15, 10, 18, 63]),
+        houses: [row(1), column(0), box(0)],
+        digit: 1,
+      }),
+    );
+  });
+
+  it('does not fire when the strings meet in no box', () => {
+    expect(TECHNIQUES.twoStringKite(pencilmarks(KITE(undefined, [4, 7])))).toBeNull();
+  });
+
+  it('does not fire when a string never leaves the box', () => {
+    const board = pencilmarks(KITE('-1 . . | -1 -1 -1 | -1 -1 -1'));
+    expect(TECHNIQUES.twoStringKite(board)).toBeNull();
+  });
+
+  it('does not tie two strings that share a cell into a kite', () => {
+    const board = pencilmarks(KITE('. -1 -1 | -1 -1 -1 | . -1 -1', [1, 7]));
+    expect(TECHNIQUES.twoStringKite(board)).toBeNull();
+  });
+
+  it('never counts a 2-String Kite that removes nothing', () => {
+    expect(TECHNIQUES.twoStringKite(pencilmarks(KITE(undefined, undefined, '-1')))).toBeNull();
+  });
 });
 
 describe('every technique', () => {
@@ -1137,6 +1179,11 @@ describe('soundness', () => {
     ['swordfish', 'forgets a cover line', (step) => step.houses.pop()],
     ['xyzWing', 'puts a pincer where the pivot goes', (step) => step.pattern.reverse()],
     ['skyscraper', 'runs its chain backwards', (step) => step.pattern.reverse()],
+    [
+      'twoStringKite',
+      'names the wrong box for its weak link',
+      (step) => (step.houses[2] = { kind: 'box', index: (step.houses[2].index + 1) % 9 }),
+    ],
   ])('flags a %s step that %s', (id, _, misdescribe) => {
     const techniques = TECHNIQUES as Record<TechniqueId, Technique>;
     const original = techniques[id];

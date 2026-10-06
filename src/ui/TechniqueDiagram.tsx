@@ -89,10 +89,11 @@ const SINGLE_DIGIT: ReadonlySet<TechniqueId> = new Set<TechniqueId>([
   'xWing',
   'swordfish',
   'skyscraper',
+  'twoStringKite',
 ]);
 
 /** Chains: their pattern runs end to end, linked strongly, weakly, strongly. */
-const CHAINS: ReadonlySet<TechniqueId> = new Set<TechniqueId>(['skyscraper']);
+const CHAINS: ReadonlySet<TechniqueId> = new Set<TechniqueId>(['skyscraper', 'twoStringKite']);
 
 /** A cell's side, in user units. */
 const CELL = 40;

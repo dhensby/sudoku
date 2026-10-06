@@ -52,7 +52,7 @@ function emptyAtFirstExpertStep(givens: ArrayLike<number>, result: Grade): numbe
 
 describe('GENERATOR_VERSION', () => {
   it('is pinned, so a change to generated puzzles has to be deliberate', () => {
-    expect(GENERATOR_VERSION).toBe(3);
+    expect(GENERATOR_VERSION).toBe(4);
   });
 });
 
