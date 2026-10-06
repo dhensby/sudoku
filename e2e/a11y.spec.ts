@@ -10,6 +10,7 @@ import {
   cellLabels,
   chooseMore,
   emptyCells,
+  getStuck,
   gotoPuzzle,
   modeButton,
   openHeaderDialog,
@@ -25,8 +26,9 @@ import {
 /**
  * Accessibility, checked by machine: axe-core runs its WCAG 2.2 A and AA
  * rules over the states a player meets — the board in play with every kind
- * of mark on it, the Ready and Paused cards, the "…" menu, every dialog and
- * each entry of the technique guide — in the light theme and the dark, and
+ * of mark on it, the Ready and Paused cards, the "…" menu, every dialog (each
+ * step of Show me among them) and each entry of the technique guide — in the
+ * light theme and the dark, and
  * each must come back with no violations at all, with no rule switched off.
  * Contrast is the rule that a palette change is likeliest to break:
  * contrast.test.ts holds the tokens to their targets pair by pair, and this
@@ -149,6 +151,24 @@ for (const scheme of ['light', 'dark'] as const) {
       await expectAccessible(page, 'the broken-link notice');
     });
 
+    test('a hint with Show me, and every step of its walkthrough', async ({ page }) => {
+      await getStuck(page);
+      await chooseMore(page, 'Hint');
+      const show = page.getByRole('button', { name: /^Show me how to solve/ });
+      await expect(show).toBeVisible();
+      await expectAccessible(page, 'a hint with Show me');
+
+      await show.click();
+      const walkthrough = dialog(page, 'How to solve row 5, column 2');
+      for (let step = 1; step <= 3; step++) {
+        await expect(walkthrough.getByRole('heading', { level: 3 })).toHaveAccessibleName(
+          new RegExp(`^Step ${step} of 3: `),
+        );
+        await expectAccessible(page, `step ${step} of Show me`);
+        if (step < 3) await walkthrough.getByRole('button', { name: /^Next:/ }).click();
+      }
+    });
+
     test('the Ready and Paused cards', async ({ page }) => {
       await gotoPuzzle(page, PUZZLES.medium.givens);
       await expect(startButton(page)).toBeVisible();
@@ -261,6 +281,25 @@ for (const scheme of ['light', 'dark'] as const) {
 
 test.describe('on a phone', () => {
   test.skip(({ isMobile }) => !isMobile, 'the phone layout');
+
+  for (const scheme of ['light', 'dark'] as const) {
+    test(`Show me as a bottom sheet, every step, in the ${scheme} theme`, async ({ page }) => {
+      await page.emulateMedia({ colorScheme: scheme });
+      await getStuck(page);
+      await expectScheme(page, scheme);
+      await chooseMore(page, 'Hint');
+      await expectAccessible(page, 'a hint with Show me');
+      await page.getByRole('button', { name: /^Show me how to solve/ }).click();
+      const walkthrough = dialog(page, 'How to solve row 5, column 2');
+      for (let step = 1; step <= 3; step++) {
+        await expect(walkthrough.getByRole('heading', { level: 3 })).toHaveAccessibleName(
+          new RegExp(`^Step ${step} of 3: `),
+        );
+        await expectAccessible(page, `step ${step} of Show me`);
+        if (step < 3) await walkthrough.getByRole('button', { name: /^Next:/ }).click();
+      }
+    });
+  }
 
   for (const scheme of ['light', 'dark'] as const) {
     test(`the board, the menus, a dialog and the guide in the ${scheme} theme`, async ({

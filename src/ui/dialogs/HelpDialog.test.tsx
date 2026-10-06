@@ -43,6 +43,7 @@ describe('HelpDialog', () => {
     const rows = [
       ['Pause or resume', 'The timer'],
       ['Hint, check, reveal, reset', 'The “…” menu'],
+      ['Show me how to solve a cell', 'Show me, after a hint'],
       ['New game', 'The + button'],
       ['History, share, settings, help', 'on a phone, the ☰ menu'],
       ['Solving techniques', 'The header, or the question after a hint'],
@@ -101,12 +102,19 @@ describe('HelpDialog', () => {
     );
   });
 
-  it('says a cell remembers its hint, and that asking for it again is free', () => {
+  it('says a cell remembers its hint, and what Show me does and costs', () => {
     render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={vi.fn()} />);
     const hints = screen.getByRole('heading', { name: 'Hints' }).closest('section')!;
     expect(within(hints).getByText(/without giving the number away/)).toBeInTheDocument();
     expect(within(hints).getByText(/A cell remembers its hint/)).toHaveTextContent(
-      'select it again and the hint is back, and asking for it again costs nothing more',
+      'brought up to date if the board has moved on, and asking for it again costs nothing more',
+    );
+    const showMe = within(hints).getByText(/walks through the steps that solve that cell/);
+    expect(showMe).toHaveTextContent(
+      'Opening it counts as one more hint, the first time for each cell.',
+    );
+    expect(showMe).toHaveTextContent(
+      'If a number on the board is wrong, it points at that instead, as Hint would.',
     );
   });
 

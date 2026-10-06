@@ -54,7 +54,7 @@ test.describe('from a hint', () => {
     await hintOn(page, 'pointing');
     const hint = page.locator('.hint-bar');
     await expect(hint).toHaveText(
-      "Look here — a pointing pair or triple will unlock this cell. What's a pointing pair or triple?",
+      "Look here — a pointing pair or triple will unlock this cell. What's a pointing pair or triple? Show me",
     );
     const hinted = await selectedIndex(page);
     await hint.getByRole('button', { name: "What's a pointing pair or triple?" }).click();
@@ -76,7 +76,9 @@ test.describe('from a hint', () => {
     // Opened with the mouse: focus goes back to the board, where it was.
     expect(await selectedIndex(page)).toBe(hinted);
     await expect(page.getByRole('gridcell', { selected: true })).toBeFocused();
-    await expect(hint.getByRole('button')).toBeVisible();
+    await expect(
+      hint.getByRole('button', { name: "What's a pointing pair or triple?" }),
+    ).toBeVisible();
   });
 
   test('a hint asks after the technique it names, singles included', async ({ page }) => {

@@ -12,6 +12,7 @@ import {
   SettingsDialog,
   ShareDialog,
   TechniquesDialog,
+  WalkthroughDialog,
 } from './dialogs';
 import { Header } from './Header';
 import { HintBar } from './HintBar';
@@ -226,9 +227,9 @@ export function App({ options }: AppProps = {}) {
   const canCheckPuzzle =
     game !== null && game.cells.some((cell, i) => cell.value !== 0 && isEditable(game, i));
   // A hint points at a cell; with the board hidden there is none to see.
-  // Behind the technique guide alone it stays, under the scrim, so the guide
-  // its question opened can give focus back to the question.
-  const isHintShown = isPlaying || dialog?.kind === 'techniques';
+  // Behind the guide and "Show me" it stays, under the scrim, so they can
+  // give focus back to the button in it that opened them.
+  const isHintShown = isPlaying || dialog?.kind === 'techniques' || dialog?.kind === 'walkthrough';
   // A cell's remembered hint, shown again as the cell is selected again, is
   // not spoken: the cell's description carries it, read as focus arrives,
   // and only then — the status region would repeat it at every cell the
@@ -292,6 +293,7 @@ export function App({ options }: AppProps = {}) {
               <HintBar
                 hint={isHintShown ? sudoku.shownHint : null}
                 textId={hintTextId}
+                onShowMe={sudoku.walkthrough === null ? null : actions.showMe}
                 notice={sudoku.notice}
                 onDismissNotice={actions.dismissNotice}
                 onOpenGuide={actions.openTechniques}
@@ -371,6 +373,14 @@ export function App({ options }: AppProps = {}) {
         )}
         {dialog?.kind === 'techniques' && (
           <TechniquesDialog initial={dialog.initial ?? undefined} onClose={actions.closeDialog} />
+        )}
+        {dialog?.kind === 'walkthrough' && (
+          <WalkthroughDialog
+            walkthrough={dialog.walkthrough}
+            initialStep={dialog.step}
+            onOpenGuide={actions.openTechniques}
+            onClose={actions.closeDialog}
+          />
         )}
         {dialog?.kind === 'challenge' && (
           <ChallengeDialog

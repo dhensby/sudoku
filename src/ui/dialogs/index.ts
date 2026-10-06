@@ -14,3 +14,4 @@ export { HelpDialog, type HelpDialogProps } from './HelpDialog';
 export { ChallengeDialog, type ChallengeDialogProps } from './ChallengeDialog';
 export { ConfirmDialog, type ConfirmDialogProps } from './ConfirmDialog';
 export { TechniquesDialog, type TechniquesDialogProps } from './TechniquesDialog';
+export { WalkthroughDialog, type WalkthroughDialogProps } from './WalkthroughDialog';

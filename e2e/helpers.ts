@@ -341,10 +341,10 @@ export async function openHeaderDialog(
 }
 
 /**
- * The board behind remembered hints: a player sixteen right entries into
- * the puzzle of share code `O3NLgKqUTeam9ygZMBQVALBbgSY`, opened from its
- * link and started. Their hint points at row 5, column 2 and names a hidden
- * pair half a board away.
+ * The board behind "Show me": a player sixteen right entries into the
+ * puzzle of share code `O3NLgKqUTeam9ygZMBQVALBbgSY`, opened from its link
+ * and started. Their hint points at row 5, column 2 and names a hidden pair
+ * half a board away, which its walkthrough takes three steps to reach.
  */
 export async function getStuck(page: Page): Promise<void> {
   const { code, entries } = STUCK_ON_A_HIDDEN_PAIR;

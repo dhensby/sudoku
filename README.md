@@ -41,14 +41,23 @@ the same puzzle. Built with React, TypeScript and Vite, and runs entirely in you
 - **Help when you want it** — Hint points at a cell you can fill next and names the technique
   ("Hidden single: there's only one place for a number in this box"), without ever giving the
   number away. A cell **remembers its hint**: select it again and the hint is back under the
-  board (and in the cell's description for a screen reader), and asking again for the same cell
-  isn't counted again. Check cell, Check puzzle and Reveal cell are in the "…" menu. Any help you
-  take (auto candidates included) is recorded next to your time, so comparisons stay fair.
+  board (and in the cell's description for a screen reader) — brought up to date if the board has
+  moved on, so a cell that needed a hidden pair and now needs only a single says so — and asking
+  again for the same cell isn't counted again. Still stuck? **Show me**, beside the hint, walks
+  through the steps that solve that one cell — only the steps it depends on, however far across
+  the board the solve wandered, and none it could do without — each drawn on your own board with
+  the cell marked, a caption that says which earlier step removed what, and the answer at the end.
+  It counts as one more hint, once per cell. Whether it is on offer never gives away a wrong digit
+  elsewhere: pressed with one on the board, it points at that instead, as Hint would. On a phone on
+  its side, each step's board is sized to the screen with its caption beside it. Check cell, Check
+  puzzle and Reveal cell are in the "…" menu. Any help you take (auto candidates included) is
+  recorded next to your time, so comparisons stay fair.
 - **A guide to the solving techniques** — every technique the grader knows, from a full house to
   the XYZ-Wing: its other names, what it is, why it works, how to spot it, and a worked example
   from a real puzzle, drawn with the pattern ringed, the candidates it removes struck out and a
   caption that walks through it. A hint that names a technique asks "What's a hidden single?" —
-  press it and the guide opens at that entry. It is in the header too (the book; on a phone, the
+  press it and the guide opens at that entry (each step of Show me asks too, and the guide hands
+  back to the step you were on). It is in the header too (the book; on a phone, the
   ☰ menu), and in Help. Reading it pauses the clock like any dialog, and is not counted as help.
 - **Keyboard and screen-reader friendly** — the board is a real ARIA grid, every move is
   announced in a status region, dialogs take and trap focus, and the whole game can be played
@@ -85,9 +94,11 @@ The design keeps a hard line between logic and presentation:
 
 - **`src/core/`** — a pure, framework-free engine: grid geometry, a bitmask solver, a human-style
   logical grader (with a worked example of every technique it knows), the puzzle generator, hints,
-  share-link codec, clock arithmetic and the game reducer (which remembers each cell's hints). No
-  DOM, no React and no English; `reduce(state, action)` is a pure function, randomness is passed
-  in, and the whole directory is held to 100% coverage.
+  walkthroughs (Show me: the steps one cell depends on, sliced from a solve, pruned of any it can
+  do without and checked step by step), share-link codec, clock arithmetic and the game reducer
+  (which remembers each cell's hints). No DOM, no React and no English;
+  `reduce(state, action)` is a pure function, randomness is passed in, and the whole directory is
+  held to 100% coverage.
 - **`src/storage/`** — a thin, injectable `localStorage` layer for preferences, the history and
   saved games, which validates everything it reads back and never lets a full or broken storage
   stop play.
@@ -194,17 +205,20 @@ puzzles seen, are merged with what is already there.
 
 - **Unit & component** (`*.test.ts[x]`, Vitest + Testing Library): the engine is tested
   exhaustively, including a soundness harness that checks every placement and elimination the
-  grader makes against the known solution, golden puzzles pinned per tier, and property tests over
-  many seeds. Components and hooks are tested through real interactions. The palette is read
-  straight from the stylesheet and held to its contrast targets pair by pair, in both themes and
-  under simulated colour-blindness (`src/styles/contrast.test.ts`). Coverage thresholds are
-  enforced in CI, with the engine held to 100%.
+  grader makes against the known solution — and every step's pattern against its board with
+  `isStepValid`, the check a walkthrough must pass before it is shown — golden puzzles pinned per
+  tier, and property tests over many seeds. Components and hooks are tested through real
+  interactions. The palette is read straight from the stylesheet and held to its contrast targets
+  pair by pair, in both themes and under simulated colour-blindness
+  (`src/styles/contrast.test.ts`). Coverage thresholds are enforced in CI, with the engine held to
+  100%.
 - **End-to-end** (`e2e/`, Playwright): full journeys against the built app — playing and solving,
-  pausing and reloading, share links between two browsers, the history, the technique guide and
-  the phone layout from 320px wide up and on its side. An accessibility pass
-  (`a11y.spec.ts`) runs axe-core's WCAG 2.2 A and AA rules over the main states — the board with
-  every kind of mark, the Ready and Paused cards, the menus, every dialog and each guide entry —
-  in both themes, and allows no violations. Three projects:
+  pausing and reloading, share links between two browsers, the history, the technique guide, a
+  hint's Show me walkthrough and the phone layout from 320px wide up and on its side. An
+  accessibility pass (`a11y.spec.ts`) runs axe-core's WCAG 2.2 A and AA rules over the main
+  states — the board with every kind of mark, the Ready and Paused cards, the menus, every dialog
+  (Show me's included) and each guide entry — in both themes, and allows no violations. Three
+  projects:
 
   | Project    | Device         | Engine   | Specs                                                 |
   | ---------- | -------------- | -------- | ----------------------------------------------------- |
@@ -238,6 +252,7 @@ no change is needed — the base is derived from the repository name at build ti
 | Redo                           | <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd>, <kbd>Ctrl</kbd>+<kbd>Y</kbd> | Redo button                          |
 | Pause or resume                | <kbd>P</kbd>                                                                             | The timer                            |
 | Hint, check, reveal, reset     | —                                                                                        | The "…" menu                         |
+| Show me how to solve a cell    | —                                                                                        | Show me, after a hint                |
 | New game                       | —                                                                                        | The + button                         |
 | History, share, settings, help | —                                                                                        | The header (on a phone, the ☰ menu) |
 | Solving techniques             | —                                                                                        | The header, or a hint's question     |

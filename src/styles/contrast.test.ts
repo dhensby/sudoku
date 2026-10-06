@@ -178,6 +178,18 @@ const PAIRS: Pair[] = [
   ['accent text on the page', 'accent', 'bg', TEXT],
   ['accent text on a dialog', 'accent', 'surface-raised', TEXT],
   ['a hint’s question on the hint bar', mixed('accent', 0.8, 'text'), 'surface', TEXT],
+  [
+    'a hint’s Show me, hovered',
+    mixed('accent', 0.8, 'text'),
+    mixed('accent', 0.1, 'surface'),
+    TEXT,
+  ],
+  [
+    'a hint’s Show me, pressed',
+    mixed('accent', 0.8, 'text'),
+    mixed('accent', 0.18, 'surface'),
+    TEXT,
+  ],
 
   // ---- Edges of controls, and focus rings ----
   ['key rule against the page', 'key-border', 'bg', NON_TEXT],
@@ -215,6 +227,14 @@ const PAIRS: Pair[] = [
   ['answer frame against its fill', 'success', mixed('success', 0.14, 'cell-bg'), NON_TEXT],
   ['answer frame against where to look', 'success', 'hl-same', NON_TEXT],
   ['answer digit', mixed('success', 0.85, 'text'), mixed('success', 0.14, 'cell-bg'), TEXT],
+
+  // ---- Show me: the walkthrough ----
+  ...(['cell-bg', 'hl-same', 'hl-peer'] as const).flatMap((fill): Pair[] => [
+    [`corner marks of the cell being solved on ${fill}`, 'text', fill, NON_TEXT],
+    [`dashed strike of an earlier step's removal on ${fill}`, 'text-muted', fill, NON_TEXT],
+  ]),
+  ['the answer’s digit, under the caption', mixed('success', 0.85, 'text'), 'surface', TEXT],
+  ['the answer’s rule against its box', 'success', 'surface', NON_TEXT],
 ];
 
 describe.each([

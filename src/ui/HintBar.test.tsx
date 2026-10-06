@@ -72,10 +72,37 @@ describe('HintBar', () => {
     expect(button.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
   });
 
+  it('offers "Show me" for a hint with a walkthrough, named for the cell it solves', () => {
+    const onShowMe = vi.fn();
+    renderBar({ hint: { kind: 'deduction', index: 37, technique: 'hiddenPair' }, onShowMe });
+    const show = screen.getByRole('button', { name: 'Show me how to solve row 5, column 2' });
+    // Its words are its name's first: what a voice-control user says is what they see.
+    expect(show).toHaveTextContent(/^Show me$/);
+    expect(show.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+    fireEvent.click(show);
+    expect(onShowMe).toHaveBeenCalledTimes(1);
+    // After the question, which still opens the guide.
+    expect(screen.getAllByRole('button').map((button) => button.className)).toEqual([
+      'hint-bar__question',
+      'hint-bar__show',
+    ]);
+  });
+
+  it('offers no "Show me" for a hint without a walkthrough', () => {
+    renderBar({ hint: { kind: 'deduction', index: 37, technique: 'hiddenPair' } });
+    expect(screen.queryByRole('button', { name: /^Show me/ })).not.toBeInTheDocument();
+  });
+
+  it('offers no "Show me" when the puzzle is complete, whatever it is given', () => {
+    renderBar({ hint: { kind: 'none' }, onShowMe: vi.fn() });
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  });
+
   it('gives the hint’s words, and only them, the id a cell can be described by', () => {
     renderBar({
       hint: { kind: 'deduction', index: 37, technique: 'hiddenPair' },
       textId: 'hint-text',
+      onShowMe: vi.fn(),
     });
     expect(document.getElementById('hint-text')).toHaveTextContent(
       /^Look here — a hidden pair will unlock this cell\.$/,

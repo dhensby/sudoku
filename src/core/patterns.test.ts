@@ -1,7 +1,7 @@
 import { techniqueExample } from './examples';
 import { TECHNIQUE_ORDER } from './grader';
 import { ALL_DIGITS, BOX, ROW, bit, isPeer, lowestDigit, unitCells } from './grid';
-import { isStepValid } from './patterns';
+import { isStepValid, reliance, stepOn } from './patterns';
 import {
   TECHNIQUES,
   cloneBoard,
@@ -544,5 +544,141 @@ describe('isStepValid', () => {
     const { board, step } = example(id);
     misdescribe(step, board);
     expect(isStepValid(board, step)).toBe(false);
+  });
+});
+
+describe('stepOn', () => {
+  it('reads every step the grader makes exactly as the technique found it, on its own board', () => {
+    const misread = CORPUS.filter(
+      ({ before, step }) => JSON.stringify(stepOn(before, step)) !== JSON.stringify(step),
+    );
+    expect(misread.map(({ step }) => step.technique)).toEqual([]);
+  });
+
+  it('returns a single as it is', () => {
+    const { board, step } = example('hiddenSingleLine');
+    expect(stepOn(board, step)).toBe(step);
+  });
+
+  it('removes whatever else the pattern rules out on a board that kept more candidates', () => {
+    // A hidden pair clears every other candidate from its cells.
+    const { board, step } = example('hiddenPair');
+    const [first] = step.pattern;
+    const extra = addDigit(board, first.index, union(step));
+    const read = stepOn(board, step);
+    expect(isStepValid(board, read)).toBe(true);
+    expect(read.pattern).toEqual(step.pattern);
+    const struck = read.eliminations.find((e) => e.index === first.index)!;
+    expect(struck.mask & extra).toBe(extra);
+  });
+
+  it('reads a pattern that no longer holds as it stands, for isStepValid to turn down', () => {
+    // Another place for one of the pair's digits, and the pair is no more.
+    const { board, step } = example('hiddenPair');
+    const other = unitCells(step.houses[0]).find(
+      (i) => board.values[i] === 0 && !cellsOf(step).includes(i),
+    )!;
+    board.candidates[other] |= union(step);
+    const read = stepOn(board, step);
+    expect(read.pattern.map((p) => p.index)).toContain(other);
+    expect(isStepValid(board, read)).toBe(false);
+  });
+});
+
+describe('reliance', () => {
+  /** The facts a step relies on, one by one: a candidate that must be gone, or a cell that must be filled. */
+  function factsOf(step: SolveStep): ({ index: number; digit: number } | { filled: number })[] {
+    const { absent, filled } = reliance(step);
+    return [
+      ...absent.flatMap(({ index, mask }) =>
+        [1, 2, 3, 4, 5, 6, 7, 8, 9].filter((d) => mask & bit(d)).map((digit) => ({ index, digit })),
+      ),
+      ...filled.map((index) => ({ filled: index })),
+    ];
+  }
+
+  /**
+   * The loosest board the step relies on: every cell it needs filled kept as
+   * it was, and every other cell empty, with every candidate it does not
+   * need gone — which keeps every candidate the step's own board had, and
+   * then some.
+   */
+  function loosestBoard(before: SolverBoard, step: SolveStep): SolverBoard {
+    const { absent, filled } = reliance(step);
+    const gone = new Uint16Array(81);
+    for (const { index, mask } of absent) gone[index] |= mask;
+    const board: SolverBoard = { values: new Uint8Array(81), candidates: new Uint16Array(81) };
+    for (let i = 0; i < 81; i++) {
+      if (filled.includes(i)) board.values[i] = before.values[i];
+      else board.candidates[i] = ALL_DIGITS & ~gone[i];
+    }
+    return board;
+  }
+
+  it('is all true on the board each step was made on', () => {
+    const untrue = CORPUS.filter(({ before, step }) =>
+      factsOf(step).some((fact) =>
+        'filled' in fact
+          ? before.values[fact.filled] === 0
+          : (before.candidates[fact.index] & bit(fact.digit)) !== 0,
+      ),
+    );
+    expect(untrue.map(({ step }) => step.technique)).toEqual([]);
+  });
+
+  it('is all a step needs: read on the loosest board it allows, every step still holds', () => {
+    const failed = CORPUS.filter(({ before, step }) => {
+      const board = loosestBoard(before, step);
+      return !isStepValid(board, stepOn(board, step));
+    });
+    expect(failed.map(({ step }) => step.technique)).toEqual([]);
+  });
+
+  it('is nothing a step can do without: undo any one of it, and the step no longer holds', () => {
+    const spared: string[] = [];
+    for (const { before, step } of CORPUS) {
+      for (const fact of factsOf(step)) {
+        const board = loosestBoard(before, step);
+        if ('filled' in fact) {
+          board.values[fact.filled] = 0;
+          board.candidates[fact.filled] = ALL_DIGITS;
+        } else {
+          board.candidates[fact.index] |= bit(fact.digit);
+        }
+        if (isStepValid(board, stepOn(board, step))) spared.push(step.technique);
+      }
+    }
+    expect(spared).toEqual([]);
+  });
+
+  it.each<[TechniqueId, (step: SolveStep) => number[]]>([
+    ['nakedSingle', (step) => [step.placement!.index]],
+    [
+      'hiddenSingleBox',
+      (step) => unitCells(step.houses[0]).filter((i) => i !== step.placement!.index),
+    ],
+    ['pointing', (step) => unitCells(step.houses[0]).filter((i) => !isIn(i, step.houses[1]))],
+    ['claiming', (step) => unitCells(step.houses[0]).filter((i) => !isIn(i, step.houses[1]))],
+    ['nakedPair', (step) => cellsOf(step)],
+    ['hiddenTriple', (step) => unitCells(step.houses[0]).filter((i) => !cellsOf(step).includes(i))],
+    [
+      'xWing',
+      (step) =>
+        step.houses
+          .slice(0, 2)
+          .flatMap((u) => unitCells(u))
+          .filter((i) => !step.houses.slice(2).some((u) => isIn(i, u))),
+    ],
+    ['xyzWing', (step) => cellsOf(step)],
+  ])('asks %s for candidates gone from the cells its pattern turns on', (id, cellsFor) => {
+    const { step } = example(id);
+    expect(reliance(step).absent.map((a) => a.index)).toEqual(cellsFor(step));
+    expect(reliance(step).filled).toEqual([]);
+  });
+
+  it('asks a full house for the rest of its house filled', () => {
+    const { step } = example('fullHouse');
+    const others = unitCells(step.houses[0]).filter((i) => i !== step.placement!.index);
+    expect(reliance(step)).toEqual({ absent: [], filled: others });
   });
 });

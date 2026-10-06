@@ -128,6 +128,18 @@ describe('describeChange', () => {
     expect(spoken({ type: 'move', direction: 'right' })).toBeNull();
   });
 
+  it('says nothing about opening "Show me", whose dialog speaks for itself', () => {
+    const hint: DescribedAction = {
+      type: 'hint',
+      hint: { kind: 'single', index: R1C3, technique: 'nakedSingle', unit: null },
+    };
+    const states = play(hint, { type: 'walkthrough', index: R1C3 });
+    expect(states.at(-1)).not.toBe(states.at(-2));
+    expect(
+      describeChange(states.at(-2)!, states.at(-1)!, { type: 'walkthrough', index: R1C3 }),
+    ).toBeNull();
+  });
+
   describe('entering digits', () => {
     it('reports a placed digit and where', () => {
       expect(spoken(enter(4))).toBe('4 in row 1, column 3.');

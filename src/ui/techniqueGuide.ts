@@ -7,10 +7,12 @@ import {
   bit,
   digitsOf,
   isPeer,
+  reliance,
   techniqueExample,
   unitCells,
   type Difficulty,
   type Elimination,
+  type SolveStep,
   type TechniqueId,
   type TechniqueTrace,
   type Unit,
@@ -30,6 +32,10 @@ import { DIFFICULTY_LABEL, TECHNIQUE_LABEL, capitalise, joinList, withArticle } 
  * wants the names behind the hints: the usual terms, the reason a technique
  * is sound, and what to look for. Captions count rows, columns and boxes from
  * one, as the diagrams are labelled, and say only what that example shows.
+ *
+ * The same captions walk through "Show me" (see `walkthroughCaption`), where
+ * a step can rest on candidates that earlier steps of the walkthrough ruled
+ * out — which no placed digit explains, so the caption credits the step.
  */
 
 /** An entry in the guide. The two hidden singles share one, as they share a name. */
@@ -70,9 +76,18 @@ export interface GuideEntry {
   spot: string;
   /** The worked examples, in the order shown — each technique of the entry once. */
   examples: readonly GuideExampleSpec[];
-  /** The worked example walked through in words, from the trace it was drawn from. */
-  caption: (trace: TechniqueTrace) => string;
+  /** The worked example walked through in words, from the trace it was drawn from (see `Caption`). */
+  caption: Caption;
 }
+
+/**
+ * A step walked through in words, from the trace it was drawn from. Given
+ * `earlier` — the steps before it in a walkthrough — it credits them with
+ * what it relies on having been ruled out ("Step 1 removed 5 from row 4,
+ * column 6."). Without it, as in the guide, the placed digits explain every
+ * candidate.
+ */
+export type Caption = (trace: TechniqueTrace, earlier?: readonly TechniqueTrace[]) => string;
 
 /** The entries in the order the guide lists them: easiest first, as the grader tries them. */
 export const GUIDE_ORDER: readonly GuideId[] = [
@@ -221,6 +236,68 @@ function unionOf(cells: readonly { mask: number }[]): number {
 
 const indexesOf = (cells: readonly { index: number }[]) => cells.map((cell) => cell.index);
 
+/** "step 2", "steps 1 and 3": walkthrough steps by index, counted from one. */
+function stepsPhrase(steps: readonly number[]): string {
+  return `step${steps.length === 1 ? '' : 's'} ${joinList(steps.map((k) => String(k + 1)))}`;
+}
+
+/** The earlier steps, by index, that removed any of `mask` from any of `cells`. */
+function stepsRemoving(
+  earlier: readonly TechniqueTrace[],
+  cells: readonly number[],
+  mask: number,
+): number[] {
+  return earlier.flatMap(({ step }, k) =>
+    step.eliminations.some((e) => cells.includes(e.index) && (e.mask & mask) !== 0) ? [k] : [],
+  );
+}
+
+/** What one earlier step of a walkthrough removed that a later step relies on. */
+export interface Credit {
+  /** The earlier step, by index from 0. */
+  step: number;
+  /** What it removed that the later step relies on having gone. */
+  eliminations: Elimination[];
+}
+
+/**
+ * What earlier steps of a walkthrough removed that `step` relies on having
+ * been ruled out (see `reliance`), step by step: the candidates it treats
+ * as gone that no placed digit explains. None in the guide, whose examples'
+ * candidates follow from the placed digits alone.
+ */
+export function creditsFor(step: SolveStep, earlier: readonly TechniqueTrace[]): Credit[] {
+  if (earlier.length === 0) return [];
+  const needed = new Uint16Array(81);
+  for (const { index, mask } of reliance(step).absent) needed[index] |= mask;
+  return earlier.flatMap((trace, k) => {
+    const eliminations = trace.step.eliminations
+      .map(({ index, mask }) => ({ index, mask: mask & needed[index] }))
+      .filter(({ mask }) => mask !== 0);
+    return eliminations.length === 0 ? [] : [{ step: k, eliminations }];
+  });
+}
+
+/**
+ * The earlier steps a step relies on (see `creditsFor`), a sentence each:
+ * "Step 1 removed 5 from row 4, column 6." The diagram shows the candidate
+ * gone; this says where it went.
+ */
+function credits(step: SolveStep, earlier: readonly TechniqueTrace[]): string {
+  return creditsFor(step, earlier)
+    .map((credit) => `Step ${credit.step + 1} removed ${removals(credit.eliminations)}.`)
+    .join(' ');
+}
+
+/**
+ * A caption for a step that removes candidates, led by the earlier steps it
+ * relies on (see `credits`). The singles credit them in their own words.
+ */
+function credited(caption: (trace: TechniqueTrace) => string): Caption {
+  return (trace, earlier = []) =>
+    [credits(trace.step, earlier), caption(trace)].filter((part) => part !== '').join(' ');
+}
+
 // ---- Captions ---------------------------------------------------------------
 
 /*
@@ -242,49 +319,62 @@ function fullHouseCaption({ step }: TechniqueTrace): string {
 }
 
 /**
- * The placed copies of `digit` that rule out every other empty cell of
+ * The placed copies of `digit` that rule out the other empty cells of
  * `unit`: a few, chosen greedily, each covering as many of the rest as it
- * can — the copies a player's eye would follow. Null when the copies alone
- * don't explain it: a cell some earlier step ruled out, which no placed copy
- * sees. The stored examples never need that (their candidates follow from
- * the placed digits), but a caption must not loop forever looking.
+ * can — the copies a player's eye would follow — and the cells no copy
+ * sees, which some earlier step ruled out. The guide's examples never have
+ * any of those (their candidates follow from the placed digits); a
+ * walkthrough's can.
  */
 function blockersOf(
   values: ArrayLike<number>,
   unit: Unit,
   target: number,
   digit: number,
-): number[] | null {
-  let open = unitCells(unit).filter((i) => i !== target && values[i] === 0);
+): { blockers: number[]; unseen: number[] } {
   const copies = Array.from({ length: 81 }, (_, i) => i).filter((i) => values[i] === digit);
-  const chosen: number[] = [];
+  const empty = unitCells(unit).filter((i) => i !== target && values[i] === 0);
+  const unseen = empty.filter((i) => !copies.some((copy) => isPeer(i, copy)));
+  let open = empty.filter((i) => !unseen.includes(i));
+  const blockers: number[] = [];
   while (open.length > 0) {
-    let best = -1;
+    let best = copies[0];
     let bestCover = 0;
     for (const copy of copies) {
       const cover = open.filter((i) => isPeer(i, copy)).length;
       if (cover > bestCover) [best, bestCover] = [copy, cover];
     }
-    if (best === -1) return null;
-    chosen.push(best);
+    blockers.push(best);
     open = open.filter((i) => !isPeer(i, best));
   }
-  return chosen.sort((a, b) => a - b);
+  return { blockers: blockers.sort((a, b) => a - b), unseen };
 }
 
-function hiddenSingleCaption({ step, values, candidates }: TechniqueTrace): string {
+function hiddenSingleCaption(
+  { step, values, candidates }: TechniqueTrace,
+  earlier?: readonly TechniqueTrace[],
+): string {
   const unit = step.unit!;
   const { index, digit } = step.placement!;
   const name = describeUnit(unit);
-  const blockers = blockersOf(values, unit, index, digit);
-  const reason =
-    blockers === null
-      ? `No other empty cell in ${name} can be ${aDigit(digit)},`
-      : `Every other empty cell in ${name} already sees ${
-          blockers.length === 1
-            ? `the ${digit} at ${describePosition(blockers[0])},`
-            : `${aDigit(digit)} — at ${blockers.map(describePosition).join(' or ')} —`
-        }`;
+  const { blockers, unseen } = blockersOf(values, unit, index, digit);
+  const copies =
+    blockers.length === 1
+      ? `the ${digit} at ${describePosition(blockers[0])}`
+      : `${aDigit(digit)} — at ${blockers.map(describePosition).join(' or ')} —`;
+  const lostIn = stepsRemoving(earlier ?? [], unseen, bit(digit));
+  const lost = `lost its ${digit} in ${stepsPhrase(lostIn)},`;
+  let reason: string;
+  if (unseen.length === 0) {
+    reason = `Every other empty cell in ${name} already sees ${copies}${blockers.length === 1 ? ',' : ''}`;
+  } else if (lostIn.length === 0) {
+    // No walkthrough to credit: said plainly.
+    reason = `No other empty cell in ${name} can be ${aDigit(digit)},`;
+  } else if (blockers.length === 0) {
+    reason = `Every other empty cell in ${name} ${lost}`;
+  } else {
+    reason = `Every other empty cell in ${name} either sees ${copies} or ${lost}`;
+  }
   let caption = `${reason} so ${name}'s ${digit} can only go in ${describePosition(index)}.`;
   if (unit.kind !== 'box') {
     const box: Unit = { kind: 'box', index: BOX[index] };
@@ -298,7 +388,10 @@ function hiddenSingleCaption({ step, values, candidates }: TechniqueTrace): stri
   return caption;
 }
 
-function nakedSingleCaption({ step, values }: TechniqueTrace): string {
+function nakedSingleCaption(
+  { step, values }: TechniqueTrace,
+  earlier?: readonly TechniqueTrace[],
+): string {
   const { index, digit } = step.placement!;
   const seen = new Set<number>();
   const groups: string[] = [];
@@ -317,11 +410,28 @@ function nakedSingleCaption({ step, values }: TechniqueTrace): string {
       groups.push(`${joinList([...fresh].sort((a, b) => a - b).map(String))} in its ${kind}`);
     }
   }
-  return (
-    `${capitalise(describePosition(index))} already sees every digit but ${digit}: ` +
-    `${groups.slice(0, -1).join('; ')}${groups.length > 1 ? '; and ' : ''}${groups.at(-1)}. ` +
-    `So ${digit} is all it can be.`
-  );
+  const position = capitalise(describePosition(index));
+  const sees = `${groups.slice(0, -1).join('; ')}${groups.length > 1 ? '; and ' : ''}${groups.at(-1)}`;
+  // What the cell sees is not everything it has lost when earlier steps of a
+  // walkthrough struck candidates from it: each says which.
+  const missing = 0x1ff & ~bit(digit) & ~[...seen].reduce((mask, d) => mask | bit(d), 0);
+  if (missing === 0) {
+    return `${position} already sees every digit but ${digit}: ${sees}. So ${digit} is all it can be.`;
+  }
+  const struck = (earlier ?? []).flatMap(({ step: before }, k) => {
+    const mask =
+      before.eliminations.reduce((all, e) => (e.index === index ? all | e.mask : all), 0) & missing;
+    return mask === 0 ? [] : [`Step ${k + 1} ruled out its ${digitList(mask)}.`];
+  });
+  const lost =
+    struck.length > 0 ? struck.join(' ') : `Earlier steps ruled out its ${digitList(missing)}.`;
+  return [
+    groups.length > 0 ? `${position} sees ${sees}.` : '',
+    lost,
+    `So ${digit} is all it can be.`,
+  ]
+    .filter((part) => part !== '')
+    .join(' ');
 }
 
 /** Pointing and claiming: the same sentences, with the box and the line the other way round. */
@@ -524,7 +634,7 @@ export const GUIDE: Readonly<Record<GuideId, GuideEntry>> = {
     spot:
       'Take one digit and look at each box: if its candidates there sit on a single row or ' +
       'column, follow that line out of the box and strike the digit from it.',
-    caption: lockedCaption,
+    caption: credited(lockedCaption),
   }),
 
   claiming: entry('claiming', only('claiming'), {
@@ -543,7 +653,7 @@ export const GUIDE: Readonly<Record<GuideId, GuideEntry>> = {
       'Take one digit and run along each row and column: if its candidates are bunched into ' +
       'the three cells where the line crosses one box, strike the digit from the rest of that ' +
       'box.',
-    caption: lockedCaption,
+    caption: credited(lockedCaption),
   }),
 
   nakedPair: entry('nakedPair', only('nakedPair'), {
@@ -561,7 +671,7 @@ export const GUIDE: Readonly<Record<GuideId, GuideEntry>> = {
     spot:
       'With candidates on, look for two cells in the same row, column or box showing the ' +
       'same two digits and nothing else.',
-    caption: nakedPairCaption,
+    caption: credited(nakedPairCaption),
   }),
 
   hiddenPair: entry('hiddenPair', only('hiddenPair'), {
@@ -579,7 +689,7 @@ export const GUIDE: Readonly<Record<GuideId, GuideEntry>> = {
     spot:
       'Look along a row, column or box for two digits that each have exactly two places — ' +
       'the same two places.',
-    caption: hiddenSubsetCaption,
+    caption: credited(hiddenSubsetCaption),
   }),
 
   nakedTriple: entry('nakedTriple', only('nakedTriple'), {
@@ -596,7 +706,7 @@ export const GUIDE: Readonly<Record<GuideId, GuideEntry>> = {
     spot:
       'Look along a row, column or box for three cells with only two or three candidates ' +
       'each, all drawn from the same three digits.',
-    caption: nakedTripleCaption,
+    caption: credited(nakedTripleCaption),
   }),
 
   hiddenTriple: entry('hiddenTriple', only('hiddenTriple'), {
@@ -613,7 +723,7 @@ export const GUIDE: Readonly<Record<GuideId, GuideEntry>> = {
     spot:
       'The hardest of the four to see. Along a row, column or box, look for three digits ' +
       'with only two or three places each, all within the same three cells.',
-    caption: hiddenSubsetCaption,
+    caption: credited(hiddenSubsetCaption),
   }),
 
   xWing: entry('xWing', only('xWing'), {
@@ -632,7 +742,7 @@ export const GUIDE: Readonly<Record<GuideId, GuideEntry>> = {
     spot:
       'Pick a digit and look for rows (or columns) where it has exactly two places. Two of ' +
       'them whose places line up in the same two columns make an X-Wing.',
-    caption: fishCaption,
+    caption: credited(fishCaption),
   }),
 
   swordfish: entry('swordfish', only('swordfish'), {
@@ -650,7 +760,7 @@ export const GUIDE: Readonly<Record<GuideId, GuideEntry>> = {
     spot:
       'Hard to see by eye. With one digit in mind, find the rows where it has only two or ' +
       'three places, and look for three whose places all fall within the same three columns.',
-    caption: fishCaption,
+    caption: credited(fishCaption),
   }),
 
   xyWing: entry('xyWing', only('xyWing'), {
@@ -673,7 +783,7 @@ export const GUIDE: Readonly<Record<GuideId, GuideEntry>> = {
       "one shares one of the pivot's digits, the other its other digit, and both share a " +
       'third digit the pivot lacks. Then strike that third digit from every cell that sees ' +
       'both pincers.',
-    caption: wingCaption,
+    caption: credited(wingCaption),
   }),
 
   xyzWing: entry('xyzWing', only('xyzWing'), {
@@ -695,7 +805,7 @@ export const GUIDE: Readonly<Record<GuideId, GuideEntry>> = {
       'Look for a cell with three candidates, the pivot, that sees two two-candidate cells: ' +
       "two different pairs of the pivot's digits, both including the same one. Strike that " +
       'digit from the cells that see all three.',
-    caption: wingCaption,
+    caption: credited(wingCaption),
   }),
 };
 
@@ -717,6 +827,18 @@ function exampleTrace(technique: TechniqueId): TechniqueTrace {
     traces.set(technique, trace);
   }
   return trace;
+}
+
+/**
+ * One step of a "Show me" walkthrough in words: the guide's caption for its
+ * technique, crediting the earlier steps (`earlier`, in order) with what it
+ * relies on having been ruled out.
+ */
+export function walkthroughCaption(
+  trace: TechniqueTrace,
+  earlier: readonly TechniqueTrace[],
+): string {
+  return GUIDE[guideIdFor(trace.step.technique)].caption(trace, earlier);
 }
 
 /** An entry's worked examples, traced and captioned. */

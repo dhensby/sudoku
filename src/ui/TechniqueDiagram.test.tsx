@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react';
-import { COL, POPCOUNT, ROW, bit, type TechniqueId } from '../core';
+import { COL, POPCOUNT, ROW, bit, explainCell, type TechniqueId } from '../core';
+import { STUCK_ON_A_HIDDEN_PAIR, stuckOnAHiddenPair } from '../test/logic-fixtures';
 import { TechniqueDiagram } from './TechniqueDiagram';
 import { guideExamples, guideIdFor } from './techniqueGuide';
 
@@ -216,6 +217,86 @@ describe('TechniqueDiagram', () => {
       expect(marks('pincer')).toHaveLength(0);
       expect(screen.queryByText('The pivot')).not.toBeInTheDocument();
       expect(screen.queryByText(/At least one of these/)).not.toBeInTheDocument();
+    });
+  });
+
+  describe('in a walkthrough', () => {
+    // The steps that solve row 5, column 2 of the board a player was stuck
+    // on: a hidden pair in column 6, a pointing pair in box 5, and a naked
+    // single.
+    const { values, solution } = stuckOnAHiddenPair();
+    const { target, steps } = explainCell(values, STUCK_ON_A_HIDDEN_PAIR.target, solution)!;
+
+    function drawStep(k: number, props: Partial<Parameters<typeof TechniqueDiagram>[0]> = {}) {
+      const view = render(
+        <TechniqueDiagram trace={steps[k]} caption="A step." target={target} {...props} />,
+      );
+      const layer = (name: string) => view.container.querySelector(`.technique-diagram__${name}`);
+      return { ...view, layer };
+    }
+
+    it('marks the cell being solved at its corners, and inks its row and column numbers', () => {
+      const { container, layer } = drawStep(0);
+      const path = layer('target')!.querySelector('path')!;
+      // Four corner marks, each an L of two arms, inside row 5, column 2.
+      const moves = path.getAttribute('d')!.match(/M[\d.]+ [\d.]+/g)!;
+      expect(moves).toHaveLength(4);
+      for (const move of moves) {
+        const [x, y] = move.slice(1).split(' ').map(Number);
+        expect(Math.floor(y / 40) * 9 + Math.floor(x / 40)).toBe(target);
+      }
+      const inked = [...container.querySelectorAll('[data-mark="target"]')];
+      expect(inked.map((label) => label.textContent)).toEqual(['2', '5']);
+      expect(screen.getByText('The cell being solved')).toBeInTheDocument();
+    });
+
+    it('marks no cell outside a walkthrough', () => {
+      const { container, layer } = drawStep(0, { target: null });
+      expect(layer('target')).toBeNull();
+      expect(container.querySelectorAll('[data-mark="target"]')).toHaveLength(0);
+      expect(screen.queryByText('The cell being solved')).not.toBeInTheDocument();
+    });
+
+    it('strikes faintly what an earlier step removed, of the digits it shows', () => {
+      // Step 2, the pointing pair, needs the 5 the hidden pair took from row
+      // 4, column 6; the 2 it took from row 6, column 6 is not a 5, so it is
+      // not drawn on a board of 5s.
+      const ruledOut = [
+        { index: 32, mask: bit(5) },
+        { index: 50, mask: bit(2) },
+      ];
+      const { layer } = drawStep(1, { ruledOut });
+      const ghosts = layer('ruled-out')!;
+      const texts = [...ghosts.querySelectorAll('text')];
+      expect(texts.map((text) => text.textContent)).toEqual(['5']);
+      expect(texts.map(cellOf)).toEqual([32]);
+      expect(texts[0]).toHaveAttribute('data-mark', 'ruled-out');
+      expect(ghosts.querySelectorAll('line')).toHaveLength(1);
+      expect(screen.getByText('Removed in an earlier step')).toBeInTheDocument();
+    });
+
+    it('says nothing of earlier steps when none is drawn', () => {
+      const { layer } = drawStep(1);
+      expect(layer('ruled-out')!.childElementCount).toBe(0);
+      expect(screen.queryByText('Removed in an earlier step')).not.toBeInTheDocument();
+    });
+
+    it('frames the answer inside the corner marks when it is written in the cell being solved', () => {
+      const inset = (view: ReturnType<typeof drawStep>) =>
+        Number(view.layer('answer')!.querySelector('rect')!.getAttribute('x')) - COL[target] * 40;
+      const last = drawStep(2);
+      expect(inset(last)).toBe(4.5);
+      last.unmount();
+      expect(inset(drawStep(2, { target: null }))).toBe(2.5);
+    });
+
+    it('says what the step comes to after the caption, and before the key', () => {
+      drawStep(2, { conclusion: <p>The answer: 8.</p> });
+      const conclusion = screen.getByText('The answer: 8.');
+      expect(conclusion).not.toHaveAttribute('aria-hidden');
+      const caption = screen.getByText('A step.');
+      expect(caption.nextElementSibling).toBe(conclusion);
+      expect(conclusion.nextElementSibling?.tagName).toBe('UL');
     });
   });
 });

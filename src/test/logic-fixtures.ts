@@ -165,11 +165,12 @@ export const BEYOND_THE_SET: PuzzleFixture = {
 };
 
 /**
- * Where a player got stuck — the report behind remembering each cell's
- * hint: the puzzle of share code `O3NLgKqUTeam9ygZMBQVALBbgSY`, sixteen
- * right entries in. The hint points at row 5, column 2 and names a hidden
- * pair, but the pair is in column 6, half a board away: a hint worth seeing
- * again without asking for it again.
+ * Where a player got stuck — the report behind the "Show me" walkthrough:
+ * the puzzle of share code `O3NLgKqUTeam9ygZMBQVALBbgSY`, sixteen right
+ * entries in. The hint points at row 5, column 2 and names a hidden pair,
+ * but the pair is in column 6, and the grader takes seven steps to get
+ * there, five of them about other cells. Only the hidden pair, the pointing
+ * pair it opens in box 5 and the naked single that leaves matter.
  */
 export const STUCK_ON_A_HIDDEN_PAIR = {
   code: 'O3NLgKqUTeam9ygZMBQVALBbgSY',
@@ -198,6 +199,14 @@ export const STUCK_ON_A_HIDDEN_PAIR = {
   target: 37,
 };
 
+/** The board where the player got stuck (see `STUCK_ON_A_HIDDEN_PAIR`), and its solution. */
+export function stuckOnAHiddenPair(): SolvedPuzzle & { values: Uint8Array } {
+  const { givens, solution, entries } = STUCK_ON_A_HIDDEN_PAIR;
+  const values = gridValues(givens);
+  for (const [row, col, digit] of entries) values[(row - 1) * 9 + col - 1] = digit;
+  return { givens: gridValues(givens), solution: gridValues(solution), values };
+}
+
 /** All the puzzles above, labelled, for table-driven tests. */
 export const ALL_FIXTURES: readonly (readonly [label: string, fixture: PuzzleFixture])[] = [
   ...Object.entries(HARDEST),
@@ -213,8 +222,8 @@ export const ALL_FIXTURES: readonly (readonly [label: string, fixture: PuzzleFix
  * a technique that touches the board and then reports nothing — comes back as
  * a list of violations rather than as a puzzle quietly rated wrong. So does a
  * step whose stated pattern is not really there, or does not really justify
- * what it removed (`isStepValid`): the technique guide draws those patterns
- * for players.
+ * what it removed (`isStepValid`): the technique guide and the walkthrough
+ * draw those patterns for players.
  *
  * Plain comparisons collected into strings, not `expect` per step: a few
  * hundred puzzles make for hundreds of thousands of checks.

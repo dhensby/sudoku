@@ -257,6 +257,10 @@ export function describeChange(
       return describeReplay('Undone.', prev, next, options);
     case 'redo':
       return describeReplay('Redone.', prev, next, options);
+    case 'walkthrough':
+      // Opening "Show me" says nothing here: focus moves into its dialog,
+      // which speaks for itself.
+      return null;
     case 'hint': {
       // The visible message points at the highlighted cell ("this cell");
       // spoken, it needs to say which one that is.

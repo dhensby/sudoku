@@ -6,6 +6,7 @@ import { upsertRecord } from '../storage/history';
 import { memoryStorage, type StorageLike } from '../storage/storage';
 import { App } from './App';
 import type { PuzzleSource } from './puzzleSource';
+import { STUCK_ON_A_HIDDEN_PAIR } from '../test/logic-fixtures';
 import { FIRST_EMPTY, PUZZLE, answerAt, fakeSource, linkFor, nearlySolved } from './testFixtures';
 import type { UseSudokuOptions } from './useSudoku';
 
@@ -332,6 +333,99 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: /^What's a / }));
     expect(screen.getByRole('dialog', { name: 'Solving techniques' })).toBeInTheDocument();
     expect(hintBar).not.toBeEmptyDOMElement();
+  });
+
+  describe('Show me', () => {
+    /** The board a player got stuck on: their puzzle, and their sixteen right entries. */
+    async function startStuck() {
+      const view = await startApp({
+        source: fakeSource({
+          givens: STUCK_ON_A_HIDDEN_PAIR.givens,
+          solution: STUCK_ON_A_HIDDEN_PAIR.solution,
+          difficulty: 'hard',
+        }),
+      });
+      for (const [row, col, digit] of STUCK_ON_A_HIDDEN_PAIR.entries) {
+        fireEvent.click(cells()[(row - 1) * 9 + col - 1]);
+        press(String(digit));
+      }
+      fireEvent.click(screen.getByRole('button', { name: 'More' }));
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Hint' }));
+      return view;
+    }
+
+    const showMe = () =>
+      screen.getByRole('button', { name: 'Show me how to solve row 5, column 2' });
+    const walkthrough = () => screen.getByRole('dialog', { name: 'How to solve row 5, column 2' });
+    const stepHeading = () => within(walkthrough()).getByRole('heading', { level: 3 });
+
+    it('walks through the hinted cell step by step, with the board hidden meanwhile', async () => {
+      await startStuck();
+      expect(document.querySelector('.hint-bar')).toHaveTextContent(
+        "Look here — a hidden pair will unlock this cell. What's a hidden pair? Show me",
+      );
+      clickWithMouse(showMe());
+      expect(stepHeading()).toHaveAccessibleName('Step 1 of 3: Hidden pair');
+      expect(stepHeading()).toHaveFocus();
+      expect(screen.queryByRole('grid')).not.toBeInTheDocument();
+      // Silently, as for any dialog.
+      expect(screen.getByRole('button', { name: 'Resume' })).toBeInTheDocument();
+
+      fireEvent.click(within(walkthrough()).getByRole('button', { name: /^Next:/ }));
+      expect(stepHeading()).toHaveAccessibleName('Step 2 of 3: Pointing pair or triple');
+      fireEvent.click(within(walkthrough()).getByRole('button', { name: /^Next:/ }));
+      expect(stepHeading()).toHaveAccessibleName('Step 3 of 3: Naked single');
+      expect(
+        within(walkthrough()).getByText('Row 5, column 2 must be', { exact: false }),
+      ).toHaveTextContent('Row 5, column 2 must be 8.');
+
+      fireEvent.click(within(walkthrough()).getByRole('button', { name: 'Done' }));
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      // Opened with the mouse: back to the board, on the cell it solved.
+      expect(selectedCell()).toHaveFocus();
+      expect(selectedCell()).toHaveAttribute('aria-rowindex', '5');
+      expect(selectedCell()).toHaveAttribute('aria-colindex', '2');
+      // The hint, and Show me, are still there.
+      expect(showMe()).toBeInTheDocument();
+    });
+
+    it('gives focus back to Show me when the keyboard opened it', async () => {
+      await startStuck();
+      showMe().focus();
+      press('Enter', {}, showMe());
+      fireEvent.click(showMe());
+      expect(stepHeading()).toHaveFocus();
+      fireEvent.keyDown(document, { key: 'Escape' });
+      expect(showMe()).toHaveFocus();
+    });
+
+    it('goes from a step to the guide, and back to that step', async () => {
+      await startStuck();
+      fireEvent.click(showMe());
+      fireEvent.click(within(walkthrough()).getByRole('button', { name: /^Next:/ }));
+      fireEvent.click(screen.getByRole('button', { name: "What's a pointing pair or triple?" }));
+      const guide = screen.getByRole('dialog', { name: 'Solving techniques' });
+      expect(within(guide).getByRole('heading', { level: 3 })).toHaveTextContent(
+        'Pointing pair or triple',
+      );
+      fireEvent.keyDown(document, { key: 'Escape' });
+      expect(stepHeading()).toHaveAccessibleName('Step 2 of 3: Pointing pair or triple');
+      expect(stepHeading()).toHaveFocus();
+      fireEvent.keyDown(document, { key: 'Escape' });
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(screen.getByRole('grid')).toBeInTheDocument();
+    });
+
+    it('comes back, Show me and all, as the hinted cell is selected again', async () => {
+      await startStuck();
+      press('ArrowUp');
+      expect(document.querySelector('.hint-bar')).toBeEmptyDOMElement();
+      press('ArrowDown');
+      expect(showMe()).toBeInTheDocument();
+      expect(selectedCell()).toHaveAccessibleDescription(
+        'Look here — a hidden pair will unlock this cell.',
+      );
+    });
   });
 
   it('opens the guide from the header, and from Help in place of Help', async () => {

@@ -1,5 +1,5 @@
 import { ALL_DIGITS, PEERS, POPCOUNT, bit, isPeer, unitCells } from './grid';
-import type { PatternCell, SolveStep, SolverBoard } from './techniques';
+import type { Elimination, PatternCell, SolveStep, SolverBoard } from './techniques';
 import type { TechniqueId, Unit } from './types';
 
 /*
@@ -8,10 +8,24 @@ import type { TechniqueId, Unit } from './types';
  *
  * A step describes its deduction the way a player would see it — the
  * pattern's candidates, the houses it lives in, the digit it is about (see
- * `SolveStep`). `isStepValid` says from that description alone whether the
- * pattern really is on a board and really justifies everything the step
- * removes there. The soundness harness holds every step the grader makes to
- * it.
+ * `SolveStep`). Three things follow from that description alone, and they
+ * live together here because they have to agree:
+ *
+ * - `isStepValid`: whether the pattern really is on a board and really
+ *   justifies everything the step removes there. The soundness harness holds
+ *   every step the grader makes to it, and the walkthrough holds every step
+ *   it shows a player to it.
+ * - `stepOn`: the same deduction read afresh on another board — the
+ *   pattern's cells and digits as they stand there, and every candidate it
+ *   removes there.
+ * - `reliance`: what the pattern needs to be gone from the board — the
+ *   candidates that must have been ruled out, and the cells that must have
+ *   been filled — for it to hold.
+ *
+ * The walkthrough leans on how they fit: on any board that keeps every
+ * candidate the step's own board had (it may have more), `stepOn` gives a
+ * step that `isStepValid` accepts exactly when everything in `reliance` is
+ * gone from that board too. Each technique's comment below says why.
  */
 
 /** The single-placement techniques. */
@@ -45,6 +59,19 @@ function holders(board: SolverBoard, cells: readonly number[], mask: number): nu
   return cells.filter((i) => (board.candidates[i] & mask) !== 0);
 }
 
+/** The cells of `cells` that hold any of `mask`, each with the part of `mask` it holds. */
+function patternOf(board: SolverBoard, cells: readonly number[], mask: number): PatternCell[] {
+  return holders(board, cells, mask).map((index) => ({
+    index,
+    mask: board.candidates[index] & mask,
+  }));
+}
+
+/** The digits of `mask` that `cells` hold on `board`: what striking `mask` from them would remove. */
+function removable(board: SolverBoard, cells: readonly number[], mask: number): Elimination[] {
+  return patternOf(board, cells, mask);
+}
+
 /** The union of a pattern's digits. */
 function digitsOfPattern(pattern: readonly PatternCell[]): number {
   return pattern.reduce((mask, p) => mask | p.mask, 0);
@@ -55,8 +82,14 @@ function fishLines(step: SolveStep, size: number): { base: Unit[]; cover: Unit[]
   return { base: step.houses.slice(0, size), cover: step.houses.slice(size) };
 }
 
+/** The cells of `cover` outside every line of `base`, in cover-line order. */
+function outside(cover: readonly Unit[], base: readonly Unit[]): number[] {
+  return cover.flatMap((u) => unitCells(u).filter((i) => !base.some((b) => isIn(i, b))));
+}
+
 /** The cells a wing's z can be struck from: every cell that sees both pincers (and, for an XYZ-Wing, the pivot). */
 function wingTargets(isXyz: boolean, pivot: number, first: number, second: number): number[] {
+  // The same scan as the techniques', so the eliminations come out in the same order.
   return isXyz
     ? PEERS[pivot].filter((t) => isPeer(first, t) && isPeer(second, t))
     : PEERS[first].filter((t) => isPeer(second, t));
@@ -262,4 +295,134 @@ function isWingValid(board: SolverBoard, step: SolveStep): boolean {
     POPCOUNT[z] === 1;
   const targets = wingTargets(isXyz, pivot.index, first.index, second.index);
   return isWing && step.eliminations.every((e) => e.mask === z && targets.includes(e.index));
+}
+
+// ---------------------------------------------------------------------------
+// Reading a step on another board
+// ---------------------------------------------------------------------------
+
+/**
+ * The deduction `step` describes, as it stands on `board`: the same cells,
+ * houses and digits, with the pattern's candidates as `board` has them and
+ * every candidate the pattern removes there — which can be more than the
+ * step removed on its own board, never less, when `board` keeps candidates
+ * that board had lost. Whether it still holds is `isStepValid`'s to say.
+ *
+ * A single is returned as it is: what it places does not depend on the board.
+ */
+export function stepOn(board: SolverBoard, step: SolveStep): SolveStep {
+  const { technique: id, houses, digit } = step;
+  if (step.placement !== null) return step;
+  if (id === 'pointing' || id === 'claiming') {
+    const [from, to] = houses;
+    const d = bit(digit!);
+    const pattern = patternOf(board, unitCells(from), d);
+    return { ...step, pattern, eliminations: removable(board, outside([to], [from]), d) };
+  }
+  const subset = SUBSETS[id];
+  if (subset) {
+    const cells = unitCells(houses[0]);
+    if (subset.isNaked) {
+      const members = step.pattern.map((p) => p.index);
+      const union = members.reduce((mask, i) => mask | board.candidates[i], 0);
+      const others = cells.filter((i) => !members.includes(i));
+      const pattern = patternOf(board, members, ALL_DIGITS);
+      return { ...step, pattern, eliminations: removable(board, others, union) };
+    }
+    const union = digitsOfPattern(step.pattern);
+    const pattern = patternOf(board, cells, union);
+    const members = pattern.map((p) => p.index);
+    return { ...step, pattern, eliminations: removable(board, members, ALL_DIGITS & ~union) };
+  }
+  const fishSize = FISH[id];
+  if (fishSize) {
+    const { base, cover } = fishLines(step, fishSize);
+    const d = bit(digit!);
+    const pattern = base.flatMap((u) => patternOf(board, unitCells(u), d));
+    return { ...step, pattern, eliminations: removable(board, outside(cover, base), d) };
+  }
+  const isXyz = id === 'xyzWing';
+  const [pivot, first, second] = step.pattern.map((p) => p.index);
+  const { candidates } = board;
+  const z = wingDigit(isXyz, candidates[pivot], candidates[first], candidates[second]);
+  return {
+    ...step,
+    pattern: patternOf(board, [pivot, first, second], ALL_DIGITS),
+    eliminations: removable(board, wingTargets(isXyz, pivot, first, second), z),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Reliance
+// ---------------------------------------------------------------------------
+
+/** What a step's pattern needs gone from the board for it to hold. */
+export interface Reliance {
+  /** Per cell, the digits that must no longer be candidates there (a filled cell has none). */
+  absent: Elimination[];
+  /** Cells that must hold a value. */
+  filled: number[];
+}
+
+/**
+ * What a step relies on having been ruled out. On a board that keeps every
+ * candidate the step's own board had — so every candidate its pattern
+ * shows is still there — this is exactly what else must hold for `stepOn`
+ * to give a valid step:
+ *
+ * - naked single: the cell's other digits gone;
+ * - hidden single: the digit gone from the rest of its house;
+ * - full house: the rest of its house filled (the cell's last digit is then
+ *   the only one left);
+ * - pointing (claiming): the digit gone from the box (line) outside the line
+ *   (box) — the pattern is then every place left for it there, and still at
+ *   least the two the step found;
+ * - naked subset: every other digit gone from the subset's cells, so they
+ *   hold the subset's digits and nothing else;
+ * - hidden subset: the subset's digits gone from the rest of the house, so
+ *   they have no place there outside the subset's cells;
+ * - fish: the digit gone from the base lines outside the cover lines, each
+ *   base line keeping its two or more places for it, and each cover line
+ *   one, from the step's own board;
+ * - wings: every other digit gone from the pivot and the pincers.
+ *
+ * Every candidate a re-read step removes is one its pattern justifies, and
+ * every one the original step removed is still there to remove, so the
+ * re-read step always removes something.
+ */
+export function reliance(step: SolveStep): Reliance {
+  const { technique: id, pattern, houses, digit } = step;
+  const each = (cells: readonly number[], mask: number): Reliance => ({
+    absent: cells.map((index) => ({ index, mask })),
+    filled: [],
+  });
+  if (step.placement !== null) {
+    const { index, digit: placed } = step.placement;
+    if (id === 'nakedSingle') return each([index], ALL_DIGITS & ~bit(placed));
+    const others = unitCells(houses[0]).filter((i) => i !== index);
+    return id === 'fullHouse' ? { absent: [], filled: others } : each(others, bit(placed));
+  }
+  if (id === 'pointing' || id === 'claiming') {
+    const [from, to] = houses;
+    return each(outside([from], [to]), bit(digit!));
+  }
+  const subset = SUBSETS[id];
+  if (subset) {
+    const union = digitsOfPattern(pattern);
+    const members = pattern.map((p) => p.index);
+    if (subset.isNaked) return each(members, ALL_DIGITS & ~union);
+    return each(
+      unitCells(houses[0]).filter((i) => !members.includes(i)),
+      union,
+    );
+  }
+  const fishSize = FISH[id];
+  if (fishSize) {
+    const { base, cover } = fishLines(step, fishSize);
+    return each(outside(base, cover), bit(digit!));
+  }
+  return {
+    absent: pattern.map(({ index, mask }) => ({ index, mask: ALL_DIGITS & ~mask })),
+    filled: [],
+  };
 }

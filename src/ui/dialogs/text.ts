@@ -34,3 +34,13 @@ export function assistChips(assists: Assists): string[] {
   if (assists.reveals > 0) chips.push(count(assists.reveals, 'reveal'));
   return chips;
 }
+
+/**
+ * The line "Show me" opens with: what the small numbers on its boards are —
+ * the candidates the placed digits allow, less what its own earlier steps
+ * strike out — which need not be the player's own notes. It says both, so a
+ * candidate missing from a later step's board, with no digit to rule it
+ * out, is accounted for.
+ */
+export const WALKTHROUGH_INTRO =
+  'The small numbers are what the filled-in digits still allow, less what earlier steps rule out — not your own notes.';

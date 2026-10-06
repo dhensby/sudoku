@@ -1315,8 +1315,10 @@
 
 /* ---- An entry ---- */
 
+/* A host of worked examples (as is a step of "Show me"): an example sits
+   beside its caption once its host is wide enough, below. */
 .guide__entry {
-  container: guide-entry / inline-size;
+  container: worked-example / inline-size;
   min-width: 0;
 }
 
@@ -1484,7 +1486,7 @@
   margin: 0;
 }
 
-@container guide-entry (min-width: 600px) {
+@container worked-example (min-width: 600px) {
   .technique-diagram {
     grid-template-columns: 360px minmax(0, 1fr);
     align-items: start;
@@ -1628,6 +1630,34 @@
   font-weight: 600;
 }
 
+/* What an earlier step of a walkthrough removed, and this one relies on:
+   struck through with a dashed line in the muted ink, lighter and thinner
+   than this step's own red strikes, which are its news. */
+.technique-diagram__candidate[data-mark='ruled-out'] {
+  font-weight: 400;
+}
+
+.technique-diagram__ruled-out line {
+  stroke: var(--text-muted);
+  stroke-width: 1.5;
+  stroke-dasharray: 3 1.8;
+}
+
+/* The cell a walkthrough solves: inked corner marks, like a printer's crop
+   marks — a shape no other mark has — and its row and column numbers set in
+   ink, so it is found at a glance on every step. */
+.technique-diagram__target path {
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 2.4;
+  stroke-linecap: square;
+}
+
+.technique-diagram__labels text[data-mark='target'] {
+  fill: var(--text);
+  font-weight: 800;
+}
+
 .technique-diagram__text {
   min-width: 0;
 }
@@ -1700,9 +1730,36 @@
   );
 }
 
+/* The key's swatches drawn in SVG: the corner marks, and the dashed strike. */
+.technique-diagram__target-swatch,
+.technique-diagram__ruled-out-swatch {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+
+.technique-diagram__ruled-out-swatch rect {
+  fill: var(--cell-bg);
+  stroke: var(--grid-thin);
+  stroke-width: 1;
+}
+
+.technique-diagram__ruled-out-swatch line {
+  stroke: var(--text-muted);
+  stroke-width: 1.5;
+  stroke-dasharray: 2.5 1.5;
+}
+
 .technique-diagram__swatch--answer {
   border: 2px solid var(--success);
   background: color-mix(in srgb, var(--success) 14%, var(--cell-bg));
+}
+
+.technique-diagram__target-swatch path {
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 1.6;
+  stroke-linecap: square;
 }
 
 .technique-diagram__copy {
@@ -1712,6 +1769,304 @@
   font-family: var(--font-digits);
   font-weight: 800;
   text-align: center;
+}
+
+/* ==========================================================================
+   "Show me": a walkthrough
+
+   One step at a time, each drawn on the player's own board. Wide enough on
+   a desktop for the board to sit beside its caption, as the guide's
+   examples do; a bottom sheet on a phone, the board above its caption. The
+   pager is the dialog's footer, so Previous and Next stay put however long
+   a step's caption runs — under the thumb, on a phone.
+   ========================================================================== */
+
+.dialog--walkthrough {
+  max-width: 560px;
+}
+
+@media (min-width: 720px) {
+  .dialog--walkthrough {
+    max-width: 860px;
+  }
+}
+
+.walkthrough__intro {
+  max-width: 62ch;
+  margin: 0 0 12px;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.walkthrough__step {
+  container: worked-example / inline-size;
+  min-width: 0;
+}
+
+.walkthrough__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 4px 16px;
+  margin-bottom: 14px;
+}
+
+/* "Step 1 of 3" over the technique's name, like a kicker over a headline. */
+.walkthrough__title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+
+/* Focused from script as the step changes; the ring only follows a key. */
+.walkthrough__title:focus {
+  outline: none;
+}
+
+.walkthrough__title:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: 2px;
+}
+
+.walkthrough__count {
+  color: var(--text-muted);
+  font-family: var(--font);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* "What's a hidden pair?": a link into the guide, the book its sign. */
+.walkthrough__question {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.walkthrough__question-icon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+}
+
+@media (hover: hover) {
+  .walkthrough__question:hover {
+    text-decoration-thickness: 2px;
+  }
+}
+
+.walkthrough__question:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+/* The answer, under the caption: a ruled box, in the green the diagram
+   frames it in. */
+.walkthrough__answer {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 14px 0 0;
+  padding: 10px 14px 12px;
+  border-left: 4px solid var(--success);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  background: var(--surface);
+}
+
+.walkthrough__answer-label {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.walkthrough__answer-text {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.walkthrough__answer strong {
+  color: color-mix(in srgb, var(--success) 85%, var(--text));
+  font-weight: 800;
+}
+
+/* Previous and Next, each naming the step it goes to, as the guide's do. */
+.walkthrough__pager {
+  display: flex;
+  flex: 1;
+  align-items: stretch;
+  gap: 12px;
+  min-width: 0;
+}
+
+.walkthrough__page {
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+  max-width: calc(50% - 6px);
+  min-height: 44px;
+  padding: 6px 14px;
+  border: 1px solid var(--key-border);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+
+.walkthrough__page--next {
+  align-items: flex-end;
+  margin-left: auto;
+  text-align: right;
+}
+
+/* Alone (the first step's Next), it may take the whole row. */
+.walkthrough__page:only-child {
+  max-width: 100%;
+}
+
+.walkthrough__page-label {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.walkthrough__page-title {
+  font-weight: 600;
+  line-height: 1.25;
+  text-wrap: balance;
+}
+
+@media (hover: hover) {
+  .walkthrough__page:hover {
+    background: var(--surface);
+  }
+}
+
+.walkthrough__page:active {
+  background: var(--key-bg);
+}
+
+.walkthrough__page:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.walkthrough__done {
+  margin-left: auto;
+}
+
+/* ---- "Show me" on a phone on its side ----
+   A few hundred pixels of height, and a 360px board would never be on
+   screen whole, nor with its caption. So the board is sized to the body —
+   as tall as it is, 360px at most — and everything else is set beside it:
+   the line about the small numbers (on the first step), the step's
+   heading, the caption and the answer, which scroll past the board while
+   it stays put. The body is
+   a size container to measure that by, so the card takes the screen's
+   whole height (as a step's board would anyway), and the footer gives up
+   some of its padding to the board.
+
+   The step's diagram is unboxed (its wrapper carries no meaning), so its
+   board and words take their places in the step's grid — a subgrid of the
+   walkthrough's, so the line before the steps sits in the same column. A
+   container cannot be a subgrid (it is laid out on its own), and the step
+   need not be one here: the only query on it sets the diagram's columns. */
+@media (max-height: 500px) and (min-width: 500px) {
+  .dialog--walkthrough {
+    height: calc(100vh - 24px);
+    height: calc(100dvh - 24px);
+  }
+
+  .dialog--walkthrough .dialog__body {
+    container: walkthrough-body / size;
+    padding-bottom: 12px;
+  }
+
+  .dialog--walkthrough .dialog__footer {
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+
+  .walkthrough {
+    display: grid;
+    grid-template-columns: min(360px, 100cqh) minmax(0, 1fr);
+    grid-template-rows: auto auto 1fr;
+    column-gap: 20px;
+  }
+
+  .walkthrough__intro {
+    grid-area: 1 / 2;
+  }
+
+  /* Read on the first step, it gives the later ones its lines; it is still
+     the card's description. */
+  .walkthrough__intro[data-read] {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .walkthrough__step {
+    container-type: normal;
+    display: grid;
+    grid-area: 1 / 1 / -1 / -1;
+    grid-template-columns: subgrid;
+    grid-template-rows: subgrid;
+    align-items: start;
+  }
+
+  .walkthrough__step .technique-diagram {
+    display: contents;
+  }
+
+  .walkthrough__step .technique-diagram__board {
+    position: sticky;
+    top: 0;
+    grid-area: 1 / 1 / -1 / 2;
+  }
+
+  .walkthrough__header {
+    grid-area: 2 / 2;
+  }
+
+  .walkthrough__step .technique-diagram__text {
+    grid-area: 3 / 2;
+  }
 }
 
 /* ============================================================
@@ -1734,6 +2089,10 @@
 
   .settings__row {
     min-height: 56px;
+  }
+
+  .walkthrough__question {
+    min-height: 44px;
   }
 
   .guide__link {
@@ -1807,8 +2166,19 @@
   .history-item__current,
   .history-item__chip,
   .guide__tier,
-  .guide__step {
+  .guide__step,
+  .walkthrough__page,
+  .walkthrough__answer {
     border: 1px solid CanvasText;
+  }
+
+  /* The answer's green rule is a colour here; a heavier edge keeps it. */
+  .walkthrough__answer {
+    border-left-width: 4px;
+  }
+
+  .walkthrough__question {
+    color: LinkText;
   }
 
   .guide__link[aria-current='true'] {
@@ -1858,6 +2228,12 @@
     border: 1px dotted CanvasText;
   }
 
+  /* The key's SVG swatches paint themselves as the board does. */
+  .technique-diagram__target-swatch,
+  .technique-diagram__ruled-out-swatch {
+    forced-color-adjust: none;
+  }
+
   .tabs__tab[aria-selected='true'],
   .settings__theme-option:has(input:checked) {
     forced-color-adjust: none;
@@ -1893,6 +2269,9 @@
   .tabs__tab:focus-visible,
   .field__input:focus-visible,
   .guide__select:focus-visible,
+  .walkthrough__title:focus-visible,
+  .walkthrough__question:focus-visible,
+  .walkthrough__page:focus-visible,
   .settings__switch:focus-visible,
   .settings__theme-option:has(input:focus-visible) {
     outline-color: Highlight;

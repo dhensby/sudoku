@@ -330,3 +330,74 @@ describe('the technique guide', () => {
     expect(rule(DIALOGS, '.guide__select')).toMatch(/font-size:\s*16px/);
   });
 });
+
+describe('Show me', () => {
+  it('sets Show me a line high, rule and all, so the hint bar keeps its height', () => {
+    expect(rule(LAYOUT, '.hint-bar__show')).toMatch(
+      /line-height:\s*calc\(var\(--hint-line\) \* 1em - 2px\)/,
+    );
+    expect(rule(LAYOUT, '.hint-bar__show')).toMatch(/white-space:\s*nowrap/);
+  });
+
+  it('gives the question way to its icon sooner beside Show me, then the hint’s mark, then Show me’s words', () => {
+    expect(LAYOUT).toMatch(
+      /@container hint-bar \(max-width: 22\.75em\)\s*\{\s*\.hint-bar__question:has\(\+ \.hint-bar__show\) \.hint-bar__question-text/,
+    );
+    // On a 320×568 phone's 268px bar, and a phone on its side's 288px, the
+    // mark goes and Show me keeps its words; the question stays.
+    expect(LAYOUT).toMatch(
+      /@container hint-bar \(max-width: 18\.75em\)\s*\{\s*\.hint-bar__message:has\(\.hint-bar__show\) \.hint-bar__icon\s*\{\s*display:\s*none/,
+    );
+    expect(LAYOUT).toMatch(/@container hint-bar \(max-width: 16\.5em\)\s*\{\s*\.hint-bar__show \{/);
+    expect(LAYOUT).not.toMatch(
+      /\.hint-bar__question:has\(\+ \.hint-bar__show\)\s*\{\s*display:\s*none/,
+    );
+  });
+
+  it('gives Show me, and the question beside it, a finger’s 44px on a touch screen', () => {
+    const touch = LAYOUT.slice(LAYOUT.lastIndexOf('@media (pointer: coarse)'));
+    // Inside its rule, 15px tall, plus 22px above and 8px below.
+    expect(touch).toMatch(/\.hint-bar__show::after\s*\{\s*inset:\s*-22px -8px -8px -1px/);
+    // The question's 16px icon beside it: 16 + 28 + 1 wide.
+    expect(touch).toMatch(
+      /\.hint-bar__question:has\(\+ \.hint-bar__show\)::after\s*\{\s*inset:\s*-21px -1px -7px -28px/,
+    );
+    // Show me's play mark alone: 6 + 11 + 6 inside its rule, and 1 and 21 either side.
+    expect(touch).toMatch(/\.hint-bar__show::after\s*\{\s*inset:\s*-22px -21px -8px -1px/);
+    // Both kept on the hint's last line, where an area reaching up is clear of the board.
+    expect(rule(LAYOUT, '.hint-bar__actions')).toMatch(/white-space:\s*nowrap/);
+  });
+
+  it('draws its marks itself in forced colours, swatches and all', () => {
+    expect(DIALOGS).toMatch(
+      /\.technique-diagram__target-swatch,\s*\.technique-diagram__ruled-out-swatch\s*\{\s*forced-color-adjust:\s*none/,
+    );
+    // A shape no other mark has: square corners, and a dashed strike.
+    expect(rule(DIALOGS, '.technique-diagram__target path')).toMatch(/stroke-linecap:\s*square/);
+    expect(rule(DIALOGS, '.technique-diagram__ruled-out line')).toMatch(/stroke-dasharray/);
+  });
+
+  it('gives Previous and Next a finger’s height', () => {
+    expect(rule(DIALOGS, '.walkthrough__page')).toMatch(/min-height:\s*44px/);
+  });
+
+  it('sizes a step’s board to the body on a phone on its side, its words beside it', () => {
+    const short = DIALOGS.slice(
+      DIALOGS.lastIndexOf('@media (max-height: 500px) and (min-width: 500px)'),
+    );
+    expect(short).toMatch(/^@media[^{]*\{\s*\.dialog--walkthrough\s*\{\s*height:/);
+    // The body is what the board is measured by...
+    expect(short).toMatch(
+      /\.dialog--walkthrough \.dialog__body\s*\{\s*container:\s*walkthrough-body \/ size/,
+    );
+    expect(short).toMatch(/grid-template-columns:\s*min\(360px, 100cqh\) minmax\(0, 1fr\)/);
+    // ...and the board stays put while its words scroll past.
+    expect(short).toMatch(
+      /\.walkthrough__step \.technique-diagram__board\s*\{\s*position:\s*sticky;\s*top:\s*0/,
+    );
+    // A container would be laid out on its own, and could not be a subgrid.
+    expect(short).toMatch(
+      /\.walkthrough__step\s*\{\s*container-type:\s*normal;[^}]*grid-template-columns:\s*subgrid/,
+    );
+  });
+});

@@ -95,6 +95,11 @@ export interface RememberedHints {
    * any other.
    */
   mistake: { hint: MistakeHint; value: number } | null;
+  /**
+   * Whether "Show me" has been opened for the fill hint, so that opening it
+   * again is free. It goes with the fill hint.
+   */
+  walkthrough: boolean;
 }
 
 export interface UndoEntry {
@@ -166,6 +171,12 @@ export type GameAction =
    * and marks a mistake it points at wrong, as Check would.
    */
   | { type: 'hint'; hint: Hint }
+  /**
+   * Open "Show me" — the walkthrough — for a cell's fill hint. Counted as a
+   * hint the first time for that cell, and free after that. Ignored unless
+   * the cell has a fill hint on show (it is empty and has had one).
+   */
+  | { type: 'walkthrough'; index: number }
   | { type: 'check'; scope: 'cell' | 'puzzle' }
   /** Reveal the selected cell's solution digit. */
   | { type: 'reveal' }
@@ -181,7 +192,7 @@ const NO_ENTRIES: readonly UndoEntry[] = [];
 const NO_CELL_HINTS: ReadonlyMap<number, RememberedHints> = new Map();
 
 /** A cell that has had no hint. Frozen, as `EMPTY_CELL` is. */
-const NO_HINTS = Object.freeze<RememberedHints>({ fill: null, mistake: null });
+const NO_HINTS = Object.freeze<RememberedHints>({ fill: null, mistake: null, walkthrough: false });
 
 /**
  * The state of every untouched empty cell. Shared, and frozen so that a stray
@@ -317,16 +328,18 @@ function setCellHints(
 
 /**
  * What is still worth remembering of a cell's hints now that it holds
- * `value`: the fill hint until the cell holds its solution digit, and the
- * mistake hint while it holds the value it was about. The entry itself when
- * nothing has gone; null when everything has.
+ * `value`: the fill hint until the cell holds its solution digit, the
+ * mistake hint while it holds the value it was about, and "Show me" with the
+ * fill hint. The entry itself when nothing has gone; null when everything has.
  */
 function liveHints(entry: RememberedHints, value: number, answer: number): RememberedHints | null {
   const fill = value === answer ? null : entry.fill;
   const mistake = entry.mistake?.value === value ? entry.mistake : null;
   if (fill === null && mistake === null) return null;
-  const isUnchanged = fill === entry.fill && mistake === entry.mistake;
-  return isUnchanged ? entry : { fill, mistake };
+  const walkthrough = entry.walkthrough && fill !== null;
+  const isUnchanged =
+    fill === entry.fill && mistake === entry.mistake && walkthrough === entry.walkthrough;
+  return isUnchanged ? entry : { fill, mistake, walkthrough };
 }
 
 /** Forget the remembered hints the cells no longer need (see `liveHints`), after their values change. */
@@ -584,6 +597,19 @@ function showHint(state: GameState, hint: Hint): GameState {
   return { ...next, cells };
 }
 
+function openWalkthrough(state: GameState, index: number): GameState {
+  const entry = isCellIndex(index) ? state.cellHints.get(index) : undefined;
+  // "Show me" explains the fill hint on show, which needs an empty cell; it
+  // is counted once per cell.
+  if (entry === undefined || entry.fill === null || entry.walkthrough) return state;
+  if (state.cells[index].value !== 0) return state;
+  return {
+    ...state,
+    cellHints: setCellHints(state.cellHints, index, { ...entry, walkthrough: true }),
+    assists: withHint(state.assists),
+  };
+}
+
 function check(state: GameState, scope: 'cell' | 'puzzle'): GameState {
   const [from, to] = scope === 'cell' ? [state.selected, state.selected + 1] : [0, 81];
   let cells: CellState[] | null = null;
@@ -679,6 +705,8 @@ function step(state: GameState, action: GameAction): GameState {
       return replay(state, 'redo');
     case 'hint':
       return showHint(state, action.hint);
+    case 'walkthrough':
+      return openWalkthrough(state, action.index);
     case 'check':
       return check(state, action.scope);
     case 'reveal':
@@ -725,8 +753,9 @@ export function reduce(state: GameState, action: GameAction): GameState {
   let next = step(state, action);
   if (next === state) return next;
   if (next.cells !== state.cells) next = forgetSpentHints(next);
-  // A hint describes the board it was asked about, so any change retires it.
-  if (next.hint === null || action.type === 'hint') return next;
+  // A hint describes the board it was asked about, so any change retires
+  // it — bar opening "Show me", which leaves the board as it was.
+  if (next.hint === null || action.type === 'hint' || action.type === 'walkthrough') return next;
   return { ...next, hint: null };
 }
 
@@ -800,6 +829,8 @@ export interface SerialisedCellHints {
   fill: FillHint | null;
   /** The value its mistake hint was about; 0 when it has none. */
   mistake: number;
+  /** Whether "Show me" has been opened for it. */
+  walkthrough: boolean;
 }
 
 /**
@@ -853,6 +884,7 @@ export function serialiseGame(state: GameState): SerialisedGame {
       index,
       fill: entry.fill,
       mistake: entry.mistake?.value ?? 0,
+      walkthrough: entry.walkthrough,
     })),
   };
 }
@@ -943,6 +975,7 @@ function readCellHints(
     const entry: RememberedHints = {
       fill: readFillHint(item.fill, index),
       mistake: isMistaken ? { hint: { kind: 'mistake', index }, value: cell.value } : null,
+      walkthrough: item.walkthrough === true,
     };
     cellHints = setCellHints(cellHints, index, liveHints(entry, cell.value, answer));
   }
@@ -961,11 +994,11 @@ function readAssists(data: unknown): Assists | null {
  * Stored assists, raised to cover the help the board itself shows was taken —
  * help taken must never be lost, and a revealed game that loads as unassisted
  * could set a best time. Every revealed cell is a reveal; every remembered
- * hint was counted once when it was first shown; a cell checked correct
- * means at least one check, and so does one marked wrong unless a hint
- * accounts for it (a hint marks the mistake it points at the same way); and
- * auto mode on or any elimination (only ever recorded in auto mode) means
- * auto mode was used.
+ * hint, and every "Show me" opened, was counted once when it was first
+ * shown; a cell checked correct means at least one check, and so does one
+ * marked wrong unless a hint accounts for it (a hint marks the mistake it
+ * points at the same way); and auto mode on or any elimination (only ever
+ * recorded in auto mode) means auto mode was used.
  */
 function reconcileAssists(
   assists: Assists,
@@ -975,8 +1008,8 @@ function reconcileAssists(
 ): Assists {
   const reveals = cells.filter((cell) => cell.mark === 'revealed').length;
   let remembered = 0;
-  for (const { fill, mistake } of cellHints.values()) {
-    remembered += Number(fill !== null) + Number(mistake !== null);
+  for (const { fill, mistake, walkthrough } of cellHints.values()) {
+    remembered += Number(fill !== null) + Number(mistake !== null) + Number(walkthrough);
   }
   const hints = Math.max(assists.hints, remembered);
   const isMarkedWrong = cells.some((cell) => cell.mark === 'wrong');

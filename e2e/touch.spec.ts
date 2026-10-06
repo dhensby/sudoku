@@ -4,6 +4,7 @@ import {
   PUZZLES,
   cell,
   emptyCells,
+  getStuck,
   gotoPuzzle,
   grid,
   modeButton,
@@ -11,6 +12,7 @@ import {
   resumeButton,
   startButton,
   stubClipboard,
+  typeDigits,
   waitForPlaying,
 } from './helpers';
 
@@ -76,6 +78,45 @@ async function expectOnScreen(page: Page, target: Locator): Promise<void> {
   expect(box!.y).toBeGreaterThanOrEqual(0);
   expect(box!.x + box!.width).toBeLessThanOrEqual(viewport.width + 0.5);
   expect(box!.y + box!.height).toBeLessThanOrEqual(viewport.height + 0.5);
+}
+
+/**
+ * The press area of a button that reaches past what it draws (found by
+ * hit-testing, through its middle), and how many of the board's cells and
+ * the controls it overlaps.
+ */
+async function pressArea(button: Locator) {
+  return button.evaluate((target) => {
+    const rect = target.getBoundingClientRect();
+    const hits = (x: number, y: number) => target.contains(document.elementFromPoint(x, y));
+    const [x, y] = [rect.left + rect.width / 2, rect.top + rect.height / 2];
+    const ys: number[] = [];
+    const xs: number[] = [];
+    for (let at = rect.top - 40; at <= rect.bottom + 40; at += 0.5) if (hits(x, at)) ys.push(at);
+    for (let at = rect.left - 40; at <= rect.right + 40; at += 0.5) if (hits(at, y)) xs.push(at);
+    const [top, bottom] = [Math.min(...ys), Math.max(...ys) + 0.5];
+    const [left, right] = [Math.min(...xs), Math.max(...xs) + 0.5];
+    const neighbours = document.querySelectorAll('[role="gridcell"], .controls button');
+    const overlapping = [...neighbours].filter((element) => {
+      const box = element.getBoundingClientRect();
+      return box.left < right && box.right > left && box.top < bottom && box.bottom > top;
+    });
+    return { width: right - left, height: bottom - top, overlapping: overlapping.length };
+  });
+}
+
+/** A finger's press area, clear of the board's cells and the controls. */
+async function expectFingerSized(button: Locator): Promise<void> {
+  const area = await pressArea(button);
+  expect(area.width).toBeGreaterThanOrEqual(44);
+  expect(area.height).toBeGreaterThanOrEqual(44);
+  expect(area.overlapping).toBe(0);
+}
+
+/** Ask for a hint from the "…" menu, by touch. */
+async function tapHint(page: Page): Promise<void> {
+  await page.getByRole('button', { name: 'More' }).tap();
+  await page.getByRole('menu', { name: 'More' }).getByRole('menuitem', { name: 'Hint' }).tap();
 }
 
 /** Open one of the header's dialogs through the phone's overflow menu. */
@@ -352,38 +393,47 @@ test.describe('touch', () => {
 
   test("a hint's question opens the guide at its technique", async ({ page }) => {
     await tapStart(page);
-    await page.getByRole('button', { name: 'More' }).tap();
-    await page.getByRole('menu', { name: 'More' }).getByRole('menuitem', { name: 'Hint' }).tap();
+    await tapHint(page);
     const question = page.locator('.hint-bar').getByRole('button', { name: /^What's a/ });
 
-    // A finger-sized press area round the words (it reaches past them, so it
-    // is found by hit-testing), clear of the board's cells and the controls.
-    const area = await question.evaluate((button) => {
-      const rect = button.getBoundingClientRect();
-      const hits = (x: number, y: number) => button.contains(document.elementFromPoint(x, y));
-      const [x, y] = [rect.left + rect.width / 2, rect.top + rect.height / 2];
-      const ys: number[] = [];
-      const xs: number[] = [];
-      for (let at = rect.top - 40; at <= rect.bottom + 40; at += 0.5) if (hits(x, at)) ys.push(at);
-      for (let at = rect.left - 40; at <= rect.right + 40; at += 0.5) if (hits(at, y)) xs.push(at);
-      const [top, bottom] = [Math.min(...ys), Math.max(...ys) + 0.5];
-      const [left, right] = [Math.min(...xs), Math.max(...xs) + 0.5];
-      const neighbours = document.querySelectorAll('[role="gridcell"], .controls button');
-      const overlapping = [...neighbours].filter((element) => {
-        const box = element.getBoundingClientRect();
-        return box.left < right && box.right > left && box.top < bottom && box.bottom > top;
-      });
-      return { width: right - left, height: bottom - top, overlapping: overlapping.length };
-    });
-    expect(area.width).toBeGreaterThanOrEqual(44);
-    expect(area.height).toBeGreaterThanOrEqual(44);
-    expect(area.overlapping).toBe(0);
+    // A finger-sized press area round the words, clear of the board's cells
+    // and the controls.
+    await expectFingerSized(question);
 
     const name = (await question.textContent())!.replace(/^What's an? |\?$/g, '');
     await question.tap();
     const sheet = page.getByRole('dialog', { name: 'Solving techniques' });
     await expect(sheet.getByRole('heading', { level: 3 })).toHaveText(new RegExp(`^${name}$`, 'i'));
     expect((await overflow(page)).x).toBe(0);
+  });
+
+  test("a hint's Show me opens its walkthrough, from a finger-sized press area", async ({
+    page,
+  }) => {
+    await tapStart(page);
+    await tapHint(page);
+    const show = page.locator('.hint-bar').getByRole('button', { name: /^Show me how to solve/ });
+    const question = page.locator('.hint-bar').getByRole('button', { name: /^What's a/ });
+
+    // Each a finger's press area (hit-testing finds each its own, so
+    // neither is over the other), clear of the board's cells and the
+    // controls.
+    for (const button of [show, question]) await expectFingerSized(button);
+    // The bar keeps its two lines' height, Show me and all.
+    const bar = page.locator('.hint-bar');
+    const [height, min] = await bar.evaluate((el) => [
+      el.getBoundingClientRect().height,
+      parseFloat(getComputedStyle(el).minHeight),
+    ]);
+    expect(height).toBeLessThanOrEqual(min + 0.5);
+
+    await show.tap();
+    const sheet = page.getByRole('dialog', { name: /^How to solve row \d, column \d$/ });
+    await expectOnScreen(page, sheet);
+    await expectOnScreen(page, sheet.getByRole('button', { name: 'Done' }));
+    expect((await overflow(page)).x).toBe(0);
+    await sheet.getByRole('button', { name: 'Done' }).tap();
+    await expect(sheet).toBeHidden();
   });
 
   test('rapid taps do not zoom the page, and the board is insulated from selection', async ({
@@ -493,6 +543,39 @@ test.describe('a 320×568 phone', () => {
     await tapStart(page);
     await expectTouchTargets(page);
   });
+
+  /*
+   * The board shrinks to fit the height here, and the hint bar with it, to
+   * 268px: a hidden single's hint is the longest a single gets, and with
+   * its question and Show me it would take a third line, which scrolls.
+   */
+  test("keeps a hidden single's hint, its question and Show me to two lines, with nothing to scroll", async ({
+    page,
+  }) => {
+    await getStuck(page);
+    // Two more right digits, and a hidden single in its box is the hint.
+    await typeDigits(page, [
+      { index: 37, digit: 8 },
+      { index: 73, digit: 6 },
+    ]);
+    await tapHint(page);
+    const bar = page.locator('.hint-bar');
+    await expect(bar).toContainText(
+      "Hidden single: there's only one place for a number in this box.",
+    );
+    const show = bar.getByRole('button', { name: /^Show me how to solve/ });
+    const question = bar.getByRole('button', { name: "What's a hidden single?" });
+    // Show me keeps its words; the question its icon.
+    await expect(show).toHaveText('Show me');
+    await expect(question).toBeVisible();
+    const [height, min] = await bar.evaluate((el) => [
+      el.getBoundingClientRect().height,
+      parseFloat(getComputedStyle(el).minHeight),
+    ]);
+    expect(height).toBeLessThanOrEqual(min + 0.5);
+    await expectWholeGameOnScreen(page);
+    for (const button of [show, question]) await expectFingerSized(button);
+  });
 });
 
 /*
@@ -575,6 +658,48 @@ for (const viewport of [
     test('keeps every control a 44px touch target', async ({ page }) => {
       await tapStart(page);
       await expectTouchTargets(page);
+    });
+
+    test('shows each step of Show me whole, its board beside its words and staying put as they scroll', async ({
+      page,
+    }) => {
+      await getStuck(page);
+      await tapHint(page);
+      await page.getByRole('button', { name: /^Show me how to solve/ }).tap();
+      const sheet = page.getByRole('dialog', { name: 'How to solve row 5, column 2' });
+      await expectOnScreen(page, sheet);
+      for (let step = 1; step <= 3; step++) {
+        await expect(sheet.getByRole('heading', { level: 3 })).toHaveAccessibleName(
+          new RegExp(`^Step ${step} of 3:`),
+        );
+        const layout = await sheet.evaluate((dialog) => {
+          const body = dialog.querySelector('.dialog__body')!;
+          const box = (element: Element) => element.getBoundingClientRect();
+          const board = () => box(dialog.querySelector('.walkthrough__step [role="img"]')!);
+          const caption = box(
+            dialog.querySelector('.walkthrough__step .technique-diagram__caption')!,
+          );
+          const inBody = (rect: DOMRect) =>
+            rect.top >= box(body).top - 0.5 && rect.bottom <= box(body).bottom + 0.5;
+          const before = {
+            isBoardWhole: inBody(board()),
+            isCaptionBeside: caption.left >= board().right,
+            isCaptionBegun: caption.top < box(body).bottom,
+          };
+          body.scrollTop = body.scrollHeight;
+          const isBoardWholeScrolled = inBody(board());
+          body.scrollTop = 0;
+          return { ...before, isBoardWholeScrolled };
+        });
+        expect(layout).toEqual({
+          isBoardWhole: true,
+          isCaptionBeside: true,
+          isCaptionBegun: true,
+          isBoardWholeScrolled: true,
+        });
+        if (step < 3) await sheet.getByRole('button', { name: /^Next/ }).tap();
+      }
+      expect((await overflow(page)).x).toBe(0);
     });
 
     test('fits every dialog', async ({ page }) => {
