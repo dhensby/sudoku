@@ -1019,6 +1019,113 @@ describe('wings', () => {
   });
 });
 
+describe('chains', () => {
+  // Rows 1 and 7 hold their 1s in column 1 and one other column each, 4 and
+  // 5 — in the same stack, so the cells in its boxes that see both tops are
+  // where the 1 goes from.
+  const SKYSCRAPER = (secondRow = '-1 . -1 | -1 -1 . | -1 -1 -1', targets = '.') => `
+    .  .  .  | .  .  ${targets} | .  .  .
+    -1 .  -1 | -1 .  -1 | -1 -1 -1
+    .  .  .  | .  .  ${targets} | .  .  .
+    ${OPEN}
+    ${OPEN}
+    ${OPEN}
+    .  .  .  | .  ${targets} . | .  .  .
+    ${secondRow}
+    .  .  .  | .  ${targets} . | .  .  .
+  `;
+
+  it('finds a Skyscraper on rows and clears the digit from the cells that see both tops', () => {
+    expect(TECHNIQUES.skyscraper(pencilmarks(SKYSCRAPER()))).toEqual(
+      eliminationStep('skyscraper', struck([1], [5, 23, 58, 76]), null, {
+        // End to end: a top, its base, the other base, the other top.
+        pattern: holding([1], [13, 10, 64, 68]),
+        houses: [row(1), row(7), column(1)],
+        digit: 1,
+      }),
+    );
+  });
+
+  it('finds a Skyscraper on columns', () => {
+    // The same pattern, turned on its side.
+    const board = pencilmarks(`
+      .  -1 .  | .  .  .  | .  -1 .
+      .  .  .  | .  .  .  | .  .  .
+      .  -1 .  | .  .  .  | .  -1 .
+      .  -1 .  | .  .  .  | .  -1 .
+      .  .  .  | .  .  .  | .  -1 .
+      .  -1 .  | .  .  .  | .  .  .
+      .  -1 .  | .  .  .  | .  -1 .
+      .  -1 .  | .  .  .  | .  -1 .
+      .  -1 .  | .  .  .  | .  -1 .
+    `);
+    expect(TECHNIQUES.skyscraper(board)).toEqual(
+      eliminationStep('skyscraper', struck([1], [42, 44, 45, 47]), null, {
+        pattern: holding([1], [37, 10, 16, 52]),
+        houses: [column(1), column(7), row(1)],
+        digit: 1,
+      }),
+    );
+  });
+
+  it('leaves tops that share a cross line too to the X-Wing', () => {
+    const board = pencilmarks(SKYSCRAPER('-1 . -1 | -1 . -1 | -1 -1 -1'));
+    expect(TECHNIQUES.skyscraper(board)).toBeNull();
+  });
+
+  it('does not fire when a line has a third place for the digit', () => {
+    const board = pencilmarks(SKYSCRAPER('-1 . -1 | -1 -1 . | -1 -1 .'));
+    expect(TECHNIQUES.skyscraper(board)).toBeNull();
+  });
+
+  it('never counts a Skyscraper that removes nothing', () => {
+    const board = pencilmarks(SKYSCRAPER(undefined, '-1'));
+    expect(TECHNIQUES.skyscraper(board)).toBeNull();
+  });
+
+  /**
+   * Row 1 holds its 1s in `rowLine`'s open cells, and column 0 in the rows
+   * listed; r7c6, where a far end's column meets the other's row, is
+   * `target`.
+   */
+  const KITE = (rowLine = '-1 . -1 | -1 -1 -1 | . -1 -1', columnRows = [2, 7], target = '.') =>
+    Array.from({ length: 9 }, (_, r) => {
+      if (r === 1) return rowLine;
+      const first = columnRows.includes(r) ? '.' : '-1';
+      return `${first} . . | . . . | ${r === 7 ? target : '.'} . .`;
+    }).join('\n');
+
+  it('finds a 2-String Kite and clears the digit where its far ends cross', () => {
+    expect(TECHNIQUES.twoStringKite(pencilmarks(KITE()))).toEqual(
+      eliminationStep('twoStringKite', struck([1], [69]), null, {
+        // End to end: the row's far end, its cell in the box, the column's
+        // cell in the box, the column's far end.
+        pattern: holding([1], [15, 10, 18, 63]),
+        houses: [row(1), column(0), box(0)],
+        digit: 1,
+      }),
+    );
+  });
+
+  it('does not fire when the strings meet in no box', () => {
+    expect(TECHNIQUES.twoStringKite(pencilmarks(KITE(undefined, [4, 7])))).toBeNull();
+  });
+
+  it('does not fire when a string never leaves the box', () => {
+    const board = pencilmarks(KITE('-1 . . | -1 -1 -1 | -1 -1 -1'));
+    expect(TECHNIQUES.twoStringKite(board)).toBeNull();
+  });
+
+  it('does not tie two strings that share a cell into a kite', () => {
+    const board = pencilmarks(KITE('. -1 -1 | -1 -1 -1 | . -1 -1', [1, 7]));
+    expect(TECHNIQUES.twoStringKite(board)).toBeNull();
+  });
+
+  it('never counts a 2-String Kite that removes nothing', () => {
+    expect(TECHNIQUES.twoStringKite(pencilmarks(KITE(undefined, undefined, '-1')))).toBeNull();
+  });
+});
+
 describe('every technique', () => {
   const OPEN_BOARD = Array(81).fill('.').join(' ');
 
@@ -1071,6 +1178,12 @@ describe('soundness', () => {
     ['nakedPair', 'claims a candidate its cell lacks', (step) => (step.pattern[0].mask = 0x1ff)],
     ['swordfish', 'forgets a cover line', (step) => step.houses.pop()],
     ['xyzWing', 'puts a pincer where the pivot goes', (step) => step.pattern.reverse()],
+    ['skyscraper', 'runs its chain backwards', (step) => step.pattern.reverse()],
+    [
+      'twoStringKite',
+      'names the wrong box for its weak link',
+      (step) => (step.houses[2] = { kind: 'box', index: (step.houses[2].index + 1) % 9 }),
+    ],
   ])('flags a %s step that %s', (id, _, misdescribe) => {
     const techniques = TECHNIQUES as Record<TechniqueId, Technique>;
     const original = techniques[id];

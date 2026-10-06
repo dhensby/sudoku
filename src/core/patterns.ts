@@ -1,4 +1,4 @@
-import { ALL_DIGITS, PEERS, POPCOUNT, bit, isPeer, unitCells } from './grid';
+import { ALL_DIGITS, COL, PEERS, POPCOUNT, ROW, bit, isPeer, unitCells } from './grid';
 import type { Elimination, PatternCell, SolveStep, SolverBoard } from './techniques';
 import type { TechniqueId, Unit } from './types';
 
@@ -46,6 +46,9 @@ const SUBSETS: Partial<Record<TechniqueId, { size: number; isNaked: boolean }>> 
 
 /** The fish techniques, by how many base lines they have. */
 const FISH: Partial<Record<TechniqueId, number>> = { xWing: 2, swordfish: 3 };
+
+/** The chains: four cells of one digit, linked strong, weak, strong. */
+const CHAINS: ReadonlySet<TechniqueId> = new Set<TechniqueId>(['skyscraper', 'twoStringKite']);
 
 const isLine = (unit: Unit) => unit.kind !== 'box';
 const isIn = (index: number, unit: Unit) => unitCells(unit).includes(index);
@@ -95,6 +98,13 @@ function wingTargets(isXyz: boolean, pivot: number, first: number, second: numbe
     : PEERS[first].filter((t) => isPeer(second, t));
 }
 
+/** The cells a chain's digit can be struck from: every cell that sees both its ends, bar its own. */
+function chainTargets(cells: readonly number[]): number[] {
+  const [first, last] = [cells[0], cells[cells.length - 1]];
+  // The same scan as the techniques', so the eliminations come out in the same order.
+  return PEERS[first].filter((t) => isPeer(last, t) && !cells.includes(t));
+}
+
 /** The digit an XY- or XYZ-Wing strikes, from its three cells' candidates. */
 function wingDigit(isXyz: boolean, pivot: number, first: number, second: number): number {
   return first & second & (isXyz ? ALL_DIGITS : ~pivot);
@@ -126,8 +136,9 @@ export function isStepValid(board: SolverBoard, step: SolveStep): boolean {
     }
   }
   // `unit` is the house a hint names: the first of the houses, bar a fish's
-  // lines, none of which is "the" house.
-  if (!isSameUnit(step.unit, FISH[id] ? null : (houses[0] ?? null))) return false;
+  // or a chain's, none of which is "the" house.
+  const unit = FISH[id] || CHAINS.has(id) ? null : (houses[0] ?? null);
+  if (!isSameUnit(step.unit, unit)) return false;
   if (SINGLES.has(id)) return placement !== null && isSingleValid(board, step, placement);
   if (placement !== null || !areEliminationsReal(board, step)) return false;
   if (id === 'pointing' || id === 'claiming') return isLockedValid(board, step);
@@ -135,6 +146,7 @@ export function isStepValid(board: SolverBoard, step: SolveStep): boolean {
   if (subset) return isSubsetValid(board, step, subset.size, subset.isNaked);
   const fishSize = FISH[id];
   if (fishSize) return isFishValid(board, step, fishSize);
+  if (CHAINS.has(id)) return isChainValid(board, step);
   return isWingValid(board, step);
 }
 
@@ -272,6 +284,45 @@ function isFishValid(board: SolverBoard, step: SolveStep, size: number): boolean
 }
 
 /**
+ * A chain of four cells holding its digit: the first two its only places in
+ * the first house, the last two its only places in the second, and the
+ * middle two in the third, which they can't both take it in. One end must
+ * be the digit, so it goes from cells that see both. Neither end is in the
+ * third house. A Skyscraper's first two houses are parallel lines and its
+ * third a cross line through both, with its ends in different cross lines
+ * (or it would be an X-Wing); a 2-String Kite's are a row, a column and the
+ * box they meet in.
+ */
+function isChainValid(board: SolverBoard, step: SolveStep): boolean {
+  const { technique: id, pattern, houses, digit } = step;
+  if (digit === null || pattern.length !== 4 || houses.length !== 3) return false;
+  const d = bit(digit);
+  const [strong1, strong2, weak] = houses;
+  const cells = pattern.map((p) => p.index);
+  const [end1, inner1, inner2, end2] = cells;
+  const isRightShape =
+    !isIn(end1, weak) &&
+    !isIn(end2, weak) &&
+    (id === 'skyscraper'
+      ? isLine(strong1) &&
+        strong2.kind === strong1.kind &&
+        isLine(weak) &&
+        weak.kind !== strong1.kind &&
+        (strong1.kind === 'row' ? COL[end1] !== COL[end2] : ROW[end1] !== ROW[end2])
+      : strong1.kind === 'row' && strong2.kind === 'column' && weak.kind === 'box');
+  const targets = chainTargets(cells);
+  return (
+    isRightShape &&
+    pattern.every((p) => p.mask === d) &&
+    isSameSet(holders(board, unitCells(strong1), d), [end1, inner1]) &&
+    isSameSet(holders(board, unitCells(strong2), d), [inner2, end2]) &&
+    isIn(inner1, weak) &&
+    isIn(inner2, weak) &&
+    step.eliminations.every((e) => e.mask === d && targets.includes(e.index))
+  );
+}
+
+/**
  * XY-Wing: a pivot {x, y} seeing pincers {x, z} and {y, z}; XYZ-Wing: a
  * pivot {x, y, z} seeing pincers {x, z} and {y, z}. Either way z goes from
  * cells that see both pincers (and, for XYZ, the pivot).
@@ -341,6 +392,12 @@ export function stepOn(board: SolverBoard, step: SolveStep): SolveStep {
     const pattern = base.flatMap((u) => patternOf(board, unitCells(u), d));
     return { ...step, pattern, eliminations: removable(board, outside(cover, base), d) };
   }
+  if (CHAINS.has(id)) {
+    const cells = step.pattern.map((p) => p.index);
+    const d = bit(digit!);
+    const pattern = patternOf(board, cells, d);
+    return { ...step, pattern, eliminations: removable(board, chainTargets(cells), d) };
+  }
   const isXyz = id === 'xyzWing';
   const [pivot, first, second] = step.pattern.map((p) => p.index);
   const { candidates } = board;
@@ -384,6 +441,8 @@ export interface Reliance {
  * - fish: the digit gone from the base lines outside the cover lines, each
  *   base line keeping its two or more places for it, and each cover line
  *   one, from the step's own board;
+ * - chains: the digit gone from the rest of each strong link's house, so
+ *   each holds it in its two cells alone;
  * - wings: every other digit gone from the pivot and the pincers.
  *
  * Every candidate a re-read step removes is one its pattern justifies, and
@@ -420,6 +479,14 @@ export function reliance(step: SolveStep): Reliance {
   if (fishSize) {
     const { base, cover } = fishLines(step, fishSize);
     return each(outside(base, cover), bit(digit!));
+  }
+  if (CHAINS.has(id)) {
+    const cells = pattern.map((p) => p.index);
+    const strong = houses.slice(0, 2).flatMap((u) => unitCells(u));
+    return each(
+      [...new Set(strong)].filter((i) => !cells.includes(i)),
+      bit(digit!),
+    );
   }
   return {
     absent: pattern.map(({ index, mask }) => ({ index, mask: ALL_DIGITS & ~mask })),

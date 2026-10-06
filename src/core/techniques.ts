@@ -87,20 +87,24 @@ export interface SolveStep {
    *   digits it holds;
    * - fish: the base lines' cells for the digit, line by line;
    * - XY-Wing and XYZ-Wing: the pivot, then the two pincers, each with every
-   *   candidate it holds.
+   *   candidate it holds;
+   * - chains (Skyscraper, 2-String Kite): the chain's candidates from end to
+   *   end, linked in turn strongly (one or other must be the digit), weakly
+   *   (they can't both be), strongly — so one end or the other is the digit.
    */
   pattern: PatternCell[];
   /**
    * The houses involved, most telling first: singles and subsets → their
    * unit (none for a naked single, which is about the cell alone); pointing →
    * the box, then the line; claiming → the line, then the box; fish → the
-   * base lines, then the cover lines; wings → none.
+   * base lines, then the cover lines; wings → none; chains → the houses of
+   * their strong links, then the house of the weak link between them.
    */
   houses: Unit[];
   /**
    * The one digit the step is about: the digit placed by a single, or the
-   * digit of locked candidates and fish. Null for subsets and wings, which
-   * work with several.
+   * digit of locked candidates, fish and chains. Null for subsets and wings,
+   * which work with several.
    */
   digit: Digit | null;
 }
@@ -627,6 +631,132 @@ const xyzWing: Technique = (board) => {
   return null;
 };
 
+// ---------------------------------------------------------------------------
+// Chains
+// ---------------------------------------------------------------------------
+
+/**
+ * The lines among units `from`–`to` that hold `digitBit` in exactly two
+ * cells, each as [unit, first cell, second cell]. Those two cells are a
+ * strong link: one or other of them must be the digit.
+ */
+function conjugatePairs(
+  board: SolverBoard,
+  digitBit: number,
+  from: number,
+  to: number,
+): [unit: number, first: number, second: number][] {
+  const pairs: [number, number, number][] = [];
+  for (let u = from; u < to; u++) {
+    const holders = UNITS[u].filter((i) => (board.candidates[i] & digitBit) !== 0);
+    if (holders.length === 2) pairs.push([u, holders[0], holders[1]]);
+  }
+  return pairs;
+}
+
+/**
+ * A single-digit chain of four cells — strong link, weak link, strong link —
+ * found and applied: one of its ends is the digit, so the digit goes from
+ * every cell that sees both, the chain's own cells aside. Null when that
+ * removes nothing.
+ */
+function chainStep(
+  board: SolverBoard,
+  technique: TechniqueId,
+  digit: Digit,
+  chain: readonly number[],
+  houses: Unit[],
+): SolveStep | null {
+  const digitBit = bit(digit);
+  const [first, last] = [chain[0], chain[chain.length - 1]];
+  const eliminations: Elimination[] = [];
+  for (const t of PEERS[first]) {
+    if (isPeer(last, t) && !chain.includes(t)) strike(board, eliminations, t, digitBit);
+  }
+  return eliminationStep(technique, eliminations, null, () => ({
+    pattern: chain.map((index) => ({ index, mask: digitBit })),
+    houses,
+    digit,
+  }));
+}
+
+/**
+ * Skyscraper: two parallel lines that each hold a digit in just two cells,
+ * with one cell of each (the base) in the same cross line. The two base
+ * cells can't both be the digit, so one of the other two (the tops) is —
+ * and the digit goes from every cell that sees both tops. With the tops in
+ * one cross line too, it would be an X-Wing.
+ */
+const skyscraper: Technique = (board) => {
+  for (let d = 1; d <= 9; d++) {
+    for (const isRowBase of [true, false]) {
+      const cross = isRowBase ? COL : ROW;
+      const crossOffset = isRowBase ? 9 : 0;
+      const pairs = conjugatePairs(board, bit(d), isRowBase ? 0 : 9, isRowBase ? 9 : 18);
+      for (let a = 0; a < pairs.length; a++) {
+        for (let b = a + 1; b < pairs.length; b++) {
+          const [u1, ...one] = pairs[a];
+          const [u2, ...two] = pairs[b];
+          // The cross line they share, if exactly one: sharing both is an X-Wing.
+          const shared = one.filter((i) => two.some((j) => cross[j] === cross[i]));
+          if (shared.length !== 1) continue;
+          const base1 = shared[0];
+          const base2 = two.find((j) => cross[j] === cross[base1])!;
+          const top1 = one.find((i) => i !== base1)!;
+          const top2 = two.find((j) => j !== base2)!;
+          const step = chainStep(
+            board,
+            'skyscraper',
+            d as Digit,
+            [top1, base1, base2, top2],
+            [unitOf(u1), unitOf(u2), unitOf(crossOffset + cross[base1])],
+          );
+          if (step) return step;
+        }
+      }
+    }
+  }
+  return null;
+};
+
+/**
+ * 2-String Kite: a row and a column that each hold a digit in just two
+ * cells, with one cell of each in the same box. Those two can't both be the
+ * digit, so one of the far ends — one along the row, one down the column —
+ * is, and the digit goes from every cell that sees both: the cell in the
+ * row of one and the column of the other.
+ */
+const twoStringKite: Technique = (board) => {
+  for (let d = 1; d <= 9; d++) {
+    const rows = conjugatePairs(board, bit(d), 0, 9);
+    const columns = conjugatePairs(board, bit(d), 9, 18);
+    for (const [r, ...inRow] of rows) {
+      for (const [c, ...inColumn] of columns) {
+        // A cell on both strings would tie them together at one end.
+        if (inRow.some((i) => inColumn.includes(i))) continue;
+        for (const rowIn of inRow) {
+          for (const columnIn of inColumn) {
+            const b = BOX[rowIn];
+            const rowEnd = inRow.find((i) => i !== rowIn)!;
+            const columnEnd = inColumn.find((i) => i !== columnIn)!;
+            // The strings meet in one box, and both leave it.
+            if (BOX[columnIn] !== b || BOX[rowEnd] === b || BOX[columnEnd] === b) continue;
+            const step = chainStep(
+              board,
+              'twoStringKite',
+              d as Digit,
+              [rowEnd, rowIn, columnIn, columnEnd],
+              [unitOf(r), unitOf(c), unitOf(18 + b)],
+            );
+            if (step) return step;
+          }
+        }
+      }
+    }
+  }
+  return null;
+};
+
 /**
  * Every technique, by id. Each applies one step to the board, or returns null
  * and changes nothing.
@@ -646,4 +776,6 @@ export const TECHNIQUES: Readonly<Record<TechniqueId, Technique>> = {
   swordfish: (board) => fish(board, 'swordfish', 3),
   xyWing,
   xyzWing,
+  skyscraper,
+  twoStringKite,
 };

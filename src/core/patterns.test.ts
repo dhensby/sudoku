@@ -540,6 +540,46 @@ describe('isStepValid', () => {
         step.eliminations.push({ index, mask: z });
       },
     ],
+    // Chains
+    ['skyscraper', 'names a unit, which no chain has', (step) => (step.unit = step.houses[0])],
+    ['skyscraper', 'is about no digit', (step) => (step.digit = null)],
+    ['skyscraper', 'describes three cells', (step) => step.pattern.pop()],
+    [
+      'skyscraper',
+      'gives its strong links the wrong way round',
+      (step) => step.houses.splice(0, 2, step.houses[1], step.houses[0]),
+    ],
+    [
+      'skyscraper',
+      'joins its bases through a box',
+      (step) => (step.houses[2] = { kind: 'box', index: BOX[step.pattern[1].index] }),
+    ],
+    [
+      'skyscraper',
+      'strikes a cell that sees one end only',
+      (step, board) => {
+        const [first, , , last] = cellsOf(step);
+        const index = firstCell(
+          (i) =>
+            board.values[i] === 0 &&
+            isPeer(first, i) &&
+            !isPeer(last, i) &&
+            !cellsOf(step).includes(i),
+        );
+        board.candidates[index] |= bit(step.digit!);
+        step.eliminations.push({ index, mask: bit(step.digit!) });
+      },
+    ],
+    [
+      'twoStringKite',
+      'ties its strings together in a line rather than a box',
+      (step) => (step.houses[2] = { kind: 'row', index: ROW[step.pattern[1].index] }),
+    ],
+    [
+      'twoStringKite',
+      'gives its strong links the wrong way round',
+      (step) => step.houses.splice(0, 2, step.houses[1], step.houses[0]),
+    ],
   ])('rejects a %s step that %s', (id, _name, misdescribe) => {
     const { board, step } = example(id);
     misdescribe(step, board);

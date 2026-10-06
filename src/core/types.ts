@@ -3,7 +3,7 @@ export type Digit = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
 
 /**
  * The four puzzle tiers. Easy, Medium and Hard are calibrated against the NYT
- * puzzles of the same names; Expert goes past them into fish and wings.
+ * puzzles of the same names; Expert goes past them into fish, wings and chains.
  */
 export type Difficulty = 'easy' | 'medium' | 'hard' | 'expert';
 
@@ -45,7 +45,9 @@ export type TechniqueId =
   | 'xWing'
   | 'swordfish'
   | 'xyWing'
-  | 'xyzWing';
+  | 'xyzWing'
+  | 'skyscraper'
+  | 'twoStringKite';
 
 /** Which kind of unit a row/column/box index refers to. */
 export type UnitKind = 'row' | 'column' | 'box';

@@ -1,9 +1,9 @@
 import { respond, type GenerateRequest, type GenerateResponse } from './protocol';
 
 /*
- * The puzzle generator, off the main thread: digging out a Hard grid can
- * take tens of milliseconds and an Expert one hundreds, and the board must
- * not stutter while it does. Loaded as a module worker by
+ * The puzzle generator, off the main thread: digging out a Hard or Expert
+ * grid can take tens of milliseconds, sometimes more, and the board must not
+ * stutter while it does. Loaded as a module worker by
  * `createPuzzleSource`; all the work lives in `respond`, which is tested on
  * its own.
  */

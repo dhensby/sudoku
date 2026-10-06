@@ -24,7 +24,12 @@ export type { Elimination, PatternCell, SolveStep } from './techniques';
  * order), which is why it only ever breaks ties.
  */
 
-/** Every technique, easiest first: the order the grader tries them in. */
+/**
+ * Every technique, easiest first: the order the grader tries them in. Chains
+ * come after the fish and wings, as the newest idea a player meets — which
+ * also leaves every puzzle the earlier techniques can finish graded exactly
+ * as it was before they were added.
+ */
 export const TECHNIQUE_ORDER: readonly TechniqueId[] = [
   'fullHouse',
   'hiddenSingleBox',
@@ -40,13 +45,15 @@ export const TECHNIQUE_ORDER: readonly TechniqueId[] = [
   'swordfish',
   'xyWing',
   'xyzWing',
+  'skyscraper',
+  'twoStringKite',
 ];
 
 /**
  * The tier each technique belongs to, calibrated against NYT: Easy puzzles
  * need nothing beyond box hidden singles, Medium ones locked candidates, Hard
- * ones pairs and triples. Expert (fish and wings) goes past anything NYT
- * publishes.
+ * ones pairs and triples. Expert (fish, wings and chains) goes past anything
+ * NYT publishes.
  */
 export const TECHNIQUE_TIER: Readonly<Record<TechniqueId, Difficulty>> = {
   fullHouse: 'easy',
@@ -63,6 +70,8 @@ export const TECHNIQUE_TIER: Readonly<Record<TechniqueId, Difficulty>> = {
   swordfish: 'expert',
   xyWing: 'expert',
   xyzWing: 'expert',
+  skyscraper: 'expert',
+  twoStringKite: 'expert',
 };
 
 /** HoDoKu's default score for each technique; a grade's score is their sum over its steps. */
@@ -81,6 +90,8 @@ export const TECHNIQUE_SCORE: Readonly<Record<TechniqueId, number>> = {
   swordfish: 150,
   xyWing: 160,
   xyzWing: 180,
+  skyscraper: 130,
+  twoStringKite: 150,
 };
 
 const TECHNIQUE_RANK = Object.fromEntries(TECHNIQUE_ORDER.map((id, rank) => [id, rank])) as Record<

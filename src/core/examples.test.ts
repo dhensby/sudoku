@@ -104,6 +104,8 @@ describe('techniqueExample', () => {
     ],
     ['xyWing', '- | - | r7c4{57} r6c4{35} r7c2{37} | r6c2 -3'],
     ['xyzWing', '- | - | r1c6{389} r1c7{89} r2c6{39} | r1c5 -9'],
+    ['skyscraper', '7 | column 3, column 4, row 2 | r6c3{7} r2c3{7} r2c4{7} r5c4{7} | r5c1 -7'],
+    ['twoStringKite', '1 | row 2, column 4, box 2 | r2c7{1} r2c6{1} r3c4{1} r4c4{1} | r4c7 -1'],
   ])('shows a %s exactly as the guide describes it', (id, expected) => {
     const { step } = techniqueExample(id);
     expect(step.technique).toBe(id);
@@ -143,6 +145,8 @@ describe('techniqueExample', () => {
       hiddenTriple: 3,
       xyWing: 3,
       xyzWing: 3,
+      skyscraper: 4,
+      twoStringKite: 4,
     };
     if (id === 'xWing') {
       expect([step.pattern.length, rows, cols]).toEqual([4, 2, 2]);
@@ -176,13 +180,16 @@ describe('techniqueExample', () => {
 
   /*
    * The hint's "What's a …?" on an example's own board opens that example's
-   * entry (the e2e suite leans on it). The swordfish is the exception: the
-   * techniques stall after it, so its hint has no technique to name.
+   * entry (the e2e suite leans on it). The swordfish is the exception: after
+   * it, the next placement needs a skyscraper too, and a hint names the
+   * hardest technique on the way.
    */
   it.each(TECHNIQUE_ORDER)('gives a hint on the %s board that names it', (id) => {
     const values = gridValues(EXAMPLE_PUZZLES[id]);
     const hint = findHint(values, solve(values)!);
-    expect('technique' in hint ? hint.technique : undefined).toBe(id === 'swordfish' ? null : id);
+    expect('technique' in hint ? hint.technique : undefined).toBe(
+      id === 'swordfish' ? 'skyscraper' : id,
+    );
   });
 
   it('throws if a stored board stops showing its technique', () => {

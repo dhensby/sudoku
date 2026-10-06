@@ -52,7 +52,7 @@ function emptyAtFirstExpertStep(givens: ArrayLike<number>, result: Grade): numbe
 
 describe('GENERATOR_VERSION', () => {
   it('is pinned, so a change to generated puzzles has to be deliberate', () => {
-    expect(GENERATOR_VERSION).toBe(2);
+    expect(GENERATOR_VERSION).toBe(4);
   });
 });
 
@@ -138,9 +138,9 @@ describe('generatePuzzle', () => {
     [
       'expert',
       {
-        givens: '010090000004002030000038670000065000060009823020080000480000000000000906000001002',
+        givens: '600020050000000000305000074100000005200900060037010000000046082000050049004003600',
         solution:
-          '613794258874652139295138674348265791567419823921387465489526317152873946736941582',
+          '679324851421587936385169274196438725248975163537612498913746582762851349854293617',
         difficulty: 'expert',
       },
     ],
@@ -163,20 +163,20 @@ describe('generatePuzzle', () => {
    * Property tests: 25 seeds per tier, bar Expert. Each puzzle is checked
    * for what a player relies on (one solution, givens from it, the right
    * label), what calibrates it to NYT (38 Easy givens; Medium needing locked
-   * candidates; the rest minimal) or sets Expert apart (its fish or wing
-   * needed early), and run through the soundness harness — so the techniques
+   * candidates; the rest minimal) or sets Expert apart (its fish, wing or
+   * chain needed early), and run through the soundness harness — so the techniques
    * are checked against dozens of real puzzles of every tier.
    *
-   * Expert gets only 4 seeds: each of its puzzles takes about a hundred
-   * attempts to find, against a dozen or so for Hard, and under coverage on a
-   * CI runner an attempt costs tens of milliseconds. Its techniques get the
-   * same soundness check over random minimal puzzles in the technique tests.
+   * Expert gets 10 seeds: each of its puzzles takes about three times the
+   * attempts of a Hard to find, and under coverage on a CI runner an attempt
+   * costs tens of milliseconds. Its techniques get the same soundness check
+   * over random minimal puzzles in the technique tests.
    */
   describe.each(DIFFICULTY_ORDER)('%s puzzles', (difficulty) => {
     let puzzles: { puzzle: Puzzle; givens: Uint8Array; solution: Uint8Array }[] = [];
 
     beforeAll(() => {
-      puzzles = Array.from({ length: difficulty === 'expert' ? 4 : 25 }, (_, k) => {
+      puzzles = Array.from({ length: difficulty === 'expert' ? 10 : 25 }, (_, k) => {
         const puzzle = generatePuzzle(difficulty, mulberry32(1000 + k));
         return { puzzle, ...solvedPuzzle(puzzle) };
       });
@@ -202,7 +202,7 @@ describe('generatePuzzle', () => {
     });
 
     if (difficulty === 'expert') {
-      it('need their fish or wing while at least 40 cells are still empty', () => {
+      it('need their Expert technique while at least 40 cells are still empty', () => {
         for (const { givens } of puzzles) {
           expect(emptyAtFirstExpertStep(givens, grade(givens))).toBeGreaterThanOrEqual(40);
         }
@@ -290,11 +290,11 @@ describe('generatePuzzle', () => {
     });
 
     it('rates a puzzle beyond the technique set as Expert, as rate() does', () => {
-      // Seed 3's first five attempts: beyond the set, Hard, Medium, Medium,
-      // beyond the set. Asked for Expert, the first is the closest — `rate`
-      // calls it Expert. Ranking it past Expert instead would hand back the
-      // Hard one, though the player asked for harder.
-      const puzzle = generatePuzzle('expert', mulberry32(3), { maxAttempts: 5 });
+      // Seed 34's first five attempts: Hard, Medium, beyond the set, Medium,
+      // Medium. Asked for Expert, the third is the closest — `rate` calls it
+      // Expert. Ranking it past Expert instead would hand back the Hard one,
+      // though the player asked for harder.
+      const puzzle = generatePuzzle('expert', mulberry32(34), { maxAttempts: 5 });
       expect(puzzle.difficulty).toBe('expert');
       expect(grade(gridValues(puzzle.givens)).solved).toBe(false);
     });
