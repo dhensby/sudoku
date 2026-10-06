@@ -1,6 +1,7 @@
 import { TECHNIQUE_ORDER } from './grader';
 import { ALL_DIGITS, bit, computeCandidates, isPeer, parseGrid } from './grid';
 import {
+  MAX_XY_CHAIN,
   TECHNIQUES,
   cloneBoard,
   createBoard,
@@ -1124,6 +1125,62 @@ describe('chains', () => {
   it('never counts a 2-String Kite that removes nothing', () => {
     expect(TECHNIQUES.twoStringKite(pencilmarks(KITE(undefined, undefined, '-1')))).toBeNull();
   });
+
+  /** Open cells everywhere but the listed ones, given as cell → token. */
+  const layout = (cells: Record<number, string>) =>
+    Array.from({ length: 81 }, (_, i) => cells[i] ?? '.').join(' ');
+
+  // r0c0 {1, 2} – r0c5 {2, 3} – r4c5 {3, 4} – r4c1 {1, 4}: if r0c0 isn't 1,
+  // r4c1 is. Six cells see both ends: three in each end's box.
+  const XY_CHAIN = (cells: Record<number, string> = {}) =>
+    layout({ 0: '12', 5: '23', 41: '34', 37: '14', ...cells });
+
+  it('finds an XY-Chain and clears its digit from the cells that see both ends', () => {
+    expect(TECHNIQUES.xyChain(pencilmarks(XY_CHAIN()))).toEqual(
+      eliminationStep('xyChain', struck([1], [1, 10, 19, 27, 36, 45]), null, {
+        // End to end, each cell with both its candidates.
+        pattern: [
+          ...holding([1, 2], [0]),
+          ...holding([2, 3], [5]),
+          ...holding([3, 4], [41]),
+          ...holding([1, 4], [37]),
+        ],
+        houses: [],
+        digit: 1,
+      }),
+    );
+  });
+
+  it('does not fire when the ends share no digit', () => {
+    expect(TECHNIQUES.xyChain(pencilmarks(XY_CHAIN({ 37: '45' })))).toBeNull();
+  });
+
+  it('does not take a cell with a third candidate', () => {
+    expect(TECHNIQUES.xyChain(pencilmarks(XY_CHAIN({ 41: '345' })))).toBeNull();
+  });
+
+  it('never counts an XY-Chain that removes nothing', () => {
+    const cleared = Object.fromEntries([1, 10, 19, 27, 36, 45].map((i) => [i, '-1']));
+    expect(TECHNIQUES.xyChain(pencilmarks(XY_CHAIN(cleared)))).toBeNull();
+  });
+
+  it('leaves a chain of three cells to the XY-Wing', () => {
+    // r0c0 {1, 2} – r0c5 {2, 3} – r4c5 {1, 3}: an XY-Wing, pivot r0c5.
+    const board = pencilmarks(layout({ 0: '12', 5: '23', 41: '13' }));
+    expect(TECHNIQUES.xyChain(board)).toBeNull();
+    expect(TECHNIQUES.xyWing(board)).not.toBeNull();
+  });
+
+  it(`looks no further than ${MAX_XY_CHAIN} cells`, () => {
+    // Cells end to end along rows and columns, each sharing a different
+    // digit with the next, and only the ends sharing 1: six of them make a
+    // chain, seven are too long.
+    const path = { 0: '12', 4: '23', 40: '34', 44: '45', 80: '56' };
+    const six = pencilmarks(layout({ ...path, 74: '16' }));
+    expect(TECHNIQUES.xyChain(six)?.pattern.map((p) => p.index)).toEqual([0, 4, 40, 44, 80, 74]);
+    const seven = pencilmarks(layout({ ...path, 74: '67', 78: '17' }));
+    expect(TECHNIQUES.xyChain(seven)).toBeNull();
+  });
 });
 
 describe('every technique', () => {
@@ -1145,7 +1202,7 @@ describe('every technique', () => {
  * The soundness harness (see `checkSoundness`) over random minimal puzzles —
  * the raw material every tier is picked from, stalled ones included — and
  * the fixtures that need each technique. The generator's tests run the same
- * harness over dozens of puzzles of each tier (a handful for Expert).
+ * harness over dozens of puzzles of each tier.
  */
 describe('soundness', () => {
   // Digs and grades a hundred puzzles: well under a second on its own, but

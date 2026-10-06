@@ -8,6 +8,7 @@ import {
   UNITS,
   bit,
   computeCandidates,
+  digitsOf,
   isPeer,
   lowestDigit,
 } from './grid';
@@ -90,7 +91,8 @@ export interface SolveStep {
    *   candidate it holds;
    * - chains (Skyscraper, 2-String Kite): the chain's candidates from end to
    *   end, linked in turn strongly (one or other must be the digit), weakly
-   *   (they can't both be), strongly — so one end or the other is the digit.
+   *   (they can't both be), strongly — so one end or the other is the digit;
+   * - XY-Chain: its cells from end to end, each with both its candidates.
    */
   pattern: PatternCell[];
   /**
@@ -98,13 +100,15 @@ export interface SolveStep {
    * unit (none for a naked single, which is about the cell alone); pointing →
    * the box, then the line; claiming → the line, then the box; fish → the
    * base lines, then the cover lines; wings → none; chains → the houses of
-   * their strong links, then the house of the weak link between them.
+   * their strong links, then the house of the weak link between them (none
+   * for an XY-Chain, whose links are between cells).
    */
   houses: Unit[];
   /**
    * The one digit the step is about: the digit placed by a single, or the
-   * digit of locked candidates, fish and chains. Null for subsets and wings,
-   * which work with several.
+   * digit of locked candidates, fish and chains (for an XY-Chain, the digit
+   * at both its ends, which it removes). Null for subsets and wings, which
+   * work with several.
    */
   digit: Digit | null;
 }
@@ -757,6 +761,78 @@ const twoStringKite: Technique = (board) => {
   return null;
 };
 
+/** The longest XY-Chain looked for, in cells: longer ones are hard to follow by eye. */
+export const MAX_XY_CHAIN = 6;
+
+/**
+ * Grow an XY-Chain from `cells` to `length` cells and apply the first that
+ * removes something, or return null. Each cell is the digit `carried` would
+ * leave it if the chain's first cell isn't `digit`; the next cell must see
+ * the last, hold just two candidates, and include `carried`, which it then
+ * can't be.
+ */
+function growXyChain(
+  board: SolverBoard,
+  cells: number[],
+  carried: number,
+  digit: Digit,
+  length: number,
+): SolveStep | null {
+  for (const peer of PEERS[cells[cells.length - 1]]) {
+    const mask = board.candidates[peer];
+    if (POPCOUNT[mask] !== 2 || (mask & carried) === 0 || cells.includes(peer)) continue;
+    const chain = [...cells, peer];
+    const step =
+      chain.length < length
+        ? growXyChain(board, chain, mask & ~carried, digit, length)
+        : (mask & ~carried) === bit(digit)
+          ? xyChainStep(board, chain, digit)
+          : null;
+    if (step) return step;
+  }
+  return null;
+}
+
+/** An XY-Chain found and applied: its digit goes from every cell that sees both ends. */
+function xyChainStep(board: SolverBoard, chain: readonly number[], digit: Digit): SolveStep | null {
+  const [first, last] = [chain[0], chain[chain.length - 1]];
+  const eliminations: Elimination[] = [];
+  for (const t of PEERS[first]) {
+    if (isPeer(last, t) && !chain.includes(t)) strike(board, eliminations, t, bit(digit));
+  }
+  return eliminationStep('xyChain', eliminations, null, () => ({
+    pattern: patternOf(board, chain, ALL_DIGITS),
+    houses: [],
+    digit,
+  }));
+}
+
+/**
+ * XY-Chain: cells with just two candidates, each seeing the next and sharing
+ * a digit with it, whose two ends both hold another digit, x. If the first
+ * end isn't x, it is its other digit — which the next cell then can't be,
+ * so that cell is its own other digit, and so on down the chain to the last
+ * end, which is x. One end or the other is x, so x goes from every cell that
+ * sees both.
+ *
+ * Shortest first, from four cells (three is an XY-Wing) to `MAX_XY_CHAIN`,
+ * trying every chain of each length, so whether one is found doesn't depend
+ * on where the scan starts.
+ */
+const xyChain: Technique = (board) => {
+  for (let length = 4; length <= MAX_XY_CHAIN; length++) {
+    for (let start = 0; start < 81; start++) {
+      const mask = board.candidates[start];
+      if (POPCOUNT[mask] !== 2) continue;
+      for (const digit of digitsOf(mask)) {
+        const step = growXyChain(board, [start], mask & ~bit(digit), digit, length);
+        if (step) return step;
+      }
+    }
+  }
+  return null;
+};
+
 /**
  * Every technique, by id. Each applies one step to the board, or returns null
  * and changes nothing.
@@ -778,4 +854,5 @@ export const TECHNIQUES: Readonly<Record<TechniqueId, Technique>> = {
   xyzWing,
   skyscraper,
   twoStringKite,
+  xyChain,
 };

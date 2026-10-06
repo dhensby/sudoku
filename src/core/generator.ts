@@ -30,7 +30,7 @@ import type { Difficulty, Puzzle, TechniqueId, Values } from './types';
  * shuffles or loop orders, the solver's search order, the technique set or
  * order, the tier rules or the attempt cap.
  */
-export const GENERATOR_VERSION = 4;
+export const GENERATOR_VERSION = 5;
 
 /** Options for `generatePuzzle`. */
 export interface GenerateOptions {
@@ -220,8 +220,8 @@ function preferenceOf(result: Grade, target: Difficulty): number {
  *
  * Medium, Hard and Expert are generate-and-test over minimal puzzles. About
  * one random minimal puzzle in eight needs locked candidates, one in fifteen
- * pairs or triples, and one in 40 a fish, wing or chain early enough for
- * Expert, so even Expert rarely takes more than a couple of hundred attempts.
+ * pairs or triples, and one in 22 a fish, wing or chain early enough for
+ * Expert, so even Expert rarely takes more than a hundred attempts.
  * If `maxAttempts` (at least one is always made) runs out first, the attempt
  * whose tier — as `rate` would label it — is closest to the target is
  * returned, labelled with that actual tier, never the one asked for. An

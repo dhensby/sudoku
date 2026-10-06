@@ -189,6 +189,39 @@ describe('TechniqueDiagram', () => {
     });
   });
 
+  describe('an XY-Chain', () => {
+    // r1c3 {1, 6} – r1c1 {1, 3} – r2c1 {3, 8} – r2c4 {6, 8}: if r1c3 isn't
+    // 6, r2c4 is, so the 6 goes from r1c4.
+    const cells = [2, 0, 9, 12];
+
+    it('shades its cells, which share no house, and links them on the digits they share', () => {
+      const { layer, marks } = draw('xyChain');
+      expect([...marks('shaded')].map(cellOf)).toEqual(cells);
+      expect([...marks('chain-cell')].map(cellOf)).toEqual(cells);
+      expect(marks('house')).toHaveLength(0);
+      // Each cell is a strong link of its own; the drawn links are the weak
+      // ones between them, on 1, 3 and 8.
+      const links = [...layer('links').querySelectorAll('line')];
+      expect(links.map((line) => line.getAttribute('data-link'))).toEqual(['weak', 'weak', 'weak']);
+      expect(links.map(endsOf)).toEqual([
+        [2, 0],
+        [0, 9],
+        [9, 12],
+      ]);
+      expect(screen.getByText("Can't both be the digit they share")).toBeInTheDocument();
+      expect(screen.queryByText(/the other is$/)).not.toBeInTheDocument();
+    });
+
+    it('fills in the digit at both ends and rings the rest of its cells', () => {
+      const { marks } = draw('xyChain');
+      expect(digits(marks('forced'))).toEqual(['6', '6']);
+      expect([...marks('forced')].map(cellOf).sort((a, b) => a - b)).toEqual([2, 12]);
+      expect(digits(marks('pattern'))).toEqual(['1', '1', '3', '3', '8', '8']);
+      expect(screen.getByText('At least one of these is 6')).toBeInTheDocument();
+      expect([...marks('removed')].map(cellOf)).toEqual([3]);
+    });
+  });
+
   describe('a technique about several digits', () => {
     it('shows every candidate, ringing the pair and striking what it clears', () => {
       // {1, 2} twice in row 7, clearing a 2 and a 1 from the cells between.

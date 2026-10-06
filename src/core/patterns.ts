@@ -147,6 +147,7 @@ export function isStepValid(board: SolverBoard, step: SolveStep): boolean {
   const fishSize = FISH[id];
   if (fishSize) return isFishValid(board, step, fishSize);
   if (CHAINS.has(id)) return isChainValid(board, step);
+  if (id === 'xyChain') return isXyChainValid(board, step);
   return isWingValid(board, step);
 }
 
@@ -323,6 +324,31 @@ function isChainValid(board: SolverBoard, step: SolveStep): boolean {
 }
 
 /**
+ * XY-Chain: four or more cells holding just two candidates each, every one
+ * seeing the next. The first holds the step's digit; whatever else each
+ * cell holds, the next shares; and the last cell's other digit is the
+ * step's again. That digit goes from cells that see both ends.
+ */
+function isXyChainValid(board: SolverBoard, step: SolveStep): boolean {
+  const { pattern, houses, digit } = step;
+  if (digit === null || houses.length !== 0 || pattern.length < 4) return false;
+  // What each cell would be if the first end isn't the digit, starting with
+  // the digit itself, which the first cell must hold.
+  let carried = bit(digit);
+  for (const [k, { index, mask }] of pattern.entries()) {
+    const isLinked = k === 0 || isPeer(pattern[k - 1].index, index);
+    if (!isLinked || mask !== board.candidates[index] || POPCOUNT[mask] !== 2) return false;
+    if ((mask & carried) === 0) return false;
+    carried = mask & ~carried;
+  }
+  const targets = chainTargets(pattern.map((p) => p.index));
+  return (
+    carried === bit(digit) &&
+    step.eliminations.every((e) => e.mask === bit(digit) && targets.includes(e.index))
+  );
+}
+
+/**
  * XY-Wing: a pivot {x, y} seeing pincers {x, z} and {y, z}; XYZ-Wing: a
  * pivot {x, y, z} seeing pincers {x, z} and {y, z}. Either way z goes from
  * cells that see both pincers (and, for XYZ, the pivot).
@@ -392,10 +418,12 @@ export function stepOn(board: SolverBoard, step: SolveStep): SolveStep {
     const pattern = base.flatMap((u) => patternOf(board, unitCells(u), d));
     return { ...step, pattern, eliminations: removable(board, outside(cover, base), d) };
   }
-  if (CHAINS.has(id)) {
+  if (CHAINS.has(id) || id === 'xyChain') {
     const cells = step.pattern.map((p) => p.index);
     const d = bit(digit!);
-    const pattern = patternOf(board, cells, d);
+    // A single-digit chain shows that digit in each cell; an XY-Chain, both
+    // of each cell's candidates.
+    const pattern = patternOf(board, cells, id === 'xyChain' ? ALL_DIGITS : d);
     return { ...step, pattern, eliminations: removable(board, chainTargets(cells), d) };
   }
   const isXyz = id === 'xyzWing';
@@ -443,7 +471,7 @@ export interface Reliance {
  *   one, from the step's own board;
  * - chains: the digit gone from the rest of each strong link's house, so
  *   each holds it in its two cells alone;
- * - wings: every other digit gone from the pivot and the pincers.
+ * - wings and XY-Chains: every other digit gone from their cells.
  *
  * Every candidate a re-read step removes is one its pattern justifies, and
  * every one the original step removed is still there to remove, so the
