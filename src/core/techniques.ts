@@ -92,23 +92,27 @@ export interface SolveStep {
    * - chains (Skyscraper, 2-String Kite): the chain's candidates from end to
    *   end, linked in turn strongly (one or other must be the digit), weakly
    *   (they can't both be), strongly — so one end or the other is the digit;
-   * - XY-Chain: its cells from end to end, each with both its candidates.
+   * - XY-Chain: its cells from end to end, each with both its candidates;
+   * - W-Wing: the first two-candidate cell, with both its candidates; the
+   *   two places of the digit that joins them, the first seen by that cell
+   *   and the second by the other; and the other two-candidate cell.
    */
   pattern: PatternCell[];
   /**
    * The houses involved, most telling first: singles and subsets → their
    * unit (none for a naked single, which is about the cell alone); pointing →
    * the box, then the line; claiming → the line, then the box; fish → the
-   * base lines, then the cover lines; wings → none; chains → the houses of
-   * their strong links, then the house of the weak link between them (none
-   * for an XY-Chain, whose links are between cells).
+   * base lines, then the cover lines; XY- and XYZ-Wings → none; chains →
+   * the houses of their strong links, then the house of the weak link
+   * between them (none for an XY-Chain, whose links are between cells);
+   * W-Wing → the house of the digit that joins its cells.
    */
   houses: Unit[];
   /**
    * The one digit the step is about: the digit placed by a single, or the
-   * digit of locked candidates, fish and chains (for an XY-Chain, the digit
-   * at both its ends, which it removes). Null for subsets and wings, which
-   * work with several.
+   * digit of locked candidates, fish and chains (for an XY-Chain or a
+   * W-Wing, the digit at both its ends, which it removes). Null for subsets
+   * and the other wings, which work with several.
    */
   digit: Digit | null;
 }
@@ -834,6 +838,52 @@ const xyChain: Technique = (board) => {
 };
 
 /**
+ * W-Wing: two cells that don't see each other, each with the same two
+ * candidates, x and y, and a house with just two places left for y, one seen
+ * by each cell. One of those places is y, so the cell that sees it isn't —
+ * and is x. One of the two cells is x, so x goes from every cell that sees
+ * both.
+ */
+const wWing: Technique = (board) => {
+  const { candidates } = board;
+  for (let first = 0; first < 81; first++) {
+    const mask = candidates[first];
+    if (POPCOUNT[mask] !== 2) continue;
+    for (let second = first + 1; second < 81; second++) {
+      if (candidates[second] !== mask || isPeer(first, second)) continue;
+      for (const y of digitsOf(mask)) {
+        const x = lowestDigit(mask & ~bit(y));
+        for (let u = 0; u < 27; u++) {
+          const places = UNITS[u].filter((i) => (candidates[i] & bit(y)) !== 0);
+          if (places.length !== 2 || places.includes(first) || places.includes(second)) continue;
+          // Each cell has to see one of the places, a different one each.
+          for (const [near, far] of [places, [places[1], places[0]]]) {
+            if (!isPeer(first, near) || !isPeer(second, far)) continue;
+            const chain = [first, near, far, second];
+            const eliminations: Elimination[] = [];
+            for (const t of PEERS[first]) {
+              if (isPeer(second, t) && !chain.includes(t)) strike(board, eliminations, t, bit(x));
+            }
+            const step = eliminationStep('wWing', eliminations, null, () => ({
+              pattern: [
+                { index: first, mask },
+                { index: near, mask: bit(y) },
+                { index: far, mask: bit(y) },
+                { index: second, mask },
+              ],
+              houses: [unitOf(u)],
+              digit: x,
+            }));
+            if (step) return step;
+          }
+        }
+      }
+    }
+  }
+  return null;
+};
+
+/**
  * Every technique, by id. Each applies one step to the board, or returns null
  * and changes nothing.
  */
@@ -855,4 +905,5 @@ export const TECHNIQUES: Readonly<Record<TechniqueId, Technique>> = {
   skyscraper,
   twoStringKite,
   xyChain,
+  wWing,
 };

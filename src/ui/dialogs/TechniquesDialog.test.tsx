@@ -53,6 +53,7 @@ describe('TechniquesDialog', () => {
         'Skyscraper',
         '2-String Kite',
         'XY-Chain',
+        'W-Wing',
       ],
     };
     expect(within(nav()).getAllByRole('list')).toHaveLength(4);
@@ -151,8 +152,8 @@ describe('TechniquesDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Previous: Full house' }));
     expect(entryHeading()).toHaveTextContent('Full house');
 
-    fireEvent.click(listed('XY-Chain'));
-    expect(screen.getByRole('button', { name: 'Previous: 2-String Kite' })).toBeInTheDocument();
+    fireEvent.click(listed('W-Wing'));
+    expect(screen.getByRole('button', { name: 'Previous: XY-Chain' })).toBeInTheDocument();
     // Nor after the last.
     expect(screen.queryByRole('button', { name: /^Next/ })).not.toBeInTheDocument();
   });

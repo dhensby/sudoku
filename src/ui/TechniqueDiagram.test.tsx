@@ -222,6 +222,47 @@ describe('TechniqueDiagram', () => {
     });
   });
 
+  describe('a W-Wing', () => {
+    // r4c6 and r7c5 are both {3, 9}; column 7's 9s are at r4c7, which r4c6
+    // sees, and r7c7, which r7c5 sees. The 3 goes from r6c5.
+    const [first, near, far, second] = [32, 33, 60, 58];
+
+    it('shades its two cells and the column that joins them', () => {
+      const { marks } = draw('wWing');
+      const shaded = [...marks('shaded')].map(cellOf);
+      expect(shaded).toHaveLength(9 + 2);
+      expect(shaded).toEqual(expect.arrayContaining([first, second, near, far]));
+      expect([...marks('chain-cell')].map(cellOf)).toEqual([first, second]);
+      expect(marks('house')).toHaveLength(1);
+    });
+
+    it('links one cell through the two places for its digit to the other', () => {
+      const { layer } = draw('wWing');
+      const links = [...layer('links').querySelectorAll('line')];
+      expect(links.map((line) => line.getAttribute('data-link'))).toEqual([
+        'weak',
+        'strong',
+        'weak',
+      ]);
+      expect(links.map(endsOf)).toEqual([
+        [first, near],
+        [near, far],
+        [far, second],
+      ]);
+      expect(screen.getByText("If one isn't 9, the other is")).toBeInTheDocument();
+      expect(screen.getByText("If one is 9, the other isn't")).toBeInTheDocument();
+    });
+
+    it('fills in the other digit in both cells, one of which must be it', () => {
+      const { marks } = draw('wWing');
+      expect([...marks('forced')].map(cellOf).sort((a, b) => a - b)).toEqual([first, second]);
+      expect(digits(marks('forced'))).toEqual(['3', '3']);
+      expect(digits(marks('pattern'))).toEqual(['9', '9', '9', '9']);
+      expect(screen.getByText('At least one of these is 3')).toBeInTheDocument();
+      expect([...marks('removed')].map(cellOf)).toEqual([49]);
+    });
+  });
+
   describe('a technique about several digits', () => {
     it('shows every candidate, ringing the pair and striking what it clears', () => {
       // {1, 2} twice in row 7, clearing a 2 and a 1 from the cells between.

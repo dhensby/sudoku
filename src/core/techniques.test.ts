@@ -1181,6 +1181,43 @@ describe('chains', () => {
     const seven = pencilmarks(layout({ ...path, 74: '67', 78: '17' }));
     expect(TECHNIQUES.xyChain(seven)).toBeNull();
   });
+
+  // r0c0 and r4c4 are both {1, 2}; row 2 holds its 2s at c1, which r0c0
+  // sees, and c4, which r4c4 sees. r0c4 and r4c0 see both cells.
+  const W_WING = (cells: Record<number, string> = {}) =>
+    layout({
+      0: '12',
+      40: '12',
+      ...Object.fromEntries([18, 20, 21, 23, 24, 25, 26].map((i) => [i, '-2'])),
+      ...cells,
+    });
+
+  it('finds a W-Wing and clears its digit from the cells that see both of its cells', () => {
+    expect(TECHNIQUES.wWing(pencilmarks(W_WING()))).toEqual(
+      eliminationStep('wWing', struck([1], [4, 36]), null, {
+        // A cell, the place it sees, the other place, the other cell.
+        pattern: [...holding([1, 2], [0]), ...holding([2], [19, 22]), ...holding([1, 2], [40])],
+        houses: [row(2)],
+        digit: 1,
+      }),
+    );
+  });
+
+  it('leaves two cells that see each other to the naked pair', () => {
+    expect(TECHNIQUES.wWing(pencilmarks(W_WING({ 40: '.', 4: '12' })))).toBeNull();
+  });
+
+  it('does not pair cells with different candidates', () => {
+    expect(TECHNIQUES.wWing(pencilmarks(W_WING({ 40: '13' })))).toBeNull();
+  });
+
+  it('does not fire when a cell sees neither place', () => {
+    expect(TECHNIQUES.wWing(pencilmarks(W_WING({ 40: '.', 43: '12' })))).toBeNull();
+  });
+
+  it('never counts a W-Wing that removes nothing', () => {
+    expect(TECHNIQUES.wWing(pencilmarks(W_WING({ 4: '-1', 36: '-1' })))).toBeNull();
+  });
 });
 
 describe('every technique', () => {

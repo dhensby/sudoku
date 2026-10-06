@@ -135,9 +135,9 @@ export function isStepValid(board: SolverBoard, step: SolveStep): boolean {
       return false;
     }
   }
-  // `unit` is the house a hint names: the first of the houses, bar a fish's
-  // or a chain's, none of which is "the" house.
-  const unit = FISH[id] || CHAINS.has(id) ? null : (houses[0] ?? null);
+  // `unit` is the house a hint names: the first of the houses, bar a fish's,
+  // a chain's or a W-Wing's, none of which is "the" house.
+  const unit = FISH[id] || CHAINS.has(id) || id === 'wWing' ? null : (houses[0] ?? null);
   if (!isSameUnit(step.unit, unit)) return false;
   if (SINGLES.has(id)) return placement !== null && isSingleValid(board, step, placement);
   if (placement !== null || !areEliminationsReal(board, step)) return false;
@@ -148,6 +148,7 @@ export function isStepValid(board: SolverBoard, step: SolveStep): boolean {
   if (fishSize) return isFishValid(board, step, fishSize);
   if (CHAINS.has(id)) return isChainValid(board, step);
   if (id === 'xyChain') return isXyChainValid(board, step);
+  if (id === 'wWing') return isWWingValid(board, step);
   return isWingValid(board, step);
 }
 
@@ -349,6 +350,34 @@ function isXyChainValid(board: SolverBoard, step: SolveStep): boolean {
 }
 
 /**
+ * W-Wing: two cells that don't see each other, holding the same two
+ * candidates and nothing else; between them, the only two places for one of
+ * those digits in a house, the first seen by the first cell and the second
+ * by the second. The other digit, the step's, goes from cells that see both
+ * of the two cells.
+ */
+function isWWingValid(board: SolverBoard, step: SolveStep): boolean {
+  const { pattern, houses, digit } = step;
+  if (digit === null || houses.length !== 1 || pattern.length !== 4) return false;
+  const [first, near, far, second] = pattern;
+  const y = near.mask;
+  const targets = chainTargets(pattern.map((p) => p.index));
+  return (
+    first.mask === board.candidates[first.index] &&
+    second.mask === first.mask &&
+    POPCOUNT[first.mask] === 2 &&
+    (first.mask & bit(digit)) !== 0 &&
+    y === (first.mask & ~bit(digit)) &&
+    far.mask === y &&
+    !isPeer(first.index, second.index) &&
+    isPeer(first.index, near.index) &&
+    isPeer(second.index, far.index) &&
+    isSameSet(holders(board, unitCells(houses[0]), y), [near.index, far.index]) &&
+    step.eliminations.every((e) => e.mask === bit(digit) && targets.includes(e.index))
+  );
+}
+
+/**
  * XY-Wing: a pivot {x, y} seeing pincers {x, z} and {y, z}; XYZ-Wing: a
  * pivot {x, y, z} seeing pincers {x, z} and {y, z}. Either way z goes from
  * cells that see both pincers (and, for XYZ, the pivot).
@@ -426,6 +455,17 @@ export function stepOn(board: SolverBoard, step: SolveStep): SolveStep {
     const pattern = patternOf(board, cells, id === 'xyChain' ? ALL_DIGITS : d);
     return { ...step, pattern, eliminations: removable(board, chainTargets(cells), d) };
   }
+  if (id === 'wWing') {
+    const cells = step.pattern.map((p) => p.index);
+    const [first, near, far, second] = cells;
+    const y = step.pattern[1].mask;
+    const pattern = [
+      ...patternOf(board, [first], ALL_DIGITS),
+      ...patternOf(board, [near, far], y),
+      ...patternOf(board, [second], ALL_DIGITS),
+    ];
+    return { ...step, pattern, eliminations: removable(board, chainTargets(cells), bit(digit!)) };
+  }
   const isXyz = id === 'xyzWing';
   const [pivot, first, second] = step.pattern.map((p) => p.index);
   const { candidates } = board;
@@ -471,7 +511,9 @@ export interface Reliance {
  *   one, from the step's own board;
  * - chains: the digit gone from the rest of each strong link's house, so
  *   each holds it in its two cells alone;
- * - wings and XY-Chains: every other digit gone from their cells.
+ * - wings and XY-Chains: every other digit gone from their cells;
+ * - W-Wing: every other digit gone from its two-candidate cells, and the
+ *   joining digit gone from the rest of its house.
  *
  * Every candidate a re-read step removes is one its pattern justifies, and
  * every one the original step removed is still there to remove, so the
@@ -515,6 +557,18 @@ export function reliance(step: SolveStep): Reliance {
       [...new Set(strong)].filter((i) => !cells.includes(i)),
       bit(digit!),
     );
+  }
+  if (id === 'wWing') {
+    const [first, near, far, second] = pattern;
+    const rest = unitCells(houses[0]).filter((i) => i !== near.index && i !== far.index);
+    return {
+      absent: [
+        { index: first.index, mask: ALL_DIGITS & ~first.mask },
+        ...rest.map((index) => ({ index, mask: near.mask })),
+        { index: second.index, mask: ALL_DIGITS & ~second.mask },
+      ],
+      filled: [],
+    };
   }
   return {
     absent: pattern.map(({ index, mask }) => ({ index, mask: ALL_DIGITS & ~mask })),

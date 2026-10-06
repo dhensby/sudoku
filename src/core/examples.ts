@@ -87,6 +87,10 @@ export const EXAMPLE_PUZZLES: Readonly<Record<TechniqueId, GridString>> = {
   // {3, 8}; the 6 goes from row 1, column 4, which sees both ends. Seed
   // 12207, after 36.
   xyChain: '040000857092057041750400092030765429274000560965200710427396185583100976619578234',
+  // Row 4, column 6 and row 7, column 5 are both {3, 9}, and column 7's 9s
+  // lie in their rows; the 3 goes from row 6, column 5, which sees both.
+  // Seed 49031, after 36.
+  wWing: '829476135541000786637815400058760014016048570074501608182604057495087060763052840',
 };
 
 /**
