@@ -11,9 +11,9 @@ the same puzzle. Built with React, TypeScript and Vite, and runs entirely in you
 ## Features
 
 - **Four difficulties, never-ending** — Easy, Medium and Hard are pitched like the NYT puzzles of
-  the same names; Expert goes further, into X-Wings and XY-Wings. Every puzzle is generated on the
-  spot, has exactly one solution, and is graded by the hardest technique it needs, so the label
-  never lies.
+  the same names; Expert goes further, into X-Wings and XY-Wings, needed while much of the grid is
+  still empty rather than as a last snag. Every puzzle is generated on the spot, has exactly one
+  solution, and is graded by the hardest technique it needs, so the label never lies.
 - **Plays like the NYT game** — Normal and Candidate modes (<kbd>Space</kbd> to switch, or hold
   <kbd>Shift</kbd>/<kbd>Alt</kbd> to switch while held), the two-step erase, highlighting of the
   row, column, box and matching numbers, a red dot on every conflict, givens on grey, and clicking
@@ -134,7 +134,7 @@ npm run dev        # start the dev server (http://localhost:5173)
 
 ## How puzzles are made
 
-Each new puzzle is generated in a Web Worker in a few milliseconds:
+Each new puzzle is generated in a Web Worker, in a fraction of a second:
 
 1. Fill a random complete grid, then remove givens in random order for as long as the puzzle
    keeps exactly one solution. That leaves a _minimal_ puzzle — every given is needed — with
@@ -149,13 +149,16 @@ Each new puzzle is generated in a Web Worker in a few milliseconds:
    | Hard   | Naked or hidden pairs and triples                             |
    | Expert | X-Wing, Swordfish, XY-Wing or XYZ-Wing                        |
 
-3. Keep it if it is the tier you asked for; otherwise try again. Hard and Expert puzzles take
-   fifteen to twenty attempts on average, which is still well under a tenth of a second.
+3. Keep it if it is the tier you asked for; otherwise try again. Expert has one more rule: its
+   fish or wing must be needed while at least 40 cells are still empty. Left to chance, most
+   puzzles that need one only need it once, near the end, where it is quick to spot or to guess
+   past — and they play like a Hard.
 
 The tiers were calibrated against hundreds of published NYT puzzles: Easy needs only box hidden
 singles, every Medium needs locked candidates, and Hard needs pairs and triples but never a fish
-or a wing. While you play, the next puzzle of the same tier is already being prepared, so "New
-game" is instant.
+or a wing. Medium and Hard take a few dozen attempts at most and Expert about a hundred — still
+well under a second — and while you play, the next puzzle of the same tier is already being
+prepared, so "New game" is instant.
 
 ## Racing friends
 

@@ -117,7 +117,7 @@ export function createPuzzleSource(options: PuzzleSourceOptions = {}): PuzzleSou
   /**
    * Generate on the main thread, in a task of its own: a beat later rather
    * than right now, so whatever asked can paint a spinner before the main
-   * thread is busy for a few dozen milliseconds.
+   * thread is busy for up to a few hundred milliseconds.
    */
   const runOnMainThread = (job: Job): void => {
     const id = window.setTimeout(() => {
