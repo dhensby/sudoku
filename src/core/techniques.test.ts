@@ -1038,7 +1038,7 @@ describe('every technique', () => {
  * The soundness harness (see `checkSoundness`) over random minimal puzzles —
  * the raw material every tier is picked from, stalled ones included — and
  * the fixtures that need each technique. The generator's tests run the same
- * harness over dozens of puzzles of each tier.
+ * harness over dozens of puzzles of each tier (a handful for Expert).
  */
 describe('soundness', () => {
   // Digs and grades a hundred puzzles: well under a second on its own, but

@@ -1,5 +1,5 @@
 import { GENERATOR_VERSION, digMinimal, generatePuzzle, randomSolution } from './generator';
-import { grade, rate } from './grader';
+import { TECHNIQUE_TIER, grade, rate, type Grade } from './grader';
 import { UNITS, countFilled, formatGrid, gridValues, parseGrid } from './grid';
 import { mulberry32 } from './rng';
 import { countSolutions, hasUniqueSolution, solve } from './solver';
@@ -39,9 +39,20 @@ function isSubsetOf(givens: ArrayLike<number>, solution: ArrayLike<number>): boo
   return true;
 }
 
+/**
+ * The cells still empty when a solve first takes an Expert step, replaying
+ * its placements one by one; null if it never takes one.
+ */
+function emptyAtFirstExpertStep(givens: ArrayLike<number>, result: Grade): number | null {
+  const index = result.steps.findIndex((step) => TECHNIQUE_TIER[step.technique] === 'expert');
+  if (index === -1) return null;
+  const placedBefore = result.steps.slice(0, index).filter((step) => step.placement).length;
+  return 81 - countFilled(givens) - placedBefore;
+}
+
 describe('GENERATOR_VERSION', () => {
   it('is pinned, so a change to generated puzzles has to be deliberate', () => {
-    expect(GENERATOR_VERSION).toBe(1);
+    expect(GENERATOR_VERSION).toBe(2);
   });
 });
 
@@ -127,9 +138,9 @@ describe('generatePuzzle', () => {
     [
       'expert',
       {
-        givens: '000090060000405017050320000000000000070004800360080079010800900002007086006000003',
+        givens: '010090000004002030000038670000065000060009823020080000480000000000000906000001002',
         solution:
-          '241798365893465217657321498528973641179654832364182579715836924932547186486219753',
+          '613794258874652139295138674348265791567419823921387465489526317152873946736941582',
         difficulty: 'expert',
       },
     ],
@@ -149,21 +160,27 @@ describe('generatePuzzle', () => {
   });
 
   /*
-   * Property tests: 25 seeds per tier. Each puzzle is checked for what a
-   * player relies on (one solution, givens from it, the right label), what
-   * calibrates it to NYT (38 Easy givens; Medium needing locked candidates;
-   * the rest minimal), and run through the soundness harness — so the
-   * techniques are checked against dozens of real puzzles of every tier.
+   * Property tests: 25 seeds per tier, bar Expert. Each puzzle is checked
+   * for what a player relies on (one solution, givens from it, the right
+   * label), what calibrates it to NYT (38 Easy givens; Medium needing locked
+   * candidates; the rest minimal) or sets Expert apart (its fish or wing
+   * needed early), and run through the soundness harness — so the techniques
+   * are checked against dozens of real puzzles of every tier.
+   *
+   * Expert gets only 4 seeds: each of its puzzles takes about a hundred
+   * attempts to find, against a dozen or so for Hard, and under coverage on a
+   * CI runner an attempt costs tens of milliseconds. Its techniques get the
+   * same soundness check over random minimal puzzles in the technique tests.
    */
   describe.each(DIFFICULTY_ORDER)('%s puzzles', (difficulty) => {
     let puzzles: { puzzle: Puzzle; givens: Uint8Array; solution: Uint8Array }[] = [];
 
     beforeAll(() => {
-      puzzles = Array.from({ length: 25 }, (_, k) => {
+      puzzles = Array.from({ length: difficulty === 'expert' ? 4 : 25 }, (_, k) => {
         const puzzle = generatePuzzle(difficulty, mulberry32(1000 + k));
         return { puzzle, ...solvedPuzzle(puzzle) };
       });
-    }, 60_000);
+    }, 120_000);
 
     it('have exactly one solution, which is the one returned', () => {
       for (const { givens, solution } of puzzles) {
@@ -183,6 +200,14 @@ describe('generatePuzzle', () => {
         if (difficulty === 'medium') expect(['pointing', 'claiming']).toContain(result.hardest);
       }
     });
+
+    if (difficulty === 'expert') {
+      it('need their fish or wing while at least 40 cells are still empty', () => {
+        for (const { givens } of puzzles) {
+          expect(emptyAtFirstExpertStep(givens, grade(givens))).toBeGreaterThanOrEqual(40);
+        }
+      });
+    }
 
     if (difficulty === 'easy') {
       it('have exactly 38 givens, like NYT', () => {
@@ -213,9 +238,11 @@ describe('generatePuzzle', () => {
     /**
      * What `generatePuzzle` should return, worked out the long way: replay
      * its attempts with the same random source, stop at the first one on
-     * target, else keep the one whose label from `rate` is nearest the target
-     * — the easier tier on a tie, then one the set solves over one it can't,
-     * then the earlier — labelled with that real tier.
+     * target (a Medium needing locked candidates, an Expert needing its
+     * technique with 40 cells empty), else keep the one whose label from
+     * `rate` is nearest the target — the easier tier on a tie, then one the
+     * set solves over one it can't, then the earlier — labelled with that
+     * real tier.
      */
     function expected(difficulty: Difficulty, seed: number, maxAttempts: number): Puzzle {
       const rng = mulberry32(seed);
@@ -226,7 +253,10 @@ describe('generatePuzzle', () => {
         const givens = digMinimal(solution, rng);
         const result = grade(givens);
         const isLocked = result.hardest === 'pointing' || result.hardest === 'claiming';
-        if (result.difficulty === difficulty && (difficulty !== 'medium' || isLocked)) {
+        const isEarly = (emptyAtFirstExpertStep(givens, result) ?? 0) >= 40;
+        const meetsTierRule =
+          difficulty === 'medium' ? isLocked : difficulty === 'expert' ? isEarly : true;
+        if (result.difficulty === difficulty && meetsTierRule) {
           return { givens: formatGrid(givens), solution: formatGrid(solution), difficulty };
         }
         // The label `rate` gives: Expert for a puzzle the set can't solve.

@@ -1,4 +1,4 @@
-import { grade, type Grade } from './grader';
+import { TECHNIQUE_TIER, grade, type Grade } from './grader';
 import { ALL_DIGITS, BOX, COL, ROW, bit, countFilled, digitsOf, formatGrid } from './grid';
 import { shuffle, type RandomFn } from './rng';
 import { hasUniqueSolution } from './solver';
@@ -15,6 +15,10 @@ import type { Difficulty, Puzzle, TechniqueId, Values } from './types';
  * techniques they need. So the given count is never used as a difficulty
  * dial.
  *
+ * Expert goes past NYT, so it has no puzzles to be calibrated against; what
+ * it is held to instead is needing its fish or wing while much of the grid is
+ * still open (see `EXPERT_MIN_EMPTY`).
+ *
  * Everything is a pure function of the random source: Fisher–Yates shuffles
  * only, no `Math.random`, no wall clock, and work is capped by attempt count
  * rather than time — a time budget would make the output depend on how fast
@@ -26,7 +30,7 @@ import type { Difficulty, Puzzle, TechniqueId, Values } from './types';
  * shuffles or loop orders, the solver's search order, the technique set or
  * order, the tier rules or the attempt cap.
  */
-export const GENERATOR_VERSION = 1;
+export const GENERATOR_VERSION = 2;
 
 /** Options for `generatePuzzle`. */
 export interface GenerateOptions {
@@ -45,6 +49,16 @@ const EASY_GIVENS = 38;
 
 /** The techniques an Easy puzzle may need. */
 const EASY_TECHNIQUES: readonly TechniqueId[] = ['fullHouse', 'hiddenSingleBox'];
+
+/**
+ * The cells an Expert puzzle must still have empty when everything easier
+ * runs out. Left to chance, a minimal puzzle that needs a fish or a wing
+ * typically gets by on easier techniques until the grid is two-thirds full,
+ * then needs one once — late, where it is quick to spot or to guess past —
+ * and plays like a Hard. Held to this, the fish or wing is needed with about
+ * as much of the grid open as when a Hard first needs its pair.
+ */
+const EXPERT_MIN_EMPTY = 40;
 
 /** Tiers in order, for measuring how far an attempt landed from its target. */
 const TIER_RANK: Readonly<Record<Difficulty, number>> = { easy: 0, medium: 1, hard: 2, expert: 3 };
@@ -108,13 +122,35 @@ export function digMinimal(solution: Values, rng: RandomFn): Uint8Array {
   return puzzle;
 }
 
+/**
+ * How many cells were still empty when the solve of `givens` took its first
+ * Expert step — that is, when everything easier had run out, as the grader
+ * always tries the easiest first. For a solve that takes one.
+ */
+function emptyAtFirstExpertStep(givens: Values, result: Grade): number {
+  let empty = 81 - countFilled(givens);
+  for (const step of result.steps) {
+    if (TECHNIQUE_TIER[step.technique] === 'expert') break;
+    if (step.placement) empty--;
+  }
+  return empty;
+}
+
 /** Whether a graded minimal puzzle is exactly what was asked for. */
-function isOnTarget(result: Grade, difficulty: Difficulty): boolean {
+function isOnTarget(givens: Values, result: Grade, difficulty: Difficulty): boolean {
   // Medium has to genuinely need locked candidates: a puzzle that only needs
   // naked singles is Medium by tier, but plays like an Easy with a snag. (And
   // `hardest` alone is not enough: a solve can use pointing and then stall.)
   if (difficulty === 'medium') {
     return result.solved && (result.hardest === 'pointing' || result.hardest === 'claiming');
+  }
+  // Expert, likewise, has to need its technique early: one needed only once
+  // the grid has nearly filled up is Expert by tier, but plays like a Hard.
+  // (Graded Expert, the solve is sure to have taken an Expert step.)
+  if (difficulty === 'expert') {
+    return (
+      result.difficulty === 'expert' && emptyAtFirstExpertStep(givens, result) >= EXPERT_MIN_EMPTY
+    );
   }
   return result.difficulty === difficulty;
 }
@@ -181,13 +217,17 @@ function preferenceOf(result: Grade, target: Difficulty): number {
  * A puzzle of the requested tier. Pure function of (difficulty, rng state,
  * options).
  *
- * Medium, Hard and Expert are generate-and-test over minimal puzzles: about
- * one random minimal puzzle in eight needs locked candidates, one in sixteen
- * pairs or triples, and one in seventeen fish or wings, so a few dozen
- * attempts is typical. If `maxAttempts` (at least one is always made) runs
- * out first, the attempt whose tier — as `rate` would label it — is closest
- * to the target is returned, labelled with that actual tier, never the one
- * asked for.
+ * Medium, Hard and Expert are generate-and-test over minimal puzzles. About
+ * one random minimal puzzle in eight needs locked candidates and one in
+ * fifteen pairs or triples, so Medium and Hard rarely take more than a few
+ * dozen attempts; only about one in 115 needs a fish or wing early enough for
+ * Expert, so that takes a hundred or so, and runs out of attempts about once
+ * in several thousand puzzles. If `maxAttempts` (at least one is always made)
+ * runs out first, the attempt whose tier — as `rate` would label it — is
+ * closest to the target is returned, labelled with that actual tier, never
+ * the one asked for. An Expert that needs its technique only late, like a
+ * Medium that needs only singles, counts as the right tier there: it is what
+ * `rate` calls it, so it beats anything easier or beyond the set.
  */
 export function generatePuzzle(
   difficulty: Difficulty,
@@ -207,7 +247,7 @@ export function generatePuzzle(
     const solution = randomSolution(rng);
     const givens = digMinimal(solution, rng);
     const result = grade(givens);
-    if (isOnTarget(result, difficulty)) {
+    if (isOnTarget(givens, result, difficulty)) {
       return { givens: formatGrid(givens), solution: formatGrid(solution), difficulty };
     }
     const preference = preferenceOf(result, difficulty);

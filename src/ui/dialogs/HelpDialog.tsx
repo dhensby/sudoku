@@ -166,7 +166,8 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
               triples.
             </li>
             <li>
-              <strong>Expert</strong> goes further, into techniques such as X-Wing and XY-Wing.
+              <strong>Expert</strong> goes further, into techniques such as X-Wing and XY-Wing,
+              needed while much of the grid is still empty.
             </li>
             <li>Every puzzle is graded by the hardest step it needs, so the label never lies.</li>
             <li>
