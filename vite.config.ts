@@ -17,6 +17,11 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
+    // Vitest's 5s default is too close for the heaviest jsdom tests on a CI
+    // runner under coverage: rendering a thousand-row History or walking a
+    // whole App through Show me took 3.8–4s there. The engine's big sweeps set
+    // their own, longer limits.
+    testTimeout: 15_000,
     include: ['src/**/*.test.{ts,tsx}'],
     exclude: ['e2e/**', 'node_modules/**'],
     coverage: {
