@@ -66,7 +66,9 @@ export interface TechniqueDiagramProps {
  *   in, as for a wing: one of them is the digit. An XY-Chain's cells are
  *   shaded, like a wing's, each holding just two candidates — a strong link
  *   of its own — so its drawn links are the weak ones between them, on the
- *   digit each shares with the next.
+ *   digit each shares with the next. A W-Wing's two cells are shaded too,
+ *   with the house that joins them, and its links run from one cell through
+ *   the house's two places for the digit to the other.
  * - In a walkthrough, the cell being solved: inked corner marks, like a
  *   printer's crop marks, and its row and column numbers set in ink, so it
  *   can be found on every step. And the candidates earlier steps removed
@@ -77,8 +79,8 @@ export interface TechniqueDiagramProps {
  * Every mark differs in shape as well as colour — ring, disc, slash, frame,
  * bold ink, solid or dashed line — so the board still reads in forced
  * colours, where the stylesheet swaps the shading for outlines of the houses
- * (and of a wing's pincers and an XY-Chain's cells; a wing's pivot keeps its
- * frame).
+ * (and of a wing's pincers and an XY-Chain's or a W-Wing's two-candidate
+ * cells; a wing's pivot keeps its frame).
  *
  * One SVG, drawn in user units of a 40-unit cell and scaled by CSS to its
  * container: a role="img" named by the caption, its layers hidden from
@@ -199,7 +201,10 @@ interface Marks {
   pivot: number | null;
   /** A wing's pincers, outlined in forced colours, where their shading goes. */
   pincers: number[];
-  /** An XY-Chain's cells, outlined in forced colours, where their shading goes. */
+  /**
+   * An XY-Chain's cells, or a W-Wing's two-candidate cells: shaded on their
+   * own, with no house, so outlined in forced colours where the shading goes.
+   */
   chainCells: number[];
   /**
    * The digit one of a wing's or a chain's cells must be, and the cells it is
@@ -239,11 +244,19 @@ function marksOf({ step }: TechniqueTrace): Marks {
   const shaded = new Map<number, Shade>();
   const isWing = step.technique === 'xyWing' || step.technique === 'xyzWing';
   const isXyChain = step.technique === 'xyChain';
+  const isWWing = step.technique === 'wWing';
   // A wing's cells share no house, and nor do an XY-Chain's: shading them is
   // what shows the shape. A wing's pattern lists the pivot first, and it
-  // removes only the digit it forces.
+  // removes only the digit it forces. A W-Wing's two-candidate cells, its
+  // first and last, are shaded the same way, as well as the house between.
   const [pivot, ...pincers] = isWing ? step.pattern.map((cell) => cell.index) : [];
-  if (isWing || isXyChain) for (const cell of step.pattern) shaded.set(cell.index, 'look');
+  const ownCells = isXyChain
+    ? step.pattern.map((cell) => cell.index)
+    : isWWing
+      ? [step.pattern[0].index, step.pattern[3].index]
+      : [];
+  if (isWing) for (const cell of step.pattern) shaded.set(cell.index, 'look');
+  for (const index of ownCells) shaded.set(index, 'look');
   const looks = lookCount(step.technique, houses);
   const shades = houses.map((unit, i) => ({ unit, shade: i < looks ? 'look' : 'clear' }) as const);
   for (const { unit, shade } of shades) {
@@ -259,10 +272,10 @@ function marksOf({ step }: TechniqueTrace): Marks {
     answer,
     pivot: pivot ?? null,
     pincers,
-    chainCells: isXyChain ? step.pattern.map((cell) => cell.index) : [],
+    chainCells: ownCells,
     forced: isWing
       ? wingForced(step.pattern, step.eliminations[0].mask)
-      : isChain || isXyChain
+      : isChain || isXyChain || isWWing
         ? chainForced(step)
         : null,
     links: isChain
@@ -274,8 +287,25 @@ function marksOf({ step }: TechniqueTrace): Marks {
         }))
       : isXyChain
         ? xyChainLinks(step)
-        : [],
+        : isWWing
+          ? wWingLinks(step)
+          : [],
   };
+}
+
+/**
+ * A W-Wing's links, all on the digit that joins its cells: weak from the
+ * first cell to the place it sees, strong between the house's two places,
+ * and weak on to the other cell.
+ */
+function wWingLinks({ pattern }: TechniqueTrace['step']): Marks['links'] {
+  const digit = lowestDigit(pattern[1].mask);
+  return pattern.slice(1).map((cell, i) => ({
+    from: pattern[i].index,
+    to: cell.index,
+    digit,
+    isStrong: i === 1,
+  }));
 }
 
 /**

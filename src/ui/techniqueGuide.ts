@@ -56,7 +56,8 @@ export type GuideId =
   | 'xyzWing'
   | 'skyscraper'
   | 'twoStringKite'
-  | 'xyChain';
+  | 'xyChain'
+  | 'wWing';
 
 /** One worked example an entry shows: a technique, and a label when there is more than one. */
 export interface GuideExampleSpec {
@@ -111,6 +112,7 @@ export const GUIDE_ORDER: readonly GuideId[] = [
   'skyscraper',
   'twoStringKite',
   'xyChain',
+  'wWing',
 ];
 
 const GUIDE_ID: Readonly<Record<TechniqueId, GuideId>> = {
@@ -131,6 +133,7 @@ const GUIDE_ID: Readonly<Record<TechniqueId, GuideId>> = {
   skyscraper: 'skyscraper',
   twoStringKite: 'twoStringKite',
   xyChain: 'xyChain',
+  wWing: 'wWing',
 };
 
 /** The guide entry that explains a technique — what a hint's "What's a …?" opens. */
@@ -611,6 +614,24 @@ function xyChainCaption({ step }: TechniqueTrace): string {
   );
 }
 
+/** W-Wing: the two cells, the house that joins them, and which of its places each sees. */
+function wWingCaption({ step }: TechniqueTrace): string {
+  const digit = step.digit!;
+  const [house] = step.houses;
+  const [first, near, far, second] = step.pattern;
+  const [y] = digitsOf(near.mask);
+  const [a, b] = [describePosition(first.index), describePosition(second.index)];
+  return (
+    `${capitalise(a)} and ${b} can each only be ${orList(first.mask)}. ` +
+    `${capitalise(describeUnit(house))}'s ${y} can only go in ` +
+    `${withinPhrase(house, [near.index, far.index])}: ${describePosition(near.index)}, which ` +
+    `${a} sees, or ${describePosition(far.index)}, which ${b} sees. Whichever it is, the cell ` +
+    `that sees it can't be ${y}, so it's ${digit}. One of the two cells is ${aDigit(digit)}, ` +
+    `so a cell that sees both can't be: remove ${digit} from ` +
+    `${cellsPhrase(indexesOf(step.eliminations))}.`
+  );
+}
+
 // ---- Entries ----------------------------------------------------------------
 
 /** An entry whose title is its technique's label, capitalised, as hints word it. */
@@ -966,6 +987,31 @@ export const GUIDE: Readonly<Record<GuideId, GuideEntry>> = {
       'reach a cell that would be the digit you started with, strike that digit from every ' +
       'cell that sees both ends.',
     caption: credited(xyChainCaption),
+  }),
+
+  wWing: entry('wWing', only('wWing'), {
+    aka: [],
+    summary:
+      'Two cells with the same two candidates, joined through a row, column or box where one ' +
+      'of those digits has just two places: the other digit must be in one of the two cells, so ' +
+      "a cell that sees both can't.",
+    explanation: [
+      "Say two cells that don't see each other can each only be 3 or 9, and column 7 has just " +
+        "two places left for a 9, one seen by each cell. Column 7's 9 is in one of them, and " +
+        "the cell that sees it can't be 9 — so it's 3. Either way one of the two cells is a 3, " +
+        "so any cell that sees both of them can't be.",
+      'Like an XY-Wing it has two pincers, the cells with the same two candidates; here they ' +
+        'are joined by the two places for a digit, where an XY-Wing has a pivot. Read as a ' +
+        "chain, it's a strong link in each pincer (one of its two digits), a strong link " +
+        'between the two places, and a weak link from each place to the pincer that sees it.',
+      "If the two cells saw each other, they'd be a naked pair, and clear both digits from " +
+        'everywhere they both see.',
+    ],
+    spot:
+      "Look for two cells with the same two candidates that don't see each other. For each " +
+      'of the two digits, look for a row, column or box where it has just two places, one ' +
+      'seen by each cell. Then strike the other digit from every cell that sees both of them.',
+    caption: credited(wWingCaption),
   }),
 };
 

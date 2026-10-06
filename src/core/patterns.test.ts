@@ -635,6 +635,62 @@ describe('isStepValid', () => {
         step.eliminations.push({ index, mask: bit(step.digit!) });
       },
     ],
+    ['wWing', 'names a unit, which no W-Wing has', (step) => (step.unit = step.houses[0])],
+    ['wWing', 'is about no digit', (step) => (step.digit = null)],
+    ['wWing', 'names no house to join its cells', (step) => (step.houses = [])],
+    [
+      'wWing',
+      'is about the digit that joins its cells',
+      (step) => (step.digit = lowestDigit(step.pattern[1].mask) as Digit),
+    ],
+    [
+      'wWing',
+      'leaves out a candidate of a cell',
+      (step, board) => void addDigit(board, step.pattern[0].index),
+    ],
+    [
+      'wWing',
+      'pairs two cells that see each other',
+      (step, board) => {
+        const [first, , , second] = step.pattern;
+        const index = firstCell(
+          (i) => board.values[i] === 0 && isPeer(first.index, i) && !cellsOf(step).includes(i),
+        );
+        board.candidates[index] = second.mask;
+        step.pattern[3] = { index, mask: second.mask };
+      },
+    ],
+    [
+      'wWing',
+      'has its places the wrong way round',
+      (step) => step.pattern.splice(1, 2, step.pattern[2], step.pattern[1]),
+    ],
+    [
+      'wWing',
+      'joins its cells through a digit with a third place',
+      (step, board) => {
+        const index = firstCell(
+          (i) => board.values[i] === 0 && isIn(i, step.houses[0]) && !cellsOf(step).includes(i),
+        );
+        board.candidates[index] |= step.pattern[1].mask;
+      },
+    ],
+    [
+      'wWing',
+      'strikes a cell that sees one of its cells only',
+      (step, board) => {
+        const [first, second] = [step.pattern[0].index, step.pattern[3].index];
+        const index = firstCell(
+          (i) =>
+            board.values[i] === 0 &&
+            isPeer(first, i) &&
+            !isPeer(second, i) &&
+            !cellsOf(step).includes(i),
+        );
+        board.candidates[index] |= bit(step.digit!);
+        step.eliminations.push({ index, mask: bit(step.digit!) });
+      },
+    ],
   ])('rejects a %s step that %s', (id, _name, misdescribe) => {
     const { board, step } = example(id);
     misdescribe(step, board);
