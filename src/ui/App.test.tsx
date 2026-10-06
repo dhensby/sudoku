@@ -263,15 +263,34 @@ describe('App', () => {
     expect(cells()[FIRST_EMPTY]).toHaveAccessibleName('empty, candidates 8');
   });
 
-  it('shows a hint under the board until the next move', async () => {
+  it('shows a hint under the board, and again whenever its cell is selected', async () => {
     await startApp();
     fireEvent.click(screen.getByRole('button', { name: 'More' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Hint' }));
-    expect(
-      screen.getByText(/single|full house/i, { selector: '.hint-bar__message > span' }),
-    ).toBeInTheDocument();
+    const hinted = selectedCell()!;
+    const words = screen.getByText(/^(hidden single|naked single|full house):/i, {
+      selector: '.hint-bar__message span',
+    });
+    // Spoken as it is asked for, so the cell is not described by it as well.
+    expect(liveRegion()).toHaveTextContent(words.textContent!);
+    expect(hinted).not.toHaveAttribute('aria-describedby');
+
+    // The next move retires the hint just asked for, but the cell remembers
+    // it, and from now on describes itself by it.
     press(' ');
+    expect(screen.getByText(words.textContent!)).toBeInTheDocument();
+    expect(hinted).toHaveAccessibleDescription(words.textContent!);
+
+    const index = Number(hinted.dataset.index);
+    const [away, back] =
+      index % 9 === 8 ? ['ArrowLeft', 'ArrowRight'] : ['ArrowRight', 'ArrowLeft'];
+    press(away);
     expect(document.querySelector('.hint-bar')).toBeEmptyDOMElement();
+    expect(selectedCell()).not.toHaveAttribute('aria-describedby');
+    press(back);
+    expect(selectedCell()).toBe(hinted);
+    expect(screen.getByText(words.textContent!)).toBeInTheDocument();
+    expect(hinted).toHaveAccessibleDescription(words.textContent!);
   });
 
   it('explains the technique a hint names, in the guide, with the board hidden meanwhile', async () => {

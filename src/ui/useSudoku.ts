@@ -7,12 +7,14 @@ import {
   gridValues,
   isBoardFull,
   reduce,
+  shownHint,
   toSeconds,
   valuesOf,
   type Difficulty,
   type Digit,
   type Direction,
   type GameState,
+  type Hint,
   type InputMode,
   type Puzzle,
 } from '../core';
@@ -203,6 +205,11 @@ export interface Sudoku {
   pauseReason: PauseReason | null;
   /** The game on screen; null until the first puzzle arrives. */
   game: GameState | null;
+  /**
+   * The hint for the hint bar: the one just asked for, until the next
+   * change, and otherwise the selected cell's remembered hint (`shownHint`).
+   */
+  shownHint: Hint | null;
   /** The record of the game on screen. */
   record: GameRecord | null;
   /** The tier on show: the one being generated, else the game's. */
@@ -982,6 +989,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     phase,
     pauseReason: session?.pause ?? null,
     game,
+    shownHint: game === null ? null : shownHint(game),
     record: session?.record ?? null,
     difficulty:
       generating?.difficulty ?? session?.record.difficulty ?? vacancy ?? prefs.lastDifficulty,

@@ -26,6 +26,11 @@ export interface CellProps {
    * ones that can be toggled there.
    */
   ghosts: number;
+  /**
+   * The id of text that describes the cell — the hint it has had, re-shown
+   * as it is selected again — read after its name.
+   */
+  describedBy?: string;
   onSelect: (index: number) => void;
   onToggleCandidate: (index: number, digit: Digit) => void;
   registerRef: (index: number, element: HTMLButtonElement | null) => void;
@@ -59,6 +64,7 @@ function CellComponent(props: CellProps) {
     highlight,
     conflict,
     ghosts,
+    describedBy,
     onSelect,
     onToggleCandidate,
     registerRef,
@@ -96,6 +102,7 @@ function CellComponent(props: CellProps) {
       aria-colindex={COL[index] + 1}
       aria-selected={isSelected}
       aria-label={cellLabel({ value, given, candidates, conflict, mark })}
+      aria-describedby={describedBy}
       // Roving tabindex: Tab enters the grid at the selection and leaves it
       // in one step; the arrow keys move within it.
       tabIndex={isSelected ? 0 : -1}

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useEffectEvent, useRef } from 'react';
-import { digitCounts, isEditable, type Difficulty, type GameState } from '../core';
+import { useCallback, useEffect, useEffectEvent, useId, useRef } from 'react';
+import { digitCounts, isEditable, rememberedHint, type Difficulty, type GameState } from '../core';
 import { Board } from './Board';
 import { BoardOverlay, type BoardOverlayContent } from './BoardOverlay';
 import { Controls } from './Controls';
@@ -83,6 +83,7 @@ export function App({ options }: AppProps = {}) {
   const sudoku = useSudoku(options);
   const { phase, game, settings, dialog, actions } = sudoku;
   useTheme(settings.theme);
+  const hintTextId = useId();
 
   useEffect(() => trackInputModality(), []);
 
@@ -224,6 +225,19 @@ export function App({ options }: AppProps = {}) {
   const canRevealCell = game !== null && isEditable(game, game.selected);
   const canCheckPuzzle =
     game !== null && game.cells.some((cell, i) => cell.value !== 0 && isEditable(game, i));
+  // A hint points at a cell; with the board hidden there is none to see.
+  // Behind the technique guide alone it stays, under the scrim, so the guide
+  // its question opened can give focus back to the question.
+  const isHintShown = isPlaying || dialog?.kind === 'techniques';
+  // A cell's remembered hint, shown again as the cell is selected again, is
+  // not spoken: the cell's description carries it, read as focus arrives,
+  // and only then — the status region would repeat it at every cell the
+  // arrow keys pass through. A hint just asked for is spoken there already.
+  const isCellDescribed =
+    isPlaying &&
+    game !== null &&
+    game.hint === null &&
+    rememberedHint(game, game.selected) !== null;
 
   return (
     <FocusHomeContext value={focusHome}>
@@ -263,6 +277,7 @@ export function App({ options }: AppProps = {}) {
                     onSelect={actions.select}
                     onToggleCandidate={actions.toggleCandidate}
                     takeFocusRequest={takeFocusRequest}
+                    describedBy={isCellDescribed ? hintTextId : undefined}
                   />
                 ) : (
                   <BoardOverlay
@@ -275,11 +290,8 @@ export function App({ options }: AppProps = {}) {
                 )}
               </div>
               <HintBar
-                // A hint points at a cell; with the board hidden there is none
-                // to see. Behind the technique guide alone it stays, under the
-                // scrim, so the guide its question opened can give focus back
-                // to the question.
-                hint={isPlaying || dialog?.kind === 'techniques' ? (game?.hint ?? null) : null}
+                hint={isHintShown ? sudoku.shownHint : null}
+                textId={hintTextId}
                 notice={sudoku.notice}
                 onDismissNotice={actions.dismissNotice}
                 onOpenGuide={actions.openTechniques}

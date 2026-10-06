@@ -72,6 +72,16 @@ describe('HintBar', () => {
     expect(button.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
   });
 
+  it('gives the hint’s words, and only them, the id a cell can be described by', () => {
+    renderBar({
+      hint: { kind: 'deduction', index: 37, technique: 'hiddenPair' },
+      textId: 'hint-text',
+    });
+    expect(document.getElementById('hint-text')).toHaveTextContent(
+      /^Look here — a hidden pair will unlock this cell\.$/,
+    );
+  });
+
   it('shows a notice the player can dismiss', () => {
     const { props } = renderBar({ notice: NOTICE });
     expect(screen.getByText(NOTICE.text)).toBeInTheDocument();

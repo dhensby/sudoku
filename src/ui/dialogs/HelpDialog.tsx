@@ -158,6 +158,21 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
         </section>
 
         <section className="help__section">
+          <h3 className="help__heading">Hints</h3>
+          <ul className="help__list">
+            <li>
+              <strong>Hint</strong>, in the “…” menu, points at a cell you can fill next and names
+              the technique that gets you there, without giving the number away.
+            </li>
+            <li>
+              A cell remembers its hint: select it again and the hint is back, and asking for it
+              again costs nothing more.
+            </li>
+            <li>Hints are recorded next to your time, as checks and reveals are.</li>
+          </ul>
+        </section>
+
+        <section className="help__section">
           <h3 className="help__heading">Difficulty</h3>
           <ul className="help__list">
             <li>

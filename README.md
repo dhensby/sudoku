@@ -40,8 +40,10 @@ the same puzzle. Built with React, TypeScript and Vite, and runs entirely in you
   times. Export your history to a file and import it on another browser.
 - **Help when you want it** — Hint points at a cell you can fill next and names the technique
   ("Hidden single: there's only one place for a number in this box"), without ever giving the
-  number away. Check cell, Check puzzle and Reveal cell are in the "…" menu. Any help you take
-  (auto candidates included) is recorded next to your time, so comparisons stay fair.
+  number away. A cell **remembers its hint**: select it again and the hint is back under the
+  board (and in the cell's description for a screen reader), and asking again for the same cell
+  isn't counted again. Check cell, Check puzzle and Reveal cell are in the "…" menu. Any help you
+  take (auto candidates included) is recorded next to your time, so comparisons stay fair.
 - **A guide to the solving techniques** — every technique the grader knows, from a full house to
   the XYZ-Wing: its other names, what it is, why it works, how to spot it, and a worked example
   from a real puzzle, drawn with the pattern ringed, the candidates it removes struck out and a
@@ -83,9 +85,9 @@ The design keeps a hard line between logic and presentation:
 
 - **`src/core/`** — a pure, framework-free engine: grid geometry, a bitmask solver, a human-style
   logical grader (with a worked example of every technique it knows), the puzzle generator, hints,
-  share-link codec, clock arithmetic and the game reducer. No DOM, no React and no English;
-  `reduce(state, action)` is a pure function, randomness is passed in, and the whole directory is
-  held to 100% coverage.
+  share-link codec, clock arithmetic and the game reducer (which remembers each cell's hints). No
+  DOM, no React and no English; `reduce(state, action)` is a pure function, randomness is passed
+  in, and the whole directory is held to 100% coverage.
 - **`src/storage/`** — a thin, injectable `localStorage` layer for preferences, the history and
   saved games, which validates everything it reads back and never lets a full or broken storage
   stop play.

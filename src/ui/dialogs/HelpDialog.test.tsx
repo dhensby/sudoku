@@ -13,6 +13,7 @@ describe('HelpDialog', () => {
       'How to play',
       'Entering numbers',
       'Auto candidates',
+      'Hints',
       'Difficulty',
       'The clock',
       'Racing friends',
@@ -97,6 +98,15 @@ describe('HelpDialog', () => {
     render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={vi.fn()} />);
     expect(screen.getByText(/mark your numbers/)).toHaveTextContent(
       'Check and Reveal, in the “…” menu, mark your numbers: a wrong one is struck through with a red slash, a right one gets a small tick in its corner, and a revealed one is written in italics. Each counts as an assist.',
+    );
+  });
+
+  it('says a cell remembers its hint, and that asking for it again is free', () => {
+    render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={vi.fn()} />);
+    const hints = screen.getByRole('heading', { name: 'Hints' }).closest('section')!;
+    expect(within(hints).getByText(/without giving the number away/)).toBeInTheDocument();
+    expect(within(hints).getByText(/A cell remembers its hint/)).toHaveTextContent(
+      'select it again and the hint is back, and asking for it again costs nothing more',
     );
   });
 

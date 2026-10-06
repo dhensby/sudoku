@@ -5,8 +5,16 @@ import { guideIdFor, techniqueQuestion, type GuideId } from './techniqueGuide';
 import type { Notice } from './useSudoku';
 
 export interface HintBarProps {
-  /** The hint on show, if the board is; it goes with the next change of any kind. */
+  /**
+   * The hint on show, if the board is: the one just asked for, until the
+   * next change of any kind, or else the selected cell's remembered hint.
+   */
   hint: Hint | null;
+  /**
+   * The id to give the hint's words, so the selected cell can be described
+   * by them (see Board's `describedBy`).
+   */
+  textId?: string;
   /** A message for the player, until they dismiss it. A hint takes the bar first. */
   notice: Notice | null;
   onDismissNotice: () => void;
@@ -33,7 +41,7 @@ function namedTechnique(hint: Hint): TechniqueId | null {
  * Not a live region: the hook already speaks every hint and notice through
  * the app's status region, and saying them twice would talk over the next.
  */
-export function HintBar({ hint, notice, onDismissNotice, onOpenGuide }: HintBarProps) {
+export function HintBar({ hint, textId, notice, onDismissNotice, onOpenGuide }: HintBarProps) {
   if (hint !== null) {
     const technique = namedTechnique(hint);
     return (
@@ -41,7 +49,7 @@ export function HintBar({ hint, notice, onDismissNotice, onOpenGuide }: HintBarP
         <p className="hint-bar__message hint-bar__message--hint">
           <HintIcon className="hint-bar__icon" />
           <span>
-            {describeHint(hint)}
+            <span id={textId}>{describeHint(hint)}</span>
             {technique !== null && (
               <>
                 {' '}

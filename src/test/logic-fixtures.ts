@@ -164,6 +164,40 @@ export const BEYOND_THE_SET: PuzzleFixture = {
   solution: '361429785287135649459687312173842596592716438846593271728361954615974823934258167',
 };
 
+/**
+ * Where a player got stuck — the report behind remembering each cell's
+ * hint: the puzzle of share code `O3NLgKqUTeam9ygZMBQVALBbgSY`, sixteen
+ * right entries in. The hint points at row 5, column 2 and names a hidden
+ * pair, but the pair is in column 6, half a board away: a hint worth seeing
+ * again without asking for it again.
+ */
+export const STUCK_ON_A_HIDDEN_PAIR = {
+  code: 'O3NLgKqUTeam9ygZMBQVALBbgSY',
+  givens: '000810040020000006340720900000430800000000107030000060700000003500100470000009050',
+  solution: '956813742827954316341726985675431829284695137139287564712548693593162478468379251',
+  /** The player's entries, in the order made: row and column (both from 1), and digit. */
+  entries: [
+    [1, 9, 2],
+    [3, 6, 6],
+    [3, 9, 5],
+    [4, 8, 2],
+    [4, 9, 9],
+    [5, 4, 6],
+    [5, 8, 3],
+    [6, 7, 5],
+    [6, 9, 4],
+    [7, 4, 5],
+    [7, 8, 9],
+    [8, 2, 9],
+    [8, 5, 6],
+    [8, 9, 8],
+    [9, 5, 7],
+    [9, 9, 1],
+  ] as const,
+  /** The cell the hint points at: row 5, column 2. */
+  target: 37,
+};
+
 /** All the puzzles above, labelled, for table-driven tests. */
 export const ALL_FIXTURES: readonly (readonly [label: string, fixture: PuzzleFixture])[] = [
   ...Object.entries(HARDEST),

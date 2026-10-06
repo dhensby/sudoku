@@ -6,12 +6,16 @@ import {
   isBoardFull,
   isEditable,
   reduce,
+  rememberedHint,
   serialiseGame,
+  shownHint,
   valuesOf,
   visibleCandidates,
   type Direction,
   type GameAction,
   type GameState,
+  type RememberedHints,
+  type SerialisedCellHints,
   type SerialisedGame,
 } from './game';
 import { computeCandidates, formatGrid, maskOf, parseGrid } from './grid';
@@ -33,6 +37,15 @@ const SOLUTION = parseGrid(WIKIPEDIA_SOLUTION);
 const BLANKS = Array.from({ length: 81 }, (_, i) => i).filter((i) => PUZZLE.givens[i] === '0');
 
 const HINT: Hint = { kind: 'single', index: 40, technique: 'nakedSingle', unit: null };
+/** Another hint for cell 40, as if asked for again once the board had moved on. */
+const NEWER_HINT: Hint = {
+  kind: 'single',
+  index: 40,
+  technique: 'hiddenSingleBox',
+  unit: { kind: 'box', index: 4 },
+};
+/** A deduction hint for cell 3 (solution 6). */
+const DEDUCTION: Hint = { kind: 'deduction', index: 3, technique: 'pointing' };
 /** "Nothing to suggest" — shown, but not counted as help. */
 const NONE: GameAction = { type: 'hint', hint: { kind: 'none' } };
 const NO_ASSISTS: Assists = { autoCandidates: false, hints: 0, checks: 0, reveals: 0 };
@@ -780,6 +793,131 @@ describe('hint', () => {
   });
 });
 
+describe('remembered hints', () => {
+  const showHint = (hint: Hint): GameAction => ({ type: 'hint', hint });
+  const MISTAKE_AT_3: Hint = { kind: 'mistake', index: 3 };
+
+  describe('a fill hint', () => {
+    it('is remembered for its cell, and shown again whenever the cell is selected', () => {
+      const state = play(newGame(), showHint(HINT), select(2));
+      expect(state.hint).toBeNull();
+      expect(shownHint(state)).toBeNull();
+      expect(rememberedHint(state, 40)).toBe(HINT);
+      const back = reduce(state, select(40));
+      expect(shownHint(back)).toBe(HINT);
+      expect(back.assists.hints).toBe(1);
+    });
+
+    it('is shown again for free when asked for again, and remembered as the newest', () => {
+      const state = play(newGame(), showHint(HINT), select(2), showHint(NEWER_HINT));
+      expect(state.assists.hints).toBe(1);
+      expect(state.selected).toBe(40);
+      expect(state.hint).toBe(NEWER_HINT);
+      expect(rememberedHint(state, 40)).toBe(NEWER_HINT);
+    });
+
+    it('is counted once per cell', () => {
+      const state = play(newGame(), showHint(HINT), showHint(DEDUCTION), showHint(HINT));
+      expect(state.assists.hints).toBe(2);
+      expect([...state.cellHints.keys()].sort()).toEqual([3, 40]);
+    });
+
+    it('is hidden while its cell holds a wrong value, and back when it is erased', () => {
+      const state = play(newGame(), showHint(HINT), place(40, 1), select(2));
+      expect(rememberedHint(state, 40)).toBeNull();
+      expect(rememberedHint(reduce(state, erase(40)), 40)).toBe(HINT);
+    });
+
+    it('is forgotten once its cell holds its solution digit, and stays forgotten through undo', () => {
+      const solved = play(newGame(), showHint(HINT), place(40, 5));
+      expect(solved.cellHints.has(40)).toBe(false);
+      const undone = reduce(solved, UNDO);
+      expect(undone.cells[40].value).toBe(0);
+      expect(rememberedHint(undone, 40)).toBeNull();
+      // So asking for it again is a new hint.
+      expect(reduce(undone, showHint(HINT)).assists.hints).toBe(2);
+    });
+
+    it('is forgotten when its cell is revealed', () => {
+      expect(play(newGame(), showHint(HINT), REVEAL).cellHints.size).toBe(0);
+    });
+
+    it('outlives a mistake made in its cell, which gets a mistake hint of its own', () => {
+      const state = play(newGame(), showHint(DEDUCTION), place(3, 1), showHint(MISTAKE_AT_3));
+      // A different kind of hint about the cell: new, so counted.
+      expect(state.assists.hints).toBe(2);
+      expect(rememberedHint(state, 3)).toBe(MISTAKE_AT_3);
+      expect(rememberedHint(reduce(state, erase(3)), 3)).toBe(DEDUCTION);
+    });
+
+    it('is not remembered for a cell that already holds its solution digit', () => {
+      const state = play(newGame(), place(40, 5), showHint(HINT));
+      expect(state.assists.hints).toBe(1);
+      expect(state.cellHints.size).toBe(0);
+    });
+  });
+
+  describe('a mistake hint', () => {
+    it('is remembered while its cell holds the wrong value, and shown again for free', () => {
+      const state = play(newGame(), place(3, 1), showHint(MISTAKE_AT_3), select(40));
+      expect(shownHint(state)).toBeNull();
+      expect(shownHint(reduce(state, select(3)))).toBe(MISTAKE_AT_3);
+      const again = reduce(state, showHint({ kind: 'mistake', index: 3 }));
+      expect(again.assists.hints).toBe(1);
+      expect(again.selected).toBe(3);
+    });
+
+    it('is forgotten the moment the value changes, and not brought back by undo', () => {
+      const changed = play(newGame(), place(3, 1), showHint(MISTAKE_AT_3), place(3, 2));
+      expect(changed.cellHints.size).toBe(0);
+      const undone = reduce(changed, UNDO);
+      expect(undone.cells[3].value).toBe(1);
+      expect(rememberedHint(undone, 3)).toBeNull();
+      expect(reduce(undone, showHint(MISTAKE_AT_3)).assists.hints).toBe(2);
+    });
+
+    it('is not remembered when it got its cell wrong: an empty cell, a right value or a given', () => {
+      for (const [index, setup] of [
+        [40, []],
+        [3, [place(3, 6)]],
+        [0, []],
+      ] as const) {
+        const state = play(newGame(), ...setup, showHint({ kind: 'mistake', index }));
+        expect(state.assists.hints).toBe(1);
+        expect(state.cellHints.size).toBe(0);
+      }
+    });
+  });
+
+  it('is never made for a hint off the grid', () => {
+    const state = reduce(newGame(), showHint({ kind: 'mistake', index: 81 }));
+    expect(state.cellHints.size).toBe(0);
+  });
+
+  it('is kept by changes elsewhere on the board, map and all', () => {
+    const state = play(newGame(), showHint(HINT), place(3, 1));
+    const next = reduce(state, place(2, 4));
+    expect(next.cellHints).toBe(state.cellHints);
+  });
+
+  it('is all forgotten by a reset, which keeps the hints on the record', () => {
+    const state = play(newGame(), showHint(HINT), place(3, 1), showHint(MISTAKE_AT_3));
+    const next = reduce(state, RESET);
+    expect(next.cellHints.size).toBe(0);
+    expect(next.assists.hints).toBe(2);
+  });
+
+  it('makes a reset do something on a board otherwise as it started', () => {
+    // Hinted at the first empty cell, then the hint retired by moving away and back.
+    const state = play(newGame(), showHint(DEDUCTION), select(2));
+    expect(state.hint).toBeNull();
+    expect(state.cellHints.size).toBe(1);
+    const next = reduce(state, RESET);
+    expect(next).not.toBe(state);
+    expect(next.cellHints.size).toBe(0);
+  });
+});
+
 describe('check', () => {
   it('marks a right value correct, which locks it, and counts the check', () => {
     const state = play(newGame(), place(40, 1), place(2, 4));
@@ -1038,7 +1176,7 @@ describe('serialiseGame / deserialiseGame', () => {
     expect(data.assists).not.toBe(rich.assists);
   });
 
-  it('round-trips through JSON, without the history, the mode or the hint', () => {
+  it('round-trips through JSON, without the history, the mode or the hint just asked for', () => {
     const restored = deserialiseGame(JSON.parse(JSON.stringify(data)));
     expect(restored).toEqual({
       ...rich,
@@ -1157,6 +1295,143 @@ describe('serialiseGame / deserialiseGame', () => {
     ],
   ])('rejects %s', (_name, patch) => {
     expect(deserialiseGame(patch(data))).toBeNull();
+  });
+
+  describe('remembered hints', () => {
+    // A fill hint (cell 40), and a fill hint hidden by a wrong value that
+    // has a mistake hint of its own (cell 3, holding 1).
+    const hinted = play(
+      newGame(),
+      { type: 'hint', hint: HINT },
+      { type: 'hint', hint: DEDUCTION },
+      place(3, 1),
+      { type: 'hint', hint: { kind: 'mistake', index: 3 } },
+    );
+    const saved = serialiseGame(hinted);
+    const [AT_40, AT_3] = saved.cellHints!;
+
+    /** The remembered hints `saved` loads with, given these stored ones. */
+    function loadHints(cellHints: unknown, base: SerialisedGame = saved) {
+      return deserialiseGame({ ...base, cellHints })!.cellHints;
+    }
+
+    it('saves them as plain data', () => {
+      expect(saved.cellHints).toEqual<SerialisedCellHints[]>([
+        { index: 40, fill: HINT, mistake: 0 },
+        { index: 3, fill: DEDUCTION, mistake: 1 },
+      ]);
+    });
+
+    it('round-trips them through JSON', () => {
+      const restored = deserialiseGame(JSON.parse(JSON.stringify(saved)))!;
+      expect(restored.cellHints).toEqual(hinted.cellHints);
+      expect(restored.assists).toEqual(hinted.assists);
+      expect(rememberedHint(restored, 3)).toEqual({ kind: 'mistake', index: 3 });
+      expect(rememberedHint(reduce(restored, erase(3)), 3)).toEqual(DEDUCTION);
+    });
+
+    it('loads a save from before hints were remembered with none', () => {
+      const { cellHints: _cellHints, ...old } = saved;
+      const restored = deserialiseGame(old)!;
+      expect(restored.cellHints.size).toBe(0);
+      expect(restored.assists).toEqual(hinted.assists);
+    });
+
+    it.each<[string, unknown]>([
+      ['not a list', { 40: AT_40 }],
+      ['a list with holes', new Array(2)],
+      ['a list of things that are not entries', [null, 'hint', 40]],
+      [
+        'entries for cells off the grid',
+        [
+          { ...AT_40, index: 81 },
+          { ...AT_3, index: -1 },
+        ],
+      ],
+      [
+        'entries for no cell at all',
+        [
+          { ...AT_40, index: 4.5 },
+          { ...AT_3, index: '3' },
+        ],
+      ],
+    ])('forgets them all when they are %s', (_name, cellHints) => {
+      expect(loadHints(cellHints).size).toBe(0);
+    });
+
+    it('keeps the first entry for a cell listed twice', () => {
+      const cellHints = loadHints([AT_40, { ...AT_40, fill: NEWER_HINT }]);
+      expect(cellHints.get(40)?.fill).toEqual(HINT);
+    });
+
+    it.each<[string, unknown]>([
+      ['not an object', 'single'],
+      ['for another cell', { ...HINT, index: 41 }],
+      ['of an unknown kind', { ...HINT, kind: 'guess' }],
+      ['a single by a technique that places nothing', { ...HINT, technique: 'pointing' }],
+      ['a single by no technique at all', { ...HINT, technique: 5 }],
+      ['a single with its unit missing', { ...NEWER_HINT, unit: undefined }],
+      ['a single in a unit that is not an object', { ...NEWER_HINT, unit: 'box' }],
+      ['a single in an unknown kind of unit', { ...NEWER_HINT, unit: { kind: 'cage', index: 4 } }],
+      ['a single in a unit past the grid', { ...NEWER_HINT, unit: { kind: 'box', index: 9 } }],
+      ['a single in a unit before the grid', { ...NEWER_HINT, unit: { kind: 'row', index: -1 } }],
+      ['a single in a fractional unit', { ...NEWER_HINT, unit: { kind: 'row', index: 1.5 } }],
+      ['a deduction by an unknown technique', { ...DEDUCTION, index: 40, technique: 'guess' }],
+      ['a deduction missing its technique', { kind: 'deduction', index: 40 }],
+    ])('forgets a fill hint that is %s', (_name, fill) => {
+      // Cell 40 has nothing else remembered, so nothing is left of it.
+      expect(loadHints([{ ...AT_40, fill }]).has(40)).toBe(false);
+    });
+
+    it.each<[string, unknown, Hint]>([
+      ['a single with no unit', HINT, HINT],
+      ['a single in a unit', NEWER_HINT, NEWER_HINT],
+      [
+        'a single in a unit with extra fields, which it leaves behind',
+        { ...NEWER_HINT, unit: { kind: 'box', index: 4, extra: true } },
+        NEWER_HINT,
+      ],
+      [
+        'a deduction by no known technique',
+        { kind: 'deduction', index: 40, technique: null },
+        { kind: 'deduction', index: 40, technique: null },
+      ],
+      [
+        'a deduction by a technique',
+        { ...DEDUCTION, index: 40, extra: true },
+        { ...DEDUCTION, index: 40 },
+      ],
+    ])('keeps a fill hint that is %s', (_name, fill, expected) => {
+      expect(loadHints([{ ...AT_40, fill }]).get(40)?.fill).toEqual(expected);
+    });
+
+    it('forgets a mistake hint about a value the cell no longer holds', () => {
+      const entry = loadHints([{ ...AT_3, mistake: 2 }]).get(3);
+      expect(entry).toEqual<RememberedHints>({ fill: DEDUCTION, mistake: null });
+    });
+
+    it.each<[string, GameAction[], SerialisedCellHints]>([
+      ['a mistake hint on an empty cell', [], { index: 5, fill: null, mistake: 0 }],
+      ['a mistake hint on a wrong digit it is not about', [], { index: 5, fill: null, mistake: 3 }],
+      ['a mistake hint on a right value', [place(2, 4)], { index: 2, fill: null, mistake: 4 }],
+      ['a mistake hint on a given', [], { index: 0, fill: null, mistake: 5 }],
+      ['a fill hint for a cell holding its solution digit', [place(40, 5)], { ...AT_40 }],
+    ])('forgets %s', (_name, actions, entry) => {
+      const base = serialiseGame(play(newGame(), ...actions));
+      expect(loadHints([entry], base).size).toBe(0);
+    });
+
+    it('raises the hints taken to cover every hint remembered', () => {
+      // Two fill hints and a mistake hint: and the wrong mark at cell 3 is
+      // then down to a hint, not a check.
+      const restored = deserialiseGame({ ...saved, assists: NO_ASSISTS });
+      expect(restored?.assists).toEqual({ ...NO_ASSISTS, hints: 3 });
+    });
+
+    it('keeps a hint count that already covers them', () => {
+      const assists: Assists = { ...NO_ASSISTS, hints: 9 };
+      expect(deserialiseGame({ ...saved, assists })?.assists).toEqual(assists);
+    });
   });
 
   describe('coerces what can be fixed without changing the board', () => {

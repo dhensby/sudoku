@@ -39,6 +39,11 @@ export interface BoardProps {
    * page.
    */
   takeFocusRequest?: () => boolean;
+  /**
+   * The id of text describing the selected cell: the hint it has had,
+   * which the hint bar shows again whenever the cell is selected (see App).
+   */
+  describedBy?: string;
 }
 
 const LINES = [0, 1, 2, 3, 4, 5, 6, 7, 8];
@@ -61,6 +66,7 @@ export function Board({
   onSelect,
   onToggleCandidate,
   takeFocusRequest,
+  describedBy,
 }: BoardProps) {
   const gridRef = useRef<HTMLDivElement>(null);
   const cellRefs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -139,6 +145,7 @@ export function Board({
                     ? (computed?.[index] ?? ALL_DIGITS)
                     : 0
                 }
+                describedBy={index === selected ? describedBy : undefined}
                 onSelect={onSelect}
                 onToggleCandidate={onToggleCandidate}
                 registerRef={registerRef}

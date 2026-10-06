@@ -508,6 +508,58 @@ describe('useSudoku', () => {
     });
   });
 
+  describe('hints remembered', () => {
+    it('show a cell’s hint again whenever it is selected, and ask nothing more for it', async () => {
+      const { result } = await started();
+      act(() => result.current.actions.hint());
+      const hint = result.current.game!.hint!;
+      const hinted = result.current.game!.selected;
+      expect(result.current.shownHint).toBe(hint);
+      expect(result.current.game?.assists.hints).toBe(1);
+
+      const elsewhere = EMPTIES.find((index) => index !== hinted)!;
+      act(() => result.current.actions.select(elsewhere));
+      expect(result.current.shownHint).toBeNull();
+      act(() => result.current.actions.select(hinted));
+      expect(result.current.game?.hint).toBeNull();
+      expect(result.current.shownHint).toEqual(hint);
+
+      // Asking again from elsewhere finds the same cell: shown, selected, free.
+      act(() => result.current.actions.select(elsewhere));
+      act(() => result.current.actions.hint());
+      expect(result.current.game?.selected).toBe(hinted);
+      expect(result.current.game?.assists.hints).toBe(1);
+    });
+
+    it('forget a hint once its cell holds its answer', async () => {
+      const { result } = await started();
+      act(() => result.current.actions.hint());
+      const hinted = result.current.game!.selected;
+      act(() => result.current.actions.enterDigit(answerAt(hinted) as Digit));
+      expect(result.current.shownHint).toBeNull();
+      expect(result.current.game?.cellHints.has(hinted)).toBe(false);
+    });
+
+    it('keep a cell’s hint, and what it cost, across a reload', async () => {
+      const storage = memoryStorage();
+      const first = await started({ storage });
+      act(() => first.result.current.actions.hint());
+      const hint = first.result.current.game!.hint!;
+      const hinted = first.result.current.game!.selected;
+      act(() => {
+        window.dispatchEvent(new Event('pagehide'));
+      });
+      first.unmount();
+
+      const { result } = setup({ storage, source: fakeSource() });
+      act(() => result.current.actions.resume());
+      act(() => result.current.actions.select(hinted));
+      expect(result.current.shownHint).toEqual(hint);
+      act(() => result.current.actions.hint());
+      expect(result.current.game?.assists.hints).toBe(1);
+    });
+  });
+
   describe('saving', () => {
     it('saves moves after a quiet moment rather than on every keystroke', async () => {
       const { result, storage } = await started();

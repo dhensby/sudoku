@@ -118,6 +118,13 @@ describe('Cell', () => {
     expect(props.onToggleCandidate).toHaveBeenCalledWith(40, 3);
   });
 
+  it('is described by the text it is pointed at: the hint it has had', () => {
+    render(<p id="hint">Look here — a hidden pair will unlock this cell.</p>);
+    const { cell } = renderCell({ describedBy: 'hint' });
+    expect(cell).toHaveAccessibleDescription('Look here — a hidden pair will unlock this cell.');
+    expect(cell).toHaveAccessibleName('empty');
+  });
+
   it('selects when focus reaches it some other way', () => {
     const { props, cell } = renderCell({ highlight: 'none' });
     fireEvent.focus(cell);

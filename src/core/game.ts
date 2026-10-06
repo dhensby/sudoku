@@ -10,7 +10,18 @@ import {
   gridValues,
   isGridString,
 } from './grid';
-import type { Assists, Difficulty, Digit, GridString, Hint, Puzzle } from './types';
+import { TECHNIQUE_ORDER } from './grader';
+import type {
+  Assists,
+  Difficulty,
+  Digit,
+  GridString,
+  Hint,
+  Puzzle,
+  SingleTechniqueId,
+  TechniqueId,
+  Unit,
+} from './types';
 
 /*
  * The game itself: a pure reducer over everything that can happen to a board
@@ -31,6 +42,10 @@ import type { Assists, Difficulty, Digit, GridString, Hint, Puzzle } from './typ
  * memoised cell component can skip re-rendering. Undo entries hold the
  * replaced objects themselves, so undoing puts back the very same objects
  * (unless a Check has judged one since — see `replay`).
+ *
+ * Every hint about a cell is remembered with the cell (see
+ * `RememberedHints`): selecting the cell again shows it again, and asking
+ * for it again costs nothing, until the cell no longer needs it.
  */
 
 /** How a digit key is read: as a value to place, or as a candidate to toggle. */
@@ -53,6 +68,33 @@ export interface CellState {
   autoRemoved: number;
   /** Result of Check / Reveal. 'correct' and 'revealed' lock the cell. Reset to 'none' whenever the value changes. */
   mark: CellMark;
+}
+
+/** A hint about filling a cell: a single, or the deduction that leads to one. */
+export type FillHint = Extract<Hint, { kind: 'single' | 'deduction' }>;
+
+/** A hint that a placed value is wrong. */
+export type MistakeHint = Extract<Hint, { kind: 'mistake' }>;
+
+/**
+ * What the game remembers of the hints one cell has had, so that selecting
+ * the cell shows them again rather than the player having to ask — and be
+ * counted — again. At most one is on show at a time: the mistake hint needs
+ * a value in the cell, the fill hint an empty cell (see `rememberedHint`).
+ */
+export interface RememberedHints {
+  /**
+   * The newest single or deduction hint for the cell. On show while the cell
+   * is empty — it says nothing about a value there — and forgotten once the
+   * cell holds its solution digit.
+   */
+  fill: FillHint | null;
+  /**
+   * The newest mistake hint for the cell, with the value it was about. On
+   * show while the cell holds that value, and forgotten the moment it holds
+   * any other.
+   */
+  mistake: { hint: MistakeHint; value: number } | null;
 }
 
 export interface UndoEntry {
@@ -83,8 +125,15 @@ export interface GameState {
   redoStack: readonly UndoEntry[];
   /** Help taken during this game. Never reduced, not even by Reset. */
   assists: Assists;
-  /** The hint on show, until the next change of any kind. */
+  /** The hint just asked for, until the next change of any kind. */
   hint: Hint | null;
+  /**
+   * The hints remembered for each cell that has had one, by cell. A Reset
+   * forgets them all, and Undo and Redo never bring back one that has been
+   * forgotten: a hint is about the board as it was when it was given, and
+   * replaying moves is not asking again.
+   */
+  cellHints: ReadonlyMap<number, RememberedHints>;
 }
 
 export interface NewGameOptions {
@@ -128,6 +177,11 @@ type EnterAction = Extract<GameAction, { type: 'enter' }>;
 type CellEdit = readonly [index: number, cell: CellState];
 
 const NO_ENTRIES: readonly UndoEntry[] = [];
+
+const NO_CELL_HINTS: ReadonlyMap<number, RememberedHints> = new Map();
+
+/** A cell that has had no hint. Frozen, as `EMPTY_CELL` is. */
+const NO_HINTS = Object.freeze<RememberedHints>({ fill: null, mistake: null });
 
 /**
  * The state of every untouched empty cell. Shared, and frozen so that a stray
@@ -173,6 +227,17 @@ const MARKS_BY_CODE: Readonly<Record<string, CellMark>> = {
 };
 
 const MARKS_PATTERN = /^[.wcr]{81}$/;
+
+const TECHNIQUES: readonly unknown[] = TECHNIQUE_ORDER;
+
+const SINGLE_TECHNIQUES: readonly unknown[] = [
+  'fullHouse',
+  'hiddenSingleBox',
+  'hiddenSingleLine',
+  'nakedSingle',
+] satisfies SingleTechniqueId[];
+
+const UNIT_KINDS: readonly unknown[] = ['row', 'column', 'box'] satisfies Unit['kind'][];
 
 function isCellIndex(index: unknown): index is number {
   return Number.isInteger(index) && (index as number) >= 0 && (index as number) < 81;
@@ -228,6 +293,50 @@ function computedCandidates(cells: readonly CellState[], index: number): number 
 
 function withAutoCandidates(assists: Assists): Assists {
   return assists.autoCandidates ? assists : { ...assists, autoCandidates: true };
+}
+
+function withHint(assists: Assists): Assists {
+  return { ...assists, hints: assists.hints + 1 };
+}
+
+/**
+ * `cellHints` with a cell's entry replaced (or, for null, removed). An entry
+ * that is already there as it is keeps the map's identity.
+ */
+function setCellHints(
+  cellHints: ReadonlyMap<number, RememberedHints>,
+  index: number,
+  entry: RememberedHints | null,
+): ReadonlyMap<number, RememberedHints> {
+  if ((cellHints.get(index) ?? null) === entry) return cellHints;
+  const next = new Map(cellHints);
+  if (entry === null) next.delete(index);
+  else next.set(index, entry);
+  return next;
+}
+
+/**
+ * What is still worth remembering of a cell's hints now that it holds
+ * `value`: the fill hint until the cell holds its solution digit, and the
+ * mistake hint while it holds the value it was about. The entry itself when
+ * nothing has gone; null when everything has.
+ */
+function liveHints(entry: RememberedHints, value: number, answer: number): RememberedHints | null {
+  const fill = value === answer ? null : entry.fill;
+  const mistake = entry.mistake?.value === value ? entry.mistake : null;
+  if (fill === null && mistake === null) return null;
+  const isUnchanged = fill === entry.fill && mistake === entry.mistake;
+  return isUnchanged ? entry : { fill, mistake };
+}
+
+/** Forget the remembered hints the cells no longer need (see `liveHints`), after their values change. */
+function forgetSpentHints(state: GameState): GameState {
+  let cellHints = state.cellHints;
+  for (const [index, entry] of state.cellHints) {
+    const live = liveHints(entry, state.cells[index].value, solutionDigit(state.puzzle, index));
+    cellHints = setCellHints(cellHints, index, live);
+  }
+  return cellHints === state.cellHints ? state : { ...state, cellHints };
 }
 
 /**
@@ -446,19 +555,30 @@ function showHint(state: GameState, hint: Hint): GameState {
   // "The puzzle is complete" is shown, but it is not help — and showing it
   // again while it is on show changes nothing.
   if (hint.kind === 'none') return state.hint?.kind === 'none' ? state : { ...state, hint };
-  const index = isCellIndex(hint.index) ? hint.index : null;
+  // Off the grid there is no cell to point at or remember it by, but it was asked for.
+  if (!isCellIndex(hint.index)) return { ...state, hint, assists: withHint(state.assists) };
+  const { index } = hint;
+  const cell = state.cells[index];
+  const entry = state.cellHints.get(index) ?? NO_HINTS;
+  // A hint the cell has had already is shown again for free; only a new one
+  // counts. A remembered mistake hint is always about the value the cell
+  // holds now (it is forgotten when that changes), so another is no news.
+  const isNew = hint.kind === 'mistake' ? entry.mistake === null : entry.fill === null;
+  let remembered = entry;
+  if (hint.kind !== 'mistake') remembered = { ...entry, fill: hint };
+  else if (isMistake(state, index)) remembered = { ...entry, mistake: { hint, value: cell.value } };
+  const live = liveHints(remembered, cell.value, solutionDigit(state.puzzle, index));
   const next: GameState = {
     ...state,
     hint,
-    selected: index ?? state.selected,
-    assists: { ...state.assists, hints: state.assists.hints + 1 },
+    selected: index,
+    cellHints: setCellHints(state.cellHints, index, live),
+    assists: isNew ? withHint(state.assists) : state.assists,
   };
   // A mistake is marked as Check would mark it — NYT's slash — so the clue
   // outlives the hint bar, which goes with the next key press. Like a check's
   // verdict it is not undoable, and it goes when the value does.
-  if (hint.kind !== 'mistake' || index === null || !isMistake(state, index)) return next;
-  const cell = state.cells[index];
-  if (cell.mark === 'wrong') return next;
+  if (hint.kind !== 'mistake' || !isMistake(state, index) || cell.mark === 'wrong') return next;
   const cells = state.cells.slice();
   cells[index] = { ...cell, mark: 'wrong' };
   return { ...next, cells };
@@ -520,12 +640,21 @@ function reset(state: GameState): GameState {
     selected === state.selected &&
     state.undoStack.length === 0 &&
     state.redoStack.length === 0 &&
-    state.hint === null
+    state.hint === null &&
+    state.cellHints.size === 0
   ) {
     return state;
   }
-  // Assists and the auto-candidate flag stay: help already taken stays on the record.
-  return { ...state, cells: board, selected, undoStack: NO_ENTRIES, redoStack: NO_ENTRIES };
+  // Assists and the auto-candidate flag stay: help already taken stays on
+  // the record. The remembered hints go with the board they were about.
+  return {
+    ...state,
+    cells: board,
+    selected,
+    undoStack: NO_ENTRIES,
+    redoStack: NO_ENTRIES,
+    cellHints: NO_CELL_HINTS,
+  };
 }
 
 function step(state: GameState, action: GameAction): GameState {
@@ -579,6 +708,7 @@ export function createGame(puzzle: Puzzle, options: NewGameOptions = {}): GameSt
     redoStack: NO_ENTRIES,
     assists: { autoCandidates, hints: 0, checks: 0, reveals: 0 },
     hint: null,
+    cellHints: NO_CELL_HINTS,
   };
 }
 
@@ -592,9 +722,11 @@ export function createGame(puzzle: Puzzle, options: NewGameOptions = {}): GameSt
  */
 export function reduce(state: GameState, action: GameAction): GameState {
   if (state.status === 'solved' && !ALLOWED_WHEN_SOLVED.has(action.type)) return state;
-  const next = step(state, action);
+  let next = step(state, action);
+  if (next === state) return next;
+  if (next.cells !== state.cells) next = forgetSpentHints(next);
   // A hint describes the board it was asked about, so any change retires it.
-  if (next === state || next.hint === null || action.type === 'hint') return next;
+  if (next.hint === null || action.type === 'hint') return next;
   return { ...next, hint: null };
 }
 
@@ -636,14 +768,43 @@ export function isBoardFull(state: GameState): boolean {
   return state.cells.every((cell) => cell.value !== 0);
 }
 
+/**
+ * The remembered hint on show for a cell, which the hint bar shows whenever
+ * the cell is selected: its mistake hint while it holds the value that was
+ * wrong, or its fill hint while it is empty. Null when it has neither.
+ */
+export function rememberedHint(state: GameState, index: number): Hint | null {
+  const entry = state.cellHints.get(index);
+  if (entry === undefined) return null;
+  return state.cells[index].value === 0 ? entry.fill : (entry.mistake?.hint ?? null);
+}
+
+/**
+ * The hint for the hint bar: the one just asked for, until the next change,
+ * and otherwise the selected cell's remembered hint.
+ */
+export function shownHint(state: GameState): Hint | null {
+  return state.hint ?? rememberedHint(state, state.selected);
+}
+
 /** Whether a cell can be edited: not a given, not locked by a check/reveal, game not solved. */
 export function isEditable(state: GameState, index: number): boolean {
   return isCellIndex(index) && state.status === 'playing' && canEdit(state.cells[index]);
 }
 
+/** One cell's remembered hints, as stored. */
+export interface SerialisedCellHints {
+  /** The cell, 0–80. */
+  index: number;
+  /** Its fill hint, or null. */
+  fill: FillHint | null;
+  /** The value its mistake hint was about; 0 when it has none. */
+  mistake: number;
+}
+
 /**
  * A game as plain JSON for storage. No undo history is kept (NYT doesn't keep
- * it either) and neither is the input mode or the hint on show.
+ * it either) and neither is the input mode or the hint just asked for.
  */
 export interface SerialisedGame {
   /** Format version; anything else is rejected on load. */
@@ -664,8 +825,14 @@ export interface SerialisedGame {
   autoCandidates: boolean;
   /** Informational only: ignored on load and worked out again from the values. */
   status: 'playing' | 'solved';
-  /** Help taken; on load, raised to cover any help the board shows (reveals, checks, auto mode). */
+  /** Help taken; on load, raised to cover any help the board shows (reveals, checks, auto mode, hints). */
   assists: Assists;
+  /**
+   * The hints remembered per cell. Absent from saves made before hints were
+   * remembered, which load with none — still version 1, so either version of
+   * the game can read the other's saves.
+   */
+  cellHints?: SerialisedCellHints[];
 }
 
 /** The game as plain, JSON-safe data. */
@@ -682,6 +849,11 @@ export function serialiseGame(state: GameState): SerialisedGame {
     autoCandidates: state.autoCandidates,
     status: state.status,
     assists: { ...state.assists },
+    cellHints: [...state.cellHints].map(([index, entry]) => ({
+      index,
+      fill: entry.fill,
+      mistake: entry.mistake?.value ?? 0,
+    })),
   };
 }
 
@@ -718,6 +890,65 @@ function readPuzzle(data: unknown): Puzzle | null {
   return { givens, solution, difficulty };
 }
 
+function isTechnique(value: unknown): value is TechniqueId {
+  return TECHNIQUES.includes(value);
+}
+
+function isSingleTechnique(value: unknown): value is SingleTechniqueId {
+  return SINGLE_TECHNIQUES.includes(value);
+}
+
+function readUnit(data: unknown): Unit | null {
+  if (!isRecord(data)) return null;
+  const { kind, index } = data;
+  if (!UNIT_KINDS.includes(kind) || !Number.isInteger(index)) return null;
+  if ((index as number) < 0 || (index as number) > 8) return null;
+  return { kind: kind as Unit['kind'], index: index as number };
+}
+
+/** A stored fill hint for cell `index`, rebuilt from its parts; null if it is not one. */
+function readFillHint(data: unknown, index: number): FillHint | null {
+  if (!isRecord(data) || data.index !== index) return null;
+  const { kind, technique, unit } = data;
+  if (kind === 'deduction' && (technique === null || isTechnique(technique))) {
+    return { kind, index, technique };
+  }
+  if (kind !== 'single' || !isSingleTechnique(technique)) return null;
+  const house = readUnit(unit);
+  return unit === null || house !== null ? { kind, index, technique, unit: house } : null;
+}
+
+/**
+ * The remembered hints, as far as they can be trusted. They decide nothing
+ * about the board, so anything doubtful is dropped rather than the game
+ * rejected — which costs only the chance to see that hint again for free.
+ * A mistake hint is kept only for a cell that still holds that value, and it
+ * wrong; and nothing is kept that the cell no longer needs (see `liveHints`).
+ */
+function readCellHints(
+  data: unknown,
+  cells: readonly CellState[],
+  puzzle: Puzzle,
+): ReadonlyMap<number, RememberedHints> {
+  if (!Array.isArray(data)) return NO_CELL_HINTS;
+  let cellHints = NO_CELL_HINTS;
+  // `Array.from` turns holes into undefined, which is then skipped like any non-record.
+  for (const item of Array.from(data as unknown[])) {
+    if (!isRecord(item) || !isCellIndex(item.index) || cellHints.has(item.index)) continue;
+    const { index } = item;
+    const cell = cells[index];
+    const answer = solutionDigit(puzzle, index);
+    // A given or a locked cell holds its answer, so this is a value of the player's.
+    const isMistaken = item.mistake === cell.value && cell.value !== 0 && cell.value !== answer;
+    const entry: RememberedHints = {
+      fill: readFillHint(item.fill, index),
+      mistake: isMistaken ? { hint: { kind: 'mistake', index }, value: cell.value } : null,
+    };
+    cellHints = setCellHints(cellHints, index, liveHints(entry, cell.value, answer));
+  }
+  return cellHints;
+}
+
 function readAssists(data: unknown): Assists | null {
   if (!isRecord(data)) return null;
   const { autoCandidates, hints, checks, reveals } = data;
@@ -729,25 +960,31 @@ function readAssists(data: unknown): Assists | null {
 /**
  * Stored assists, raised to cover the help the board itself shows was taken —
  * help taken must never be lost, and a revealed game that loads as unassisted
- * could set a best time. Every revealed cell is a reveal; a cell checked
- * correct means at least one check, and so does one marked wrong unless a
- * hint accounts for it (a hint marks the mistake it points at the same way);
- * and auto mode on or any elimination (only ever recorded in auto mode) means
+ * could set a best time. Every revealed cell is a reveal; every remembered
+ * hint was counted once when it was first shown; a cell checked correct
+ * means at least one check, and so does one marked wrong unless a hint
+ * accounts for it (a hint marks the mistake it points at the same way); and
+ * auto mode on or any elimination (only ever recorded in auto mode) means
  * auto mode was used.
  */
 function reconcileAssists(
   assists: Assists,
   cells: readonly CellState[],
   autoCandidates: boolean,
+  cellHints: ReadonlyMap<number, RememberedHints>,
 ): Assists {
   const reveals = cells.filter((cell) => cell.mark === 'revealed').length;
+  let remembered = 0;
+  for (const { fill, mistake } of cellHints.values()) {
+    remembered += Number(fill !== null) + Number(mistake !== null);
+  }
+  const hints = Math.max(assists.hints, remembered);
   const isMarkedWrong = cells.some((cell) => cell.mark === 'wrong');
-  const isChecked =
-    cells.some((cell) => cell.mark === 'correct') || (isMarkedWrong && assists.hints === 0);
+  const isChecked = cells.some((cell) => cell.mark === 'correct') || (isMarkedWrong && hints === 0);
   const isAutoUsed = autoCandidates || cells.some((cell) => cell.autoRemoved !== 0);
   return {
     autoCandidates: assists.autoCandidates || isAutoUsed,
-    hints: assists.hints,
+    hints,
     checks: Math.max(assists.checks, isChecked ? 1 : 0),
     reveals: Math.max(assists.reveals, reveals),
   };
@@ -776,7 +1013,9 @@ function readMark(code: string, value: number, answer: number): CellMark {
  * coerced instead: an out-of-range `selected` becomes the first empty cell, a
  * non-boolean `autoCandidates` is off, `status` is re-derived from the values,
  * marks a check could never have produced become 'none', notes on givens are
- * dropped, and the assists are raised to cover any help the board shows.
+ * dropped, remembered hints that cannot be trusted are forgotten (see
+ * `readCellHints`), and the assists are raised to cover any help the board
+ * shows.
  */
 export function deserialiseGame(data: unknown): GameState | null {
   if (!isRecord(data) || data.v !== 1) return null;
@@ -801,6 +1040,7 @@ export function deserialiseGame(data: unknown): GameState | null {
   }
 
   const autoCandidates = data.autoCandidates === true;
+  const cellHints = readCellHints(data.cellHints, cells, puzzle);
   return {
     puzzle,
     cells,
@@ -810,7 +1050,8 @@ export function deserialiseGame(data: unknown): GameState | null {
     status: statusOf(cells, puzzle),
     undoStack: NO_ENTRIES,
     redoStack: NO_ENTRIES,
-    assists: reconcileAssists(assists, cells, autoCandidates),
+    assists: reconcileAssists(assists, cells, autoCandidates, cellHints),
     hint: null,
+    cellHints,
   };
 }
