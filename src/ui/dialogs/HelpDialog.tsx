@@ -135,6 +135,11 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
               Erase clears a number first; pressing it again clears your own candidates (in Auto
               Candidate Mode it leaves the candidates alone).
             </li>
+            <li>
+              <strong>Check</strong> and <strong>Reveal</strong>, in the “…” menu, mark your
+              numbers: a wrong one is struck through with a red slash, a right one gets a small tick
+              in its corner, and a revealed one is written in italics. Each counts as an assist.
+            </li>
           </ul>
         </section>
 

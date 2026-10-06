@@ -1,184 +1,69 @@
+import { THEME_COLOUR } from '../ui/theme';
+import {
+  DARK,
+  DARK_FORCED,
+  FORCED,
+  LIGHT,
+  contrast,
+  parseHex,
+  readStyles,
+  rule,
+} from '../test/css';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /*
  * The stylesheets' own promises, checked from their source: jsdom applies no
- * CSS, so the contrast of the palette and a handful of rules that fixed real
- * defects are held here instead. Layout (what fits, what scrolls) needs a
- * real browser and is the end-to-end suite's job.
+ * CSS, so the palette's structure and a handful of rules that fixed real
+ * defects are held here instead (the palette's contrast, pair by pair, is
+ * contrast.test.ts). Layout (what fits, what scrolls) needs a real browser
+ * and is the end-to-end suite's job.
  */
 
-// A path rather than `new URL(name, import.meta.url)`, which Vite rewrites
-// as an asset import.
-const HERE = dirname(fileURLToPath(import.meta.url));
-const read = (name: string) =>
-  readFileSync(join(HERE, name), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+const BOARD = readStyles('board.css');
+const CONTROLS = readStyles('controls.css');
+const DIALOGS = readStyles('dialogs.css');
+const LAYOUT = readStyles('layout.css');
 
-const INDEX = read('index.css');
-const BOARD = read('board.css');
-const CONTROLS = read('controls.css');
-const DIALOGS = read('dialogs.css');
-const LAYOUT = read('layout.css');
-
-// ---- Tokens ----
-
-type Tokens = Record<string, string>;
-
-/** The custom properties declared in the first block that opens with `opener`. */
-function tokensOf(css: string, opener: string): Tokens {
-  const start = css.indexOf(opener);
-  if (start === -1) throw new Error(`no block opening with ${opener}`);
-  const body = css.slice(start + opener.length, css.indexOf('}', start));
-  return Object.fromEntries(
-    [...body.matchAll(/--([\w-]+):\s*([^;]+);/g)].map(([, name, value]) => [name, value.trim()]),
-  );
-}
-
-const LIGHT = tokensOf(INDEX, ':root {');
-const DARK = tokensOf(INDEX, ":root:not([data-theme='light']) {");
-const DARK_FORCED = tokensOf(INDEX, ":root[data-theme='dark'] {");
-const FORCED = tokensOf(INDEX, ':root:root {');
-const THEMES = { light: LIGHT, dark: DARK } as const;
-
-// ---- Colour arithmetic (sRGB, WCAG 2 relative luminance) ----
-
-type Rgba = [number, number, number, number];
-
-function parse(value: string): Rgba {
-  const hex = /^#([0-9a-f]{6})$/i.exec(value);
-  if (hex) {
-    const n = parseInt(hex[1], 16);
-    return [n >> 16, (n >> 8) & 255, n & 255, 1];
-  }
-  const rgba = /^rgba?\(([^)]+)\)$/.exec(value);
-  if (rgba) {
-    const [r, g, b, a = 1] = rgba[1].split(',').map(Number);
-    return [r, g, b, a];
-  }
-  throw new Error(`not a colour: ${value}`);
-}
-
-/** `top` laid over the opaque `bottom`, as a tint over a cell. */
-function over(top: Rgba, bottom: Rgba): Rgba {
-  const a = top[3];
-  return [0, 1, 2].map((i) => top[i] * a + bottom[i] * (1 - a)).concat(1) as Rgba;
-}
-
-function luminance([r, g, b]: Rgba): number {
-  const channel = (v: number) => {
-    const c = v / 255;
-    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-  };
-  return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
-}
-
-function contrast(a: Rgba, b: Rgba): number {
-  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
-  return (hi + 0.05) / (lo + 0.05);
-}
-
-/** A theme's colours, with each highlight tint laid over a plain cell and a given. */
-function palette(tokens: Tokens) {
-  const colour = (name: string) => parse(tokens[name]);
-  const cell = colour('cell-bg');
-  const given = colour('cell-given-bg');
-  const tints = { none: null, peer: 'hl-peer', same: 'hl-same', selected: 'hl-selected' };
-  const fills = Object.fromEntries(
-    Object.entries(tints).map(([name, tint]) => [
-      name,
-      tint === null
-        ? { cell, given }
-        : { cell: over(colour(tint), cell), given: over(colour(tint), given) },
-    ]),
-  ) as Record<keyof typeof tints, { cell: Rgba; given: Rgba }>;
-  return { colour, fills };
-}
-
-// ---- Rules ----
-
-/** Every declaration block whose selector list includes `selector`, joined. */
-function rule(css: string, selector: string): string {
-  const blocks = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter(([, selectors]) =>
-    selectors.split(',').some((s) => s.trim() === selector),
-  );
-  if (blocks.length === 0) throw new Error(`no rule for ${selector}`);
-  return blocks.map(([, , body]) => body).join(';');
-}
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 describe('the palette', () => {
-  describe.each(Object.entries(THEMES))('%s', (_, tokens) => {
-    const { colour, fills } = palette(tokens);
-
-    it.each(['none', 'peer', 'same', 'selected'] as const)(
-      'keeps every digit at 4.5:1 on a %s cell',
-      (tint) => {
-        const selected = tint === 'selected';
-        const { cell, given } = fills[tint];
-        expect(contrast(colour('digit-given'), given)).toBeGreaterThanOrEqual(4.5);
-        for (const kind of ['player', 'correct', 'revealed']) {
-          const ink = colour(selected ? `digit-${kind}-selected` : `digit-${kind}`);
-          expect(contrast(ink, cell), kind).toBeGreaterThanOrEqual(4.5);
-        }
-        // Candidates darken to the text colour in the selected cell.
-        expect(contrast(colour(selected ? 'text' : 'candidate'), cell)).toBeGreaterThanOrEqual(4.5);
-      },
+  it.each([
+    ['light', LIGHT],
+    ['dark', DARK],
+  ] as const)('gives each %s key state a shade of its own, pressed past hover', (_, tokens) => {
+    const [rest, hover, pressed] = ['key-bg', 'key-bg-active', 'key-bg-pressed'].map((name) =>
+      parseHex(tokens[name]),
     );
-
-    it('sets the selected cell 1.5:1 apart from a same-number cell, given or not', () => {
-      const { selected, same } = fills;
-      for (const a of [selected.cell, selected.given]) {
-        for (const b of [same.cell, same.given]) {
-          expect(contrast(a, b)).toBeGreaterThanOrEqual(1.5);
-        }
-      }
-    });
-
-    it('draws the selection ring at 3:1 against every neighbour', () => {
-      const ring = colour('hl-ring');
-      for (const tint of ['none', 'peer', 'same'] as const) {
-        expect(contrast(ring, fills[tint].cell), tint).toBeGreaterThanOrEqual(3);
-        expect(contrast(ring, fills[tint].given), `${tint} given`).toBeGreaterThanOrEqual(3);
-      }
-    });
-
-    it('keeps the red of a conflict or a wrong answer at 3:1 against its halo', () => {
-      expect(contrast(colour('danger'), colour('cell-bg'))).toBeGreaterThanOrEqual(3);
-    });
-
-    it('keeps a done pad digit at 4.5:1 on its key', () => {
-      expect(contrast(colour('text-muted'), colour('key-bg'))).toBeGreaterThanOrEqual(4.5);
-    });
-
-    it('keeps an off switch at 3:1: its track on the page, its knob on the track', () => {
-      expect(contrast(colour('text-muted'), colour('bg'))).toBeGreaterThanOrEqual(3);
-      expect(contrast(colour('bg'), colour('text-muted'))).toBeGreaterThanOrEqual(3);
-    });
-
-    it('gives each pressed key a shade of its own, past the hover one', () => {
-      const [rest, hover, pressed] = ['key-bg', 'key-bg-active', 'key-bg-pressed'].map(colour);
-      expect(contrast(pressed, hover)).toBeGreaterThan(1.1);
-      expect(contrast(pressed, rest)).toBeGreaterThan(contrast(hover, rest));
-    });
-
-    it('reads neutral button labels at 4.5:1', () => {
-      expect(contrast(colour('text'), colour('button-bg'))).toBeGreaterThanOrEqual(4.5);
-    });
-  });
-
-  it('lifts neutral buttons off a dark raised sheet, where the pad grey vanishes', () => {
-    const { colour } = palette(DARK);
-    expect(contrast(colour('key-bg'), colour('surface-raised'))).toBeLessThan(1.1);
-    expect(contrast(colour('button-bg'), colour('surface-raised'))).toBeGreaterThanOrEqual(1.3);
+    expect(contrast(pressed, hover)).toBeGreaterThan(1.1);
+    expect(contrast(pressed, rest)).toBeGreaterThan(contrast(hover, rest));
   });
 
   it('keeps the system dark palette and the forced dark one identical', () => {
     expect(DARK_FORCED).toEqual(DARK);
   });
 
+  it('defines every token in both themes', () => {
+    // Fonts and the radius belong to no theme; every colour must be in both.
+    const colours = Object.keys(LIGHT).filter((name) => !/^(font|radius)/.test(name));
+    expect(Object.keys(DARK).sort()).toEqual(colours.sort());
+  });
+
   it('maps every colour token to a system colour in forced-colours mode', () => {
-    const colours = Object.keys(LIGHT).filter((name) => !['radius', 'font'].includes(name));
+    const colours = Object.keys(LIGHT).filter((name) => !/^(font|radius)/.test(name));
     expect(Object.keys(FORCED).sort()).toEqual(colours.sort());
+  });
+
+  it('paints the browser chrome in the page colour, in the page, script and manifest', () => {
+    expect(THEME_COLOUR).toEqual({ light: LIGHT.bg, dark: DARK.bg });
+    const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
+    expect(html).toContain(`<meta name="theme-color" content="${LIGHT.bg}" />`);
+    const manifest = JSON.parse(
+      readFileSync(join(ROOT, 'public', 'manifest.webmanifest'), 'utf8'),
+    ) as Record<string, string>;
+    expect(manifest.theme_color).toBe(LIGHT.bg);
+    expect(manifest.background_color).toBe(LIGHT.bg);
   });
 });
 
@@ -194,13 +79,82 @@ describe('the board', () => {
     expect(rule(BOARD, '.cell--wrong::after')).toMatch(/linear-gradient\(\s*to bottom right/);
   });
 
-  it('edges the conflict dot and the slash in the cell colour', () => {
-    expect(rule(BOARD, '.cell__conflict')).toMatch(/box-shadow:[^;]*var\(--cell-bg\)/);
-    expect(rule(BOARD, '.cell--wrong::after')).toContain('var(--cell-bg)');
+  it('edges the conflict dot and the slash in the paper, or the selected block', () => {
+    // The edges keep the red clear of the digit it crosses, which a
+    // colour-blind player can see as the same shade.
+    expect(rule(BOARD, '.cell__conflict')).toMatch(/background:\s*var\(--mark\)/);
+    expect(rule(BOARD, '.cell__conflict')).toMatch(/box-shadow:[^;]*var\(--mark-halo\)/);
+    expect(rule(BOARD, '.cell--wrong::after')).toContain('var(--mark-halo)');
+    expect(rule(BOARD, '.cell')).toMatch(/--mark:\s*var\(--danger\)/);
+    expect(rule(BOARD, '.cell')).toMatch(/--mark-halo:\s*var\(--cell-bg\)/);
+    // On the block, plain red would fail 3:1: a light coral, edged in the block.
+    expect(rule(BOARD, '.cell--selected')).toMatch(/--mark:\s*var\(--danger-selected\)/);
+    expect(rule(BOARD, '.cell--selected')).toMatch(/--mark-halo:\s*var\(--hl-selected\)/);
+    expect(rule(BOARD, '.cell--selected.cell--given')).toMatch(
+      /--mark-halo:\s*var\(--hl-selected-given\)/,
+    );
+  });
+
+  it.each([
+    ['.cell--peer', 'hl-peer'],
+    ['.cell--given.cell--peer', 'hl-peer-given'],
+    ['.cell--same', 'hl-same'],
+    ['.cell--given.cell--same', 'hl-same-given'],
+    ['.cell--selected', 'hl-selected'],
+    ['.cell--selected.cell--given', 'hl-selected-given'],
+  ])('fills %s with its own opaque colour, --%s', (selector, token) => {
+    expect(rule(BOARD, selector)).toMatch(new RegExp(`background:\\s*var\\(--${token}\\)`));
+  });
+
+  it('knocks every ink on the selected block out to its -selected twin', () => {
+    expect(rule(BOARD, '.cell--selected')).toMatch(/color:\s*var\(--digit-player-selected\)/);
+    expect(rule(BOARD, '.cell--selected.cell--given')).toMatch(
+      /color:\s*var\(--digit-given-selected\)/,
+    );
+    expect(rule(BOARD, '.cell--selected .cell__candidates')).toMatch(
+      /color:\s*var\(--candidate-selected\)/,
+    );
+    // The hover ghosts too: the text colour at 40% all but vanishes on the block.
+    expect(rule(BOARD, '.cell--selected .cell__ghost')).toMatch(
+      /color:\s*var\(--candidate-selected\)/,
+    );
+  });
+
+  it('draws keyboard focus on the selected block in its own colour, inside the ring', () => {
+    expect(rule(BOARD, '.cell:focus-visible')).toMatch(/outline-offset:\s*-4px/);
+    expect(rule(BOARD, '.cell--selected:focus-visible')).toMatch(
+      /outline-color:\s*var\(--cell-focus\)/,
+    );
+  });
+
+  it('keeps the tick and the conflict dot on the selected block clear of its ring and focus line', () => {
+    // The ring and the line take the block's outer 4px; the dot's halo is
+    // 1.5px more. In a small cell the percentages alone fall inside that.
+    const dot = rule(BOARD, '.cell--selected .cell__conflict');
+    expect(dot).toMatch(/right:\s*max\(8%, 6px\)/);
+    expect(dot).toMatch(/bottom:\s*max\(8%, 6px\)/);
+    const tick = rule(BOARD, '.cell--selected .cell__tick');
+    expect(tick).toMatch(/top:\s*max\(12%, 6px\)/);
+    expect(tick).toMatch(/left:\s*max\(11%, 6px\)/);
+  });
+
+  it('tells givens, entries and revealed digits apart by more than colour', () => {
+    // Givens are typeset in the slab; entries in the grotesque; a revealed
+    // digit in its italic (and a correct one carries a tick, Cell.tsx).
+    expect(rule(BOARD, '.cell--given')).toMatch(/font-family:\s*var\(--font-digits\)/);
+    expect(rule(BOARD, '.cell')).toMatch(/font-family:\s*var\(--font\)/);
+    expect(rule(BOARD, '.cell--revealed')).toMatch(/font-style:\s*italic/);
   });
 });
 
 describe('the controls', () => {
+  it('rules every key round, so its shape holds 3:1 without its fill', () => {
+    expect(rule(CONTROLS, '.numpad__key')).toMatch(/border:\s*1px solid var\(--key-border\)/);
+    expect(rule(CONTROLS, '.mode-toggle')).toMatch(/inset 0 0 0 1px var\(--key-border\)/);
+    // Neutral buttons too: their fill is only a shade off the dialog.
+    expect(rule(DIALOGS, '.button')).toMatch(/border:\s*1px solid var\(--key-border\)/);
+  });
+
   it('marks a done pad digit without fading the whole key', () => {
     expect(rule(CONTROLS, '.numpad__key--done')).not.toMatch(/opacity/);
   });
@@ -240,6 +194,16 @@ describe('the controls', () => {
 });
 
 describe('the layout', () => {
+  it('frames the board more heavily than its box lines, each a pixel lighter on a small board', () => {
+    const app = rule(LAYOUT, '.app');
+    expect(app).toMatch(/--frame:\s*clamp\(3px,[^;]*4px\)/);
+    expect(app).toMatch(/--thick:\s*clamp\(2px,[^;]*3px\)/);
+  });
+
+  it('rules off the header in ink, as under a masthead', () => {
+    expect(LAYOUT).toMatch(/\.header\s*\{\s*border-bottom:\s*2px solid var\(--text\)/);
+  });
+
   it('sits a phone’s controls at the foot of a tall screen, but at the top beside the board', () => {
     // The first rule is the phone's; the later ones, the desktop's and a phone
     // on its side, put them back.

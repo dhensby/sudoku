@@ -73,6 +73,11 @@ updates:
       testing-library:
         applies-to: version-updates
         patterns: ['@testing-library/*']
+      # The two typefaces, bundled with the app: a release of either can
+      # shift the board's type, so they are checked together, by eye.
+      fonts:
+        applies-to: version-updates
+        patterns: ['@fontsource-variable/*']
 
       # Everything else, minor and patch only. Majors are deliberately left
       # ungrouped so a breaking change never rides along with routine bumps.

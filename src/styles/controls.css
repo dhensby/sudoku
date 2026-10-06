@@ -72,7 +72,11 @@
 }
 
 /* ==========================================================================
-   Keys: the shared look of the pad, Erase, Undo and Redo
+   Keys: the shared look of the pad, Erase, Undo, Redo and the "…" button
+
+   Paper boxes, each ruled round in --key-border, which holds 3:1 against
+   the page: the key's shape stands on its own, not on a fill that is only
+   a shade off the page.
    ========================================================================== */
 
 .numpad__key,
@@ -84,7 +88,7 @@
   min-width: 0;
   margin: 0;
   padding: 0;
-  border: 0;
+  border: 1px solid var(--key-border);
   border-radius: var(--radius);
   background: var(--key-bg);
   color: var(--text);
@@ -157,8 +161,10 @@
 }
 
 /* Never taller than the key: a large default font size grows the digit
-   only as far as the key has room for it. */
+   only as far as the key has room for it. In the player's face, as the
+   digits it writes are. */
 .numpad__key {
+  font-family: var(--font);
   font-size: min(1.5rem, calc(var(--key-height) * 0.56));
   font-weight: 500;
   line-height: 1;
@@ -303,7 +309,9 @@
    The track is the row's full height and each option fills half of it, so
    a 44px row gives two 44px targets. The pressed option's fill is drawn
    inside a transparent 3px border (background-clip), which keeps the inset
-   pill look without shrinking what a finger can hit.
+   look without shrinking what a finger can hit. The track is ruled like a
+   key, with an inset shadow rather than a border, which would take 2px
+   from the options' height.
    ========================================================================== */
 
 .mode-toggle {
@@ -311,16 +319,17 @@
   container-type: inline-size;
   grid-area: mode;
   display: flex;
-  border-radius: 999px;
+  border-radius: var(--radius);
   background: var(--key-bg);
+  box-shadow: inset 0 0 0 1px var(--key-border);
 }
 
 /*
  * The label is 0.875rem unless half the toggle is too narrow for
- * "Candidate" (about 4.8em wide, so 5.2em with room to spare) at that size —
+ * "Candidate" (about 4.9em wide, so 5.2em with room to spare) at that size —
  * a 320px phone, or a large default font size — when it steps down with the
  * toggle's width instead: half of it, less the 3px borders and padding.
- * Clipped with an ellipsis as a last resort, never spilling out of its pill.
+ * Clipped with an ellipsis as a last resort, never spilling out of its half.
  */
 .mode-toggle__option {
   flex: 1;
@@ -328,7 +337,7 @@
   overflow: hidden;
   padding: 0 3px;
   border: 3px solid transparent;
-  border-radius: 999px;
+  border-radius: var(--radius);
   background: transparent;
   background-clip: padding-box;
   color: var(--text-muted);
@@ -340,8 +349,8 @@
   user-select: none;
 }
 
-/* The latched mode is filled dark, as NYT does — and while Shift or Alt is
-   held, the mode it has flipped to. */
+/* The latched mode is filled with ink — and while Shift or Alt is held,
+   the mode it has flipped to. */
 .mode-toggle__option[aria-pressed='true'] {
   background-color: var(--text);
   color: var(--bg);
@@ -473,7 +482,6 @@
   width: 56px;
   max-width: 100%;
   height: min(40px, var(--row-height));
-  border-radius: 999px;
 }
 
 .more-button .icon {
@@ -534,7 +542,6 @@
   .more-button {
     width: 100%;
     height: auto;
-    border-radius: var(--radius);
   }
 }
 
@@ -546,7 +553,7 @@
   min-width: 200px;
   padding: 6px;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: calc(var(--radius) * 2);
   background: var(--surface-raised);
   box-shadow: var(--shadow);
 }
@@ -570,7 +577,7 @@
   color: var(--text-muted);
   font-size: 0.75rem;
   font-weight: 700;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
@@ -581,7 +588,7 @@
   min-height: 40px;
   padding: 0 12px 0 10px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: transparent;
   color: var(--text);
   font-size: 0.9375rem;
@@ -690,8 +697,10 @@
 /*
  * The time keeps a width that fits h:mm:ss, so the header does not shift as
  * the clock passes ten minutes or an hour, and what the header has room for
- * is decided once (layout.css). Tabular figures make every digit one width;
- * the time sits against the pause icon.
+ * is decided once (layout.css). Tabular figures make every digit one width,
+ * so the time holds still as it ticks — all but the colons, which keep their
+ * own narrower width (Schibsted Grotesk's tabular colon is a digit wide,
+ * opening a gap either side). The time sits against the pause icon.
  */
 .timer {
   display: inline-flex;
@@ -703,6 +712,7 @@
   border-radius: 999px;
   background: transparent;
   color: var(--text);
+  font-family: var(--font);
   font-size: 1.0625rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
@@ -710,8 +720,13 @@
 }
 
 .timer__time {
-  min-width: 5.9ch;
+  /* h:mm:ss, colons and all, in Schibsted Grotesk's tabular digits. */
+  min-width: 6.1ch;
   text-align: end;
+}
+
+.timer__colon {
+  font-variant-numeric: normal;
 }
 
 .timer__icon {
@@ -741,9 +756,11 @@
   cursor: default;
 }
 
+/* The final time is at rest: proportional figures, colons and all. */
 .timer--solved {
   padding: 0 8px;
   color: var(--success);
+  font-variant-numeric: normal;
 }
 
 @media (hover: hover) {
@@ -798,14 +815,9 @@
    ========================================================================== */
 
 @media (forced-colors: active) {
-  .numpad__key,
-  .control,
-  .more-button {
-    border: 1px solid ButtonText;
-  }
-
   /* The option's own transparent border draws the inset; in forced colours
-     it becomes the visible edge instead. */
+     it becomes the visible edge instead (the track's ruled edge is a
+     shadow, which this mode drops). */
   .mode-toggle__option {
     border-color: ButtonText;
   }

@@ -4,6 +4,13 @@
  * Components live in the files imported below, and use only these custom
  * properties for colour — so a palette is changed here, once, and the
  * forced-colours block can remap the whole app to system colours.
+ *
+ * The theme is Broadsheet: the puzzle page of a morning paper. Warm
+ * newsprint, true ink-black rules and one ultramarine spot colour by day;
+ * ink on charcoal, with a lamp-lit amber and a lit periwinkle, by night —
+ * drawn for the dark rather than inverted from the day. Every pair a player
+ * reads is held to a contrast target in contrast.test.ts, so a change here
+ * that weakens one fails a test rather than a player's eyes.
  */
 
 /* @import has to come before every other rule, or the browser drops it. */
@@ -18,63 +25,95 @@
   /* Lets native controls and scrollbars match the palette. */
   color-scheme: light;
 
-  --bg: #ffffff;
-  --surface: #f4f5f7;
-  --surface-raised: #ffffff;
-  --border: #d9dce1;
-  --text: #121212;
-  --text-muted: #5f6368;
-  --accent: #2f6fdf;
-  --accent-text: #ffffff;
+  /* Newsprint: the page, a darker sheet for panels, white paper on top. */
+  --bg: #f4eee2;
+  --surface: #ebe3d3;
+  --surface-raised: #fffcf5;
+  --border: #cbc1ad;
+  --text: #17150f;
+  --text-muted: #5a5348;
+  /* The one spot colour: links, primary buttons, focus, the selection. */
+  --accent: #1d3ba8;
+  --accent-text: #fffcf5;
 
-  /* Thin lines between cells; thick ones round each box and the board. */
-  --grid-thin: #b4b8bf;
-  --grid-thick: #121212;
+  /* Thin rules between cells (3:1 on paper); ink between boxes and round
+     the board. */
+  --grid-thin: #858072;
+  --grid-thick: #17150f;
 
-  /* Givens are told apart by their cell, as NYT does, not by their ink. */
-  --cell-bg: #ffffff;
-  --cell-given-bg: #eceef1;
-
-  /*
-   * Highlights are translucent tints laid over the cell's own background, so
-   * a highlighted given still reads as a given and any combination of
-   * highlights needs no colours of its own. The steps are far enough apart
-   * that the selected cell is at least 1.5:1 from a same-number cell — even
-   * a same-number given, whose grey makes its tint darker — and the selected
-   * cell also carries a ring (--hl-ring), so it never relies on fill alone.
-   */
-  --hl-peer: rgba(47, 111, 223, 0.08);
-  --hl-same: rgba(47, 111, 223, 0.17);
-  --hl-selected: rgba(47, 111, 223, 0.58);
-  --hl-ring: #1d4fb0;
+  /* Givens sit on a neutral screen of ink, set apart by their cell as well
+     as by their typeface. */
+  --cell-bg: #fffcf5;
+  --cell-given-bg: #e1e0db;
 
   /*
-   * Every ink holds 4.5:1 on every tint it can sit on. The selected tint is
-   * strong enough to need inks of its own: the same hues, deepened (or, in
-   * the dark theme, lifted), so a checked or revealed digit keeps its colour
-   * while it is selected.
+   * Highlights are opaque fills, each a clear step from the last: plain
+   * paper, then a warm manila for the selection's row, column and box, a
+   * cool periwinkle for the same number, and the selection itself printed
+   * as a solid ultramarine block. A given keeps its grey screen under each,
+   * so each fill has a given variant of its own (-given). The steps are
+   * steps of lightness as well as hue, so the order holds for colour-blind
+   * players too, and the block also carries a keyline ring (--hl-ring).
    */
-  --digit-given: #121212;
-  --digit-player: #1f56c4;
-  --digit-correct: #0e6e3e;
-  --digit-revealed: #6c46c8;
-  --digit-player-selected: #133580;
-  --digit-correct-selected: #08482a;
-  --digit-revealed-selected: #3f2186;
-  --candidate: #5f6368;
-  --danger: #e5383b;
-  --success: #12804a;
+  --hl-peer: #f0deb0;
+  --hl-same: #acb9e8;
+  --hl-selected: #1d3ba8;
+  --hl-peer-given: #dac389;
+  --hl-same-given: #94a1d3;
+  --hl-selected-given: #162e86;
+  --hl-ring: #17150f;
+  /* Keyboard focus on the selected cell: a paper line inside the ring. */
+  --cell-focus: #fffcf5;
 
-  /* Keys: at rest, under the pointer (--key-bg-active), and held down. */
-  --key-bg: #e8eaed;
-  --key-bg-active: #d6d9de;
-  --key-bg-pressed: #c3c7ce;
+  /*
+   * Inks. Givens are typeset in ink; the player's own digits are in a
+   * blue-black, and checked or revealed ones in green or plum (which also
+   * carry a tick or an italic, as the hues alone can merge for colour-blind
+   * players). On the selected block every ink knocks out to a pale -selected
+   * twin.
+   */
+  --digit-given: #17150f;
+  --digit-given-selected: #fffcf5;
+  --digit-player: #1a2566;
+  --digit-player-selected: #fffcf5;
+  --digit-correct: #11532a;
+  --digit-correct-selected: #a6ecbb;
+  --digit-revealed: #781d62;
+  --digit-revealed-selected: #fbc2ea;
+  --candidate: #47423a;
+  --candidate-selected: #f1ece0;
+  /* Conflicts and wrong answers; a light coral on the selected block. */
+  --danger: #920e0a;
+  --danger-selected: #ffa294;
+  --success: #11532a;
+
+  /*
+   * Keys are paper boxes, each ruled round with --key-border (3:1 against
+   * the page, so a key's shape stands on its own): at rest, under the
+   * pointer (--key-bg-active), and held down.
+   */
+  --key-bg: #fffcf5;
+  --key-bg-active: #ebe3d3;
+  --key-bg-pressed: #dcd2bd;
+  --key-border: #858072;
   /* Neutral buttons, which sit on raised surfaces (dialogs, cards). */
-  --button-bg: #e8eaed;
-  --shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+  --button-bg: #ebe3d3;
+  /* For dialogs and menus only: the board is printed flat. */
+  --shadow: 0 1px 2px rgba(23, 21, 15, 0.1), 0 12px 32px rgba(23, 21, 15, 0.16);
 
-  --radius: 6px;
-  --font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --radius: 3px;
+  /*
+   * Type, self-hosted (main.tsx imports the faces, so nothing is fetched
+   * from a font service). Schibsted Grotesk, a grotesque drawn for a news
+   * publisher, sets the interface and everything the player writes: their
+   * digits, candidates, the pad and the clock. Bitter, a sturdy slab, is
+   * the display face (the wordmark and titles) and sets the givens, as if
+   * typeset — so a given and an entry differ by typeface too.
+   */
+  --font:
+    'Schibsted Grotesk Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: 'Bitter Variable', Rockwell, Georgia, serif;
+  --font-digits: 'Bitter Variable', Rockwell, Georgia, serif;
 }
 
 /* ---- Tokens: dark ---- */
@@ -89,74 +128,90 @@
   :root:not([data-theme='light']) {
     color-scheme: dark;
 
-    --bg: #121212;
-    --surface: #1d1e21;
-    --surface-raised: #26282c;
-    --border: #3a3d42;
-    --text: #f1f1f1;
-    --text-muted: #a6abb3;
-    --accent: #6ea8fe;
-    --accent-text: #0b1220;
-    --grid-thin: #4a4e55;
-    --grid-thick: #e6e6e6;
-    --cell-bg: #161719;
-    --cell-given-bg: #2a2c30;
-    --hl-peer: rgba(110, 168, 254, 0.12);
-    --hl-same: rgba(110, 168, 254, 0.2);
-    --hl-selected: rgba(110, 168, 254, 0.5);
-    --hl-ring: #a9cbff;
-    --digit-given: #f1f1f1;
-    --digit-player: #8cb8ff;
-    --digit-correct: #5fd39a;
-    --digit-revealed: #c4a8ff;
-    --digit-player-selected: #d6e5ff;
-    --digit-correct-selected: #a6f0c8;
-    --digit-revealed-selected: #e4d6ff;
-    --candidate: #a6abb3;
-    --danger: #ff6b6e;
-    --success: #5fd39a;
-    --key-bg: #2c2f34;
-    --key-bg-active: #3a3e45;
-    --key-bg-pressed: #4a4f58;
-    --button-bg: #3a3e45;
-    --shadow: 0 8px 28px rgba(0, 0, 0, 0.6);
+    --bg: #1a1916;
+    --surface: #22201c;
+    --surface-raised: #2b2924;
+    --border: #48443c;
+    --text: #f3eee4;
+    --text-muted: #b6ae9f;
+    --accent: #93a5ff;
+    --accent-text: #13120f;
+    --grid-thin: #6e695f;
+    --grid-thick: #c4bdb0;
+    --cell-bg: #131210;
+    --cell-given-bg: #2a2826;
+    --hl-peer: #352910;
+    --hl-same: #313f7b;
+    --hl-selected: #93a5ff;
+    --hl-peer-given: #4a3915;
+    --hl-same-given: #3e4e8c;
+    --hl-selected-given: #a9b8ff;
+    --hl-ring: #f3eee4;
+    --cell-focus: #13120f;
+    --digit-given: #fcf6ec;
+    --digit-given-selected: #13120f;
+    --digit-player: #d7dfff;
+    --digit-player-selected: #13120f;
+    --digit-correct: #7fdb9b;
+    --digit-correct-selected: #0b3d1d;
+    --digit-revealed: #f2a9dd;
+    --digit-revealed-selected: #541043;
+    --candidate: #c9c1b1;
+    --candidate-selected: #26231e;
+    --danger: #ff988a;
+    --danger-selected: #8a1209;
+    --success: #7fdb9b;
+    --key-bg: #2b2924;
+    --key-bg-active: #37342e;
+    --key-bg-pressed: #46423a;
+    --key-border: #7f786c;
+    --button-bg: #3a3731;
+    --shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
   }
 }
 
 :root[data-theme='dark'] {
   color-scheme: dark;
 
-  --bg: #121212;
-  --surface: #1d1e21;
-  --surface-raised: #26282c;
-  --border: #3a3d42;
-  --text: #f1f1f1;
-  --text-muted: #a6abb3;
-  --accent: #6ea8fe;
-  --accent-text: #0b1220;
-  --grid-thin: #4a4e55;
-  --grid-thick: #e6e6e6;
-  --cell-bg: #161719;
-  --cell-given-bg: #2a2c30;
-  --hl-peer: rgba(110, 168, 254, 0.12);
-  --hl-same: rgba(110, 168, 254, 0.2);
-  --hl-selected: rgba(110, 168, 254, 0.5);
-  --hl-ring: #a9cbff;
-  --digit-given: #f1f1f1;
-  --digit-player: #8cb8ff;
-  --digit-correct: #5fd39a;
-  --digit-revealed: #c4a8ff;
-  --digit-player-selected: #d6e5ff;
-  --digit-correct-selected: #a6f0c8;
-  --digit-revealed-selected: #e4d6ff;
-  --candidate: #a6abb3;
-  --danger: #ff6b6e;
-  --success: #5fd39a;
-  --key-bg: #2c2f34;
-  --key-bg-active: #3a3e45;
-  --key-bg-pressed: #4a4f58;
-  --button-bg: #3a3e45;
-  --shadow: 0 8px 28px rgba(0, 0, 0, 0.6);
+  --bg: #1a1916;
+  --surface: #22201c;
+  --surface-raised: #2b2924;
+  --border: #48443c;
+  --text: #f3eee4;
+  --text-muted: #b6ae9f;
+  --accent: #93a5ff;
+  --accent-text: #13120f;
+  --grid-thin: #6e695f;
+  --grid-thick: #c4bdb0;
+  --cell-bg: #131210;
+  --cell-given-bg: #2a2826;
+  --hl-peer: #352910;
+  --hl-same: #313f7b;
+  --hl-selected: #93a5ff;
+  --hl-peer-given: #4a3915;
+  --hl-same-given: #3e4e8c;
+  --hl-selected-given: #a9b8ff;
+  --hl-ring: #f3eee4;
+  --cell-focus: #13120f;
+  --digit-given: #fcf6ec;
+  --digit-given-selected: #13120f;
+  --digit-player: #d7dfff;
+  --digit-player-selected: #13120f;
+  --digit-correct: #7fdb9b;
+  --digit-correct-selected: #0b3d1d;
+  --digit-revealed: #f2a9dd;
+  --digit-revealed-selected: #541043;
+  --candidate: #c9c1b1;
+  --candidate-selected: #26231e;
+  --danger: #ff988a;
+  --danger-selected: #8a1209;
+  --success: #7fdb9b;
+  --key-bg: #2b2924;
+  --key-bg-active: #37342e;
+  --key-bg-pressed: #46423a;
+  --key-border: #7f786c;
+  --button-bg: #3a3731;
+  --shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
 }
 
 /* ---- Tokens: forced colours (Windows High Contrast) ---- */
@@ -169,13 +224,15 @@
  * strokes, and outlines — and does so in guaranteed-contrast pairs:
  * Canvas/CanvasText, Highlight/HighlightText, ButtonFace/ButtonText.
  *
- * Translucent tints have no system equivalent, so the peer and same-number
- * highlights fall away (the selected cell keeps Highlight). Muted text stays
- * CanvasText rather than GrayText, which means "disabled" here. Errors are
- * drawn in CanvasText: the conflict dot and the wrong-answer slash carry
- * their meaning in their shape, and CanvasText is the one colour certain to
- * show against every cell. Player digits take LinkText so they still differ
- * from the givens.
+ * The peer and same-number fills have no system equivalent, so they fall
+ * back to the cell's own colour — Canvas, or ButtonFace for a given — and
+ * only the selected cell keeps a fill (Highlight), with every ink on it
+ * HighlightText. Muted text stays CanvasText rather than GrayText, which
+ * means "disabled" here. Errors are drawn in CanvasText: the conflict dot
+ * and the wrong-answer slash carry their meaning in their shape, and
+ * CanvasText is the one colour certain to show against every cell. Player
+ * digits take LinkText so they still differ from the givens; checked and
+ * revealed ones keep their tick and italic.
  *
  * `:root:root` is deliberate: it matches the specificity of the dark blocks
  * above, so this block wins by coming later even when the system is dark too.
@@ -194,23 +251,31 @@
     --grid-thick: CanvasText;
     --cell-bg: Canvas;
     --cell-given-bg: ButtonFace;
-    --hl-peer: transparent;
-    --hl-same: transparent;
+    --hl-peer: Canvas;
+    --hl-same: Canvas;
     --hl-selected: Highlight;
+    --hl-peer-given: ButtonFace;
+    --hl-same-given: ButtonFace;
+    --hl-selected-given: Highlight;
     --hl-ring: HighlightText;
+    --cell-focus: HighlightText;
     --digit-given: CanvasText;
+    --digit-given-selected: HighlightText;
     --digit-player: LinkText;
-    --digit-correct: CanvasText;
-    --digit-revealed: CanvasText;
     --digit-player-selected: HighlightText;
+    --digit-correct: CanvasText;
     --digit-correct-selected: HighlightText;
+    --digit-revealed: CanvasText;
     --digit-revealed-selected: HighlightText;
     --candidate: CanvasText;
+    --candidate-selected: HighlightText;
     --danger: CanvasText;
+    --danger-selected: HighlightText;
     --success: CanvasText;
     --key-bg: ButtonFace;
     --key-bg-active: Highlight;
     --key-bg-pressed: Highlight;
+    --key-border: ButtonText;
     --button-bg: ButtonFace;
     --shadow: none;
   }

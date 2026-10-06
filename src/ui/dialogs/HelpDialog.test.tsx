@@ -93,6 +93,13 @@ describe('HelpDialog', () => {
     );
   });
 
+  it('says how Check and Reveal mark a number, in shape as well as colour', () => {
+    render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.getByText(/mark your numbers/)).toHaveTextContent(
+      'Check and Reveal, in the “…” menu, mark your numbers: a wrong one is struck through with a red slash, a right one gets a small tick in its corner, and a revealed one is written in italics. Each counts as an assist.',
+    );
+  });
+
   it('leads from Difficulty to the guide to the solving techniques', () => {
     const onBrowseTechniques = vi.fn();
     render(<HelpDialog onBrowseTechniques={onBrowseTechniques} onClose={vi.fn()} />);

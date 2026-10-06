@@ -349,7 +349,7 @@ describe('describeHint', () => {
     ],
     [
       { kind: 'single', index: 4, technique: 'hiddenSingleLine', unit: null },
-      "Hidden single: there's only one place for a number in its row, column or box.",
+      'Hidden single: a number fits only here in its row, column or box.',
     ],
     [
       { kind: 'single', index: 4, technique: 'nakedSingle', unit: null },

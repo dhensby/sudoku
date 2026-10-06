@@ -8,9 +8,10 @@
 /* ==========================================================================
    Geometry
 
-   The board is nine cells a side with eight lines between them: 1px thin
-   lines inside each box, 3px thick lines between boxes and round the
-   outside (2px on a board under 400px, where 3px looks heavy). The sizes —
+   The board is nine cells a side with eight lines between them, printed
+   flat, square-cornered and shadowless: 1px thin rules inside each box, 3px
+   ink between boxes, and a 4px frame round the outside (2px and 3px on a
+   board under 400px, where the heavier lines crowd the cells). The sizes —
    --cell, --frame, --thick, --thin and --board-outer — are worked out once
    on .app (layout.css), rounded to whole pixels, so the controls and the
    header can take the board's exact width too, and the overlay card, sized
@@ -82,14 +83,20 @@
 /* ==========================================================================
    Cells
 
-   Two layers, as NYT paints them: the cell's own background says what it is
-   (a given is grey), and a translucent tint laid over it says how it
-   relates to the selection. Any highlight on any kind of cell then needs no
-   colour of its own.
+   Each state is an opaque fill of its own, in a ladder of lightness: plain
+   paper, manila for the selection's row, column and box (--hl-peer), a
+   periwinkle for the same number (--hl-same), and the selection printed as
+   a solid block (--hl-selected). A given keeps its grey screen under every
+   highlight, so each fill has a given twin (-given) — the two-part
+   selector, being weightier, wins over the plain one whatever the order.
    ========================================================================== */
 
 .cell {
-  --tint: transparent;
+  /* The red of a conflict dot or a wrong slash, and the edge that keeps it
+     clear of whatever is under it: the paper of a cell, or, on the
+     selected block, the block itself. */
+  --mark: var(--danger);
+  --mark-halo: var(--cell-bg);
 
   position: relative;
   display: grid;
@@ -101,12 +108,13 @@
   padding: 0;
   border: 0;
   border-radius: 0;
-  background-color: var(--cell-bg);
-  background-image: linear-gradient(var(--tint), var(--tint));
+  background: var(--cell-bg);
   color: var(--digit-player);
   font: inherit;
-  font-size: calc(var(--cell) * 0.55);
-  font-weight: 500;
+  /* The player's digits are written in the interface's grotesque. */
+  font-family: var(--font);
+  font-size: calc(var(--cell) * 0.56);
+  font-weight: 600;
   line-height: 1;
   font-variant-numeric: tabular-nums;
   cursor: pointer;
@@ -117,45 +125,65 @@
   margin-right: calc(var(--thick) - var(--thin));
 }
 
+/* Givens are typeset: the slab, heavier, on a grey screen. */
 .cell--given {
-  background-color: var(--cell-given-bg);
+  background: var(--cell-given-bg);
   color: var(--digit-given);
+  font-family: var(--font-digits);
   font-weight: 700;
   cursor: default;
 }
 
 .cell--peer {
-  --tint: var(--hl-peer);
+  background: var(--hl-peer);
+}
+
+.cell--given.cell--peer {
+  background: var(--hl-peer-given);
 }
 
 .cell--same {
-  --tint: var(--hl-same);
+  background: var(--hl-same);
+}
+
+.cell--given.cell--same {
+  background: var(--hl-same-given);
 }
 
 .cell--correct {
   color: var(--digit-correct);
 }
 
+/* Revealed and checked-correct digits differ from the player's own by hue
+   alone, which colour-blind players can lose: a revealed digit is also set
+   in italic, and a correct one carries a tick (below). */
 .cell--revealed {
   color: var(--digit-revealed);
+  font-style: italic;
 }
 
 /*
- * The selected cell is marked twice: the strongest tint, and a ring inside
- * its edge that is there however it was selected — a tap, a click or a key.
- * The ring alone is 3:1 or better against every neighbour, so the selection
- * never rests on telling two tints apart. On that tint the inks deepen (or,
- * in the dark theme, lift) to keep their 4.5:1.
+ * The selected cell is a reverse-out block: the strongest fill, every ink
+ * knocked out to its pale (or, in the dark theme, deep) -selected twin, and
+ * a keyline ring inside its edge in the ink colour, there however it was
+ * selected — a tap, a click or a key. The ring alone is far past 3:1
+ * against every neighbour, so the selection never rests on telling two
+ * fills apart.
  */
 .cell--selected {
-  --tint: var(--hl-selected);
+  --mark: var(--danger-selected);
+  --mark-halo: var(--hl-selected);
 
+  background: var(--hl-selected);
   box-shadow: inset 0 0 0 2px var(--hl-ring);
   color: var(--digit-player-selected);
 }
 
 .cell--selected.cell--given {
-  color: var(--digit-given);
+  --mark-halo: var(--hl-selected-given);
+
+  background: var(--hl-selected-given);
+  color: var(--digit-given-selected);
 }
 
 .cell--selected.cell--correct {
@@ -166,17 +194,48 @@
   color: var(--digit-revealed-selected);
 }
 
-/* Keyboard focus adds a second ring in the text colour, just inside the
-   selection ring, so where the keys will act is never in doubt. Inset:
-   drawn outside, it would be hidden under the neighbouring cells. */
+/* Keyboard focus adds a second line just inside the selection ring, so
+   where the keys will act is never in doubt. Inset: drawn outside, it would
+   be hidden under the neighbouring cells. In the text colour on any other
+   cell (focus follows the selection, so this is a guard), and in
+   --cell-focus on the block — the text colour would vanish on its fill —
+   which reads as ring, paper line, block: a stamped box. */
 .cell:focus-visible {
   z-index: 1;
   outline: 2px solid var(--text);
   outline-offset: -4px;
 }
 
+.cell--selected:focus-visible {
+  outline-color: var(--cell-focus);
+}
+
 .cell__value {
   pointer-events: none;
+}
+
+/* A checked-correct digit's tick, top left, in the digit's own ink: drawn
+   from two borders, like the pad's done keys. Decorative — the cell's name
+   already says "correct". */
+.cell__tick {
+  position: absolute;
+  top: 12%;
+  left: 11%;
+  width: max(calc(var(--cell) * 0.17), 6px);
+  height: max(calc(var(--cell) * 0.09), 3.5px);
+  border-bottom: max(calc(var(--cell) * 0.035), 1.5px) solid currentColor;
+  border-left: max(calc(var(--cell) * 0.035), 1.5px) solid currentColor;
+  transform: rotate(-45deg);
+  pointer-events: none;
+}
+
+/* On the selected block, the tick and the conflict dot (below) keep clear
+   of the ring and the keyboard's line inside it, 4px between them: in the
+   corner of a small cell they would sit on them, and the dot's halo cut a
+   notch in both. */
+.cell--selected .cell__tick {
+  top: max(12%, 6px);
+  left: max(11%, 6px);
 }
 
 /* ---- Candidates ---- */
@@ -192,7 +251,9 @@
   grid-template-rows: repeat(3, 1fr);
   place-items: center;
   padding: calc(var(--cell) * 0.04);
-  font-size: max(calc(var(--cell) * 0.24), 8px);
+  font-family: var(--font);
+  font-size: max(calc(var(--cell) * 0.26), 9px);
+  font-style: normal;
   font-weight: 500;
   line-height: 1;
 }
@@ -203,22 +264,28 @@
 }
 
 .cell--selected .cell__candidates {
-  color: var(--text);
+  color: var(--candidate-selected);
 }
 
 /*
  * Mouse only: in the selected empty cell, each spot shows its digit faintly
  * under the pointer, and a click there toggles it (Cell.tsx checks the
  * pointer type too). Without hover the ghosts never show — a finger cannot
- * aim at a spot it cannot see.
+ * aim at a spot it cannot see. Only the selected cell has ghosts, so they
+ * take its candidate ink: the text colour at 40% all but vanishes on the
+ * block.
  */
 .cell__ghost {
   display: grid;
   place-items: center;
   width: 100%;
   height: 100%;
-  color: var(--text);
+  color: var(--candidate);
   opacity: 0;
+}
+
+.cell--selected .cell__ghost {
+  color: var(--candidate-selected);
 }
 
 @media (hover: hover) {
@@ -230,8 +297,9 @@
 /* ---- Conflicts and wrong answers ---- */
 
 /* A small dot bottom-right on every duplicate, popping in as it appears.
-   The halo in the cell's own colour keeps it 3:1 against its surroundings
-   on any tint — the red alone is not, on the selected cell's blue. */
+   Its halo (--mark-halo: the paper, or the selected block) keeps it 3:1
+   against its surroundings on any fill, and against the digit it may
+   touch. */
 .cell__conflict {
   position: absolute;
   right: 8%;
@@ -239,10 +307,16 @@
   width: max(calc(var(--cell) * 0.13), 5px);
   height: max(calc(var(--cell) * 0.13), 5px);
   border-radius: 50%;
-  background: var(--danger);
-  box-shadow: 0 0 0 1.5px var(--cell-bg);
+  background: var(--mark);
+  box-shadow: 0 0 0 1.5px var(--mark-halo);
   animation: conflict-pop 260ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
   pointer-events: none;
+}
+
+/* Past the selection's ring and focus line, and the halo's 1.5px. */
+.cell--selected .cell__conflict {
+  right: max(8%, 6px);
+  bottom: max(8%, 6px);
 }
 
 @keyframes conflict-pop {
@@ -259,8 +333,10 @@
  * A red slash corner to corner, as NYT marks a checked wrong answer. It runs
  * bottom-left to top-right ('/'), clear of the conflict dot in the
  * bottom-right corner. (A gradient's stripes cross its direction: "to bottom
- * right" draws the line between the other two corners.) Edged in the cell's
- * own colour, like the dot, so it holds 3:1 on any tint.
+ * right" draws the line between the other two corners.) Edged in
+ * --mark-halo, like the dot: the red alone can sit as close as 1:1 to the
+ * digit it crosses for a colour-blind player, and the edges keep the two
+ * apart.
  */
 .cell--wrong::after {
   content: '';
@@ -269,12 +345,12 @@
   background: linear-gradient(
     to bottom right,
     transparent calc(50% - 2px),
-    var(--cell-bg) calc(50% - 2px),
-    var(--cell-bg) calc(50% - 1px),
-    var(--danger) calc(50% - 1px),
-    var(--danger) calc(50% + 1px),
-    var(--cell-bg) calc(50% + 1px),
-    var(--cell-bg) calc(50% + 2px),
+    var(--mark-halo) calc(50% - 2px),
+    var(--mark-halo) calc(50% - 1px),
+    var(--mark) calc(50% - 1px),
+    var(--mark) calc(50% + 1px),
+    var(--mark-halo) calc(50% + 1px),
+    var(--mark-halo) calc(50% + 2px),
     transparent calc(50% + 2px)
   );
   pointer-events: none;
@@ -321,12 +397,12 @@
 }
 
 /* Hover belongs to pointers that have one; on touch it sticks after a tap.
-   Only an untinted cell of a board still in play answers it, so a hover
-   never hides a highlight that means something. */
+   Only a plain cell of a board still in play answers it, taking the peer
+   fill, so a hover never hides a highlight that means something. */
 @media (hover: hover) {
   .board:not([aria-readonly='true'])
     .cell:not(.cell--given, .cell--peer, .cell--same, .cell--selected):hover {
-    --tint: var(--hl-peer);
+    background: var(--hl-peer);
   }
 }
 
@@ -387,9 +463,10 @@
 
 .board-overlay__title {
   margin: 0;
+  font-family: var(--font-display);
   font-size: 1.75rem;
   font-weight: 800;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.01em;
   line-height: 1.15;
 }
 
@@ -398,7 +475,6 @@
   color: var(--text);
   font-size: 1rem;
   line-height: 1.4;
-  font-variant-numeric: tabular-nums;
 }
 
 .board-overlay__note {
@@ -495,12 +571,12 @@
    Windows High Contrast (forced colours)
 
    The browser would repaint every cell Canvas and drop the gradients that
-   draw the thick lines and the highlight tint, flattening the board into
-   something unreadable. So the board opts out of the forcing and paints
-   itself from the tokens, which index.css remaps to system colours in this
-   mode — grid lines CanvasText, givens ButtonFace, the selection Highlight.
-   What is left is setting the text on Highlight to HighlightText, and
-   marking givens by more than a fill that can match Canvas in some themes.
+   draw the thick lines, flattening the board into something unreadable. So
+   the board opts out of the forcing and paints itself from the tokens,
+   which index.css remaps to system colours in this mode — grid lines
+   CanvasText, givens ButtonFace, the selection Highlight with every ink and
+   mark on it HighlightText. What is left is marking givens by more than a
+   fill that can match Canvas in some themes, and a heavier focus line.
    ========================================================================== */
 
 @media (forced-colors: active) {
@@ -514,34 +590,13 @@
     outline-offset: -4px;
   }
 
-  .cell--selected,
-  .cell--selected.cell--given,
-  .cell--selected .cell__candidates {
-    color: HighlightText;
-  }
-
-  .cell--selected .cell__conflict {
-    background: HighlightText;
-    box-shadow: 0 0 0 1.5px Highlight;
-  }
-
-  .cell--selected.cell--wrong::after {
-    background: linear-gradient(
-      to bottom right,
-      transparent calc(50% - 1px),
-      HighlightText calc(50% - 1px),
-      HighlightText calc(50% + 1px),
-      transparent calc(50% + 1px)
-    );
-  }
-
   .cell:focus-visible {
     outline: 3px solid CanvasText;
     outline-offset: -4px;
   }
 
   .cell--selected:focus-visible {
-    outline-color: HighlightText;
+    outline-color: var(--cell-focus);
   }
 
   .board-overlay__card {
