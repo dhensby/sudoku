@@ -9,6 +9,9 @@ vi.mock('../core', async (importOriginal) => {
 });
 
 describe('respond', () => {
+  // Each case deals its puzzle twice. An Expert can take a hundred attempts
+  // or more to find, and coverage instrumentation on a CI runner makes each
+  // one cost tens of milliseconds — hence the generous timeout.
   it.each<Difficulty>(['easy', 'medium', 'hard', 'expert'])(
     'deals the %s puzzle the seed names, exactly as the main thread would',
     (difficulty) => {
@@ -17,6 +20,7 @@ describe('respond', () => {
       // fallback stand in for the worker without anyone noticing.
       expect(response).toEqual({ id: 7, puzzle: generatePuzzle(difficulty, createRng('abc123')) });
     },
+    60_000,
   );
 
   it('answers with a real puzzle of the tier asked for', () => {
