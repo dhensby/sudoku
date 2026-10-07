@@ -60,7 +60,7 @@ export type BoardOverlayProps = BoardOverlayContent & {
 
 /**
  * The puzzle, mid-sentence: "this Hard puzzle", or the daily it is — "today's
- * Hard puzzle", "the Hard daily for 5 Oct".
+ * Hard puzzle", "the Hard daily for 12 Oct".
  */
 function puzzlePhrase(difficulty: Difficulty, daily: OverlayDaily | null | undefined): string {
   if (daily === null || daily === undefined) return `this ${DIFFICULTY_LABEL[difficulty]} puzzle`;

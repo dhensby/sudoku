@@ -401,7 +401,7 @@ test.describe('touch', () => {
   test('the daily calendar is a bottom sheet with nothing to scroll sideways, every day and button finger-sized', async ({
     page,
   }) => {
-    await page.clock.install({ time: new Date('2026-10-06T10:00:00+01:00') });
+    await page.clock.install({ time: new Date('2026-10-13T10:00:00+01:00') });
     await tapStart(page);
     const sheet = await openFromMenu(page, 'Daily puzzles');
     await expect(sheet).toHaveAccessibleName('Daily puzzles');
@@ -416,13 +416,13 @@ test.describe('touch', () => {
 
     // Every day with a daily, and every button, is a finger's size.
     const days = sheet.getByRole('gridcell', { name: /October: (?!no daily)/ });
-    expect(await days.count()).toBe(6);
+    expect(await days.count()).toBe(7);
     for (const target of [
       ...(await days.all()),
       sheet.getByRole('button', { name: 'Close' }),
       sheet.getByRole('button', { name: 'Previous month' }),
       sheet.getByRole('button', { name: 'Next month' }),
-      ...(await sheet.getByRole('button', { name: /daily for Tuesday 6 October$/ }).all()),
+      ...(await sheet.getByRole('button', { name: /daily for Tuesday 13 October$/ }).all()),
     ]) {
       await target.scrollIntoViewIfNeeded();
       const size = (await target.boundingBox())!;
@@ -432,11 +432,11 @@ test.describe('touch', () => {
     }
 
     // A day tapped brings its puzzles into view.
-    await sheet.getByRole('gridcell', { name: /^Thursday 1 October/ }).tap();
-    const heading = sheet.getByRole('heading', { name: 'Thursday 1 October' });
+    await sheet.getByRole('gridcell', { name: /^Thursday 8 October/ }).tap();
+    const heading = sheet.getByRole('heading', { name: 'Thursday 8 October' });
     await expect(heading).toBeInViewport();
     await expect(
-      sheet.getByRole('button', { name: 'Play, Expert daily for Thursday 1 October' }),
+      sheet.getByRole('button', { name: 'Play, Expert daily for Thursday 8 October' }),
     ).toBeInViewport();
   });
 
@@ -593,7 +593,7 @@ test.describe('a 320×568 phone', () => {
   test('keeps every day of the calendar a finger’s 44px, with nothing to scroll sideways', async ({
     page,
   }) => {
-    await page.clock.install({ time: new Date('2026-10-06T10:00:00+01:00') });
+    await page.clock.install({ time: new Date('2026-10-13T10:00:00+01:00') });
     await tapStart(page);
     const sheet = await openFromMenu(page, 'Daily puzzles');
     await settle(page);
@@ -601,7 +601,7 @@ test.describe('a 320×568 phone', () => {
       await sheet.locator('.dialog__body').evaluate((el) => el.scrollWidth - el.clientWidth),
     ).toBe(0);
     const days = sheet.getByRole('gridcell', { name: /October: (?!no daily)/ });
-    expect(await days.count()).toBe(6);
+    expect(await days.count()).toBe(7);
     for (const target of await sheet.locator('td[data-date]').all()) {
       const size = (await target.boundingBox())!;
       const label = (await target.getAttribute('data-date')) ?? '';
@@ -701,7 +701,7 @@ for (const viewport of [
     test.use({ viewport });
 
     test('New game shows both its runs whole, nothing cut off below the fold', async ({ page }) => {
-      await page.clock.install({ time: new Date('2026-10-06T10:00:00+01:00') });
+      await page.clock.install({ time: new Date('2026-10-13T10:00:00+01:00') });
       await tapStart(page);
       await page.getByRole('banner').getByRole('button', { name: 'New game' }).tap();
       const menu = page.getByRole('menu', { name: 'New game' });
@@ -713,7 +713,7 @@ for (const viewport of [
     test('the calendar keeps the day chosen, its name and its puzzles in view', async ({
       page,
     }) => {
-      await page.clock.install({ time: new Date('2026-10-06T10:00:00+01:00') });
+      await page.clock.install({ time: new Date('2026-10-13T10:00:00+01:00') });
       await tapStart(page);
       const sheet = await openFromMenu(page, 'Daily puzzles');
       await settle(page);
@@ -722,16 +722,18 @@ for (const viewport of [
         const [box, frame] = [(await target.boundingBox())!, (await body.boundingBox())!];
         return box.y >= frame.y - 0.5 && box.y + box.height <= frame.y + frame.height + 0.5;
       };
-      expect(await inBody(sheet.getByRole('heading', { name: 'Tuesday 6 October' }))).toBe(true);
-      expect(
-        await inBody(sheet.getByRole('button', { name: 'Play, Easy daily for Tuesday 6 October' })),
-      ).toBe(true);
-      await sheet.getByRole('gridcell', { name: /^Thursday 1 October/ }).tap();
-      await settle(page);
-      expect(await inBody(sheet.getByRole('heading', { name: 'Thursday 1 October' }))).toBe(true);
+      expect(await inBody(sheet.getByRole('heading', { name: 'Tuesday 13 October' }))).toBe(true);
       expect(
         await inBody(
-          sheet.getByRole('button', { name: 'Play, Easy daily for Thursday 1 October' }),
+          sheet.getByRole('button', { name: 'Play, Easy daily for Tuesday 13 October' }),
+        ),
+      ).toBe(true);
+      await sheet.getByRole('gridcell', { name: /^Thursday 8 October/ }).tap();
+      await settle(page);
+      expect(await inBody(sheet.getByRole('heading', { name: 'Thursday 8 October' }))).toBe(true);
+      expect(
+        await inBody(
+          sheet.getByRole('button', { name: 'Play, Easy daily for Thursday 8 October' }),
         ),
       ).toBe(true);
       expect(await body.evaluate((el) => el.scrollWidth - el.clientWidth)).toBe(0);

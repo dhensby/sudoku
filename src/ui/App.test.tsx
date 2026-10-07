@@ -941,9 +941,9 @@ describe('App', () => {
   });
 
   describe('daily puzzles', () => {
-    /** Noon on Tuesday 6 October 2026, local time: today, for these tests. */
-    const NOON = new Date(2026, 9, 6, 12).getTime();
-    const TODAY = '2026-10-06';
+    /** Noon on Tuesday 13 October 2026, local time: today, for these tests. */
+    const NOON = new Date(2026, 9, 13, 12).getTime();
+    const TODAY = '2026-10-13';
     const now = () => NOON;
     /** Today's Hard daily, a move from solved. */
     const NEAR = nearlySolved([0]);
@@ -958,7 +958,7 @@ describe('App', () => {
       await startApp({ now, dailies });
       const menu = openNewGame();
       expect(within(menu).getByRole('group', { name: /^Today's puzzles/ })).toHaveTextContent(
-        'Tue 6 Oct',
+        'Tue 13 Oct',
       );
       fireEvent.click(
         within(menu).getByRole('menuitem', { name: "Today's Hard puzzle, not started" }),
@@ -967,7 +967,7 @@ describe('App', () => {
       expect(liveRegion()).toHaveTextContent("Today's Hard puzzle.");
       press(String(answerAt(0, NEAR)));
       const dialog = await screen.findByRole('dialog', { name: 'Solved!' });
-      expect(within(dialog).getByText('Daily · 6 Oct · Hard')).toBeInTheDocument();
+      expect(within(dialog).getByText('Daily · 13 Oct · Hard')).toBeInTheDocument();
       expect(within(dialog).getByText('That starts a Hard streak')).toBeInTheDocument();
       fireEvent.click(within(dialog).getByRole('button', { name: 'Close' }));
       expect(
@@ -1013,10 +1013,10 @@ describe('App', () => {
       await screen.findByRole('grid');
       press('p');
       const card = document.querySelector<HTMLElement>('.board-overlay')!;
-      expect(card).toHaveTextContent('Daily · 6 Oct · Medium · 0:00');
+      expect(card).toHaveTextContent('Daily · 13 Oct · Medium · 0:00');
       fireEvent.click(screen.getByRole('button', { name: 'History' }));
       const history = screen.getByRole('dialog', { name: 'History' });
-      expect(within(history).getByText('Daily · 6 Oct')).toBeInTheDocument();
+      expect(within(history).getByText('Daily · 13 Oct')).toBeInTheDocument();
     });
 
     it('offers a solved daily again from New game, saying when it was solved', async () => {
@@ -1038,7 +1038,7 @@ describe('App', () => {
         }),
       );
       const offer = screen.getByRole('dialog', { name: "You've solved this one" });
-      expect(offer).toHaveTextContent(/You solved the Hard daily for 6 Oct in 0:0\d/);
+      expect(offer).toHaveTextContent(/You solved the Hard daily for 13 Oct in 0:0\d/);
       fireEvent.click(within(offer).getByRole('button', { name: 'Play again' }));
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
       expect(liveRegion()).toHaveTextContent('Playing this Hard puzzle again.');
@@ -1055,20 +1055,20 @@ describe('App', () => {
       const calendar = screen.getByRole('dialog', { name: 'Daily puzzles' });
       // Opened on today.
       expect(within(calendar).getByRole('gridcell', { selected: true })).toHaveAccessibleName(
-        'Tuesday 6 October: Easy, Medium, Hard and Expert not started',
+        'Tuesday 13 October: Easy, Medium, Hard and Expert not started',
       );
-      fireEvent.click(within(calendar).getByRole('gridcell', { name: /^Monday 5 October/ }));
+      fireEvent.click(within(calendar).getByRole('gridcell', { name: /^Monday 12 October/ }));
       fireEvent.click(
-        within(calendar).getByRole('button', { name: 'Play, Easy daily for Monday 5 October' }),
+        within(calendar).getByRole('button', { name: 'Play, Easy daily for Monday 12 October' }),
       );
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
       await screen.findByRole('grid');
       expect(selectedCell()).toHaveFocus();
-      expect(liveRegion()).toHaveTextContent('The Easy daily for 5 Oct.');
+      expect(liveRegion()).toHaveTextContent('The Easy daily for 12 Oct.');
 
       fireEvent.click(screen.getByRole('button', { name: 'Daily puzzles' }));
       expect(
-        screen.getByRole('gridcell', { name: /^Monday 5 October: Easy in progress/ }),
+        screen.getByRole('gridcell', { name: /^Monday 12 October: Easy in progress/ }),
       ).toBeInTheDocument();
     });
 
@@ -1087,7 +1087,7 @@ describe('App', () => {
       );
       fireEvent.click(screen.getByRole('button', { name: 'Daily puzzles' }));
       fireEvent.click(
-        screen.getByRole('button', { name: 'Play again, Hard daily for Tuesday 6 October' }),
+        screen.getByRole('button', { name: 'Play again, Hard daily for Tuesday 13 October' }),
       );
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
       expect(liveRegion()).toHaveTextContent('Playing this Hard puzzle again.');
@@ -1101,8 +1101,8 @@ describe('App', () => {
       await screen.findByRole('grid');
       fireEvent.click(screen.getByRole('button', { name: 'Share' }));
       const share = screen.getByRole('dialog', { name: 'Share this puzzle' });
-      expect(within(share).getByText(/^Sudoku Daily · 6 Oct 2026 · Hard/)).toBeInTheDocument();
-      expect(within(share).getByText(/[?&]d=2026-10-06/)).toBeInTheDocument();
+      expect(within(share).getByText(/^Sudoku Daily · 13 Oct 2026 · Hard/)).toBeInTheDocument();
+      expect(within(share).getByText(/[?&]d=2026-10-13/)).toBeInTheDocument();
     });
 
     it("names a friend's daily on the Ready card once its date checks out", async () => {
@@ -1111,6 +1111,17 @@ describe('App', () => {
       expect(
         await screen.findByText("Someone shared today's Hard puzzle with you."),
       ).toBeInTheDocument();
+    });
+
+    it('opens a link to a daily of 1–6 October, from before Daily #1 moved to the 7th, as a plain shared puzzle', async () => {
+      const dailies = fakeDailies({ now, puzzles: { '2026-10-03/hard': PUZZLE } });
+      renderApp({ now, dailies, search: `${linkFor(PUZZLE.givens)}&d=2026-10-03` });
+      expect(
+        await screen.findByText(/^Someone shared an? (Easy|Medium|Hard|Expert) puzzle with you\.$/),
+      ).toBeInTheDocument();
+      await act(async () => {});
+      expect(screen.queryByText(/daily/i)).not.toBeInTheDocument();
+      expect(dailies.asked).toEqual([]);
     });
   });
 

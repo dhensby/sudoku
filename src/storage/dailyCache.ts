@@ -15,7 +15,7 @@ import { isDifficulty, isObject, readJson, writeItem, type StorageLike } from '.
  * afresh: an Expert can take a tenth of a second on a laptop, and a few
  * tenths on a slow phone — and a page showing a spinner for it needs none.
  *
- *   sudoku.dailies   { "version": <GENERATOR_VERSION>, "codes": { "2026-10-06/hard": "<share code>", … } }
+ *   sudoku.dailies   { "version": <GENERATOR_VERSION>, "codes": { "2026-10-13/hard": "<share code>", … } }
  *
  * Only a cache — any of it can be dealt again from its date — so it is held
  * loosely: stamped with the `GENERATOR_VERSION` that dealt it and read back

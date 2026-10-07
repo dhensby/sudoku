@@ -10,7 +10,7 @@ function renderHeader(overrides: Partial<HeaderProps> = {}) {
     phase: 'playing',
     showTimer: true,
     today: {
-      date: '2026-10-06',
+      date: '2026-10-13',
       statuses: {
         easy: 'not-started',
         medium: 'not-started',
@@ -105,17 +105,17 @@ describe('Header', () => {
   });
 
   it("marks no random tier as current while a past day's daily is on show", () => {
-    renderHeader({ difficulty: 'hard', daily: '2026-10-01' });
+    renderHeader({ difficulty: 'hard', daily: '2026-10-08' });
     fireEvent.click(screen.getByRole('button', { name: 'New game' }));
     expect(screen.queryByRole('menuitem', { name: /\(current\)/ })).not.toBeInTheDocument();
   });
 
   it('says a daily is one, beside its tier, and names its day for assistive technology', () => {
-    renderHeader({ difficulty: 'medium', daily: '2026-10-06' });
+    renderHeader({ difficulty: 'medium', daily: '2026-10-13' });
     const container = document.body;
     const tier = container.querySelector('.header__difficulty')!;
     expect(tier).toHaveTextContent(
-      'Daily puzzle for Tuesday 6 October. Difficulty: Daily · MediumMed',
+      'Daily puzzle for Tuesday 13 October. Difficulty: Daily · MediumMed',
     );
     expect(container.querySelector('.header__daily')).toHaveAttribute('aria-hidden', 'true');
     expect(container.querySelector('header')).toHaveClass('header--daily');

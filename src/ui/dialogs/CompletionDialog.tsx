@@ -153,7 +153,7 @@ export interface CompletionDialogProps {
  * was set on a board seen before and is no fair one to send a friend.
  * Closing leaves the solved board on show.
  *
- * A daily is named ("Daily · 6 Oct · Hard") and followed by its tier's
+ * A daily is named ("Daily · 13 Oct · Hard") and followed by its tier's
  * streak — begun, run on, or not counted, for a day played after it was
  * over.
  */

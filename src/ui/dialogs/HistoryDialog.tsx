@@ -123,7 +123,7 @@ const HistoryRow = memo(function HistoryRow({
 
   const date = formatDate(record.createdAt, now);
   const label = DIFFICULTY_LABEL[difficulty];
-  // "6 Oct": the daily's own date, which need not be the day it was played.
+  // "13 Oct": the daily's own date, which need not be the day it was played.
   const day = record.daily === undefined ? null : formatDay(record.daily, dateKeyOf(now));
   // Every row has the same few buttons, so each name carries the row: "Delete"
   // alone, read out of context by a screen reader's button list, is a guess.

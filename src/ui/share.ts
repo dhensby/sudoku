@@ -18,7 +18,7 @@ export { MAX_NAME_LENGTH } from '../storage/storage';
  * opens it knows the time to beat. There is no server: everything a friend
  * needs travels in the URL.
  *
- * A daily's link says which daily it is, too (`&d=2026-10-06`), so the
+ * A daily's link says which daily it is, too (`&d=2026-10-13`), so the
  * friend's game is recorded as that daily — once the app has checked that
  * the date's daily really is this puzzle — and shows in their calendar.
  */
@@ -116,7 +116,7 @@ export function buildShareUrl(
  * separately, and `messageWithLink` joins the two for the clipboard.
  *
  * A daily names itself, date and year included — the message may be read
- * days later — as "Sudoku Daily · 6 Oct 2026 · Hard", the same first line
+ * days later — as "Sudoku Daily · 13 Oct 2026 · Hard", the same first line
  * whether or not it carries a time, so a group chat's dailies line up.
  */
 export function buildShareText({

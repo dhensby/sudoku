@@ -6,8 +6,8 @@ import { HistoryDialog, type HistoryDialogProps } from './HistoryDialog';
 
 const GIVENS = formatGrid(parseGrid(WIKIPEDIA_PUZZLE));
 const NONE = { autoCandidates: false, hints: 0, checks: 0, reveals: 0 };
-/** 14:30 local on 5 Oct 2026 — local, because the dialog dates records in local time. */
-const NOW = new Date(2026, 9, 5, 14, 30).getTime();
+/** 14:30 local on 12 Oct 2026 — local, because the dialog dates records in local time. */
+const NOW = new Date(2026, 9, 12, 14, 30).getTime();
 const at = (day: number, hour: number, minute: number) =>
   new Date(2026, 9, day, hour, minute).getTime();
 
@@ -30,21 +30,21 @@ function record(id: string, overrides: Partial<GameRecord>): GameRecord {
 
 /** Newest first, as loadHistory returns them. */
 const RECORDS: GameRecord[] = [
-  record('cur', { difficulty: 'expert', createdAt: at(5, 14, 20), elapsedMs: 61_000 }),
+  record('cur', { difficulty: 'expert', createdAt: at(12, 14, 20), elapsedMs: 61_000 }),
   record('won', {
-    createdAt: at(5, 14, 5),
+    createdAt: at(12, 14, 5),
     status: 'solved',
-    completedAt: at(5, 14, 11),
+    completedAt: at(12, 14, 11),
     elapsedMs: 323_400,
     assists: { autoCandidates: true, hints: 2, checks: 1, reveals: 0 },
     challenge: { name: 'Dan', seconds: 323, assists: NONE },
   }),
-  record('easy', { difficulty: 'easy', createdAt: at(5, 13, 0), elapsedMs: 130_000 }),
-  record('lost', { difficulty: 'medium', createdAt: at(4, 9, 12) }),
+  record('easy', { difficulty: 'easy', createdAt: at(12, 13, 0), elapsedMs: 130_000 }),
+  record('lost', { difficulty: 'medium', createdAt: at(11, 9, 12) }),
   record('peek', {
-    createdAt: at(3, 18, 0),
+    createdAt: at(10, 18, 0),
     status: 'solved',
-    completedAt: at(3, 18, 30),
+    completedAt: at(10, 18, 30),
     elapsedMs: 200_000,
     assists: { ...NONE, reveals: 1 },
     challenge: { name: null, seconds: 400, assists: NONE },
@@ -100,7 +100,7 @@ describe('HistoryDialog', () => {
         'Today 14:05',
         'Today 13:00',
         'Yesterday 09:12',
-        '3 Oct',
+        '10 Oct',
       ]);
     });
 
@@ -150,7 +150,7 @@ describe('HistoryDialog', () => {
       expect(replays.map((b) => b.getAttribute('aria-label'))).toEqual([
         'Play again, Hard puzzle from Today 14:05',
         'Play again, Medium puzzle from Yesterday 09:12',
-        'Play again, Hard puzzle from 3 Oct',
+        'Play again, Hard puzzle from 10 Oct',
       ]);
     });
 
@@ -175,7 +175,7 @@ describe('HistoryDialog', () => {
         screen.getByRole('button', { name: 'Play again, Medium puzzle from Yesterday 09:12' }),
       );
       expect(props.onReplay).toHaveBeenCalledExactlyOnceWith('lost');
-      fireEvent.click(screen.getByRole('button', { name: 'Share Hard puzzle from 3 Oct' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Share Hard puzzle from 10 Oct' }));
       expect(props.onShare).toHaveBeenCalledExactlyOnceWith('peek');
     });
   });
@@ -251,18 +251,18 @@ describe('HistoryDialog', () => {
       renderHistory();
       // The later row first, then an earlier one: the row that stops asking
       // must not pull focus back to its own Delete button.
-      fireEvent.click(deleteButton('Hard puzzle from 3 Oct'));
+      fireEvent.click(deleteButton('Hard puzzle from 10 Oct'));
       fireEvent.click(deleteButton('Hard puzzle from Today 14:05'));
       expect(screen.getAllByRole('button', { name: /^Confirm delete/ })).toHaveLength(1);
       expect(
         screen.getByRole('button', { name: 'Cancel deleting Hard puzzle from Today 14:05' }),
       ).toHaveFocus();
-      expect(deleteButton('Hard puzzle from 3 Oct')).toBeInTheDocument();
+      expect(deleteButton('Hard puzzle from 10 Oct')).toBeInTheDocument();
     });
 
     it('drops a pending confirmation when the filter changes', () => {
       renderHistory();
-      fireEvent.click(deleteButton('Hard puzzle from 3 Oct'));
+      fireEvent.click(deleteButton('Hard puzzle from 10 Oct'));
       fireEvent.click(tab('Hard'));
       expect(screen.queryByRole('button', { name: /^Confirm delete/ })).toBeNull();
     });
@@ -385,7 +385,7 @@ describe('HistoryDialog', () => {
       expect(blob?.type).toBe('application/json');
       expect(await blob?.text()).toBe('{"app":"sudoku"}');
       expect(clicked).toHaveLength(1);
-      expect(clicked[0].download).toBe('sudoku-history-2026-10-05.json');
+      expect(clicked[0].download).toBe('sudoku-history-2026-10-12.json');
       expect(clicked[0].getAttribute('href')).toBe('blob:history');
       expect(clicked[0].isConnected).toBe(false);
 
@@ -527,21 +527,21 @@ describe('HistoryDialog', () => {
         records: [
           record('daily', {
             source: 'daily',
-            daily: '2026-10-04',
-            createdAt: at(5, 9, 0),
+            daily: '2026-10-11',
+            createdAt: at(12, 9, 0),
             status: 'solved',
-            completedAt: at(5, 9, 6),
+            completedAt: at(12, 9, 6),
           }),
         ],
         currentId: null,
       });
       const row = screen.getByRole('listitem');
-      expect(within(row).getByText('Daily · 4 Oct')).toBeInTheDocument();
-      // Played on the 5th, though it is the 4th's daily.
+      expect(within(row).getByText('Daily · 11 Oct')).toBeInTheDocument();
+      // Played on the 12th, though it is the 11th's daily.
       expect(within(row).getByText('Today 09:00')).toBeInTheDocument();
       expect(
         within(row).getByRole('button', {
-          name: 'Play again, Hard daily for 4 Oct, from Today 09:00',
+          name: 'Play again, Hard daily for 11 Oct, from Today 09:00',
         }),
       ).toBeInTheDocument();
     });

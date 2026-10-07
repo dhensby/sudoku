@@ -64,11 +64,11 @@ describe('buildShareUrl', () => {
   });
 
   it('says which daily it is, after the puzzle, with or without a result', () => {
-    const bare = new URL(buildShareUrl(BASE, GIVENS, undefined, '2026-10-06'));
+    const bare = new URL(buildShareUrl(BASE, GIVENS, undefined, '2026-10-13'));
     expect([...bare.searchParams.keys()]).toEqual(['p', 'd']);
-    expect(bare.searchParams.get('d')).toBe('2026-10-06');
+    expect(bare.searchParams.get('d')).toBe('2026-10-13');
     const timed = new URL(
-      buildShareUrl(BASE, GIVENS, { seconds: 90, name: '', assists: NONE }, '2026-10-06'),
+      buildShareUrl(BASE, GIVENS, { seconds: 90, name: '', assists: NONE }, '2026-10-13'),
     );
     expect([...timed.searchParams.keys()]).toEqual(['p', 'd', 't']);
     expect(new URL(buildShareUrl(BASE, GIVENS, undefined, null)).searchParams.has('d')).toBe(false);
@@ -98,16 +98,16 @@ describe('buildShareText', () => {
   });
 
   it("names a daily by its date and year, solved or not, so a group chat's dailies line up", () => {
-    expect(buildShareText({ difficulty: 'hard', daily: '2026-10-06' })).toBe(
-      'Sudoku Daily · 6 Oct 2026 · Hard\nCan you solve it?',
+    expect(buildShareText({ difficulty: 'hard', daily: '2026-10-13' })).toBe(
+      'Sudoku Daily · 13 Oct 2026 · Hard\nCan you solve it?',
     );
     expect(
       buildShareText({
         difficulty: 'hard',
-        daily: '2026-10-06',
+        daily: '2026-10-13',
         result: { seconds: 323, assists: { ...NONE, hints: 1 } },
       }),
-    ).toBe('Sudoku Daily · 6 Oct 2026 · Hard · 5:23\n(with 1 hint)\nCan you beat my time?');
+    ).toBe('Sudoku Daily · 13 Oct 2026 · Hard · 5:23\n(with 1 hint)\nCan you beat my time?');
   });
 
   it('says the same time as the link for a solve under a second', () => {

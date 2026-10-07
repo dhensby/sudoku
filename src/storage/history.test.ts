@@ -1243,11 +1243,11 @@ describe('freeSpace', () => {
 });
 
 describe('daily records', () => {
-  /** Noon UTC on 6 October 2026, when the dailies of the 6th (and, in UTC+14, the 7th) have begun. */
-  const OCT_6 = Date.UTC(2026, 9, 6, 12);
+  /** Noon UTC on 13 October 2026, when the dailies of the 13th (and, in UTC+14, the 14th) have begun. */
+  const OCT_13 = Date.UTC(2026, 9, 13, 12);
 
   /** A daily attempt: the record with the daily's date, and its tier as the difficulty. */
-  const daily = (record: GameRecord, date = '2026-10-06'): GameRecord => ({
+  const daily = (record: GameRecord, date = '2026-10-13'): GameRecord => ({
     ...record,
     source: 'daily',
     difficulty: 'hard',
@@ -1256,25 +1256,25 @@ describe('daily records', () => {
 
   it('round-trip with their date and source', () => {
     const storage = memoryStorage();
-    const record = daily(solved('d', OCT_6, 5000));
+    const record = daily(solved('d', OCT_13, 5000));
     seed(storage, [record]);
     expect(loadHistory(storage)).toEqual([record]);
   });
 
   it('keep a daily date up to the latest that had begun anywhere when the game was created', () => {
     const storage = memoryStorage();
-    // From Daily #1 to the 7th: already the 7th in UTC+14 at noon UTC on the 6th.
-    const dates = ['2026-10-01', '2026-10-06', '2026-10-07'];
+    // From Daily #1 to the 14th: already the 14th in UTC+14 at noon UTC on the 13th.
+    const dates = ['2026-10-07', '2026-10-13', '2026-10-14'];
     seed(
       storage,
-      dates.map((date, i) => daily(playing(`d${i}`, OCT_6 - i), date)),
+      dates.map((date, i) => daily(playing(`d${i}`, OCT_13 - i), date)),
     );
     expect(loadHistory(storage).map((record) => record.daily)).toEqual(dates);
   });
 
   it.each<[string, unknown]>([
-    ['a date before Daily #1', '2026-09-30'],
-    ['a date that had not begun anywhere when the game was created', '2026-10-08'],
+    ['a date before Daily #1', '2026-10-06'],
+    ['a date that had not begun anywhere when the game was created', '2026-10-15'],
     ['a date that does not exist', '2027-02-29'],
     ['a date not written as YYYY-MM-DD', '2026-10-6'],
     ['a number', 20261006],
@@ -1282,7 +1282,7 @@ describe('daily records', () => {
     ['an empty string', ''],
   ])('drop %s as the daily, keeping the game', (_label, date) => {
     const storage = memoryStorage();
-    seed(storage, [{ ...solved('d', OCT_6), source: 'daily', daily: date }]);
+    seed(storage, [{ ...solved('d', OCT_13), source: 'daily', daily: date }]);
     const [record] = loadHistory(storage);
     expect(record.id).toBe('d');
     expect(record.source).toBe('daily');
@@ -1291,25 +1291,25 @@ describe('daily records', () => {
 
   it('leave other games’ records as they were stored before dailies', () => {
     const storage = memoryStorage();
-    upsertRecord(storage, solved('a', OCT_6));
+    upsertRecord(storage, solved('a', OCT_13));
     expect(loadHistory(storage)[0]).not.toHaveProperty('daily');
     expect(storage.getItem(HISTORY)).not.toContain('daily');
   });
 
   it('are written by upsertRecord, and refused a bad date there too', () => {
     const storage = memoryStorage();
-    upsertRecord(storage, daily(playing('a', OCT_6)));
-    upsertRecord(storage, { ...daily(playing('b', OCT_6 + 1)), daily: '2026-02-30' });
+    upsertRecord(storage, daily(playing('a', OCT_13)));
+    upsertRecord(storage, { ...daily(playing('b', OCT_13 + 1)), daily: '2026-02-30' });
     const [b, a] = loadHistory(storage);
-    expect(a.daily).toBe('2026-10-06');
+    expect(a.daily).toBe('2026-10-13');
     expect(b).not.toHaveProperty('daily');
   });
 
   it('go out in an export and come back in an import', () => {
     const source = memoryStorage();
-    upsertRecord(source, daily(solved('a', OCT_6)));
+    upsertRecord(source, daily(solved('a', OCT_13)));
     const json = exportHistory(source, 0);
-    expect(JSON.parse(json).records[0].daily).toBe('2026-10-06');
+    expect(JSON.parse(json).records[0].daily).toBe('2026-10-13');
     const target = memoryStorage();
     importHistory(target, json);
     expect(loadHistory(target)).toEqual(loadHistory(source));
@@ -1322,9 +1322,9 @@ describe('daily records', () => {
       version: 1,
       exportedAt: 0,
       records: [
-        { ...daily(solved('a', OCT_6)), daily: 'tomorrow' },
+        { ...daily(solved('a', OCT_13)), daily: 'tomorrow' },
         // Dated a year before the daily it claims to be.
-        { ...daily(solved('b', OCT_6 - 365 * 86_400_000)) },
+        { ...daily(solved('b', OCT_13 - 365 * 86_400_000)) },
       ],
     });
     expect(importHistory(storage, file)).toEqual({ ok: true, added: 2, updated: 0 });
@@ -1333,20 +1333,20 @@ describe('daily records', () => {
 
   it('count a first attempt at a daily like any first attempt, and a replay of one like any replay', () => {
     const stats = computeStats([
-      daily(solved('a', OCT_6, 90_000)),
-      { ...daily(solved('b', OCT_6 + 1, 30_000)), source: 'replay' as const },
-      solved('c', OCT_6 + 2, 120_000, { difficulty: 'hard' }),
+      daily(solved('a', OCT_13, 90_000)),
+      { ...daily(solved('b', OCT_13 + 1, 30_000)), source: 'replay' as const },
+      solved('c', OCT_13 + 2, 120_000, { difficulty: 'hard' }),
     ]);
     expect(stats.hard).toEqual({ played: 3, solved: 3, bestMs: 90_000, averageMs: 105_000 });
   });
 
   describe('the date an attempt was started on', () => {
-    /** 11:00 UTC on the 6th: still the 5th in UTC−12, already the 7th in UTC+14. */
-    const ELEVEN = OCT_6 - 3_600_000;
+    /** 11:00 UTC on the 13th: still the 12th in UTC−12, already the 14th in UTC+14. */
+    const ELEVEN = OCT_13 - 3_600_000;
     const started = (startedOn: unknown): GameRecord =>
       ({ ...daily(solved('d', ELEVEN)), startedOn }) as GameRecord;
 
-    it.each(['2026-10-05', '2026-10-06', '2026-10-07'])(
+    it.each(['2026-10-12', '2026-10-13', '2026-10-14'])(
       'is kept as %s, the date somewhere on Earth while the game was played',
       (date) => {
         const storage = memoryStorage();
@@ -1357,50 +1357,50 @@ describe('daily records', () => {
 
     it('may be days after the game was created, if it waited that long behind Start', () => {
       const storage = memoryStorage();
-      const waited = { ...started('2026-10-09'), updatedAt: ELEVEN + 3 * 86_400_000 };
+      const waited = { ...started('2026-10-16'), updatedAt: ELEVEN + 3 * 86_400_000 };
       seed(storage, [waited]);
-      expect(loadHistory(storage)[0].startedOn).toBe('2026-10-09');
+      expect(loadHistory(storage)[0].startedOn).toBe('2026-10-16');
     });
 
     it.each<[string, unknown]>([
-      ['a date before the game was created anywhere', '2026-10-04'],
-      ['a date after it was last played anywhere', '2026-10-08'],
+      ['a date before the game was created anywhere', '2026-10-11'],
+      ['a date after it was last played anywhere', '2026-10-15'],
       ['a date that does not exist', '2026-10-32'],
       ['a number', 20261006],
     ])('is dropped when it is %s, keeping the game and its daily', (_label, date) => {
       const storage = memoryStorage();
       seed(storage, [started(date)]);
       const [record] = loadHistory(storage);
-      expect(record.daily).toBe('2026-10-06');
+      expect(record.daily).toBe('2026-10-13');
       expect(record).not.toHaveProperty('startedOn');
     });
 
     it('is dropped with the daily it belongs to', () => {
       const storage = memoryStorage();
-      seed(storage, [{ ...started('2026-10-06'), daily: '2026-09-01' }]);
+      seed(storage, [{ ...started('2026-10-13'), daily: '2026-09-08' }]);
       expect(loadHistory(storage)[0]).not.toHaveProperty('startedOn');
     });
   });
 
   describe('the ledger', () => {
     const DAY = 86_400_000;
-    /** A Hard daily of 1 October plus `i` days, begun and solved at noon UTC on its own day. */
+    /** A Hard daily of 8 October plus `i` days, begun and solved at noon UTC on its own day. */
     const streakDay = (i: number): GameRecord => {
-      const date = addDays('2026-10-01', i);
+      const date = addDays('2026-10-08', i);
       return {
-        ...daily(solved(`d${i}`, Date.UTC(2026, 9, 1, 12) + i * DAY), date),
+        ...daily(solved(`d${i}`, Date.UTC(2026, 9, 8, 12) + i * DAY), date),
         startedOn: date,
       };
     };
     /** `count` random solved games, all newer than a month of dailies. */
     const randoms = (count: number): GameRecord[] =>
-      Array.from({ length: count }, (_, i) => solved(`r${i}`, Date.UTC(2026, 10, 1) + i));
+      Array.from({ length: count }, (_, i) => solved(`r${i}`, Date.UTC(2026, 10, 8) + i));
 
     it('keeps what pruned dailies said, so a streak outlives their records', () => {
       const storage = memoryStorage();
       const streak = Array.from({ length: 30 }, (_, i) => streakDay(i));
       seed(storage, [...randoms(MAX_RECORDS - 30), ...streak]);
-      expect(computeStreak(loadHistory(storage), 'hard', '2026-10-30')).toEqual({
+      expect(computeStreak(loadHistory(storage), 'hard', '2026-11-06')).toEqual({
         current: 30,
         best: 30,
       });
@@ -1413,35 +1413,35 @@ describe('daily records', () => {
       expect(records.filter((record) => record.daily !== undefined)).toEqual([]);
       // ...but not out of the streak, nor the calendar.
       const ledger = loadDailyLedger(storage);
-      expect(computeStreak(records, 'hard', '2026-10-30', ledger)).toEqual({
+      expect(computeStreak(records, 'hard', '2026-11-06', ledger)).toEqual({
         current: 30,
         best: 30,
       });
-      expect(dailyStatuses(records, ledger).get('2026-10-05')).toEqual({
+      expect(dailyStatuses(records, ledger).get('2026-10-12')).toEqual({
         hard: 'solved-on-the-day',
       });
-      expect(storage.getItem('sudoku.dailyLedger')).toContain('"2026-10-05":"--d-"');
+      expect(storage.getItem('sudoku.dailyLedger')).toContain('"2026-10-12":"--d-"');
     });
 
     it('keeps a pruned daily solved on another day as that', () => {
       const storage = memoryStorage();
-      const later = { ...daily(solved('l', OCT_6), '2026-10-05'), startedOn: '2026-10-06' };
+      const later = { ...daily(solved('l', OCT_13), '2026-10-12'), startedOn: '2026-10-13' };
       seed(storage, [...randoms(MAX_RECORDS - 1), later]);
-      upsertRecord(storage, solved('new', Date.UTC(2026, 11, 1)));
+      upsertRecord(storage, solved('new', Date.UTC(2026, 11, 8)));
       expect(loadHistory(storage).some((record) => record.daily !== undefined)).toBe(false);
-      expect([...loadDailyLedger(storage)]).toEqual([['2026-10-05', { hard: 'solved-later' }]]);
+      expect([...loadDailyLedger(storage)]).toEqual([['2026-10-12', { hard: 'solved-later' }]]);
     });
 
     it('takes nothing from an unfinished daily pruned for space', () => {
       // Unfinished games go only once every finished one has: with a protected
       // history full of them, the oldest goes.
       const storage = memoryStorage();
-      const unfinished = daily(playing('u', OCT_6), '2026-10-06');
+      const unfinished = daily(playing('u', OCT_13), '2026-10-13');
       const others = Array.from({ length: MAX_RECORDS - 1 }, (_, i) =>
-        playing(`p${i}`, Date.UTC(2026, 10, 1) + i),
+        playing(`p${i}`, Date.UTC(2026, 10, 8) + i),
       );
       seed(storage, [...others, unfinished]);
-      upsertRecord(storage, playing('new', Date.UTC(2026, 11, 1)));
+      upsertRecord(storage, playing('new', Date.UTC(2026, 11, 8)));
       expect(loadHistory(storage).some((record) => record.id === 'u')).toBe(false);
       expect(loadDailyLedger(storage).size).toBe(0);
       expect(storage.getItem('sudoku.dailyLedger')).toBeNull();
@@ -1459,7 +1459,7 @@ describe('daily records', () => {
         },
       };
       seed(storage, [...randoms(MAX_RECORDS - 1), streakDay(0)]);
-      upsertRecord(storage, solved('new', Date.UTC(2026, 11, 1)));
+      upsertRecord(storage, solved('new', Date.UTC(2026, 11, 8)));
       const records = loadHistory(storage);
       // A record too many rather than a streak lost; the oldest random game went instead.
       expect(records.some((record) => record.id === 'd0')).toBe(true);
@@ -1468,32 +1468,32 @@ describe('daily records', () => {
 
     it('goes out in an export, and an import adds it to the ledger here, the better standing winning', () => {
       const source = memoryStorage();
-      source.setItem('sudoku.dailyLedger', JSON.stringify({ '2026-10-02': 'd-l-' }));
+      source.setItem('sudoku.dailyLedger', JSON.stringify({ '2026-10-09': 'd-l-' }));
       const json = exportHistory(source, 0);
-      expect(JSON.parse(json).dailyLedger).toEqual({ '2026-10-02': 'd-l-' });
+      expect(JSON.parse(json).dailyLedger).toEqual({ '2026-10-09': 'd-l-' });
 
       const target = memoryStorage();
       target.setItem(
         'sudoku.dailyLedger',
-        JSON.stringify({ '2026-10-01': '---d', '2026-10-02': 'l-d-' }),
+        JSON.stringify({ '2026-10-08': '---d', '2026-10-09': 'l-d-' }),
       );
       importHistory(target, json);
       expect(JSON.parse(target.getItem('sudoku.dailyLedger')!)).toEqual({
-        '2026-10-01': '---d',
-        '2026-10-02': 'd-d-',
+        '2026-10-08': '---d',
+        '2026-10-09': 'd-d-',
       });
     });
 
     it('is left alone by an import with nothing new for it', () => {
       const target = memoryStorage();
-      target.setItem('sudoku.dailyLedger', JSON.stringify({ '2026-10-02': 'dddd' }));
+      target.setItem('sudoku.dailyLedger', JSON.stringify({ '2026-10-09': 'dddd' }));
       const before = target.getItem('sudoku.dailyLedger');
       const file = JSON.stringify({
         app: 'sudoku',
         version: 1,
         exportedAt: 0,
         records: [],
-        dailyLedger: { '2026-10-02': 'llll' },
+        dailyLedger: { '2026-10-09': 'llll' },
       });
       importHistory(target, file);
       expect(target.getItem('sudoku.dailyLedger')).toBe(before);
@@ -1504,35 +1504,108 @@ describe('daily records', () => {
       storage.setItem(
         'sudoku.dailyLedger',
         JSON.stringify({
-          '2026-10-03': 'd---',
-          '2026-09-30': 'dddd',
+          '2026-10-10': 'd---',
+          '2026-10-06': 'dddd',
           '2026-10-32': 'dddd',
-          '2026-10-04': 'dx--',
-          '2026-10-05': 'ddd',
-          '2026-10-06': 4,
-          '2026-10-07': '----',
+          '2026-10-11': 'dx--',
+          '2026-10-12': 'ddd',
+          '2026-10-13': 4,
+          '2026-10-14': '----',
         }),
       );
       expect([...loadDailyLedger(storage)]).toEqual([
-        ['2026-10-03', { easy: 'solved-on-the-day' }],
+        ['2026-10-10', { easy: 'solved-on-the-day' }],
       ]);
-      storage.setItem('sudoku.dailyLedger', '["2026-10-03"]');
+      storage.setItem('sudoku.dailyLedger', '["2026-10-10"]');
       expect(loadDailyLedger(storage).size).toBe(0);
+    });
+  });
+
+  describe('of 1–6 October, played on the launch morning before Daily #1 moved to the 7th', () => {
+    /** 08:30 UTC on 7 October: dailies had launched, with Daily #1 on the 1st. */
+    const LAUNCH_MORNING = Date.UTC(2026, 9, 7, 8, 30);
+    /** A Hard catch-up on an earlier day's daily, started that morning (the 7th, by the player's clock). */
+    const catchUp = (record: GameRecord, date: string): GameRecord => ({
+      ...daily(record, date),
+      startedOn: '2026-10-07',
+    });
+
+    it('load as ordinary games: kept, with their times and stats, but no daily', () => {
+      const storage = memoryStorage();
+      seed(storage, [
+        catchUp(playing('b', LAUNCH_MORNING + 60_000, { elapsedMs: 45_000 }), '2026-10-06'),
+        catchUp(solved('a', LAUNCH_MORNING, 312_000), '2026-10-03'),
+      ]);
+      const records = loadHistory(storage);
+      expect(
+        records.map(({ id, status, elapsedMs, difficulty }) => [id, status, elapsedMs, difficulty]),
+      ).toEqual([
+        ['b', 'playing', 45_000, 'hard'],
+        ['a', 'solved', 312_000, 'hard'],
+      ]);
+      for (const record of records) {
+        expect(record).not.toHaveProperty('daily');
+        expect(record).not.toHaveProperty('startedOn');
+      }
+      expect(computeStats(records).hard).toEqual({
+        played: 2,
+        solved: 1,
+        bestMs: 312_000,
+        averageMs: 312_000,
+      });
+    });
+
+    it('are in neither the calendar nor a streak, nor found as attempts at those dailies', () => {
+      const storage = memoryStorage();
+      seed(storage, [catchUp(solved('a', LAUNCH_MORNING), '2026-10-06')]);
+      const records = loadHistory(storage);
+      expect(dailyStatuses(records, loadDailyLedger(storage)).size).toBe(0);
+      expect(computeStreak(records, 'hard', '2026-10-07')).toEqual({ current: 0, best: 0 });
+      expect(findDailyAttempts(records, '2026-10-06', 'hard')).toEqual([]);
+    });
+
+    // The one record that could have counted: at 08:30 UTC it was still the 6th from UTC−10
+    // westward (Hawaii, Tahiti, Samoa…), so a player there could begin and solve the 6th's daily
+    // on its own day. Daily #1 is the 7th now, so that one-day streak is knowingly given up.
+    it('drop even an on-the-day solve by a player still on the 6th from the streak', () => {
+      const storage = memoryStorage();
+      seed(storage, [
+        { ...daily(solved('a', LAUNCH_MORNING, 312_000), '2026-10-06'), startedOn: '2026-10-06' },
+      ]);
+      const records = loadHistory(storage);
+      expect(records).toHaveLength(1);
+      expect(records[0]).not.toHaveProperty('daily');
+      expect(records[0]).not.toHaveProperty('startedOn');
+      expect(records[0]).toMatchObject({ status: 'solved', elapsedMs: 312_000 });
+      expect(computeStreak(records, 'hard', '2026-10-07')).toEqual({ current: 0, best: 0 });
+      expect(dailyStatuses(records, loadDailyLedger(storage)).size).toBe(0);
+      expect(findDailyAttempts(records, '2026-10-06', 'hard')).toEqual([]);
+    });
+
+    it('leave the ledger with nothing for those days', () => {
+      const storage = memoryStorage();
+      storage.setItem(
+        'sudoku.dailyLedger',
+        JSON.stringify({ '2026-10-01': 'dddd', '2026-10-06': 'l-l-', '2026-10-07': 'd---' }),
+      );
+      expect([...loadDailyLedger(storage)]).toEqual([
+        ['2026-10-07', { easy: 'solved-on-the-day' }],
+      ]);
     });
   });
 
   describe('findDailyAttempts', () => {
     it('lists the attempts recorded as one daily, in the order given', () => {
       const records = [
-        daily(playing('e', OCT_6 + 5)),
-        daily(solved('d', OCT_6 + 4), '2026-10-05'),
-        { ...daily(solved('c', OCT_6 + 3)), difficulty: 'easy' as const },
-        solved('b', OCT_6 + 2, 1000, { difficulty: 'hard' }),
-        daily(solved('a', OCT_6 + 1)),
+        daily(playing('e', OCT_13 + 5)),
+        daily(solved('d', OCT_13 + 4), '2026-10-12'),
+        { ...daily(solved('c', OCT_13 + 3)), difficulty: 'easy' as const },
+        solved('b', OCT_13 + 2, 1000, { difficulty: 'hard' }),
+        daily(solved('a', OCT_13 + 1)),
       ];
-      expect(ids(findDailyAttempts(records, '2026-10-06', 'hard'))).toEqual(['e', 'a']);
-      expect(ids(findDailyAttempts(records, '2026-10-06', 'easy'))).toEqual(['c']);
-      expect(findDailyAttempts(records, '2026-10-07', 'hard')).toEqual([]);
+      expect(ids(findDailyAttempts(records, '2026-10-13', 'hard'))).toEqual(['e', 'a']);
+      expect(ids(findDailyAttempts(records, '2026-10-13', 'easy'))).toEqual(['c']);
+      expect(findDailyAttempts(records, '2026-10-14', 'hard')).toEqual([]);
     });
   });
 });

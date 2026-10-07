@@ -258,18 +258,19 @@ describe('weekdayOf', () => {
 });
 
 describe('dailyNumber and dateOfDaily', () => {
-  it('numbers the dailies from 1 on the epoch', () => {
-    expect(DAILY_EPOCH).toBe('2026-10-01');
-    expect(dailyNumber('2026-10-01')).toBe(1);
-    expect(dailyNumber('2026-10-06')).toBe(6);
-    expect(dailyNumber('2027-10-01')).toBe(366);
-    expect(dailyNumber('2026-09-30')).toBe(0);
+  it('numbers the dailies from 1 on the epoch, the day they launched', () => {
+    expect(DAILY_EPOCH).toBe('2026-10-07');
+    expect(dailyNumber('2026-10-07')).toBe(1);
+    expect(dailyNumber('2026-10-13')).toBe(7);
+    expect(dailyNumber('2027-10-07')).toBe(366);
+    expect(dailyNumber('2026-10-06')).toBe(0);
+    expect(dailyNumber('2026-10-01')).toBe(-5);
   });
 
   it('turns a daily number back into its date', () => {
-    expect(dateOfDaily(1)).toBe('2026-10-01');
-    expect(dateOfDaily(6)).toBe('2026-10-06');
-    for (const key of ['2026-10-01', '2027-03-28', '2028-02-29', '2030-12-31']) {
+    expect(dateOfDaily(1)).toBe('2026-10-07');
+    expect(dateOfDaily(7)).toBe('2026-10-13');
+    for (const key of ['2026-10-07', '2027-03-28', '2028-02-29', '2030-12-31']) {
       expect(dateOfDaily(dailyNumber(key))).toBe(key);
     }
   });

@@ -22,7 +22,7 @@ your browser.
   player's own midnight. New game offers **Today's puzzles**, each marked with how it stands, above
   a **Random puzzle** of each tier, and a daily you have started carries on where you left off.
   The **calendar** (the calendar button in the header; on a phone, the ☰ menu) shows every day
-  since Daily #1, 1 October 2026, with a mark for each tier — solid for solved on the day,
+  since Daily #1 — 7 October 2026, the day the dailies launched — with a mark for each tier — solid for solved on the day,
   hatched for solved on another day, half filled for in progress, an empty square for not
   started, Easy to Expert from left to right, so it reads without colour — and the day chosen
   with its four puzzles to play, carry on with or play again. It is a WAI-ARIA date grid: the arrow keys move a
@@ -188,10 +188,11 @@ you play, the next puzzle of the same tier is already being prepared, so "New ga
 
 ## How the daily puzzles are made
 
-Each day has a daily puzzle of each difficulty, the same for everyone: the Hard of 6 October
-2026 is `generatePuzzle('hard', createRng('daily/2026-10-06/hard'))` — dealt in the browser, in
-the worker like any other puzzle, from nothing but the date. The day turns over at each player's
-own midnight, and Daily #1 was 1 October 2026. (Should the generator ever fall back to another
+Each day has a daily puzzle of each difficulty, the same for everyone: the Hard of 13 October
+2026 is `generatePuzzle('hard', createRng('daily/2026-10-13/hard'))` — dealt in the browser, in
+the worker like any other puzzle, from nothing but the date (never from how far it is from
+Daily #1). The day turns over at each player's own midnight, and Daily #1 was 7 October 2026, the
+day the dailies launched: the calendar goes back no further. (Should the generator ever fall back to another
 tier, which for an Expert is about a one-in-10¹¹ chance, the seed `…/hard/2` is tried next, and so
 on: a daily is always of its tier.)
 
@@ -216,11 +217,11 @@ engine is replaced, the days it has dealt are frozen into
 ```json
 {
   "segments": [
-    { "version": 4, "from": "2026-10-01" },
+    { "version": 4, "from": "2026-10-07" },
     { "version": 5, "from": "2026-11-15" }
   ],
   "frozenThrough": "2026-11-14",
-  "days": ["2026-10-01 v4 <easy> <medium> <hard> <expert>", "…one line a day…"]
+  "days": ["2026-10-07 v4 <easy> <medium> <hard> <expert>", "…one line a day…"]
 }
 ```
 
@@ -248,6 +249,21 @@ may be re-pointed to a new engine only while its first day is still ahead everyw
 changed by hand instead of freezing fails too. On main itself there is nothing to compare with:
 once merged, the released archive is this one. CI checks at the moment it runs, so run it again
 on a pull request that has waited a day or more.
+
+**Daily #1** (`DAILY_EPOCH`, and the archive's `"epoch"` and first segment) may move later, but
+only while main's archive has nothing frozen, and only to a day that has begun somewhere. A date's
+puzzle comes from its own seed, so a later Daily #1 changes no remaining day's puzzle — it only
+takes days off the front of the calendar — and with nothing frozen, no frozen day is lost. A
+Daily #1 still to come would take today's dailies from everyone, and since re-pointing an engine
+needs its first day to be ahead everywhere, the rule also keeps a move from standing in for a
+freeze: change the engine on its own. The guard then compares as though main's archive had begun
+on the new Daily #1, its one segment starting there, and every rule above still applies. Moving
+Daily #1 earlier, or later once anything is frozen, fails, saying why; a branch cut before
+main moved Daily #1 later looks as though it moves it earlier, and rebasing onto main puts that
+right. That is how Daily #1 moved from 1 to 7 October 2026 on launch day, so that the calendar
+starts on the day the dailies launched. A record of a daily from a day before Daily #1 — one
+opened in the few hours the earlier days were on offer — stays in the history as an ordinary
+game, with its time, but not in the calendar or a streak.
 
 **Before dailies are first released** — while `src/daily/archive.json` is not on main — no player
 has been dealt a daily, whatever the date, and there is nothing to freeze. An engine change then
@@ -299,7 +315,7 @@ the game — there is no server and nothing is uploaded.
 | `&t=<secs>`    | The sharer's time in whole seconds — the time to beat.                                    |
 | `&n=<name>`    | The sharer's name (optional; past 24 characters it is cut short with an ellipsis).        |
 | `&a=<assists>` | Help the sharer took: `c` auto candidates, `h<N>` hints, `k<N>` checks, `r<N>` reveals.   |
-| `&d=<date>`    | A daily's date (`2026-10-06`): the opener checks it against that day's daily of the tier. |
+| `&d=<date>`    | A daily's date (`2026-10-13`): the opener checks it against that day's daily of the tier. |
 
 Opening a link:
 
@@ -315,7 +331,7 @@ Opening a link:
 The difficulty is always re-graded from the puzzle itself rather than taken from the link, and
 the parameters are cleared from the address bar once read, so reloading never drags you back.
 
-A daily's link names it — "Sudoku Daily · 6 Oct 2026 · Hard · 5:23" — and carries its date as
+A daily's link names it — "Sudoku Daily · 13 Oct 2026 · Hard · 5:23" — and carries its date as
 well as its givens. The link opens as any shared puzzle while the game checks the date against
 that day's daily (dealt live, or taken from the archive); if the puzzle is that daily, the
 friend's game is recorded as it, shows in their calendar, and counts towards their streak if they

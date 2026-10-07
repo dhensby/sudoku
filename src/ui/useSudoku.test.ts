@@ -37,7 +37,7 @@ import {
   type UseSudokuOptions,
 } from './useSudoku';
 
-const NOW = Date.UTC(2026, 9, 5, 12);
+const NOW = Date.UTC(2026, 9, 12, 12);
 const NO_HELP = { autoCandidates: false, hints: 0, checks: 0, reveals: 0 };
 
 /** The PUZZLE cell index of the n-th empty cell. */
@@ -1680,8 +1680,8 @@ describe('useSudoku', () => {
   });
 
   describe('daily puzzles', () => {
-    const TODAY = '2026-10-05';
-    const YESTERDAY = '2026-10-04';
+    const TODAY = '2026-10-12';
+    const YESTERDAY = '2026-10-11';
 
     /** Today's Hard daily, a move from solved: its one blank is cell 0. */
     const NEAR_HARD = nearlySolved([0]);
@@ -1697,7 +1697,7 @@ describe('useSudoku', () => {
       act(() => vi.setSystemTime(NOW + 86_400_000));
       setVisibility('hidden');
       setVisibility('visible');
-      expect(dailies.prefetched).toEqual([TODAY, '2026-10-06']);
+      expect(dailies.prefetched).toEqual([TODAY, '2026-10-13']);
     });
 
     it("works out today's dailies, and how each stands, afresh on asking and coming back into view", async () => {
@@ -1718,7 +1718,7 @@ describe('useSudoku', () => {
       act(() => vi.setSystemTime(NOW + 86_400_000));
       setVisibility('hidden');
       setVisibility('visible');
-      expect(result.current.today.date).toBe('2026-10-06');
+      expect(result.current.today.date).toBe('2026-10-13');
       expect(result.current.today.statuses.hard).toBe('not-started');
     });
 
@@ -1784,8 +1784,8 @@ describe('useSudoku', () => {
     it('opens nothing for a date with no daily', async () => {
       const { result, dailies } = await started();
       const record = result.current.record;
-      act(() => result.current.actions.openDaily('2026-09-30', 'hard'));
-      act(() => result.current.actions.openDaily('2026-10-08', 'hard'));
+      act(() => result.current.actions.openDaily('2026-10-06', 'hard'));
+      act(() => result.current.actions.openDaily('2026-10-15', 'hard'));
       expect(result.current.record).toBe(record);
       expect(dailies.asked).toEqual([]);
     });
@@ -1953,7 +1953,7 @@ describe('useSudoku', () => {
       const storage = memoryStorage();
       storage.setItem(
         'sudoku.dailyLedger',
-        JSON.stringify({ '2026-10-03': '--d-', '2026-10-04': '--d-' }),
+        JSON.stringify({ '2026-10-10': '--d-', '2026-10-11': '--d-' }),
       );
       const dailies = fakeDailies({ puzzles: { [`${TODAY}/hard`]: NEAR_HARD } });
       const { result } = await started({ dailies, storage });
@@ -1968,13 +1968,13 @@ describe('useSudoku', () => {
       act(() => result.current.actions.openDialog('daily'));
       expect(result.current.dialog).toMatchObject({ kind: 'daily' });
       const calendar = (result.current.dialog as { calendar: CalendarView }).calendar;
-      expect(calendar.ledger.get('2026-10-04')).toEqual({ hard: 'solved-on-the-day' });
+      expect(calendar.ledger.get('2026-10-11')).toEqual({ hard: 'solved-on-the-day' });
     });
 
     describe("a friend's link to a daily whose day has not begun here yet", () => {
-      const TOMORROW = '2026-10-06';
+      const TOMORROW = '2026-10-13';
       const DAY = 86_400_000;
-      // Noon UTC on the 5th: the 6th has already begun in UTC+14.
+      // Noon UTC on the 12th: the 13th has already begun in UTC+14.
       const link = `${linkFor(NEAR_HARD.givens)}&d=${TOMORROW}`;
 
       it('counts once started on its own day, though it was opened the day before', async () => {
@@ -2062,7 +2062,7 @@ describe('useSudoku', () => {
       setVisibility('visible');
       expect(result.current.dialog).toMatchObject({
         kind: 'daily',
-        calendar: { today: '2026-10-06' },
+        calendar: { today: '2026-10-13' },
       });
     });
 
@@ -2106,6 +2106,61 @@ describe('useSudoku', () => {
       expect(result.current.phase).toBe('ready');
     });
 
+    describe('of 1–6 October, played on the launch morning before Daily #1 moved to the 7th', () => {
+      /** 08:30 UTC on 7 October: dailies had launched, with Daily #1 on the 1st. */
+      const LAUNCH_MORNING = Date.UTC(2026, 9, 7, 8, 30);
+
+      it('resumes an unfinished one as an ordinary game, its time kept, in no calendar', async () => {
+        vi.setSystemTime(LAUNCH_MORNING);
+        const storage = memoryStorage();
+        const first = await started({ storage });
+        enter(first.result, FIRST_EMPTY, answerAt(FIRST_EMPTY));
+        advance(65_000);
+        act(() => {
+          window.dispatchEvent(new Event('pagehide'));
+        });
+        first.unmount();
+        // Recorded as that morning's app recorded it: the 3rd's daily, begun on the 7th.
+        const [record] = JSON.parse(storage.getItem('sudoku.history')!) as GameRecord[];
+        storage.setItem(
+          'sudoku.history',
+          JSON.stringify([
+            { ...record, source: 'daily', daily: '2026-10-03', startedOn: '2026-10-07' },
+          ]),
+        );
+
+        vi.setSystemTime(NOW);
+        const { result, dailies } = setup({ storage, source: fakeSource() });
+        expect(result.current.phase).toBe('paused');
+        expect(result.current.pauseReason).toBe('restored');
+        expect(result.current.elapsedMs).toBe(65_000);
+        expect(result.current.game?.cells[FIRST_EMPTY].value).toBe(answerAt(FIRST_EMPTY));
+        expect(result.current.record?.id).toBe(record.id);
+        expect(result.current.record).not.toHaveProperty('daily');
+        expect(result.current.daily).toBeNull();
+        act(() => result.current.actions.resume());
+        expect(result.current.phase).toBe('playing');
+        act(() => result.current.actions.openDialog('daily'));
+        const calendar = (result.current.dialog as { calendar: CalendarView }).calendar;
+        expect(calendar.records.filter((entry) => entry.daily !== undefined)).toEqual([]);
+        expect(dailies.asked).toEqual([]);
+      });
+
+      it('opens a link to one as a plain shared puzzle, never asking for that daily', async () => {
+        const dailies = fakeDailies({ puzzles: { '2026-10-03/expert': PUZZLE } });
+        const { result, storage } = setup({
+          dailies,
+          search: `${linkFor(PUZZLE.givens)}&d=2026-10-03`,
+        });
+        await settle();
+        expect(result.current.record).toMatchObject({ source: 'shared' });
+        expect(result.current.record).not.toHaveProperty('daily');
+        expect(result.current.daily).toBeNull();
+        expect(loadHistory(storage)[0]).not.toHaveProperty('daily');
+        expect(dailies.asked).toEqual([]);
+      });
+    });
+
     describe('a link that says it is a daily', () => {
       it('records the game as that daily once the date checks out', async () => {
         const dailies = fakeDailies({ puzzles: { [`${TODAY}/expert`]: PUZZLE } });
@@ -2134,7 +2189,7 @@ describe('useSudoku', () => {
       });
 
       it('ignores a date with no daily, and a check that fails', async () => {
-        const future = setup({ search: `${linkFor(PUZZLE.givens)}&d=2026-12-25` });
+        const future = setup({ search: `${linkFor(PUZZLE.givens)}&d=2027-01-01` });
         await settle();
         expect(future.result.current.record).not.toHaveProperty('daily');
         future.unmount();

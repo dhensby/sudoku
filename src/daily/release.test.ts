@@ -1,10 +1,11 @@
 // @vitest-environment node
+import { DAILY_EPOCH } from '../core';
 import { serialiseArchive, type Archive } from './archive';
 import { readRelease, runGit, type GitRunner } from './release';
 
 const RELEASED: Archive = {
-  epoch: '2026-10-01',
-  segments: [{ version: 4, from: '2026-10-01' }],
+  epoch: DAILY_EPOCH,
+  segments: [{ version: 4, from: DAILY_EPOCH }],
   frozenThrough: null,
   days: [],
 };
@@ -29,6 +30,22 @@ describe('readRelease', () => {
     expect(readRelease('origin/main', git)).toEqual({ kind: 'released', archive: RELEASED });
   });
 
+  it('reads a released archive from before Daily #1 moved, as dailies launched on main', () => {
+    // Released on the launch morning with Daily #1 on 1 October, before it
+    // moved to 7 October: the guard, not the reading, decides whether that is
+    // a change it allows (see `checkAgainstRelease`).
+    const launched: Archive = {
+      epoch: '2026-10-01',
+      segments: [{ version: 7, from: '2026-10-01' }],
+      frozenThrough: null,
+      days: [],
+    };
+    const git = fakeGit(['origin/main'], {
+      'origin/main:src/daily/archive.json': serialiseArchive(launched),
+    });
+    expect(readRelease('origin/main', git)).toEqual({ kind: 'released', archive: launched });
+  });
+
   it('takes a ref without the archive as dailies not yet released', () => {
     expect(readRelease('origin/main', fakeGit(['origin/main'], {}))).toEqual({
       kind: 'unreleased',
@@ -45,7 +62,7 @@ describe('readRelease', () => {
   it('refuses a released archive that is not well formed, saying where it is', () => {
     const git = fakeGit(['origin/main'], { 'origin/main:src/daily/archive.json': '{"epoch":1}' });
     expect(() => readRelease('origin/main', git)).toThrow(
-      'src/daily/archive.json on origin/main: "epoch" must be 2026-10-01',
+      'src/daily/archive.json on origin/main: "epoch" must be a YYYY-MM-DD date',
     );
     const broken = fakeGit(['origin/main'], { 'origin/main:src/daily/archive.json': '{' });
     expect(() => readRelease('origin/main', broken)).toThrow(

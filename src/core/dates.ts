@@ -29,7 +29,7 @@ export interface MonthGridDay {
 }
 
 /** The date of Daily #1. */
-export const DAILY_EPOCH: DateKey = '2026-10-01';
+export const DAILY_EPOCH: DateKey = '2026-10-07';
 
 /** Milliseconds in a UTC day, which is always exactly 24 hours long. */
 const UTC_DAY_MS = 86_400_000;

@@ -5,17 +5,17 @@ import { WIKIPEDIA_PUZZLE } from '../../test/grids';
 import { ChallengeDialog, type ChallengeDialogProps } from './ChallengeDialog';
 
 const NONE = { autoCandidates: false, hints: 0, checks: 0, reveals: 0 };
-/** 14:30 local on 5 Oct 2026. */
-const NOW = new Date(2026, 9, 5, 14, 30).getTime();
+/** 14:30 local on 12 Oct 2026. */
+const NOW = new Date(2026, 9, 12, 14, 30).getTime();
 
 const PREVIOUS: GameRecord = {
   id: 'old',
   givens: formatGrid(parseGrid(WIKIPEDIA_PUZZLE)),
   difficulty: 'hard',
   source: 'generated',
-  createdAt: new Date(2026, 9, 3, 9, 0).getTime(),
-  updatedAt: new Date(2026, 9, 3, 9, 5).getTime(),
-  completedAt: new Date(2026, 9, 3, 9, 5).getTime(),
+  createdAt: new Date(2026, 9, 10, 9, 0).getTime(),
+  updatedAt: new Date(2026, 9, 10, 9, 5).getTime(),
+  completedAt: new Date(2026, 9, 10, 9, 5).getTime(),
   status: 'solved',
   elapsedMs: 290_700,
   assists: NONE,
@@ -48,14 +48,14 @@ describe('ChallengeDialog', () => {
 
   it('says when, and how fast, the puzzle was solved before', () => {
     renderChallenge();
-    expect(dialog()).toHaveTextContent('You solved this Hard puzzle in 4:50 on 3 Oct.');
+    expect(dialog()).toHaveTextContent('You solved this Hard puzzle in 4:50 on 10 Oct.');
     // Read as the description: focus opens on Play again, below it.
-    expect(dialog()).toHaveAccessibleDescription(/You solved this Hard puzzle in 4:50 on 3 Oct\./);
+    expect(dialog()).toHaveAccessibleDescription(/You solved this Hard puzzle in 4:50 on 10 Oct\./);
   });
 
   it.each([
-    [new Date(2026, 9, 5, 9, 12).getTime(), 'today at 09:12'],
-    [new Date(2026, 9, 4, 21, 3).getTime(), 'yesterday at 21:03'],
+    [new Date(2026, 9, 12, 9, 12).getTime(), 'today at 09:12'],
+    [new Date(2026, 9, 11, 21, 3).getTime(), 'yesterday at 21:03'],
     [new Date(2025, 11, 31, 8, 0).getTime(), 'on 31 Dec 2025'],
   ])('phrases a solve at %s as "%s" mid-sentence', (completedAt, phrase) => {
     renderChallenge({ previous: { ...PREVIOUS, completedAt } });
@@ -64,7 +64,7 @@ describe('ChallengeDialog', () => {
 
   it('falls back to the last update for a solved record with no completion time', () => {
     renderChallenge({ previous: { ...PREVIOUS, completedAt: null } });
-    expect(dialog()).toHaveTextContent('on 3 Oct.');
+    expect(dialog()).toHaveTextContent('on 10 Oct.');
   });
 
   it('mentions the help the earlier solve took', () => {
@@ -101,8 +101,8 @@ describe('ChallengeDialog', () => {
   describe('ChallengeDialog for a daily', () => {
     it('names the daily it offers again', () => {
       vi.useFakeTimers({ now: NOW });
-      renderChallenge({ daily: '2026-10-03' });
-      expect(dialog()).toHaveTextContent('You solved the Hard daily for 3 Oct in 4:50 on 3 Oct.');
+      renderChallenge({ daily: '2026-10-10' });
+      expect(dialog()).toHaveTextContent('You solved the Hard daily for 10 Oct in 4:50 on 10 Oct.');
       vi.useRealTimers();
     });
   });
