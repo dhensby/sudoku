@@ -244,9 +244,15 @@ export function DailyDialog({
     }
     const target = dateForKey(selected, event);
     if (target === null) return;
+    // Even a key stopped at either end is ours: PageUp and PageDown must not scroll the dialog.
     event.preventDefault();
+    // A key stopped at either end leaves the choice where it was, so nothing redraws to take the
+    // focus: asking for it anyway would leave the request standing, and a later press of a month
+    // button would pull the focus off that button into the grid.
+    const next = clamp(target);
+    if (next === selected) return;
     isFocusPending.current = true;
-    choose(target);
+    choose(next);
   };
 
   const stepMonth = (months: number) => choose(sameDayMonthsOn(selected, months));

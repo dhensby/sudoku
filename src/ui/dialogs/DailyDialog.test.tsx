@@ -334,6 +334,17 @@ describe('DailyDialog', () => {
     expect(next).toHaveFocus();
   });
 
+  it('leaves focus on a month button pressed after a key stopped at today', () => {
+    renderCalendar({ today: '2026-11-10' });
+    key('ArrowRight');
+    expect(chosen()).toBe(day('2026-11-10'));
+    const previous = screen.getByRole('button', { name: 'Previous month' });
+    previous.focus();
+    fireEvent.click(previous);
+    expect(chosen()).toBe(day('2026-10-10'));
+    expect(previous).toHaveFocus();
+  });
+
   it('keeps its choice when today moves on while it is open', () => {
     const { rerender, props } = renderCalendar();
     fireEvent.click(day('2026-10-10'));
@@ -402,6 +413,23 @@ describe('DailyDialog', () => {
       expect(day('2026-10-07')).toHaveFocus();
       expect(grid()).toHaveAccessibleName('October 2026');
     });
+
+    it.each(['ArrowLeft', 'ArrowUp', 'Home', 'PageUp'])(
+      'leaves focus on a month button pressed after %s stopped at 7 October',
+      (name) => {
+        renderCalendar({ today: '2026-11-10' });
+        fireEvent.click(screen.getByRole('button', { name: 'Previous month' }));
+        fireEvent.click(day('2026-10-07'));
+        chosen().focus();
+        key(name);
+        expect(chosen()).toBe(day('2026-10-07'));
+        const next = screen.getByRole('button', { name: 'Next month' });
+        next.focus();
+        fireEvent.click(next);
+        expect(chosen()).toBe(day('2026-11-07'));
+        expect(next).toHaveFocus();
+      },
+    );
 
     it('stops at 7 October, not the Monday before it, on Home from later that week', () => {
       renderCalendar({ today: '2026-10-09' });
