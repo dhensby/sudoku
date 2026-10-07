@@ -1,5 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
-import type { Assists, Difficulty, GridString } from '../../core';
+import type { Assists, DateKey, Difficulty, GridString } from '../../core';
 import { normaliseName } from '../../storage/storage';
 import {
   buildShareText,
@@ -18,6 +18,8 @@ export interface ShareDialogProps {
   difficulty: Difficulty;
   /** The player's result to include, or null to share the puzzle alone (mid-game, or an unsolved history entry). */
   result: { seconds: number; assists: Assists } | null;
+  /** The date of the daily the puzzle is, if it was played as one: the message names it, and the link says so. */
+  daily?: DateKey | null;
   /** The remembered name, already normalised. */
   playerName: string;
   /**
@@ -69,6 +71,7 @@ export function ShareDialog({
   givens,
   difficulty,
   result,
+  daily = null,
   playerName,
   onPlayerNameChange,
   onClose,
@@ -93,8 +96,9 @@ export function ShareDialog({
     result === null
       ? undefined
       : { seconds: result.seconds, name: normaliseName(name), assists: result.assists },
+    daily,
   );
-  const text = buildShareText({ difficulty, result: result ?? undefined });
+  const text = buildShareText({ difficulty, result: result ?? undefined, daily });
   const message = messageWithLink(text, url);
   const payload: ShareData = { title: 'Sudoku', text, url };
 

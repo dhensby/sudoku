@@ -1,13 +1,20 @@
 import {
+  DAILY_EPOCH,
+  daysBetween,
   encodeGivens,
   formatGrid,
   gridValues,
+  isDateKey,
+  latestDateAnywhere,
   parseGrid,
   rate,
+  type DateKey,
   type Difficulty,
   type GridString,
   type Puzzle,
 } from '../core';
+import type { DailyStore } from '../daily/dailies';
+import { DIFFICULTIES } from '../storage/storage';
 import { WIKIPEDIA_PUZZLE, WIKIPEDIA_SOLUTION } from '../test/grids';
 import type { PuzzleSource } from './puzzleSource';
 
@@ -92,4 +99,116 @@ export function failingSource(): PuzzleSource {
     prefetch: () => {},
     dispose: () => {},
   };
+}
+
+/** Multipliers that shuffle the nine digits among themselves (each is coprime with 9). */
+const SHUFFLES = [1, 2, 4, 5, 7, 8];
+
+/**
+ * A puzzle with its digits relabelled — the `n`th of 53 relabellings, none of
+ * them the original: just as valid, and told apart by its givens.
+ */
+export function relabelled(puzzle: Puzzle, n: number): Puzzle {
+  const k = SHUFFLES[(n + 1) % 6];
+  const shift = Math.floor((n + 1) / 6) % 9;
+  const relabel = (grid: string) =>
+    grid.replace(/[1-9]/g, (d) => String((((Number(d) - 1) * k + shift) % 9) + 1));
+  return { ...puzzle, givens: relabel(puzzle.givens), solution: relabel(puzzle.solution) };
+}
+
+/** A daily store for tests (see `fakeDailies`), which records what was asked of it. */
+export interface FakeDailies extends DailyStore {
+  /** Each daily dealt or looked up, as `date/tier`, in order. */
+  asked: string[];
+  /** Each date whose dailies were prefetched, in order. */
+  prefetched: DateKey[];
+  /** Deal everything held so far (see the `held` option), and hold nothing from now on. */
+  release(): void;
+}
+
+export interface FakeDailiesOptions {
+  /** A date's daily of a tier, by `date/tier`. Any other is PUZZLE relabelled, a different one per daily. */
+  puzzles?: Record<string, Puzzle>;
+  /** Dailies already dealt, by `date/tier`: to hand at once (`peekDaily`). */
+  dealt?: string[];
+  /** The wall clock, for which dates have a daily. Defaults to `Date.now`. */
+  now?: () => number;
+  /** Hold every deal until `release`, to see what waits for one. */
+  held?: boolean;
+  /** Fail every deal — with this error, if one is given. */
+  failing?: boolean | Error;
+}
+
+/**
+ * A synchronous stand-in for the daily store: each date's dailies, from
+ * Daily #1 to the latest date begun anywhere, as `puzzles` gives them —
+ * labelled with their tier, as the real store labels them — and otherwise
+ * PUZZLE relabelled, so every daily is a different puzzle. Nothing is
+ * generated, and nothing written to storage.
+ */
+export function fakeDailies(options: FakeDailiesOptions = {}): FakeDailies {
+  const { puzzles = {}, now = Date.now, failing = false } = options;
+  let isHeld = options.held ?? false;
+  const dealt = new Set(options.dealt ?? []);
+  const waiting: (() => void)[] = [];
+  const hasDaily = (date: string): date is DateKey =>
+    isDateKey(date) &&
+    daysBetween(DAILY_EPOCH, date) >= 0 &&
+    daysBetween(date, latestDateAnywhere(now())) >= 0;
+  const puzzleFor = (date: DateKey, tier: Difficulty): Puzzle => {
+    const given = puzzles[`${date}/${tier}`];
+    if (given !== undefined) return { ...given, difficulty: tier };
+    const n = (daysBetween(DAILY_EPOCH, date) * 4 + DIFFICULTIES.indexOf(tier)) % 53;
+    return { ...relabelled(PUZZLE, n), difficulty: tier };
+  };
+  const deal = (date: DateKey, tier: Difficulty): Promise<Puzzle> => {
+    store.asked.push(`${date}/${tier}`);
+    const settle = (): Promise<Puzzle> => {
+      if (failing !== false) {
+        return Promise.reject(failing === true ? new Error('no dailies today') : failing);
+      }
+      dealt.add(`${date}/${tier}`);
+      return Promise.resolve(puzzleFor(date, tier));
+    };
+    if (!isHeld) return settle();
+    return new Promise<void>((resolve) => waiting.push(resolve)).then(settle);
+  };
+  const store: FakeDailies = {
+    asked: [],
+    prefetched: [],
+    release() {
+      isHeld = false;
+      for (const resolve of waiting.splice(0)) resolve();
+    },
+    hasDaily,
+    dailyPuzzle: async (date, tier) => (hasDaily(date) ? deal(date, tier) : null),
+    peekDaily: (date, tier) =>
+      hasDaily(date) && dealt.has(`${date}/${tier}`) ? puzzleFor(date, tier) : null,
+    dailiesFor: async (date) => {
+      if (!hasDaily(date)) return null;
+      const found = await Promise.all(DIFFICULTIES.map((tier) => deal(date, tier)));
+      return {
+        date,
+        number: daysBetween(DAILY_EPOCH, date) + 1,
+        puzzles: Object.fromEntries(DIFFICULTIES.map((tier, i) => [tier, found[i]])) as Record<
+          Difficulty,
+          Puzzle
+        >,
+      };
+    },
+    findDaily: async (date, givens, firstTry) => {
+      if (!hasDaily(date)) return null;
+      for (const tier of new Set([
+        ...(firstTry === undefined ? [] : [firstTry]),
+        ...DIFFICULTIES,
+      ])) {
+        if ((await deal(date, tier)).givens === givens) return tier;
+      }
+      return null;
+    },
+    prefetch(date) {
+      if (hasDaily(date)) store.prefetched.push(date);
+    },
+  };
+  return store;
 }

@@ -36,6 +36,17 @@ export interface PuzzleSource {
   dispose(): void;
 }
 
+/** A puzzle source that can also deal the puzzle a given seed deals — what the dailies need. */
+export interface SeededPuzzleSource extends PuzzleSource {
+  /**
+   * The puzzle of `difficulty` that `seed` deals — a daily's, which must
+   * come out the same for everyone — generated the same way as the rest
+   * (off the main thread where it can be), but never taken from the spares
+   * nor followed by one.
+   */
+  generate(difficulty: Difficulty, seed: string): Promise<Puzzle>;
+}
+
 /** The parts of a `Worker` the source uses — what a test fake has to provide. */
 export interface WorkerLike {
   postMessage(message: GenerateRequest): void;
@@ -52,7 +63,7 @@ export interface PuzzleSourceOptions {
    * real module worker where `Worker` exists.
    */
   createWorker?: () => WorkerLike | null;
-  /** Seeds for the puzzles, one per request. Defaults to `randomSeed`. */
+  /** Seeds for the puzzles `next` and `prefetch` ask for, one each. Defaults to `randomSeed`. */
   seed?: () => string;
 }
 
@@ -101,7 +112,7 @@ function settle(job: Job, response: GenerateResponse): void {
  * instead, and so is everything after. A worker that failed once will most
  * likely fail again, and each retry would make the player wait for it first.
  */
-export function createPuzzleSource(options: PuzzleSourceOptions = {}): PuzzleSource {
+export function createPuzzleSource(options: PuzzleSourceOptions = {}): SeededPuzzleSource {
   const { createWorker = createModuleWorker, seed = randomSeed } = options;
 
   let worker: WorkerLike | null = null;
@@ -167,9 +178,9 @@ export function createPuzzleSource(options: PuzzleSourceOptions = {}): PuzzleSou
     return worker;
   };
 
-  const request = (difficulty: Difficulty): Promise<Puzzle> =>
+  const request = (difficulty: Difficulty, jobSeed: string = seed()): Promise<Puzzle> =>
     new Promise<Puzzle>((resolve, reject) => {
-      const job: Job = { difficulty, seed: seed(), resolve, reject };
+      const job: Job = { difficulty, seed: jobSeed, resolve, reject };
       const target = ensureWorker();
       if (target === null) {
         runOnMainThread(job);
@@ -200,6 +211,7 @@ export function createPuzzleSource(options: PuzzleSourceOptions = {}): PuzzleSou
       return puzzle;
     },
     prefetch,
+    generate: (difficulty, jobSeed) => request(difficulty, jobSeed),
     dispose() {
       worker?.terminate();
       worker = null;

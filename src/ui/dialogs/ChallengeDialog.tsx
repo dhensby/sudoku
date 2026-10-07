@@ -1,7 +1,7 @@
 import { useId, useState } from 'react';
-import { formatDuration, toSeconds, type Difficulty } from '../../core';
+import { dateKeyOf, formatDuration, toSeconds, type DateKey, type Difficulty } from '../../core';
 import type { Challenge, GameRecord } from '../../storage/history';
-import { DIFFICULTY_LABEL, formatDate } from '../format';
+import { DIFFICULTY_LABEL, formatDate, formatDay } from '../format';
 import { Comparison } from './CompletionDialog';
 import { Dialog } from './Dialog';
 import { assistsSentence } from './text';
@@ -16,6 +16,8 @@ export interface ChallengeDialogProps {
   previous: GameRecord;
   /** The result the link carried, if any. */
   challenge: Challenge | null;
+  /** The date of the daily the puzzle is, if it is one (a solved daily chosen from New game, or a link to one). */
+  daily?: DateKey | null;
   onPlayAgain: () => void;
   onClose: () => void;
 }
@@ -32,14 +34,15 @@ function whenSolved(epochMs: number, now: number): string {
 }
 
 /**
- * Opening a link to a puzzle already solved: say so, compare with the link's
- * time if it carried one, and offer a fresh attempt. Closing keeps whatever
- * game was on screen.
+ * Opening a puzzle already solved — from a link, or a solved daily chosen
+ * from New game: say so, compare with the link's time if it carried one, and
+ * offer a fresh attempt. Closing keeps whatever game was on screen.
  */
 export function ChallengeDialog({
   difficulty,
   previous,
   challenge,
+  daily = null,
   onPlayAgain,
   onClose,
 }: ChallengeDialogProps) {
@@ -76,8 +79,11 @@ export function ChallengeDialog({
     >
       <div className="challenge" id={summaryId}>
         <p className="challenge__summary">
-          You solved this {DIFFICULTY_LABEL[difficulty]} puzzle in{' '}
-          {formatDuration(previous.elapsedMs)} {whenSolved(solvedAt, now)}.
+          You solved{' '}
+          {daily === null
+            ? `this ${DIFFICULTY_LABEL[difficulty]} puzzle`
+            : `the ${DIFFICULTY_LABEL[difficulty]} daily for ${formatDay(daily, dateKeyOf(now))}`}{' '}
+          in {formatDuration(previous.elapsedMs)} {whenSolved(solvedAt, now)}.
         </p>
         {help !== null && <p className="challenge__assists">{help}.</p>}
       </div>

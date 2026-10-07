@@ -1,13 +1,19 @@
 import {
   BOX,
   COL,
+  DAILY_EPOCH,
   ROW,
   bit,
   createRng,
+  daysBetween,
+  earliestDateAnywhere,
   encodeGivens,
+  isDateKey,
   isGridString,
+  latestDateAnywhere,
   looksLikeShareCode,
   type Assists,
+  type DateKey,
   type Difficulty,
   type GridString,
   type RandomFn,
@@ -23,12 +29,19 @@ import {
   writeItem,
   type StorageLike,
 } from './storage';
+import {
+  EMPTY_LEDGER,
+  addToLedger,
+  mergeLedgers,
+  type DailyLedger,
+  type SolvedStatus,
+} from './streaks';
 
 /*
  * The history of every game played, the saved state of unfinished ones, and
  * the puzzles the player has seen.
  *
- * Five kinds of key:
+ * Six kinds of key:
  *   sudoku.history      the list of `GameRecord`s, newest first
  *   sudoku.game.<id>    one game's saved state, opaque here (the game module
  *                       validates it on the way back in)
@@ -36,6 +49,8 @@ import {
  *   sudoku.current      the id of the game on screen
  *   sudoku.seen         the share codes of puzzles whose board has been on
  *                       show, least recently seen first (see `markSeen`)
+ *   sudoku.dailyLedger  what the solved dailies among pruned records said,
+ *                       so streaks outlast them (see `DailyLedger`)
  *
  * Records are small and kept for a long time (up to MAX_RECORDS); saved games
  * are a few times bigger and only worth keeping while someone might resume
@@ -70,8 +85,15 @@ export interface Challenge {
   assists: Assists;
 }
 
-/** Where a game's puzzle came from: the generator, a shared link, or a replay of one already played. */
-export type GameSource = 'generated' | 'shared' | 'replay';
+/**
+ * Where a game's puzzle came from: the generator, a daily puzzle opened as
+ * one (from the New game menu), a shared link, or a replay of a puzzle
+ * already seen — which is what any attempt at a seen puzzle is,
+ * whatever brought it back (see `hasSeen`). Only replays are left out of best
+ * and average times; and only generated games are dropped as glimpses, so an
+ * unplayed daily is kept, to resume, rather than turned into a replay.
+ */
+export type GameSource = 'generated' | 'daily' | 'shared' | 'replay';
 
 /** One game, played or in progress. */
 export interface GameRecord {
@@ -92,6 +114,24 @@ export interface GameRecord {
   assists: Assists;
   /** The result this game is being played against, if it came from a link that carried one. */
   challenge: Challenge | null;
+  /**
+   * The date of the daily this game is an attempt at; the daily's tier is the
+   * record's `difficulty`. Absent for every other game — including a puzzle
+   * that happens to be a daily but was not opened as one, such as from a
+   * link without a date hint. Set on every attempt at a daily, whatever its
+   * source: a first attempt ('daily'), a link whose date hint checked out
+   * ('shared') and a replay alike. Which of them count towards a streak is
+   * `streaks.ts`'s business.
+   */
+  daily?: DateKey;
+  /**
+   * For a daily attempt, the player's own date when its clock first ran —
+   * written down then, as the device's time zone had it, because the same
+   * moment read in another zone later can fall on another date (see
+   * `streaks.ts`). Absent until the attempt is started (one waiting behind
+   * its Start card has not been), and on every other game.
+   */
+  startedOn?: DateKey;
 }
 
 /** Totals for one tier. */
@@ -129,6 +169,7 @@ const CURRENT_KEY = 'sudoku.current';
 const SAVED_KEY = 'sudoku.games';
 const GAME_KEY_PREFIX = 'sudoku.game.';
 const SEEN_KEY = 'sudoku.seen';
+const LEDGER_KEY = 'sudoku.dailyLedger';
 
 /** The fewest givens a uniquely solvable Sudoku can have. */
 const MIN_GIVENS = 17;
@@ -144,7 +185,7 @@ const EXPORT_VERSION = 1;
  */
 const ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 const ID_ALPHABET = '0123456789abcdefghijklmnopqrstuvwxyz';
-const GAME_SOURCES: readonly string[] = ['generated', 'shared', 'replay'];
+const GAME_SOURCES: readonly string[] = ['generated', 'daily', 'shared', 'replay'];
 
 function gameKey(id: string): string {
   return GAME_KEY_PREFIX + id;
@@ -213,6 +254,36 @@ function isPlayable(givens: GridString): boolean {
   return count >= MIN_GIVENS;
 }
 
+/**
+ * Whether a value can be the date of a daily begun at `createdAt`: a real
+ * date from Daily #1 to the latest that had begun anywhere on Earth by then.
+ * Not the player's own date: a link from a friend whose day is already the
+ * next can open that day's daily before the player's date reaches it. But no
+ * daily exists before its date has begun somewhere, so a record that says
+ * otherwise has been tampered with.
+ */
+function isDailyDate(value: unknown, createdAt: number): value is DateKey {
+  return (
+    isDateKey(value) &&
+    daysBetween(DAILY_EPOCH, value) >= 0 &&
+    daysBetween(value, latestDateAnywhere(createdAt)) >= 0
+  );
+}
+
+/**
+ * Whether a value can be the date a daily attempt created at `createdAt` and
+ * last changed at `updatedAt` was started on: a real date that was the date
+ * somewhere on Earth at some moment in between — so whatever zone the device
+ * was in. One that was not is tampered with.
+ */
+function isStartDate(value: unknown, createdAt: number, updatedAt: number): value is DateKey {
+  return (
+    isDateKey(value) &&
+    daysBetween(earliestDateAnywhere(createdAt), value) >= 0 &&
+    daysBetween(value, latestDateAnywhere(updatedAt)) >= 0
+  );
+}
+
 /** A usable challenge, or null — a broken one only costs the comparison, so it never sinks the record. */
 function normaliseChallenge(value: unknown): Challenge | null {
   if (!isObject(value)) return null;
@@ -235,7 +306,8 @@ function normaliseChallenge(value: unknown): Challenge | null {
  * sit in the stats as a best. Fields
  * that are merely odd are coerced: an unknown source reads as 'generated',
  * timestamps out of order are pulled level, missing assists count as none,
- * and a broken challenge is dropped on its own.
+ * and a broken challenge or daily date is dropped on its own — the game is
+ * still a game, just not one against a rival or a daily.
  */
 function normaliseRecord(value: unknown): GameRecord | null {
   if (!isObject(value)) return null;
@@ -255,6 +327,7 @@ function normaliseRecord(value: unknown): GameRecord | null {
       ? Math.max(value.completedAt, createdAt)
       : updatedAt;
   }
+  const isDaily = isDailyDate(value.daily, createdAt);
   return {
     id,
     givens,
@@ -269,6 +342,12 @@ function normaliseRecord(value: unknown): GameRecord | null {
     elapsedMs,
     assists: normaliseAssists(value.assists),
     challenge: normaliseChallenge(value.challenge),
+    // Left off altogether rather than null, so the records of other games —
+    // nearly all of them — are stored just as they were before dailies.
+    ...(isDaily ? { daily: value.daily as DateKey } : {}),
+    ...(isDaily && isStartDate(value.startedOn, createdAt, updatedAt)
+      ? { startedOn: value.startedOn }
+      : {}),
   };
 }
 
@@ -369,7 +448,12 @@ function oldest(
   return ids;
 }
 
-/** Drop records by id, along with their saved games. */
+/**
+ * Drop records by id, along with their saved games. A solved daily goes only
+ * once what it said is safely in the ledger (see `DailyLedger`): if the
+ * ledger cannot be written, the daily stays — a record too many is better
+ * than a streak lost.
+ */
 function removeRecords(
   storage: StorageLike,
   records: GameRecord[],
@@ -377,6 +461,16 @@ function removeRecords(
 ): GameRecord[] {
   if (ids.length === 0) return records;
   const drop = new Set(ids);
+  const ledger = loadDailyLedger(storage);
+  const kept = addToLedger(
+    ledger,
+    records.filter((record) => drop.has(record.id)),
+  );
+  if (kept !== ledger && !writeItem(storage, LEDGER_KEY, JSON.stringify(encodeLedger(kept)))) {
+    for (const record of records) {
+      if (record.daily !== undefined && record.status === 'solved') drop.delete(record.id);
+    }
+  }
   dropSavedGames(storage, (id) => drop.has(id));
   return records.filter((record) => !drop.has(record.id));
 }
@@ -471,6 +565,79 @@ export function freeSpace(storage: StorageLike): void {
 }
 
 // ---------------------------------------------------------------------------
+// The daily ledger
+// ---------------------------------------------------------------------------
+
+/*
+ * Stored as one short string per date, a letter per tier in DIFFICULTIES
+ * order — `d` solved on the day, `l` solved on another day, `-` neither:
+ *
+ *   sudoku.dailyLedger  { "2026-10-06": "dd-l", "2026-10-07": "-d--" }
+ *
+ * Some 20 bytes a day, so it is never pruned.
+ */
+
+const LEDGER_LETTER: Readonly<Record<SolvedStatus, string>> = {
+  'solved-on-the-day': 'd',
+  'solved-later': 'l',
+};
+const LEDGER_DAY = /^[dl-]{4}$/;
+
+/** A ledger as stored and exported. */
+function encodeLedger(ledger: DailyLedger): Record<string, string> {
+  return Object.fromEntries(
+    [...ledger].map(([date, solved]) => [
+      date,
+      DIFFICULTIES.map((tier) => {
+        const status = solved[tier];
+        return status === undefined ? '-' : LEDGER_LETTER[status];
+      }).join(''),
+    ]),
+  );
+}
+
+/**
+ * A ledger read back from storage or a file. Anything that is not a date from
+ * Daily #1 with four letters costs only its own day.
+ */
+function decodeLedger(value: unknown): DailyLedger {
+  if (!isObject(value)) return EMPTY_LEDGER;
+  const ledger = new Map<DateKey, Partial<Record<Difficulty, SolvedStatus>>>();
+  for (const [date, letters] of Object.entries(value)) {
+    if (!isDateKey(date) || daysBetween(DAILY_EPOCH, date) < 0) continue;
+    if (typeof letters !== 'string' || !LEDGER_DAY.test(letters)) continue;
+    const solved: Partial<Record<Difficulty, SolvedStatus>> = {};
+    DIFFICULTIES.forEach((tier, i) => {
+      if (letters[i] === 'd') solved[tier] = 'solved-on-the-day';
+      else if (letters[i] === 'l') solved[tier] = 'solved-later';
+    });
+    if (Object.keys(solved).length > 0) ledger.set(date, solved);
+  }
+  return ledger;
+}
+
+/**
+ * What the solved dailies among pruned records said (see `DailyLedger`) —
+ * read with the records wherever streaks and the dailies' marks are worked
+ * out.
+ */
+export function loadDailyLedger(storage: StorageLike): DailyLedger {
+  return decodeLedger(readJson(storage, LEDGER_KEY));
+}
+
+/**
+ * Add an imported ledger to the one here, each date and tier keeping the
+ * better standing: like the puzzles seen, an import only ever adds. A file
+ * from before there was a ledger has none, which is no loss: its records
+ * speak for themselves.
+ */
+function mergeLedger(storage: StorageLike, incoming: unknown): void {
+  const ledger = loadDailyLedger(storage);
+  const merged = mergeLedgers(ledger, decodeLedger(incoming));
+  if (merged !== ledger) writeItem(storage, LEDGER_KEY, JSON.stringify(encodeLedger(merged)));
+}
+
+// ---------------------------------------------------------------------------
 // Records
 // ---------------------------------------------------------------------------
 
@@ -533,6 +700,20 @@ export function deleteRecord(storage: StorageLike, id: string): GameRecord[] {
 /** Every attempt at a puzzle, newest first (given a list in that order). */
 export function findAttempts(records: readonly GameRecord[], givens: GridString): GameRecord[] {
   return records.filter((record) => record.givens === givens);
+}
+
+/**
+ * Every attempt recorded as a daily, newest first (given a list in that
+ * order). For deciding how to open a daily, prefer `findAttempts` on its
+ * givens: that also finds attempts at the same puzzle made before it was
+ * opened as a daily, which make a new attempt a replay all the same.
+ */
+export function findDailyAttempts(
+  records: readonly GameRecord[],
+  date: DateKey,
+  tier: Difficulty,
+): GameRecord[] {
+  return records.filter((record) => record.daily === date && record.difficulty === tier);
 }
 
 /**
@@ -718,9 +899,10 @@ function mergeSeen(storage: StorageLike, incoming: unknown): void {
 /**
  * The whole history as a JSON file: every record, plus the saved state of
  * every game that has some, so an unfinished game can be resumed on the
- * other side, and the puzzles seen, so one played and deleted here is no
- * fresh puzzle there either. Safari deletes the storage of a site not visited
- * for seven days, so this file is the only backup there is.
+ * other side; the puzzles seen, so one played and deleted here is no fresh
+ * puzzle there either; and the daily ledger, so streaks travel whole. Safari
+ * deletes the storage of a site not visited for seven days, so this file is
+ * the only backup there is.
  */
 export function exportHistory(storage: StorageLike, now: number): string {
   const records = loadHistory(storage);
@@ -734,8 +916,17 @@ export function exportHistory(storage: StorageLike, now: number): string {
     }),
   );
   const seen = readSeen(storage);
+  const dailyLedger = encodeLedger(loadDailyLedger(storage));
   return JSON.stringify(
-    { app: EXPORT_APP, version: EXPORT_VERSION, exportedAt: now, records, games, seen },
+    {
+      app: EXPORT_APP,
+      version: EXPORT_VERSION,
+      exportedAt: now,
+      records,
+      games,
+      seen,
+      dailyLedger,
+    },
     null,
     2,
   );
@@ -754,7 +945,8 @@ export function exportHistory(storage: StorageLike, now: number): string {
  * only into space that is free: an import never evicts a game saved here to
  * make room for one of its own. The file's seen puzzles are added to the ones
  * here (see `mergeSeen`); a file from before they were exported has none,
- * which is no loss, as its records count as seen in their own right.
+ * which is no loss, as its records count as seen in their own right. So is
+ * its daily ledger (see `mergeLedger`).
  */
 export function importHistory(storage: StorageLike, json: string): ImportResult {
   let data: unknown;
@@ -773,6 +965,7 @@ export function importHistory(storage: StorageLike, json: string): ImportResult 
   }
   const games = isObject(data.games) ? data.games : {};
   mergeSeen(storage, data.seen);
+  mergeLedger(storage, data.dailyLedger);
 
   const current = loadCurrentId(storage);
   const records = loadHistory(storage);

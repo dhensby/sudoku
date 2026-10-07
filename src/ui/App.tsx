@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useEffectEvent, useId, useRef } from 'react';
-import { digitCounts, isEditable, rememberedHint, type Difficulty, type GameState } from '../core';
+import {
+  digitCounts,
+  isEditable,
+  rememberedHint,
+  type DateKey,
+  type Difficulty,
+  type GameState,
+} from '../core';
 import { Board } from './Board';
 import { BoardOverlay, type BoardOverlayContent } from './BoardOverlay';
 import { Controls } from './Controls';
@@ -40,13 +47,15 @@ type BoardContent = { kind: 'board'; game: GameState } | BoardOverlayContent;
 
 function boardContent(sudoku: Sudoku): BoardContent {
   const { phase, difficulty, game, record, elapsedMs, settings, isLoadFailed, actions } = sudoku;
+  // The daily on show (or being dealt), for the cards' wording.
+  const daily = sudoku.daily === null ? null : { date: sudoku.daily, today: sudoku.today.date };
   // Loading is the only phase without a game, so past it there is always one.
   if (phase === 'loading' || game === null) {
     // Behind a dialog there is nothing to say: the dialog has the floor.
     if (sudoku.dialog !== null) return { kind: 'veiled' };
     return isLoadFailed
       ? { kind: 'failed', difficulty, onRetry: actions.retry }
-      : { kind: 'loading', difficulty };
+      : { kind: 'loading', difficulty, daily };
   }
   if (phase === 'ready') {
     return {
@@ -54,6 +63,7 @@ function boardContent(sudoku: Sudoku): BoardContent {
       difficulty,
       isShared: record?.source === 'shared',
       challenge: record?.challenge ?? null,
+      daily,
       onStart: actions.resume,
     };
   }
@@ -65,6 +75,7 @@ function boardContent(sudoku: Sudoku): BoardContent {
     difficulty,
     elapsedMs,
     showTimer: settings.showTimer,
+    daily,
     onResume: actions.resume,
   };
 }
@@ -133,6 +144,14 @@ export function App({ options }: AppProps = {}) {
     (difficulty: Difficulty) => {
       requestBoardFocus();
       actions.newGame(difficulty);
+    },
+    [actions, requestBoardFocus],
+  );
+  // A daily, from New game: the keyboard carries on from its board.
+  const handleOpenDaily = useCallback(
+    (date: DateKey, difficulty: Difficulty) => {
+      requestBoardFocus();
+      actions.openDaily(date, difficulty);
     },
     [actions, requestBoardFocus],
   );
@@ -254,12 +273,16 @@ export function App({ options }: AppProps = {}) {
 
         <Header
           difficulty={sudoku.difficulty}
+          daily={sudoku.daily}
           elapsedMs={sudoku.elapsedMs}
           phase={phase}
           showTimer={settings.showTimer}
+          today={sudoku.today}
           onPause={actions.pause}
           onResume={actions.resume}
           onNewGame={handleNewGame}
+          onOpenDaily={(difficulty) => handleOpenDaily(sudoku.today.date, difficulty)}
+          onRefreshToday={actions.refreshToday}
           onOpenDialog={actions.openDialog}
         />
 
@@ -271,6 +294,10 @@ export function App({ options }: AppProps = {}) {
               <div className="board-area" tabIndex={-1} ref={boardAreaRef}>
                 {content.kind === 'board' ? (
                   <Board
+                    // Keyed by game: another game is a fresh board, which takes
+                    // focus if asked to — a daily already dealt arrives in the
+                    // same render as it is chosen, with no loading card between.
+                    key={sudoku.record?.id}
                     game={content.game}
                     settings={settings}
                     isPlaying={isPlaying}
@@ -338,6 +365,7 @@ export function App({ options }: AppProps = {}) {
             givens={dialog.target.givens}
             difficulty={dialog.target.difficulty}
             result={dialog.target.result}
+            daily={dialog.target.daily}
             playerName={sudoku.playerName}
             onPlayerNameChange={actions.setPlayerName}
             onClose={actions.closeDialog}
@@ -387,6 +415,7 @@ export function App({ options }: AppProps = {}) {
             difficulty={dialog.offer.puzzle.difficulty}
             previous={dialog.offer.previous}
             challenge={dialog.offer.challenge}
+            daily={dialog.offer.daily ?? null}
             onPlayAgain={() => {
               requestBoardFocus();
               actions.playAgain();

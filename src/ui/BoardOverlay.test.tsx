@@ -179,4 +179,75 @@ describe('BoardOverlay', () => {
     unmount();
     expect(onReleaseFocus).not.toHaveBeenCalled();
   });
+
+  describe('BoardOverlay for a daily', () => {
+    const today = { date: '2026-10-06', today: '2026-10-06' };
+    const earlier = { date: '2026-10-05', today: '2026-10-06' };
+
+    it("names the daily being dealt: today's, or another day's", () => {
+      const { unmount } = render(<BoardOverlay kind="loading" difficulty="hard" daily={today} />);
+      expect(screen.getByRole('status')).toHaveTextContent("Generating today's Hard puzzle…");
+      unmount();
+      render(<BoardOverlay kind="loading" difficulty="hard" daily={earlier} />);
+      expect(screen.getByRole('status')).toHaveTextContent('Generating the Hard daily for 5 Oct…');
+    });
+
+    it('names a daily waiting behind Start, whether shared, raced or reopened', () => {
+      const { unmount } = render(
+        <BoardOverlay
+          kind="ready"
+          difficulty="hard"
+          isShared={false}
+          challenge={null}
+          daily={earlier}
+          onStart={vi.fn()}
+        />,
+      );
+      expect(screen.getByText('The Hard daily for 5 Oct is ready.')).toBeInTheDocument();
+      unmount();
+      const shared = render(
+        <BoardOverlay
+          kind="ready"
+          difficulty="hard"
+          isShared
+          challenge={null}
+          daily={today}
+          onStart={vi.fn()}
+        />,
+      );
+      expect(screen.getByText("Someone shared today's Hard puzzle with you.")).toBeInTheDocument();
+      shared.unmount();
+      render(
+        <BoardOverlay
+          kind="ready"
+          difficulty="hard"
+          isShared
+          challenge={{
+            name: 'Dan',
+            seconds: 323,
+            assists: { autoCandidates: false, hints: 0, checks: 0, reveals: 0 },
+          }}
+          daily={today}
+          onStart={vi.fn()}
+        />,
+      );
+      expect(screen.getByText(/solved today's Hard puzzle in 5:23/)).toHaveTextContent(
+        "Dan solved today's Hard puzzle in 5:23. Can you beat it?",
+      );
+    });
+
+    it('names a paused daily', () => {
+      render(
+        <BoardOverlay
+          kind="paused"
+          difficulty="medium"
+          elapsedMs={151_000}
+          showTimer
+          daily={earlier}
+          onResume={vi.fn()}
+        />,
+      );
+      expect(screen.getByText('Daily · 5 Oct · Medium · 2:31')).toBeInTheDocument();
+    });
+  });
 });

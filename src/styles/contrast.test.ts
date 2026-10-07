@@ -230,6 +230,16 @@ const PAIRS: Pair[] = [
   ['answer frame against where to look', 'success', 'hl-same', NON_TEXT],
   ['answer digit', mixed('success', 0.85, 'text'), mixed('success', 0.14, 'cell-bg'), TEXT],
 
+  // ---- The daily puzzles: their marks ----
+  // A daily's mark is told by its shape, and each shape must be seen: in
+  // ink, or the muted ink for one not started, on every surface it sits on
+  // (a dialog, a menu or a menu item under focus).
+  ...(['surface-raised', 'surface'] as const).flatMap((surface): Pair[] => [
+    [`a daily's mark on ${surface}`, 'text', surface, NON_TEXT],
+    [`a daily not started, its empty mark on ${surface}`, 'text-muted', surface, NON_TEXT],
+  ]),
+  ['History’s daily label and its rule', 'text', 'surface-raised', TEXT],
+
   // ---- Show me: the walkthrough ----
   ...(['cell-bg', 'hl-same', 'hl-peer'] as const).flatMap((fill): Pair[] => [
     [`corner marks of the cell being solved on ${fill}`, 'text', fill, NON_TEXT],

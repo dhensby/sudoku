@@ -1,4 +1,10 @@
-import type { Assists, Difficulty, TechniqueId } from '../core';
+import {
+  localDateOf,
+  type Assists,
+  type DateKey,
+  type Difficulty,
+  type TechniqueId,
+} from '../core';
 
 /*
  * The English the UI speaks about puzzles: labels, assists and dates. Kept out
@@ -93,6 +99,17 @@ const DAY_MONTH_YEAR = new Intl.DateTimeFormat('en-GB', {
   year: 'numeric',
 });
 
+const WEEKDAY_DAY_MONTH = new Intl.DateTimeFormat('en-GB', {
+  weekday: 'long',
+  day: 'numeric',
+  month: 'long',
+});
+const WEEKDAY_DAY_MONTH_SHORT = new Intl.DateTimeFormat('en-GB', {
+  weekday: 'short',
+  day: 'numeric',
+  month: 'short',
+});
+
 function startOfDay(epochMs: number): number {
   const date = new Date(epochMs);
   date.setHours(0, 0, 0, 0);
@@ -110,4 +127,34 @@ export function formatDate(epochMs: number, now: number): string {
   if (days === 1) return `Yesterday ${TIME.format(epochMs)}`;
   const sameYear = new Date(epochMs).getFullYear() === new Date(now).getFullYear();
   return (sameYear ? DAY_MONTH : DAY_MONTH_YEAR).format(epochMs);
+}
+
+/*
+ * Calendar dates — a daily's `YYYY-MM-DD` key, rather than a moment — set out
+ * for reading. Each is formatted at its local noon (`localDateOf`), so the
+ * date shown is the date named, whatever the time zone.
+ */
+
+/**
+ * A date in a few characters: "6 Oct" in `today`'s year, "6 Oct 2025" in
+ * another, as `formatDate` has it for a moment.
+ */
+export function formatDay(date: DateKey, today: DateKey): string {
+  const sameYear = date.slice(0, 4) === today.slice(0, 4);
+  return (sameYear ? DAY_MONTH : DAY_MONTH_YEAR).format(localDateOf(date));
+}
+
+/** A date with its year, for text that may be read in another year: "6 Oct 2026". */
+export function formatDayWithYear(date: DateKey): string {
+  return DAY_MONTH_YEAR.format(localDateOf(date));
+}
+
+/** A date in full, as a calendar day is named: "Tuesday 6 October". */
+export function formatLongDay(date: DateKey): string {
+  return WEEKDAY_DAY_MONTH.format(localDateOf(date));
+}
+
+/** A date in short, with its weekday, for a heading with little room: "Tue 6 Oct". */
+export function formatShortDay(date: DateKey): string {
+  return WEEKDAY_DAY_MONTH_SHORT.format(localDateOf(date));
 }

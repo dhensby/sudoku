@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { formatDuration, type Difficulty } from '../../core';
+import { dateKeyOf, formatDuration, type Difficulty } from '../../core';
 import {
   computeStats,
   type DifficultyStats,
@@ -7,7 +7,7 @@ import {
   type ImportResult,
 } from '../../storage/history';
 import { DIFFICULTIES } from '../../storage/storage';
-import { DIFFICULTY_LABEL, count, formatDate } from '../format';
+import { DIFFICULTY_LABEL, count, formatDate, formatDay } from '../format';
 import { DownloadIcon, UploadIcon } from '../icons';
 import { Dialog } from './Dialog';
 import { assistChips, formatStat } from './text';
@@ -123,9 +123,12 @@ const HistoryRow = memo(function HistoryRow({
 
   const date = formatDate(record.createdAt, now);
   const label = DIFFICULTY_LABEL[difficulty];
+  // "6 Oct": the daily's own date, which need not be the day it was played.
+  const day = record.daily === undefined ? null : formatDay(record.daily, dateKeyOf(now));
   // Every row has the same few buttons, so each name carries the row: "Delete"
   // alone, read out of context by a screen reader's button list, is a guess.
-  const context = `${label} puzzle from ${date}`;
+  const context =
+    day === null ? `${label} puzzle from ${date}` : `${label} daily for ${day}, from ${date}`;
   const chips = assistChips(assists);
 
   const cancel = () => {
@@ -146,6 +149,7 @@ const HistoryRow = memo(function HistoryRow({
       <div className="history-item__info">
         <p className="history-item__heading">
           <span className="history-item__difficulty">{label}</span>
+          {day !== null && <span className="history-item__daily">Daily · {day}</span>}
           <span className="history-item__date">{date}</span>
           {isCurrent && <span className="history-item__current">Current</span>}
         </p>

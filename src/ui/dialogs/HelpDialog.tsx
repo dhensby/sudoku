@@ -90,7 +90,7 @@ const CONTROLS: readonly Control[] = [
   { action: 'Pause or resume', keyboard: <kbd>P</kbd>, pointer: 'The timer' },
   { action: 'Hint, check, reveal, reset', keyboard: null, pointer: 'The “…” menu' },
   { action: 'Show me how to solve a cell', keyboard: null, pointer: 'Show me, after a hint' },
-  { action: 'New game', keyboard: null, pointer: 'The + button' },
+  { action: 'New game, or today’s puzzles', keyboard: null, pointer: 'The + button' },
   {
     action: 'History, share, settings, help',
     keyboard: null,
@@ -118,6 +118,31 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
             <li>Fill every empty cell with a number from 1 to 9.</li>
             <li>Each row, each column and each 3×3 box holds every number exactly once.</li>
             <li>Every puzzle has exactly one solution, and none needs guessing.</li>
+          </ul>
+        </section>
+
+        <section className="help__section">
+          <h3 className="help__heading">Daily puzzles</h3>
+          <ul className="help__list">
+            <li>
+              Every day has a daily puzzle of each difficulty — the same for everyone, so you can
+              compare times with friends. A new day&apos;s puzzles arrive at your own midnight.
+            </li>
+            <li>
+              Play today&apos;s from <strong>New game</strong>, under{' '}
+              <strong>Today&apos;s puzzles</strong>. One you&apos;ve started carries on where you
+              left off. Random puzzles are still there too, under <strong>Random puzzle</strong>.
+            </li>
+            <li>
+              A <strong>streak</strong> counts the days in a row you&apos;ve solved a
+              difficulty&apos;s daily, started on its own day — one begun before midnight and
+              finished after still counts. Catching up on an earlier day is kept in your history,
+              but never adds to a streak.
+            </li>
+            <li>
+              Sharing a daily names it. A friend who opens your link plays the same daily, and it
+              counts towards their streak if they start it on the day.
+            </li>
           </ul>
         </section>
 

@@ -1,10 +1,10 @@
-import { decodeGivens, type GridString } from '../core';
+import { decodeGivens, isDateKey, type DateKey, type GridString } from '../core';
 import type { Challenge } from '../storage/history';
 import { normaliseName } from '../storage/storage';
 import { decodeAssists } from './share';
 
 /** The parameters a share link may carry. */
-const SHARE_PARAMS = ['p', 't', 'n', 'a'] as const;
+const SHARE_PARAMS = ['p', 'd', 't', 'n', 'a'] as const;
 
 /** What a share link asked for. */
 export interface SharedLink {
@@ -14,6 +14,12 @@ export interface SharedLink {
   givens: GridString | null;
   /** The sharer's result to race, when the link carries a usable one. */
   challenge: Challenge | null;
+  /**
+   * The date of the daily the link says its puzzle is (`&d=`), when it names
+   * a real date. Only a claim: the app checks it against that date's daily
+   * before recording the game as one.
+   */
+  daily: DateKey | null;
 }
 
 /**
@@ -23,11 +29,13 @@ export interface SharedLink {
  * still comes back — with null givens — so the app can say the link is broken
  * instead of silently ignoring it. The result parameters are optional and
  * forgiving: a time that is not a whole number of seconds drops the challenge,
- * an unusable name drops the name, and garbled assists read as none.
+ * an unusable name drops the name, garbled assists read as none, and a
+ * daily's date that is not a real date is no date at all.
  *
  * Nothing from the link is trusted beyond the givens themselves: the caller
- * still validates them, and re-grades the puzzle rather than taking a
- * difficulty label on faith.
+ * still validates them, re-grades the puzzle rather than taking a
+ * difficulty label on faith, and checks a daily's date against that day's
+ * puzzles.
  */
 export function readSharedLink(search: string): SharedLink | null {
   const params = new URLSearchParams(search);
@@ -42,7 +50,10 @@ export function readSharedLink(search: string): SharedLink | null {
       ? { name: name === '' ? null : name, seconds, assists: decodeAssists(params.get('a')) }
       : null;
 
-  return { code, givens: decodeGivens(code), challenge };
+  const date = params.get('d');
+  const daily = isDateKey(date) ? date : null;
+
+  return { code, givens: decodeGivens(code), challenge, daily };
 }
 
 /**

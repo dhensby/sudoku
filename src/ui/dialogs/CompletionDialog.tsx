@@ -1,6 +1,8 @@
 import { useId, type ReactNode } from 'react';
-import { formatDuration, toSeconds, type Assists, type Difficulty } from '../../core';
+import { formatDuration, toSeconds, type Assists, type DateKey, type Difficulty } from '../../core';
 import type { Challenge, DifficultyStats } from '../../storage/history';
+import { DailyMark } from '../DailyMark';
+import { dailyName, type StreakNote } from '../daily';
 import { DIFFICULTY_LABEL, describeAssists } from '../format';
 import { Dialog } from './Dialog';
 import { assistsSentence, formatStat } from './text';
@@ -94,6 +96,27 @@ export function Comparison({ mySeconds, challenge, verdictId }: ComparisonProps)
   );
 }
 
+/** Whether the solve counted towards the streak, which its note shows with a solid mark. */
+function isCounting(note: StreakNote): boolean {
+  return note.kind !== 'later' && note.kind !== 'early';
+}
+
+/** What the streak note says (see `StreakNote`), with the tier's name in it. */
+function streakText(note: StreakNote, label: string): string {
+  switch (note.kind) {
+    case 'streak':
+      return `${label} streak: ${note.days} ${note.days === 1 ? 'day' : 'days'}`;
+    case 'started':
+      return `That starts a ${label} streak`;
+    case 'counted':
+      return `Begun on its day, so it counts towards your ${label} streak`;
+    case 'later':
+      return "Played on a later day, so it doesn't count towards your streak";
+    case 'early':
+      return "Started before its day began here, so it doesn't count towards your streak";
+  }
+}
+
 export interface CompletionDialogProps {
   difficulty: Difficulty;
   /** The final time on the clock. */
@@ -112,6 +135,11 @@ export interface CompletionDialogProps {
   stats: DifficultyStats;
   /** The result this game was raced against, from the link it came from. */
   challenge: Challenge | null;
+  /**
+   * The daily the game was, if it was one: the dialog names it, and says
+   * what the solve did for the tier's streak.
+   */
+  daily?: { date: DateKey; today: DateKey; streak: StreakNote } | null;
   /** Share the time — or, after a replay, the puzzle alone. */
   onShare: () => void;
   onNewGame: () => void;
@@ -124,6 +152,10 @@ export interface CompletionDialogProps {
  * the thing most worth doing next — "Share puzzle" after a replay, whose time
  * was set on a board seen before and is no fair one to send a friend.
  * Closing leaves the solved board on show.
+ *
+ * A daily is named ("Daily · 6 Oct · Hard") and followed by its tier's
+ * streak — begun, run on, or not counted, for a day played after it was
+ * over.
  */
 export function CompletionDialog({
   difficulty,
@@ -133,6 +165,7 @@ export function CompletionDialog({
   isReplay = false,
   stats,
   challenge,
+  daily = null,
   onShare,
   onNewGame,
   onClose,
@@ -164,9 +197,21 @@ export function CompletionDialog({
       }
     >
       <div className="result" id={summaryId}>
-        <p className="result__difficulty">{label}</p>
+        <p className="result__difficulty">
+          {daily === null ? label : dailyName(daily.date, difficulty, daily.today)}
+        </p>
         <p className="result__time">{formatDuration(elapsedMs)}</p>
         {isNewBest && !isReplay && <p className="result__badge">New best!</p>}
+        {daily !== null && (
+          <p
+            className={
+              isCounting(daily.streak) ? 'result__streak' : 'result__streak result__streak--none'
+            }
+          >
+            {isCounting(daily.streak) && <DailyMark status="solved-on-the-day" />}
+            {streakText(daily.streak, label)}
+          </p>
+        )}
         {help !== null && <p className="result__assists">{help}</p>}
         {isReplay && (
           <p className="result__note">

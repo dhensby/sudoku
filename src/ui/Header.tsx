@@ -1,6 +1,6 @@
-import type { Difficulty } from '../core';
-import { DifficultyMenu } from './DifficultyMenu';
-import { DIFFICULTY_LABEL } from './format';
+import type { DateKey, Difficulty } from '../core';
+import { DifficultyMenu, type TodayDailies } from './DifficultyMenu';
+import { DIFFICULTY_LABEL, formatLongDay } from './format';
 import { BookIcon, HelpIcon, HistoryIcon, MenuIcon, SettingsIcon, ShareIcon } from './icons';
 import { keepFocus } from './keepFocus';
 import { Menu } from './Menu';
@@ -10,12 +10,20 @@ import type { HeaderDialog } from './useSudoku';
 
 export interface HeaderProps {
   difficulty: Difficulty;
+  /** The date of the daily on show (or on its way), if the game is one. */
+  daily?: DateKey | null;
   elapsedMs: number;
   phase: Phase;
   showTimer: boolean;
+  /** Today's dailies, for New game. */
+  today: TodayDailies;
   onPause: () => void;
   onResume: () => void;
   onNewGame: (difficulty: Difficulty) => void;
+  /** Open today's daily of a tier, from New game. */
+  onOpenDaily: (difficulty: Difficulty) => void;
+  /** New game is opening: bring today's dailies up to date. */
+  onRefreshToday?: () => void;
   onOpenDialog: (kind: HeaderDialog) => void;
 }
 
@@ -41,7 +49,8 @@ const SHORT_LABEL: Readonly<Record<Difficulty, string>> = {
 };
 
 /**
- * The bar across the top: the wordmark and the tier on the left, the timer
+ * The bar across the top: the wordmark and the tier on the left — "Daily ·
+ * Medium" for a daily, so it is plain which games build a streak — the timer
  * and the app's actions on the right. On a phone the five less-used actions
  * fold into an overflow menu (the stylesheet shows one or the other), so the
  * header stays one row and the board keeps the height a second would take.
@@ -54,20 +63,34 @@ const SHORT_LABEL: Readonly<Record<Difficulty, string>> = {
  */
 export function Header({
   difficulty,
+  daily = null,
   elapsedMs,
   phase,
   showTimer,
+  today,
   onPause,
   onResume,
   onNewGame,
+  onOpenDaily,
+  onRefreshToday,
   onOpenDialog,
 }: HeaderProps) {
   return (
-    <header className="header">
+    <header className={daily === null ? 'header' : 'header header--daily'}>
       <div className="header__inner">
         <h1 className="header__title">Sudoku</h1>
         <p className="header__difficulty">
+          {daily !== null && (
+            <span className="visually-hidden">Daily puzzle for {formatLongDay(daily)}. </span>
+          )}
           <span className="visually-hidden">Difficulty: </span>
+          {/* Dropped by the stylesheet on the narrowest headers; the words
+              above say it all the same. */}
+          {daily !== null && (
+            <span className="header__daily" aria-hidden="true">
+              Daily ·{' '}
+            </span>
+          )}
           <span className="header__tier">{DIFFICULTY_LABEL[difficulty]}</span>
           <span className="header__tier-short" aria-hidden="true">
             {SHORT_LABEL[difficulty]}
@@ -83,7 +106,14 @@ export function Header({
           />
         </div>
         <div className="header__actions">
-          <DifficultyMenu current={difficulty} onSelect={onNewGame} />
+          <DifficultyMenu
+            current={difficulty}
+            dailyOnShow={daily}
+            today={today}
+            onSelect={onNewGame}
+            onSelectDaily={onOpenDaily}
+            onOpen={onRefreshToday}
+          />
           {ACTIONS.map(({ kind, label, Icon }) => (
             <button
               key={kind}

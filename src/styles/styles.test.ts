@@ -401,3 +401,10 @@ describe('Show me', () => {
     );
   });
 });
+
+describe('the daily marks', () => {
+  it('draws a daily’s marks in ink, the empty one muted', () => {
+    expect(rule(DIALOGS, '.daily-mark')).toMatch(/color:\s*var\(--text\)/);
+    expect(rule(DIALOGS, '.daily-mark--not-started')).toMatch(/color:\s*var\(--text-muted\)/);
+  });
+});

@@ -2,11 +2,12 @@ import {
   encodeGivens,
   formatDuration,
   type Assists,
+  type DateKey,
   type Difficulty,
   type GridString,
 } from '../core';
 import { normaliseName } from '../storage/storage';
-import { DIFFICULTY_LABEL, describeAssists } from './format';
+import { DIFFICULTY_LABEL, describeAssists, formatDayWithYear } from './format';
 
 export { MAX_NAME_LENGTH } from '../storage/storage';
 
@@ -16,6 +17,10 @@ export { MAX_NAME_LENGTH } from '../storage/storage';
  * does next. A solved game's link adds the sharer's result so the friend who
  * opens it knows the time to beat. There is no server: everything a friend
  * needs travels in the URL.
+ *
+ * A daily's link says which daily it is, too (`&d=2026-10-06`), so the
+ * friend's game is recorded as that daily, once the app has checked that
+ * the date's daily really is this puzzle.
  */
 
 /** A result to put in a link: the time to beat and the help it came with. */
@@ -80,12 +85,21 @@ function sharedSeconds(seconds: number): number {
   return Math.max(1, Math.floor(seconds));
 }
 
-/** The link that opens `givens` — with the sharer's result, when there is one. */
-export function buildShareUrl(base: string, givens: GridString, result?: ShareResult): string {
+/**
+ * The link that opens `givens` — with the date of the daily it is, if it is
+ * one, and the sharer's result, when there is one.
+ */
+export function buildShareUrl(
+  base: string,
+  givens: GridString,
+  result?: ShareResult,
+  daily?: DateKey | null,
+): string {
   const url = new URL(base);
   url.search = '';
   url.hash = '';
   url.searchParams.set('p', encodeGivens(givens));
+  if (daily !== undefined && daily !== null) url.searchParams.set('d', daily);
   if (result !== undefined) {
     url.searchParams.set('t', String(sharedSeconds(result.seconds)));
     const name = normaliseName(result.name);
@@ -100,17 +114,28 @@ export function buildShareUrl(base: string, givens: GridString, result?: ShareRe
  * The message that goes with a link, Wordle-style: short, and readable in a
  * chat preview. The URL itself is not included — `navigator.share` takes it
  * separately, and `messageWithLink` joins the two for the clipboard.
+ *
+ * A daily names itself, date and year included — the message may be read
+ * days later — as "Sudoku Daily · 6 Oct 2026 · Hard", the same first line
+ * whether or not it carries a time, so a group chat's dailies line up.
  */
 export function buildShareText({
   difficulty,
   result,
+  daily = null,
 }: {
   difficulty: Difficulty;
   result?: Pick<ShareResult, 'seconds' | 'assists'>;
+  /** The date of the daily the puzzle is, if it is one. */
+  daily?: DateKey | null;
 }): string {
   const label = DIFFICULTY_LABEL[difficulty];
-  if (result === undefined) return `Try this ${label} Sudoku!`;
-  const lines = [`Sudoku · ${label} · ${formatDuration(sharedSeconds(result.seconds) * 1000)}`];
+  const name =
+    daily === null ? `Sudoku · ${label}` : `Sudoku Daily · ${formatDayWithYear(daily)} · ${label}`;
+  if (result === undefined) {
+    return daily === null ? `Try this ${label} Sudoku!` : `${name}\nCan you solve it?`;
+  }
+  const lines = [`${name} · ${formatDuration(sharedSeconds(result.seconds) * 1000)}`];
   const assists = describeAssists(result.assists);
   if (assists !== null) lines.push(`(with ${assists})`);
   lines.push('Can you beat my time?');

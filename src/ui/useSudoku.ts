@@ -1,6 +1,7 @@
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react';
 import {
   STOPPED_CLOCK,
+  dateKeyOf,
   elapsedMs,
   explainCell,
   explainHint,
@@ -13,6 +14,7 @@ import {
   toSeconds,
   valuesOf,
   walkthroughHint,
+  type DateKey,
   type Difficulty,
   type Digit,
   type Direction,
@@ -22,16 +24,20 @@ import {
   type Puzzle,
   type Walkthrough,
 } from '../core';
+import { ArchiveUnavailableError, dailies as appDailies, type DailyStore } from '../daily/dailies';
 import {
   computeStats,
   deleteRecord,
   exportHistory,
   findAttempts,
+  findDailyAttempts,
   importHistory,
+  loadDailyLedger,
   loadHistory,
   markSeen,
   saveCurrentId,
   savedGameIds,
+  upsertRecord,
   type Challenge,
   type DifficultyStats,
   type GameRecord,
@@ -46,10 +52,13 @@ import {
 } from '../storage/prefs';
 import { DIFFICULTIES, browserStorage, type StorageLike } from '../storage/storage';
 import { describeChange, type DescribedAction } from './announce';
-import { DIFFICULTY_LABEL } from './format';
+import { capitalise, DIFFICULTY_LABEL } from './format';
+import { dailyPhrase, statusesOn, streakNote, type StreakNote } from './daily';
+import type { TodayDailies } from './DifficultyMenu';
 import { createPuzzleSource, type PuzzleSource } from './puzzleSource';
 import type { GuideId } from './techniqueGuide';
 import {
+  asDaily,
   attemptSource,
   hasBoardShown,
   isGlimpse,
@@ -58,11 +67,13 @@ import {
   phaseOf,
   planStartup,
   puzzleOf,
+  recordOf,
   restoreSession,
   resumeSession,
   saveSession,
   shareTargetOf,
   shareTargetOfRecord,
+  tagDaily,
   type ChallengeOffer,
   type Moment,
   type PauseReason,
@@ -92,6 +103,11 @@ export interface UseSudokuOptions {
    * clock back cannot move (see `Moment`).
    */
   clock?: () => number;
+  /**
+   * Where the daily puzzles come from. Defaults to the app's store, which
+   * deals them in a worker of its own and keeps them (see `dailies.ts`).
+   */
+  dailies?: DailyStore;
 }
 
 /**
@@ -105,7 +121,8 @@ export interface Announcement {
 }
 
 /** Why the hint bar has something to say other than a hint. */
-export type NoticeKind = 'badLink' | 'boardFull' | 'generationFailed' | 'resumeFailed';
+export type NoticeKind =
+  'badLink' | 'boardFull' | 'generationFailed' | 'resumeFailed' | 'outOfDate';
 
 /** A message for the hint bar, dismissed by the player (or by the board no longer being full). */
 export interface Notice {
@@ -113,6 +130,15 @@ export interface Notice {
   text: string;
   /** Increments with every notice, so the same notice twice is a change React can see. */
   id: number;
+}
+
+/** What a solved daily was, for the completion dialog. */
+export interface DailyResult {
+  date: DateKey;
+  /** The player's date as it was solved, which decides how the date is written. */
+  today: DateKey;
+  /** What the solve did for the tier's streak. */
+  streak: StreakNote;
 }
 
 /** What the completion dialog shows, fixed at the moment of the solve. */
@@ -126,6 +152,8 @@ export interface CompletionResult {
   /** The tier's stats, this game included. */
   stats: DifficultyStats;
   challenge: Challenge | null;
+  /** The daily the game was, if it was one. */
+  daily: DailyResult | null;
 }
 
 /** "Show me" open: the steps that solve the hinted cell, at `step` (from 0). */
@@ -195,6 +223,14 @@ export interface SudokuActions {
   /** Resume a paused game, or start one waiting behind its Start button. */
   resume: () => void;
   newGame: (difficulty: Difficulty) => void;
+  /**
+   * Open the daily of a date and tier, from New game: the unfinished attempt
+   * at it if there is one; else, if it has been solved, the offer to play it
+   * again; else a new attempt, dealt first if need be.
+   */
+  openDaily: (date: DateKey, difficulty: Difficulty) => void;
+  /** Work out today's date and how its dailies stand afresh — as New game opens. */
+  refreshToday: () => void;
   retry: () => void;
   openDialog: (kind: HeaderDialog) => void;
   /**
@@ -245,6 +281,10 @@ export interface Sudoku {
   record: GameRecord | null;
   /** The tier on show: the one being generated, else the game's. */
   difficulty: Difficulty;
+  /** The date of the daily on show (or being dealt), if it is one. */
+  daily: DateKey | null;
+  /** Today's dailies, as New game offers them. */
+  today: TodayDailies;
   /** Generation failed with no game to fall back to. */
   isLoadFailed: boolean;
   /** Time on the clock, for display. */
@@ -280,6 +320,7 @@ const NOTICE_TEXT: Readonly<Record<NoticeKind, string>> = {
   boardFull: "The board is full, but something isn't right.",
   generationFailed: "Couldn't make a new puzzle. Please try again.",
   resumeFailed: "That game couldn't be reopened. Try Play again instead.",
+  outOfDate: 'The game has been updated since this page was opened. Reload it to play this daily.',
 };
 
 /** A bad link with a game already on screen gets no fresh puzzle, so it must not promise one. */
@@ -293,6 +334,8 @@ const NO_MODIFIERS: ReadonlySet<string> = new Set();
  */
 interface Generation {
   difficulty: Difficulty;
+  /** The date of the daily being dealt; absent for a random puzzle. */
+  daily?: DateKey;
 }
 
 function nextAnnouncement(text: string) {
@@ -365,6 +408,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
   const [source] = useState<PuzzleSource>(() => options.source ?? createPuzzleSource());
   const [now] = useState<() => number>(() => options.now ?? Date.now);
   const [clock] = useState<() => number>(() => options.clock ?? monotonicNow);
+  const [dailyStore] = useState<DailyStore>(() => options.dailies ?? appDailies);
   const [prefs, setPrefs] = useState(() => loadPreferences(storage));
   // What this visit opens with. Pure: the writes it calls for happen once
   // mounted, so a render React throws away leaves nothing behind.
@@ -408,6 +452,10 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     }
     return null;
   });
+  const [today, setToday] = useState<TodayDailies>(() => {
+    const date = dateKeyOf(now());
+    return { date, statuses: statusesOn(startup.records, date, loadDailyLedger(storage)) };
+  });
   const [announcement, setAnnouncement] = useState<Announcement | null>(null);
   const [heldModifiers, setHeldModifiers] = useState<ReadonlySet<string>>(NO_MODIFIERS);
   const [completionDue, setCompletionDue] = useState<CompletionResult | null>(null);
@@ -423,6 +471,10 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
   // The game whose puzzle this page last marked seen, so it is written once
   // per game rather than with every save (see `noteSeen`).
   const seenIdRef = useRef<string | null>(null);
+  // The last puzzle asked for, which Try again asks for again.
+  const requestRef = useRef<Generation | null>(null);
+  // The date whose dailies this page has started dealing (see `prefetchDailies`).
+  const prefetchedRef = useRef<DateKey | null>(null);
 
   const phase = phaseOf(session, generating !== null);
   const game = session?.game ?? null;
@@ -512,6 +564,48 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     now: wall,
   });
 
+  /** The player's date at `wall`, and how its dailies stand in `records` (and the ledger). */
+  const todayOf = (records: readonly GameRecord[], wall: number): TodayDailies => {
+    const date = dateKeyOf(wall);
+    return { date, statuses: statusesOn(records, date, loadDailyLedger(storage)) };
+  };
+
+  /**
+   * Start dealing today's dailies in the background, once for each date: so
+   * they are to hand by the time anyone opens New game. Called once the
+   * first game is on screen (they must never hold that up) and as the page
+   * comes back into view, which may be on a new day.
+   */
+  const prefetchDailies = (): void => {
+    const date = dateKeyOf(now());
+    if (prefetchedRef.current === date) return;
+    prefetchedRef.current = date;
+    dailyStore.prefetch(date);
+  };
+
+  /**
+   * The unfinished attempt at `givens` that can be reopened, if there is one
+   * — the game on screen, as it stands now (storage may be a moment behind),
+   * or one saved — since a puzzle has at most one unfinished attempt (see
+   * `startPuzzle`). One whose board has been pruned cannot be reopened, nor
+   * studied, so it does not count.
+   */
+  const unfinishedAttempt = (
+    records: readonly GameRecord[],
+    givens: string,
+    wall: number,
+  ): Session | null => {
+    if (session !== null && session.record.givens === givens && session.game.status === 'playing') {
+      return session;
+    }
+    for (const attempt of findAttempts(records, givens)) {
+      if (attempt.status !== 'playing') continue;
+      const restored = restoreSession(storage, records, attempt.id, wall);
+      if (restored !== null && restored.game.status === 'playing') return restored;
+    }
+    return null;
+  };
+
   /**
    * Pause a running game for `reason`, saving it at once. Returns the paused
    * session, or null when there was nothing running to pause.
@@ -551,6 +645,19 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     else persist(pauseSession(session, 'user', t.clock), t, false);
   };
 
+  /**
+   * Save the game on screen, its clock stopped, as another is asked for: it
+   * stays in History, resumable, so starting another needs no confirmation.
+   * One only glimpsed goes as its replacement arrives (see `isGlimpse`), so
+   * a puzzle that never arrives leaves it as it was.
+   */
+  const holdForNext = (t: Moment): void => {
+    if (session === null || generating !== null) return;
+    const held = pauseSession(session, 'user', t.clock);
+    persist(held, t);
+    setSession(held);
+  };
+
   /** Put a game on screen, playing, as the current game. */
   const adopt = (next: Session, t: Moment, message: string): void => {
     persist(next, t);
@@ -579,31 +686,23 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
    * reopened, that is resumed — or started, if it never was — rather than a
    * second begun beside it: with two, one could be studied while the other
    * sat at 0:00, then finished from memory. Otherwise a fresh attempt starts,
-   * recorded as a replay. Either way it races `challenge`, if there is one.
+   * recorded as a replay. Either way it races `challenge`, if there is one,
+   * and is recorded as the daily of date `daily`, if it is one.
    */
-  const startPuzzle = (puzzle: Puzzle, challenge: Challenge | null): void => {
+  const startPuzzle = (puzzle: Puzzle, challenge: Challenge | null, daily?: DateKey): void => {
     const t = at();
-    const racing = (attempt: Session): Session => ({
-      ...attempt,
-      record: { ...attempt.record, challenge: challenge ?? attempt.record.challenge },
-    });
-    // The attempt on screen, as it stands now: storage may be a moment behind.
-    if (
-      session !== null &&
-      session.record.givens === puzzle.givens &&
-      session.game.status === 'playing'
-    ) {
-      adopt(resumeSession(racing(session), t.clock), t, resumeMessage(session));
-      return;
-    }
+    const playing = (attempt: Session): Session => {
+      const racing = {
+        ...attempt,
+        record: { ...attempt.record, challenge: challenge ?? attempt.record.challenge },
+      };
+      return daily === undefined ? racing : asDaily(racing, daily, puzzle.difficulty);
+    };
     const records = loadHistory(storage);
-    for (const attempt of findAttempts(records, puzzle.givens)) {
-      if (attempt.status !== 'playing') continue;
-      const restored = restoreSession(storage, records, attempt.id, t.wall);
-      // One whose board has been pruned cannot be reopened, nor studied.
-      if (restored === null || restored.game.status !== 'playing') continue;
-      setAside(t);
-      adopt(resumeSession(racing(restored), t.clock), t, resumeMessage(restored));
+    const unfinished = unfinishedAttempt(records, puzzle.givens, t.wall);
+    if (unfinished !== null) {
+      if (unfinished !== session) setAside(t);
+      adopt(resumeSession(playing(unfinished), t), t, resumeMessage(unfinished));
       return;
     }
     setAside(t);
@@ -613,13 +712,65 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       now: t,
       autoCandidates: settings.startInAutoCandidate,
       start: 'running',
+      daily,
     });
     adopt(next, t, `Playing this ${DIFFICULTY_LABEL[puzzle.difficulty]} puzzle again.`);
   };
 
-  /** Ask the generator for a new game. The game on screen stays until it arrives. */
-  const generate = (difficulty: Difficulty): void => {
-    setGenerating({ difficulty });
+  /**
+   * Put a daily's puzzle on screen as that daily, `start`ing as a generated
+   * puzzle does (see `handleGenerated`): the unfinished attempt at it if
+   * there is one — tagged as the daily, if it was begun before it was opened
+   * as one — else a new attempt, a replay if the puzzle has been seen.
+   */
+  const putDaily = (puzzle: Puzzle, date: DateKey, start: SessionStart): void => {
+    const t = at();
+    const records = loadHistory(storage);
+    const tier = puzzle.difficulty;
+    const unfinished = unfinishedAttempt(records, puzzle.givens, t.wall);
+    if (unfinished !== null) {
+      if (unfinished !== session) setAside(t);
+      const tagged = asDaily(unfinished, date, tier);
+      if (start === 'running') {
+        adopt(resumeSession(tagged, t), t, resumeMessage(tagged));
+        return;
+      }
+      // Behind a dialog, or in a hidden tab, it waits as it was left.
+      persist(tagged, t);
+      setSession(tagged);
+      setGenerating(null);
+      setLoadFailed(false);
+      return;
+    }
+    setAside(t);
+    const next = newSession(puzzle, {
+      source: attemptSource(storage, records, puzzle.givens, 'daily'),
+      challenge: null,
+      now: t,
+      autoCandidates: settings.startInAutoCandidate,
+      start,
+      daily: date,
+    });
+    const message = `${capitalise(dailyPhrase(date, tier, dateKeyOf(t.wall)))}.`;
+    if (start === 'running') {
+      adopt(next, t, message);
+      return;
+    }
+    persist(next, t);
+    setSession(next);
+    setGenerating(null);
+    setLoadFailed(false);
+    announce(message);
+  };
+
+  /**
+   * Ask the generator for a new game — or the daily store for the daily of
+   * date `daily`. The game on screen stays until it arrives.
+   */
+  const generate = (difficulty: Difficulty, daily?: DateKey): void => {
+    const request: Generation = daily === undefined ? { difficulty } : { difficulty, daily };
+    requestRef.current = request;
+    setGenerating(request);
     setLoadFailed(false);
     setVacancy(null);
   };
@@ -637,6 +788,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     // seconds, the unit times are shown in: a "new best" equal to the old
     // one on screen would look like a mistake.
     const before = computeStats(loadHistory(storage))[record.difficulty].bestMs;
+    const today = dateKeyOf(t.wall);
     const isNewBest =
       !isReplay &&
       board.assists.reveals === 0 &&
@@ -649,7 +801,11 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       isCelebrating: true,
       record: { ...record, completedAt: t.wall },
     };
+    // The history as it now stands, the solve in it — even if the browser
+    // refused to store it, as `upsertRecord` hands back the list it tried to
+    // save — so the streak counts the solve either way.
     const records = persist(next, t);
+    const solvedRecord = recordOf(next, t);
     setCompletionDue({
       difficulty: record.difficulty,
       elapsedMs: ms,
@@ -658,6 +814,14 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       isReplay,
       stats: computeStats(records)[record.difficulty],
       challenge: record.challenge,
+      daily:
+        record.daily === undefined
+          ? null
+          : {
+              date: record.daily,
+              today,
+              streak: streakNote(solvedRecord, records, today, loadDailyLedger(storage)),
+            },
     });
     if (notice?.kind === 'boardFull') setNotice(null);
     announce(`Solved in ${formatDuration(ms)}.`);
@@ -729,7 +893,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     return () => window.clearTimeout(id);
   }, [startup]);
 
-  const handleGenerated = useEffectEvent((puzzle: Puzzle) => {
+  const handleGenerated = useEffectEvent((puzzle: Puzzle, daily: DateKey | undefined) => {
     const t = at();
     // A dialog still open (the challenge offer on a first visit, or one
     // opened while the puzzle was on its way) holds the clock until it
@@ -740,6 +904,10 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     let start: SessionStart = 'running';
     if (dialog !== null) start = 'dialog';
     else if (document.visibilityState === 'hidden') start = 'ready';
+    if (daily !== undefined) {
+      putDaily(puzzle, daily, start);
+      return;
+    }
     // The game it replaces, kept resumable as New game left it — unless it
     // was only glimpsed. Done now rather than as New game was chosen, so a
     // puzzle that never arrives leaves the old game as it was.
@@ -762,31 +930,101 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     for (const difficulty of DIFFICULTIES) source.prefetch(difficulty);
   });
 
-  const handleGenerationFailed = useEffectEvent(() => {
+  // A daily whose archive could not be loaded at all: the site has been
+  // deployed again since this page was opened, so trying again would only
+  // fail again — reloading is what helps.
+  const handleGenerationFailed = useEffectEvent((error?: unknown) => {
     setGenerating(null);
     if (session === null) setLoadFailed(true);
-    showNotice('generationFailed');
+    showNotice(error instanceof ArchiveUnavailableError ? 'outOfDate' : 'generationFailed');
   });
 
   // A puzzle from the generator: the one asynchronous thing a game needs.
   // A request that is superseded — another New game, a resume or a replay
   // meanwhile, StrictMode's rehearsal unmount, or a real one — is cancelled,
   // and its answer ignored.
+  //
+  // A daily comes from the daily store instead, which deals it from its date
+  // (or finds it already dealt, or archived) — null only for a date with no
+  // daily, which nothing asks for.
   useEffect(() => {
     if (generating === null) return undefined;
     let isCancelled = false;
-    source.next(generating.difficulty).then(
+    const { difficulty, daily } = generating;
+    const request: Promise<Puzzle | null> =
+      daily === undefined ? source.next(difficulty) : dailyStore.dailyPuzzle(daily, difficulty);
+    request.then(
       (puzzle) => {
-        if (!isCancelled) handleGenerated(puzzle);
+        if (isCancelled) return;
+        if (puzzle === null) handleGenerationFailed();
+        else handleGenerated(puzzle, daily);
       },
-      () => {
-        if (!isCancelled) handleGenerationFailed();
+      (error: unknown) => {
+        if (!isCancelled) handleGenerationFailed(error);
       },
     );
     return () => {
       isCancelled = true;
     };
-  }, [generating, source]);
+  }, [generating, source, dailyStore]);
+
+  // Today's dailies, dealt in the background once there is a game on screen.
+  const handleFirstGame = useEffectEvent(() => prefetchDailies());
+  const hasGame = session !== null;
+  useEffect(() => {
+    if (hasGame) handleFirstGame();
+  }, [hasGame]);
+
+  // A link that says its puzzle is a date's daily (`&d=`), checked against
+  // that date's dailies — which may mean dealing one, so it is checked once
+  // mounted, and the game is opened as any shared puzzle until it checks
+  // out. If it does, the attempt is recorded as that daily, and counts
+  // towards a streak by the usual rule (begun on the daily's own date). A
+  // date that does not match, or has no daily, is ignored, as is a check
+  // that fails.
+  const handleDailyVerified = useEffectEvent((date: DateKey, tier: Difficulty) => {
+    const hint = startup.dailyHint!;
+    if (session !== null && session.record.givens === hint.givens) {
+      const next = asDaily(session, date, tier);
+      if (next !== session) {
+        if (next.isSeen) persist(next);
+        setSession(next);
+      }
+    } else if (startup.isNewCurrent && startup.session !== null) {
+      // The link's game is no longer on screen, but its record is kept.
+      const stored = loadHistory(storage).find((entry) => entry.id === startup.session!.record.id);
+      if (stored !== undefined && stored.daily === undefined) {
+        const isStarted = stored.elapsedMs > 0 || stored.status === 'solved';
+        upsertRecord(storage, tagDaily(stored, date, tier, isStarted));
+      }
+    }
+    // A link to a daily already solved: the offer to play it again names it,
+    // and a fresh attempt is recorded as it.
+    if (dialog?.kind === 'challenge' && dialog.offer.puzzle.givens === hint.givens) {
+      setDialog({
+        kind: 'challenge',
+        offer: {
+          ...dialog.offer,
+          puzzle: { ...dialog.offer.puzzle, difficulty: tier },
+          daily: date,
+        },
+      });
+    }
+  });
+  useEffect(() => {
+    const hint = startup.dailyHint;
+    if (hint === null) return undefined;
+    let isCancelled = false;
+    dailyStore.findDaily(hint.date, hint.givens, hint.tier).then(
+      (tier) => {
+        if (!isCancelled && tier !== null) handleDailyVerified(hint.date, tier);
+      },
+      () => {},
+    );
+    return () => {
+      isCancelled = true;
+    };
+  }, [startup, dailyStore]);
 
   // Save while playing, at most once per SAVE_DELAY_MS of quiet. Moments that
   // matter more — pausing, the tab hiding, the page going away, a solve —
@@ -824,7 +1062,12 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
   }, [completionDue]);
 
   const handleVisibilityChange = useEffectEvent(() => {
-    if (document.visibilityState !== 'hidden') return;
+    if (document.visibilityState !== 'hidden') {
+      // Back in view, perhaps on a new day: today's dailies may be new ones.
+      setToday(todayOf(loadHistory(storage), now()));
+      if (session !== null) prefetchDailies();
+      return;
+    }
     // Keys let go while the tab was hidden never send their keyup here.
     setHeldModifiers(NO_MODIFIERS);
     hide();
@@ -903,7 +1146,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       // the board, then resetting it, would bank a time that left the
       // studying out.
       const next: Session = {
-        ...resumeSession(session, t.clock),
+        ...resumeSession(session, t),
         game: reduce(session.game, { type: 'reset' }),
       };
       persist(next, t);
@@ -917,7 +1160,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     },
     resume: () => {
       if (session === null || (phase !== 'paused' && phase !== 'ready')) return;
-      const next = resumeSession(session, clock());
+      const next = resumeSession(session, at());
       // Its board is on show from this moment, perhaps for the first time.
       noteSeen(next);
       setSession(next);
@@ -925,22 +1168,66 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     },
 
     newGame: (difficulty) => {
-      // Saved first: the game being left stays in History, resumable, so
-      // starting another needs no confirmation (one only glimpsed goes as
-      // its replacement arrives — see `isGlimpse`).
-      if (session !== null && generating === null) {
-        const t = at();
-        const held = pauseSession(session, 'user', t.clock);
-        persist(held, t);
-        setSession(held);
-      }
+      holdForNext(at());
       setPrefs(setLastDifficulty(storage, difficulty));
       setDialog(null);
       setNotice(null);
       setCompletionDue(null);
       generate(difficulty);
     },
-    retry: () => generate(generating?.difficulty ?? prefs.lastDifficulty),
+    openDaily: (date, difficulty) => {
+      if (!dailyStore.hasDaily(date)) return;
+      const t = at();
+      setToday(todayOf(loadHistory(storage), t.wall));
+      // Already on screen, unfinished: back to it, as History's Resume does.
+      if (
+        session !== null &&
+        session.record.daily === date &&
+        session.record.difficulty === difficulty &&
+        session.game.status === 'playing'
+      ) {
+        if (generating !== null) setGenerating(null);
+        adopt(resumeSession(session, t), t, resumeMessage(session));
+        return;
+      }
+      const records = loadHistory(storage);
+      const attempts = findDailyAttempts(records, date, difficulty);
+      // A daily with an attempt has its puzzle in the record: nothing to deal.
+      const known = attempts.length === 0 ? null : puzzleOf(attempts[0]);
+      if (known !== null && unfinishedAttempt(records, known.givens, t.wall) === null) {
+        const solves = attempts.filter((attempt) => attempt.status === 'solved');
+        const previous = solves.find((attempt) => attempt.source !== 'replay') ?? solves[0];
+        if (previous !== undefined) {
+          // Solved already: say so, and offer it again.
+          pauseFor('dialog', t);
+          setDialog({
+            kind: 'challenge',
+            offer: { puzzle: { ...known, difficulty }, previous, challenge: null, daily: date },
+          });
+          return;
+        }
+      }
+      const ready = known ?? dailyStore.peekDaily(date, difficulty);
+      if (ready !== null) {
+        putDaily({ ...ready, difficulty }, date, 'running');
+        return;
+      }
+      // Not dealt yet: the loading card stands in while it is.
+      holdForNext(t);
+      setDialog(null);
+      setNotice(null);
+      setCompletionDue(null);
+      generate(difficulty, date);
+    },
+    refreshToday: () => {
+      // The game on screen as it is now, so its own daily's mark is up to date.
+      flush();
+      setToday(todayOf(loadHistory(storage), now()));
+    },
+    retry: () => {
+      const last = requestRef.current;
+      generate(last?.difficulty ?? prefs.lastDifficulty, last?.daily);
+    },
 
     openDialog: (kind) => {
       const t = at();
@@ -995,7 +1282,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       // paused stays paused behind the dialog they opened.
       if (session === null || session.pause !== 'dialog' || generating !== null) return;
       const t = at();
-      const next = resumeSession(session, t.clock);
+      const next = resumeSession(session, t);
       // A game made behind the dialog is seen for the first time, and its
       // record starts now.
       if (!session.isSeen) persist(next, t);
@@ -1007,7 +1294,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     },
     playAgain: () => {
       if (dialog?.kind !== 'challenge') return;
-      startPuzzle(dialog.offer.puzzle, dialog.offer.challenge);
+      startPuzzle(dialog.offer.puzzle, dialog.offer.challenge, dialog.offer.daily);
     },
 
     resumeRecord: (id) => {
@@ -1025,7 +1312,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       // The game on screen is set aside with its clock stopped: two clocks
       // must never run at once.
       setAside(t);
-      adopt(resumeSession(restored, t.clock), t, resumeMessage(restored));
+      adopt(resumeSession(restored, t), t, resumeMessage(restored));
     },
     replayRecord: (id) => {
       const record = loadHistory(storage).find((entry) => entry.id === id);
@@ -1088,6 +1375,8 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     record: session?.record ?? null,
     difficulty:
       generating?.difficulty ?? session?.record.difficulty ?? vacancy ?? prefs.lastDifficulty,
+    daily: generating === null ? (session?.record.daily ?? null) : (generating.daily ?? null),
+    today,
     isLoadFailed,
     elapsedMs: elapsed,
     effectiveMode,

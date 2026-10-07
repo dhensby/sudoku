@@ -1,4 +1,4 @@
-import { STOPPED_CLOCK, createGame, reduce, serialiseGame, type Puzzle } from '../core';
+import { STOPPED_CLOCK, createGame, dateKeyOf, reduce, serialiseGame, type Puzzle } from '../core';
 import {
   deleteRecord,
   loadGameBlob,
@@ -12,6 +12,8 @@ import {
 } from '../storage/history';
 import { memoryStorage, type StorageLike } from '../storage/storage';
 import {
+  asDaily,
+  tagDaily,
   attemptSource,
   createRecord,
   hasBoardShown,
@@ -197,7 +199,7 @@ describe('hasBoardShown', () => {
       start,
     });
     expect(hasBoardShown(session)).toBe(false);
-    expect(hasBoardShown(resumeSession(session, NOW + 1000))).toBe(true);
+    expect(hasBoardShown(resumeSession(session, at(NOW + 1000)))).toBe(true);
   });
 });
 
@@ -267,6 +269,43 @@ describe('isGlimpse', () => {
 });
 
 describe('createRecord', () => {
+  it('records the daily a game is an attempt at, and leaves it off every other', () => {
+    expect(createRecord(PUZZLE, 'daily', NOW, null, NO_HELP, '2026-10-05').daily).toBe(
+      '2026-10-05',
+    );
+    expect(createRecord(PUZZLE, 'generated', NOW, null, NO_HELP)).not.toHaveProperty('daily');
+    const session = newSession(PUZZLE, {
+      source: 'daily',
+      challenge: null,
+      now: at(NOW),
+      autoCandidates: false,
+      start: 'running',
+      daily: '2026-10-05',
+    });
+    expect(session.record).toMatchObject({ source: 'daily', daily: '2026-10-05' });
+  });
+
+  it('dates a daily attempt started at once by the player’s own date, and only a daily', () => {
+    const record = createRecord(PUZZLE, 'daily', NOW, null, NO_HELP, '2026-10-05');
+    expect(record.startedOn).toBe(dateKeyOf(NOW));
+    expect(createRecord(PUZZLE, 'generated', NOW, null, NO_HELP)).not.toHaveProperty('startedOn');
+    // One waiting behind its Start card, or a dialog, has not been started yet.
+    expect(
+      createRecord(PUZZLE, 'daily', NOW, null, NO_HELP, '2026-10-05', false),
+    ).not.toHaveProperty('startedOn');
+    for (const start of ['ready', 'dialog'] as const) {
+      const waiting = newSession(PUZZLE, {
+        source: 'daily',
+        challenge: null,
+        now: at(NOW),
+        autoCandidates: false,
+        start,
+        daily: '2026-10-05',
+      });
+      expect(waiting.record).not.toHaveProperty('startedOn');
+    }
+  });
+
   it('copies the assists, so the game and its record never share an object', () => {
     const assists = { ...NO_HELP };
     const record = createRecord(PUZZLE, 'replay', NOW, null, assists);
@@ -275,12 +314,93 @@ describe('createRecord', () => {
   });
 });
 
+describe('asDaily', () => {
+  it('makes an attempt the daily of a date, at the daily’s own tier', () => {
+    const session = running();
+    const tagged = asDaily(session, '2026-10-05', 'expert');
+    expect(tagged.record).toMatchObject({ daily: '2026-10-05', difficulty: 'expert' });
+    expect(tagged.game).toBe(session.game);
+    // Already that daily: the very same session, so nothing needs saving.
+    expect(asDaily(tagged, '2026-10-05', 'expert')).toBe(tagged);
+  });
+
+  it('dates an attempt already started by the day it was created, and one not yet started not at all', () => {
+    expect(asDaily(running(), '2026-10-05', 'hard').record.startedOn).toBe(dateKeyOf(NOW));
+    const waiting = newSession(PUZZLE, {
+      source: 'shared',
+      challenge: null,
+      now: at(NOW),
+      autoCandidates: false,
+      start: 'ready',
+    });
+    expect(asDaily(waiting, '2026-10-05', 'hard').record).not.toHaveProperty('startedOn');
+  });
+});
+
+describe('tagDaily', () => {
+  it('keeps a start date already written down', () => {
+    const record = { ...running().record, startedOn: '2026-10-04' };
+    expect(tagDaily(record, '2026-10-05', 'hard', true).startedOn).toBe('2026-10-04');
+  });
+
+  it('dates a started record by the day it was created, and leaves an unstarted one undated', () => {
+    const { record } = running();
+    expect(tagDaily(record, '2026-10-05', 'hard', true)).toMatchObject({
+      daily: '2026-10-05',
+      difficulty: 'hard',
+      startedOn: dateKeyOf(NOW),
+    });
+    expect(tagDaily(record, '2026-10-05', 'hard', false)).not.toHaveProperty('startedOn');
+  });
+});
+
+describe('resumeSession and the start date', () => {
+  const DAY = 86_400_000;
+
+  it('dates a daily attempt when its clock first runs, not when it was opened', () => {
+    // Opened from a link the evening before its day, and left behind Start.
+    const waiting = asDaily(
+      newSession(PUZZLE, {
+        source: 'shared',
+        challenge: null,
+        now: at(NOW),
+        autoCandidates: false,
+        start: 'ready',
+      }),
+      '2026-10-06',
+      'hard',
+    );
+    const started = resumeSession(waiting, at(NOW + DAY));
+    expect(started.record.startedOn).toBe(dateKeyOf(NOW + DAY));
+    // Resumed again later, it keeps the date it was first started on.
+    const paused = pauseSession(started, 'user', NOW + DAY + 1000);
+    expect(resumeSession(paused, at(NOW + 3 * DAY)).record.startedOn).toBe(dateKeyOf(NOW + DAY));
+  });
+
+  it('dates an attempt that has run before, its date never written down, by the day it was created', () => {
+    const { startedOn: _, ...undated } = asDaily(running(), '2026-10-05', 'hard').record;
+    const paused = pauseSession({ ...running(), record: undated }, 'user', NOW + 1000);
+    expect(resumeSession(paused, at(NOW + 3 * DAY)).record.startedOn).toBe(dateKeyOf(NOW));
+  });
+
+  it('dates no other game', () => {
+    const held = newSession(PUZZLE, {
+      source: 'generated',
+      challenge: null,
+      now: at(NOW),
+      autoCandidates: false,
+      start: 'dialog',
+    });
+    expect(resumeSession(held, at(NOW + DAY)).record).not.toHaveProperty('startedOn');
+  });
+});
+
 describe('pausing and resuming', () => {
   it('banks the running time on a pause, and starts a new segment on resume', () => {
     const paused = pauseSession(running(), 'hidden', NOW + 61_000);
     expect(paused.clock).toEqual({ bankedMs: 61_000, runningSince: null });
     expect(paused.pause).toBe('hidden');
-    const resumed = resumeSession(paused, NOW + 100_000);
+    const resumed = resumeSession(paused, at(NOW + 100_000));
     expect(resumed.clock).toEqual({ bankedMs: 61_000, runningSince: NOW + 100_000 });
     expect(resumed.pause).toBeNull();
   });
@@ -293,7 +413,7 @@ describe('pausing and resuming', () => {
       autoCandidates: false,
       start: 'dialog',
     });
-    expect(resumeSession(held, NOW + 1000).isSeen).toBe(true);
+    expect(resumeSession(held, at(NOW + 1000)).isSeen).toBe(true);
   });
 
   it('leaves a stopped session alone, keeping the reason it was stopped for', () => {
@@ -496,6 +616,7 @@ describe('share targets', () => {
   it('shares the puzzle alone mid-game, and the time once solved', () => {
     const session = running(nearlySolved([0]));
     expect(shareTargetOf(session)).toEqual({
+      daily: null,
       givens: session.record.givens,
       difficulty: session.record.difficulty,
       result: null,
@@ -503,6 +624,12 @@ describe('share targets', () => {
     const game = reduce(session.game, { type: 'enter', digit: answerAt(0) as 1 });
     const solved = { ...session, game, clock: { bankedMs: 83_900, runningSince: null } };
     expect(shareTargetOf(solved).result).toEqual({ seconds: 83, assists: NO_HELP });
+  });
+
+  it('names the daily a game was played as, puzzle alone or with its time', () => {
+    const session = asDaily(running(nearlySolved([0])), '2026-10-05', 'easy');
+    expect(shareTargetOf(session).daily).toBe('2026-10-05');
+    expect(shareTargetOfRecord(session.record).daily).toBe('2026-10-05');
   });
 
   it('shares a history entry the same way', () => {
@@ -524,6 +651,7 @@ describe('share targets', () => {
     expect(shareTargetOf(replay).result).toBeNull();
     const record: GameRecord = { ...replay.record, status: 'solved', elapsedMs: 4000 };
     expect(shareTargetOfRecord(record)).toEqual({
+      daily: null,
       givens: record.givens,
       difficulty: record.difficulty,
       result: null,
@@ -707,6 +835,46 @@ describe('planStartup', () => {
     deleteRecord(storage, 'counted-0001');
     expect(planStartup(storage, search, at(NOW + 2000), false).offer?.previous.id).toBe(
       'replay-0001',
+    );
+  });
+
+  it('passes on a link’s daily date to be checked, opening it as any shared puzzle meanwhile', () => {
+    const plan = planStartup(
+      memoryStorage(),
+      `${linkFor(PUZZLE.givens)}&d=2026-10-05`,
+      at(NOW),
+      false,
+    );
+    expect(plan.dailyHint).toEqual({
+      date: '2026-10-05',
+      givens: PUZZLE.givens,
+      tier: PUZZLE.difficulty,
+    });
+    expect(plan.session?.record.source).toBe('shared');
+    expect(plan.session?.record).not.toHaveProperty('daily');
+  });
+
+  it('passes on a link’s daily date for an attempt reopened or a puzzle already solved too', () => {
+    const storage = memoryStorage();
+    const unfinished = running();
+    saveSession(storage, unfinished, at(NOW));
+    const reopened = planStartup(storage, `${linkFor(PUZZLE.givens)}&d=2026-10-05`, at(NOW), false);
+    expect(reopened.session?.record.id).toBe(unfinished.record.id);
+    expect(reopened.dailyHint?.date).toBe('2026-10-05');
+
+    const solved = memoryStorage();
+    upsertRecord(solved, { ...running().record, status: 'solved', completedAt: NOW });
+    const offered = planStartup(solved, `${linkFor(PUZZLE.givens)}&d=2026-10-05`, at(NOW), false);
+    expect(offered.offer).not.toBeNull();
+    expect(offered.dailyHint?.date).toBe('2026-10-05');
+  });
+
+  it('has no daily date to check for a link without one, or a broken link', () => {
+    expect(planStartup(memoryStorage(), linkFor(PUZZLE.givens), at(NOW), false).dailyHint).toBe(
+      null,
+    );
+    expect(planStartup(memoryStorage(), '?p=nope&d=2026-10-05', at(NOW), false).dailyHint).toBe(
+      null,
     );
   });
 

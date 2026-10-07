@@ -16,3 +16,4 @@ export { MAX_CHAIN_STRONG_LINKS, MAX_XY_CHAIN } from './techniques';
 export * from './game';
 export * from './codec';
 export * from './clock';
+export * from './dates';

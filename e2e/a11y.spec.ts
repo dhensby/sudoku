@@ -9,11 +9,13 @@ import {
   boardArea,
   cellLabels,
   chooseMore,
+  dailyRecord,
   emptyCells,
   getStuck,
   gotoPuzzle,
   modeButton,
   openHeaderDialog,
+  seedHistory,
   selectCell,
   solveFromKeyboard,
   startButton,
@@ -122,6 +124,21 @@ async function closeDialog(page: Page): Promise<void> {
   await expect(page.getByRole('dialog')).toHaveCount(0);
 }
 
+/**
+ * Today's Hard daily begun an hour ago and left unfinished, on a clock fixed
+ * at 10:00 on Tuesday 6 October 2026 (Daily #6), so New game marks today's
+ * dailies both ways they can stand so early in the day.
+ */
+async function startWithTodaysDaily(page: Page): Promise<void> {
+  const now = new Date('2026-10-06T10:00:00+01:00');
+  await page.clock.install({ time: now });
+  await seedHistory(page, [
+    dailyRecord('d6', PUZZLES.hard, '2026-10-06', now.getTime() - 3_600_000, 'playing'),
+  ]);
+  await page.goto('/');
+  await waitForPlaying(page);
+}
+
 for (const scheme of ['light', 'dark'] as const) {
   test.describe(`the ${scheme} theme`, () => {
     test.use({ colorScheme: scheme });
@@ -218,6 +235,16 @@ for (const scheme of ['light', 'dark'] as const) {
       }
     });
 
+    test('New game with today’s dailies', async ({ page }) => {
+      await startWithTodaysDaily(page);
+      await expectScheme(page, scheme);
+      await page.getByRole('button', { name: 'New game' }).click();
+      await expect(
+        page.getByRole('menuitem', { name: "Today's Hard puzzle, in progress" }),
+      ).toBeVisible();
+      await expectAccessible(page, 'New game with today’s dailies');
+    });
+
     test('every entry of the technique guide', async ({ page }) => {
       await startPuzzle(page, EASY);
       await openHeaderDialog(page, 'Solving techniques');
@@ -298,6 +325,18 @@ test.describe('on a phone', () => {
         await expectAccessible(page, `step ${step} of Show me`);
         if (step < 3) await walkthrough.getByRole('button', { name: /^Next:/ }).click();
       }
+    });
+  }
+
+  for (const scheme of ['light', 'dark'] as const) {
+    test(`New game on its side, in the ${scheme} theme`, async ({ page }) => {
+      await page.setViewportSize({ width: 844, height: 390 });
+      await page.emulateMedia({ colorScheme: scheme });
+      await startWithTodaysDaily(page);
+      await expectScheme(page, scheme);
+      await page.getByRole('button', { name: 'New game' }).click();
+      await expect(page.getByRole('menuitem', { name: 'Expert', exact: true })).toBeVisible();
+      await expectAccessible(page, 'New game on its side');
     });
   }
 

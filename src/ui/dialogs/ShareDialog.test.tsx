@@ -358,4 +358,21 @@ describe('ShareDialog', () => {
       expect(share).toHaveBeenCalledTimes(2);
     });
   });
+
+  describe('ShareDialog for a daily', () => {
+    it('names the daily in the message, and puts its date in the link', () => {
+      renderShare({ daily: '2026-10-06' });
+      expect(document.querySelector('.share__text')?.textContent).toBe(
+        'Sudoku Daily · 6 Oct 2026 · Hard · 5:23\n(with 2 hints)\nCan you beat my time?',
+      );
+      expect(new URL(shownUrl()!).searchParams.get('d')).toBe('2026-10-06');
+    });
+
+    it('names a daily shared without a time too', () => {
+      renderShare({ daily: '2026-10-06', result: null });
+      expect(document.querySelector('.share__text')?.textContent).toBe(
+        'Sudoku Daily · 6 Oct 2026 · Hard\nCan you solve it?',
+      );
+    });
+  });
 });

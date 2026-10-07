@@ -320,7 +320,7 @@ test.describe('touch', () => {
     await page.goto('/');
     await waitForPlaying(page);
     await page.getByRole('banner').getByRole('button', { name: 'New game' }).tap();
-    await page.getByRole('menuitem', { name: 'Hard' }).tap();
+    await page.getByRole('menuitem', { name: 'Hard', exact: true }).tap();
     await waitForPlaying(page);
     await expect(page.getByRole('banner')).toContainText('Difficulty: Hard');
     await expect(page.getByRole('gridcell')).toHaveCount(81);
@@ -628,6 +628,16 @@ for (const viewport of [
 ]) {
   test.describe(`a ${viewport.width}×${viewport.height} phone on its side`, () => {
     test.use({ viewport });
+
+    test('New game shows both its runs whole, nothing cut off below the fold', async ({ page }) => {
+      await page.clock.install({ time: new Date('2026-10-06T10:00:00+01:00') });
+      await tapStart(page);
+      await page.getByRole('banner').getByRole('button', { name: 'New game' }).tap();
+      const menu = page.getByRole('menu', { name: 'New game' });
+      await expectOnScreen(page, menu);
+      for (const item of await menu.getByRole('menuitem').all()) await expectOnScreen(page, item);
+      expect(await menu.evaluate((el) => el.scrollHeight - el.clientHeight)).toBe(0);
+    });
 
     test('fits the whole game with nothing to scroll', async ({ page }) => {
       await gotoPuzzle(page, EASY.givens);
