@@ -18,8 +18,27 @@ describe('readSharedLink', () => {
 
   it('decodes the puzzle of a plain link, with no challenge', () => {
     const link = readSharedLink(searchOf(buildShareUrl('https://x.test/', GIVENS)));
-    expect(link).toEqual({ code: expect.any(String), givens: GIVENS, challenge: null });
+    expect(link).toEqual({
+      code: expect.any(String),
+      givens: GIVENS,
+      challenge: null,
+      daily: null,
+    });
   });
+
+  it("reads a daily's date, which the app has still to check", () => {
+    const url = buildShareUrl('https://x.test/', GIVENS, undefined, '2026-10-06');
+    expect(readSharedLink(searchOf(url))).toMatchObject({ givens: GIVENS, daily: '2026-10-06' });
+  });
+
+  it.each(['2026-02-30', '2026-10-6', 'yesterday', ''])(
+    'ignores a daily date of "%s", which is no date at all',
+    (d) => {
+      const url = new URL(buildShareUrl('https://x.test/', GIVENS));
+      url.searchParams.set('d', d);
+      expect(readSharedLink(url.search)).toMatchObject({ givens: GIVENS, daily: null });
+    },
+  );
 
   it('reads the challenge from a result link', () => {
     const url = buildShareUrl('https://x.test/', GIVENS, {
@@ -44,8 +63,13 @@ describe('readSharedLink', () => {
   });
 
   it('still reports a link whose puzzle does not decode, so the app can say so', () => {
-    expect(readSharedLink('?p=!!!')).toEqual({ code: '!!!', givens: null, challenge: null });
-    expect(readSharedLink('?p=')).toEqual({ code: '', givens: null, challenge: null });
+    expect(readSharedLink('?p=!!!')).toEqual({
+      code: '!!!',
+      givens: null,
+      challenge: null,
+      daily: null,
+    });
+    expect(readSharedLink('?p=')).toEqual({ code: '', givens: null, challenge: null, daily: null });
   });
 
   it.each(['0', '-5', '1.5', 'abc', '', '99999999'])(
@@ -71,7 +95,7 @@ describe('clearShareParams', () => {
   afterEach(() => window.history.replaceState({}, '', '/'));
 
   it('removes the share parameters and keeps the rest of the URL', () => {
-    window.history.replaceState({}, '', '/?p=abc&t=10&n=Dan&a=c&keep=1#here');
+    window.history.replaceState({}, '', '/?p=abc&d=2026-10-06&t=10&n=Dan&a=c&keep=1#here');
     clearShareParams();
     expect(window.location.search).toBe('?keep=1');
     expect(window.location.hash).toBe('#here');

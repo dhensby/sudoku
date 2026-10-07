@@ -7,7 +7,15 @@ import { memoryStorage, type StorageLike } from '../storage/storage';
 import { App } from './App';
 import type { PuzzleSource } from './puzzleSource';
 import { STUCK_ON_A_HIDDEN_PAIR } from '../test/logic-fixtures';
-import { FIRST_EMPTY, PUZZLE, answerAt, fakeSource, linkFor, nearlySolved } from './testFixtures';
+import {
+  FIRST_EMPTY,
+  PUZZLE,
+  answerAt,
+  fakeDailies,
+  fakeSource,
+  linkFor,
+  nearlySolved,
+} from './testFixtures';
 import type { UseSudokuOptions } from './useSudoku';
 
 interface Options extends Partial<UseSudokuOptions> {
@@ -18,8 +26,10 @@ interface Options extends Partial<UseSudokuOptions> {
 function renderApp(options: Options = {}) {
   const storage = options.storage ?? memoryStorage();
   const source = options.source ?? fakeSource();
-  const view = render(<App options={{ search: '', ...options, storage, source }} />);
-  return { ...view, storage, source };
+  // Never the app's own store, which would deal real dailies on the main thread.
+  const dailies = options.dailies ?? fakeDailies();
+  const view = render(<App options={{ search: '', ...options, storage, source, dailies }} />);
+  return { ...view, storage, source, dailies };
 }
 
 /** Render, and wait for the first puzzle to be on the board. */
@@ -799,7 +809,8 @@ describe('App', () => {
         { name: 'Resume' },
       );
       clickWithMouse(screen.getByRole('button', { name: 'New game' }));
-      expect(screen.getByRole('menuitem', { name: /^Easy/ })).toHaveFocus();
+      // Today's dailies come first.
+      expect(screen.getByRole('menuitem', { name: /^Today's Easy puzzle/ })).toHaveFocus();
       // A press on a blank part of the page: the menu goes, and its item's focus with it.
       fireEvent.pointerDown(document.body, { pointerType: 'mouse' });
       expect(screen.queryByRole('menu')).not.toBeInTheDocument();
@@ -908,7 +919,14 @@ describe('App', () => {
       // request behind for the board to take focus with later.
       render(
         <StrictMode>
-          <App options={{ search: '', storage: memoryStorage(), source: fakeSource() }} />
+          <App
+            options={{
+              search: '',
+              storage: memoryStorage(),
+              source: fakeSource(),
+              dailies: fakeDailies(),
+            }}
+          />
         </StrictMode>,
       );
       await screen.findByRole('grid');
@@ -919,6 +937,180 @@ describe('App', () => {
       press('p', {}, help);
       expect(screen.getByRole('grid')).toBeInTheDocument();
       expect(help).toHaveFocus();
+    });
+  });
+
+  describe('daily puzzles', () => {
+    /** Noon on Tuesday 6 October 2026, local time: today, for these tests. */
+    const NOON = new Date(2026, 9, 6, 12).getTime();
+    const TODAY = '2026-10-06';
+    const now = () => NOON;
+    /** Today's Hard daily, a move from solved. */
+    const NEAR = nearlySolved([0]);
+
+    function openNewGame() {
+      fireEvent.click(screen.getByRole('button', { name: 'New game' }));
+      return screen.getByRole('menu', { name: 'New game' });
+    }
+
+    it("plays today's daily from New game, then names it and starts its streak", async () => {
+      const dailies = fakeDailies({ now, puzzles: { [`${TODAY}/hard`]: NEAR } });
+      await startApp({ now, dailies });
+      const menu = openNewGame();
+      expect(within(menu).getByRole('group', { name: /^Today's puzzles/ })).toHaveTextContent(
+        'Tue 6 Oct',
+      );
+      fireEvent.click(
+        within(menu).getByRole('menuitem', { name: "Today's Hard puzzle, not started" }),
+      );
+      await screen.findByRole('grid');
+      expect(liveRegion()).toHaveTextContent("Today's Hard puzzle.");
+      press(String(answerAt(0, NEAR)));
+      const dialog = await screen.findByRole('dialog', { name: 'Solved!' });
+      expect(within(dialog).getByText('Daily · 6 Oct · Hard')).toBeInTheDocument();
+      expect(within(dialog).getByText('That starts a Hard streak')).toBeInTheDocument();
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Close' }));
+      expect(
+        within(openNewGame()).getByRole('menuitem', {
+          name: "Today's Hard puzzle, solved (current)",
+        }),
+      ).toBeInTheDocument();
+    });
+
+    it('shows the loading card while a daily is dealt, naming it', async () => {
+      const dailies = fakeDailies({ now, held: true });
+      await startApp({ now, dailies });
+      fireEvent.click(
+        within(openNewGame()).getByRole('menuitem', { name: "Today's Expert puzzle, not started" }),
+      );
+      expect(screen.getByText("Generating today's Expert puzzle…")).toBeInTheDocument();
+      await act(async () => dailies.release());
+      expect(screen.getByRole('grid')).toBeInTheDocument();
+      // The keyboard carries on from the daily's board.
+      expect(selectedCell()).toHaveFocus();
+    });
+
+    it('takes the keyboard to a daily already dealt, which arrives at once', async () => {
+      const dailies = fakeDailies({ now, dealt: [`${TODAY}/hard`] });
+      await startApp({ now, dailies });
+      const button = screen.getByRole('button', { name: 'New game' });
+      button.focus();
+      // From the keyboard: a click with no count, as Enter gives.
+      fireEvent.click(button, { detail: 0 });
+      fireEvent.click(screen.getByRole('menuitem', { name: "Today's Hard puzzle, not started" }), {
+        detail: 0,
+      });
+      expect(screen.queryByText(/^Generating/)).not.toBeInTheDocument();
+      expect(selectedCell()).toHaveFocus();
+      expect(dailies.asked).toEqual([]);
+    });
+
+    it('names a daily on the Paused card and in History', async () => {
+      await startApp({ now, dailies: fakeDailies({ now }) });
+      fireEvent.click(
+        within(openNewGame()).getByRole('menuitem', { name: "Today's Medium puzzle, not started" }),
+      );
+      await screen.findByRole('grid');
+      press('p');
+      const card = document.querySelector<HTMLElement>('.board-overlay')!;
+      expect(card).toHaveTextContent('Daily · 6 Oct · Medium · 0:00');
+      fireEvent.click(screen.getByRole('button', { name: 'History' }));
+      const history = screen.getByRole('dialog', { name: 'History' });
+      expect(within(history).getByText('Daily · 6 Oct')).toBeInTheDocument();
+    });
+
+    it('offers a solved daily again from New game, saying when it was solved', async () => {
+      const dailies = fakeDailies({ now, puzzles: { [`${TODAY}/hard`]: NEAR } });
+      await startApp({ now, dailies });
+      fireEvent.click(
+        within(openNewGame()).getByRole('menuitem', { name: "Today's Hard puzzle, not started" }),
+      );
+      await screen.findByRole('grid');
+      press(String(answerAt(0, NEAR)));
+      fireEvent.click(
+        within(await screen.findByRole('dialog', { name: 'Solved!' })).getByRole('button', {
+          name: 'Close',
+        }),
+      );
+      fireEvent.click(
+        within(openNewGame()).getByRole('menuitem', {
+          name: "Today's Hard puzzle, solved (current)",
+        }),
+      );
+      const offer = screen.getByRole('dialog', { name: "You've solved this one" });
+      expect(offer).toHaveTextContent(/You solved the Hard daily for 6 Oct in 0:0\d/);
+      fireEvent.click(within(offer).getByRole('button', { name: 'Play again' }));
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(liveRegion()).toHaveTextContent('Playing this Hard puzzle again.');
+    });
+
+    it('opens the calendar from the header and from New game, and plays a past day from it', async () => {
+      const dailies = fakeDailies({ now });
+      await startApp({ now, dailies });
+      fireEvent.click(within(openNewGame()).getByRole('menuitem', { name: 'Daily puzzles' }));
+      expect(screen.getByRole('dialog', { name: 'Daily puzzles' })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+
+      fireEvent.click(screen.getByRole('button', { name: 'Daily puzzles' }));
+      const calendar = screen.getByRole('dialog', { name: 'Daily puzzles' });
+      // Opened on today.
+      expect(within(calendar).getByRole('gridcell', { selected: true })).toHaveAccessibleName(
+        'Tuesday 6 October: Easy, Medium, Hard and Expert not started',
+      );
+      fireEvent.click(within(calendar).getByRole('gridcell', { name: /^Monday 5 October/ }));
+      fireEvent.click(
+        within(calendar).getByRole('button', { name: 'Play, Easy daily for Monday 5 October' }),
+      );
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      await screen.findByRole('grid');
+      expect(selectedCell()).toHaveFocus();
+      expect(liveRegion()).toHaveTextContent('The Easy daily for 5 Oct.');
+
+      fireEvent.click(screen.getByRole('button', { name: 'Daily puzzles' }));
+      expect(
+        screen.getByRole('gridcell', { name: /^Monday 5 October: Easy in progress/ }),
+      ).toBeInTheDocument();
+    });
+
+    it('plays a solved daily again from the calendar', async () => {
+      const dailies = fakeDailies({ now, puzzles: { [`${TODAY}/hard`]: NEAR } });
+      await startApp({ now, dailies });
+      fireEvent.click(
+        within(openNewGame()).getByRole('menuitem', { name: "Today's Hard puzzle, not started" }),
+      );
+      await screen.findByRole('grid');
+      press(String(answerAt(0, NEAR)));
+      fireEvent.click(
+        within(await screen.findByRole('dialog', { name: 'Solved!' })).getByRole('button', {
+          name: 'Close',
+        }),
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Daily puzzles' }));
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Play again, Hard daily for Tuesday 6 October' }),
+      );
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(liveRegion()).toHaveTextContent('Playing this Hard puzzle again.');
+    });
+
+    it('shares a daily by name, with its date in the link', async () => {
+      await startApp({ now, dailies: fakeDailies({ now }) });
+      fireEvent.click(
+        within(openNewGame()).getByRole('menuitem', { name: "Today's Hard puzzle, not started" }),
+      );
+      await screen.findByRole('grid');
+      fireEvent.click(screen.getByRole('button', { name: 'Share' }));
+      const share = screen.getByRole('dialog', { name: 'Share this puzzle' });
+      expect(within(share).getByText(/^Sudoku Daily · 6 Oct 2026 · Hard/)).toBeInTheDocument();
+      expect(within(share).getByText(/[?&]d=2026-10-06/)).toBeInTheDocument();
+    });
+
+    it("names a friend's daily on the Ready card once its date checks out", async () => {
+      const dailies = fakeDailies({ now, puzzles: { [`${TODAY}/hard`]: PUZZLE } });
+      renderApp({ now, dailies, search: `${linkFor(PUZZLE.givens)}&d=${TODAY}` });
+      expect(
+        await screen.findByText("Someone shared today's Hard puzzle with you."),
+      ).toBeInTheDocument();
     });
   });
 

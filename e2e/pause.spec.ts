@@ -272,7 +272,7 @@ test.describe('a puzzle made in a hidden tab', () => {
     // Chosen and hidden in the same task, so the puzzle cannot beat the switch.
     await page
       .getByRole('menu', { name: 'New game' })
-      .getByRole('menuitem', { name: 'Expert' })
+      .getByRole('menuitem', { name: 'Expert', exact: true })
       .evaluate((item: HTMLElement) => {
         item.click();
         Object.defineProperty(document, 'visibilityState', {

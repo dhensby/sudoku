@@ -660,6 +660,83 @@
   font-weight: 700;
 }
 
+/*
+ * New game's two runs — today's dailies, then random puzzles — each under a
+ * heading of its own, with a rule between them. The heading carries the
+ * date of today's puzzles at its end, so a menu opened after midnight says
+ * which day it offers. Long enough to scroll on the shortest phone, rather
+ * than run off the foot of the screen.
+ */
+.menu--new-game .menu__popup {
+  min-width: 250px;
+  max-height: calc(100dvh - var(--header-height) - 12px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.menu__group {
+  display: flex;
+  flex-direction: column;
+}
+
+.menu__group + .menu__group {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+
+/* A phone on its side has the width for the two runs side by side, and not
+   the height for one under the other: Random puzzle would be cut off below
+   the fold, with nothing to say it was there. */
+@media (max-height: 500px) and (min-width: 560px) {
+  .menu--new-game .menu__popup {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(230px, 1fr));
+    align-items: start;
+  }
+
+  .menu__group + .menu__group {
+    margin-top: 0;
+    padding-top: 0;
+    padding-left: 6px;
+    border-top: 0;
+    border-left: 1px solid var(--border);
+  }
+}
+
+.menu__group .menu__heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.menu__aside {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+/* How a daily stands, after its tier: quieter than the label, and kept to
+   one line. */
+.menu__detail {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+/* A daily's mark stands where an item's icon would, a little smaller than
+   one, so its square sits in the icon's column. */
+.menu__icon .daily-mark {
+  width: 14px;
+  height: 14px;
+  margin: 2px;
+}
+
 /* ==========================================================================
    Header: icon buttons and the timer
    ========================================================================== */

@@ -401,3 +401,43 @@ describe('Show me', () => {
     );
   });
 });
+
+describe('the daily calendar', () => {
+  it('draws a daily’s marks in ink, the empty one muted', () => {
+    expect(rule(DIALOGS, '.daily-mark')).toMatch(/color:\s*var\(--text\)/);
+    expect(rule(DIALOGS, '.daily-mark--not-started')).toMatch(/color:\s*var\(--text-muted\)/);
+  });
+
+  it('prints the chosen day as the board prints its selection, every mark knocked out', () => {
+    const chosen = rule(DIALOGS, '.calendar__day.calendar__day--selected');
+    expect(chosen).toMatch(/background:\s*var\(--accent\)/);
+    expect(chosen).toMatch(/color:\s*var\(--accent-text\)/);
+    expect(rule(DIALOGS, '.calendar__day--selected .daily-mark')).toMatch(
+      /color:\s*var\(--accent-text\)/,
+    );
+    // Today's ring, on the block, is a paper line inside it.
+    expect(rule(DIALOGS, '.calendar__day--selected.calendar__day--today')).toMatch(
+      /box-shadow:\s*inset 0 0 0 2px var\(--accent-text\)/,
+    );
+  });
+
+  it('never lets hover cover the chosen day', () => {
+    expect(DIALOGS).toMatch(
+      /\.calendar__day:not\(\s*\.calendar__day--outside,\s*\.calendar__day--unavailable,\s*\.calendar__day--selected\s*\):hover/,
+    );
+  });
+
+  it('keeps every day a finger’s 44px on the narrowest phone', () => {
+    const narrow = DIALOGS.slice(DIALOGS.indexOf('@media (max-width: 374px)'));
+    expect(narrow).toMatch(/\.calendar__grid\s*\{\s*border-spacing:\s*0/);
+    expect(rule(DIALOGS, '.calendar__day')).toMatch(/height:\s*(4[4-9]|5\d)px/);
+  });
+
+  it('keeps the chosen day and today in Windows High Contrast', () => {
+    const forced = DIALOGS.slice(DIALOGS.lastIndexOf('@media (forced-colors: active) {'));
+    expect(forced).toMatch(
+      /\.calendar__day\.calendar__day--selected\s*\{\s*forced-color-adjust:\s*none;\s*background:\s*Highlight/,
+    );
+    expect(forced).toMatch(/\.calendar__day--today\s*\{\s*outline:\s*2px solid CanvasText/);
+  });
+});

@@ -201,4 +201,48 @@ describe('CompletionDialog', () => {
       expect(screen.getByRole('region', { name: 'Head to head' })).toHaveTextContent('With 1 hint');
     });
   });
+
+  describe('CompletionDialog for a daily', () => {
+    const daily = (streak: NonNullable<CompletionDialogProps['daily']>['streak']) => ({
+      date: '2026-10-06',
+      today: '2026-10-06',
+      streak,
+    });
+
+    it('names the daily in place of the tier', () => {
+      renderCompletion({ daily: daily({ kind: 'started' }) });
+      expect(within(dialog()).getByText('Daily · 6 Oct · Hard')).toBeInTheDocument();
+      expect(within(dialog()).queryByText(/^Hard$/)).not.toBeInTheDocument();
+    });
+
+    it.each([
+      [{ kind: 'streak', days: 5 } as const, 'Hard streak: 5 days'],
+      [{ kind: 'streak', days: 1 } as const, 'Hard streak: 1 day'],
+      [{ kind: 'started' } as const, 'That starts a Hard streak'],
+      [{ kind: 'counted' } as const, 'Begun on its day, so it counts towards your Hard streak'],
+      [
+        { kind: 'later' } as const,
+        "Played on a later day, so it doesn't count towards your streak",
+      ],
+      [
+        { kind: 'early' } as const,
+        "Started before its day began here, so it doesn't count towards your streak",
+      ],
+    ])('says what it did for the streak: %o', (streak, text) => {
+      renderCompletion({ daily: daily(streak) });
+      const line = within(dialog()).getByText(text);
+      // Counted, it is led by the calendar's own mark for a day solved on it.
+      expect(line.querySelector('.daily-mark--solved-on-the-day') !== null).toBe(
+        streak.kind !== 'later' && streak.kind !== 'early',
+      );
+      // Read with the time as focus lands on Share.
+      expect(within(dialog()).getByRole('button', { name: 'Share your time' })).toBeInTheDocument();
+      expect(dialog()).toHaveAccessibleDescription(expect.stringContaining(text));
+    });
+
+    it('says nothing of streaks for a random puzzle', () => {
+      renderCompletion();
+      expect(within(dialog()).queryByText(/streak/)).not.toBeInTheDocument();
+    });
+  });
 });

@@ -306,4 +306,76 @@ describe('Menu', () => {
     expect(screen.getByText('Pick one')).toBeInTheDocument();
     expect(screen.getByTestId('icon')).toBeInTheDocument();
   });
+
+  describe('Menu in groups', () => {
+    function renderGroups(onOpen = vi.fn()) {
+      const select = vi.fn();
+      render(
+        <Menu
+          label="Things"
+          onOpen={onOpen}
+          items={[
+            {
+              key: 'first',
+              label: 'First run',
+              aside: 'Tue',
+              name: 'The first run, Tuesday',
+              items: [
+                { key: 'a', label: 'Alpha', detail: 'Done', name: 'Alpha, done', onSelect: select },
+                { key: 'b', label: 'Bravo', onSelect: select },
+              ],
+            },
+            {
+              key: 'second',
+              label: 'Second run',
+              items: [{ key: 'c', label: 'Charlie', isCurrent: true, onSelect: select }],
+            },
+          ]}
+        >
+          …
+        </Menu>,
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Things' }));
+      return { onOpen, select };
+    }
+
+    it('sets each run under its heading, named for assistive technology by the group', () => {
+      renderGroups();
+      const groups = screen.getAllByRole('group');
+      expect(groups.map((group) => group.getAttribute('aria-label'))).toEqual([
+        'The first run, Tuesday',
+        'Second run',
+      ]);
+      // The heading is shown, aside and all, but not read twice.
+      const heading = groups[0].querySelector('.menu__heading')!;
+      expect(heading).toHaveTextContent('First runTue');
+      expect(heading).toHaveAttribute('aria-hidden', 'true');
+    });
+
+    it('shows an item’s detail after its label, and names it as asked', () => {
+      renderGroups();
+      const alpha = screen.getByRole('menuitem', { name: 'Alpha, done' });
+      expect(alpha.querySelector('.menu__detail')).toHaveTextContent('Done');
+      // A name given, or not, still says which item is current.
+      expect(screen.getByRole('menuitem', { name: 'Charlie (current)' })).toBeInTheDocument();
+    });
+
+    it('moves through every run as one list, and runs the item chosen', () => {
+      const { select } = renderGroups();
+      const items = screen.getAllByRole('menuitem');
+      expect(items[0]).toHaveFocus();
+      fireEvent.keyDown(items[0], { key: 'ArrowDown' });
+      fireEvent.keyDown(items[1], { key: 'ArrowDown' });
+      expect(items[2]).toHaveFocus();
+      fireEvent.keyDown(items[2], { key: 'ArrowDown' });
+      expect(items[0]).toHaveFocus();
+      fireEvent.click(items[2]);
+      expect(select).toHaveBeenCalledTimes(1);
+    });
+
+    it('says it is opening, before its items are drawn', () => {
+      const { onOpen } = renderGroups();
+      expect(onOpen).toHaveBeenCalledTimes(1);
+    });
+  });
 });

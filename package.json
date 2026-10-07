@@ -19,7 +19,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "coverage": "vitest run --coverage",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "dailies:freeze": "node scripts/dailies.mjs freeze",
+    "dailies:switch": "node scripts/dailies.mjs switch"
   },
   "dependencies": {
     "@fontsource-variable/bitter": "^5.3.0",

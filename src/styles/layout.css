@@ -269,6 +269,11 @@
   display: none;
 }
 
+/* "Daily ·" before a daily's tier: no colour of its own, the word says it. */
+.header__daily {
+  white-space: pre;
+}
+
 /* Right-aligned, whatever the wordmark and tier take. */
 .header__timer {
   flex: none;
@@ -326,6 +331,27 @@
   }
 }
 
+/*
+ * A daily's "Daily ·" takes another 3.3em (measured, as above, with the
+ * bundled faces): the wordmark makes way for it first, and only below the
+ * width the row needs without the wordmark does it go itself — leaving the
+ * row as a random game's, and the words for assistive technology.
+ */
+@container header (max-width: calc(165px + 15.4em)) {
+  .header--daily .header__title {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    clip-path: inset(50%);
+  }
+}
+
+@container header (max-width: calc(159px + 11em)) {
+  .header--daily .header__daily {
+    display: none;
+  }
+}
+
 /* An ink rule under the bar, as under a newspaper's masthead. */
 @media (min-width: 850px) {
   .header {
@@ -362,10 +388,10 @@
     display: none;
   }
 
-  /* Six icon buttons rather than two, a larger wordmark and roomier gaps:
-     348.5px + 13.5em, and 24px more for a finger's 44px buttons on a
+  /* Seven icon buttons rather than two, a larger wordmark and roomier gaps:
+     390.5px + 13.5em, and 28px more for a finger's 44px buttons on a
      tablet. */
-  @container header (max-width: calc(375px + 13.5em)) {
+  @container header (max-width: calc(420px + 13.5em)) {
     .header__title {
       position: absolute;
       width: 1px;

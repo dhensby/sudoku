@@ -97,4 +97,13 @@ describe('ChallengeDialog', () => {
     for (const close of closes) fireEvent.click(close);
     expect(props.onClose).toHaveBeenCalledTimes(2);
   });
+
+  describe('ChallengeDialog for a daily', () => {
+    it('names the daily it offers again', () => {
+      vi.useFakeTimers({ now: NOW });
+      renderChallenge({ daily: '2026-10-03' });
+      expect(dialog()).toHaveTextContent('You solved the Hard daily for 3 Oct in 4:50 on 3 Oct.');
+      vi.useRealTimers();
+    });
+  });
 });

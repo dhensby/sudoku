@@ -175,6 +175,21 @@ describe('createPuzzleSource with a worker', () => {
     await expect(puzzle).resolves.toEqual(puzzleFor('easy', 's2'));
   });
 
+  it('generates the puzzle a given seed deals, with no spare before or after it', async () => {
+    const { source, workers } = setup();
+    const puzzle = source.generate('hard', 'daily/2026-10-06/hard');
+    expect(workers[0].requests).toEqual([
+      { id: 1, difficulty: 'hard', seed: 'daily/2026-10-06/hard' },
+    ]);
+    workers[0].answer();
+    await expect(puzzle).resolves.toEqual(puzzleFor('hard', 'daily/2026-10-06/hard'));
+
+    // Nor is a spare handed out for it.
+    source.prefetch('hard');
+    void source.generate('hard', 'other');
+    expect(workers[0].requests.map(({ seed }) => seed)).toEqual(['s1', 'other']);
+  });
+
   it('ignores a reply it is not waiting for', () => {
     const { source, workers } = setup();
     void source.next('easy');
@@ -193,6 +208,14 @@ describe('createPuzzleSource falling back to the main thread', () => {
 
     vi.advanceTimersByTime(0);
     await expect(promise).resolves.toEqual(puzzleFor('easy', 's1'));
+  });
+
+  it('generates a given seed on the main thread too', async () => {
+    vi.useFakeTimers();
+    const source = createPuzzleSource({ createWorker: () => null, seed: counterSeeds() });
+    const promise = source.generate('easy', 'daily/2026-10-06/easy');
+    vi.advanceTimersByTime(0);
+    await expect(promise).resolves.toEqual(puzzleFor('easy', 'daily/2026-10-06/easy'));
   });
 
   it('prefetches on the main thread too', async () => {

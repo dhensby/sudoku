@@ -314,6 +314,58 @@ export async function chooseMore(page: Page, item: string): Promise<void> {
   await page.getByRole('menu', { name: 'More' }).getByRole('menuitem', { name: item }).click();
 }
 
+/**
+ * Open one of today's daily puzzles from the header's New game menu, as
+ * "Easy", "Hard" and so on, and wait for it to be on screen, clock running
+ * (it may have to be dealt first, in the worker).
+ */
+export async function openTodaysDaily(page: Page, tier: string): Promise<void> {
+  await page.getByRole('button', { name: 'New game' }).click();
+  await page
+    .getByRole('menu', { name: 'New game' })
+    .getByRole('menuitem', { name: new RegExp(`^Today's ${tier} puzzle`) })
+    .click();
+  await expect(grid(page)).toBeVisible({ timeout: 30_000 });
+  await expect(timer(page)).toHaveAccessibleName('Pause');
+}
+
+/**
+ * Put records in the history before the page loads, as a returning player's
+ * browser holds them — once, so a reload does not put them back.
+ */
+export async function seedHistory(page: Page, records: readonly unknown[]): Promise<void> {
+  await page.addInitScript((seeded) => {
+    if (localStorage.getItem('e2e.seeded') !== null) return;
+    localStorage.setItem('sudoku.history', JSON.stringify(seeded));
+    localStorage.setItem('e2e.seeded', '1');
+  }, records);
+}
+
+/** A solved or unfinished daily attempt, as the history stores one, begun at `createdAt`. */
+export function dailyRecord(
+  id: string,
+  puzzle: Puzzle,
+  daily: string,
+  createdAt: number,
+  status: 'solved' | 'playing' = 'solved',
+) {
+  const elapsedMs = 200_000 + id.length * 7000;
+  return {
+    id,
+    givens: puzzle.givens,
+    difficulty: puzzle.difficulty,
+    source: 'daily',
+    createdAt,
+    updatedAt: createdAt + elapsedMs,
+    completedAt: status === 'solved' ? createdAt + elapsedMs : null,
+    status,
+    elapsedMs,
+    assists: { autoCandidates: false, hints: 0, checks: 0, reveals: 0 },
+    challenge: null,
+    daily,
+  };
+}
+
 /** Start a new game of a tier from the header's New game menu. */
 export async function newGame(page: Page, label: string): Promise<void> {
   await page.getByRole('button', { name: 'New game' }).click();
@@ -329,7 +381,7 @@ export async function newGame(page: Page, label: string): Promise<void> {
  */
 export async function openHeaderDialog(
   page: Page,
-  label: 'History' | 'Share' | 'Settings' | 'Solving techniques' | 'Help',
+  label: 'Daily puzzles' | 'History' | 'Share' | 'Settings' | 'Solving techniques' | 'Help',
 ): Promise<void> {
   const direct = page.getByRole('banner').getByRole('button', { name: label, exact: true });
   if (await direct.isVisible()) {

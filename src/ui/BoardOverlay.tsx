@@ -1,14 +1,21 @@
 import { useEffect, useId, useLayoutEffect, useRef } from 'react';
-import { formatDuration, type Difficulty } from '../core';
+import { formatDuration, type DateKey, type Difficulty } from '../core';
 import type { Challenge } from '../storage/history';
-import { DIFFICULTY_LABEL, describeAssists, withArticle } from './format';
+import { dailyName, dailyPhrase } from './daily';
+import { DIFFICULTY_LABEL, capitalise, describeAssists, withArticle } from './format';
 import { PlayIcon } from './icons';
 import { focusQuietly } from './keepFocus';
 
+/** The daily a card's game is, for its wording: its date, and the player's. */
+export interface OverlayDaily {
+  date: DateKey;
+  today: DateKey;
+}
+
 /** What the board's place holds while the board itself is not shown. */
 export type BoardOverlayContent =
-  /** A puzzle is being generated. */
-  | { kind: 'loading'; difficulty: Difficulty }
+  /** A puzzle is being generated (or a daily dealt). */
+  | { kind: 'loading'; difficulty: Difficulty; daily?: OverlayDaily | null }
   /** Generation failed with nothing to show instead. */
   | { kind: 'failed'; difficulty: Difficulty; onRetry: () => void }
   /**
@@ -21,6 +28,7 @@ export type BoardOverlayContent =
       difficulty: Difficulty;
       isShared: boolean;
       challenge: Challenge | null;
+      daily?: OverlayDaily | null;
       onStart: () => void;
     }
   /** A paused game. */
@@ -29,6 +37,7 @@ export type BoardOverlayContent =
       difficulty: Difficulty;
       elapsedMs: number;
       showTimer: boolean;
+      daily?: OverlayDaily | null;
       onResume: () => void;
     }
   /** Paused behind a dialog: nothing to say, and nothing to press — the dialog has the floor. */
@@ -49,15 +58,26 @@ export type BoardOverlayProps = BoardOverlayContent & {
   onClaimFocus?: () => void;
 };
 
+/**
+ * The puzzle, mid-sentence: "this Hard puzzle", or the daily it is — "today's
+ * Hard puzzle", "the Hard daily for 5 Oct".
+ */
+function puzzlePhrase(difficulty: Difficulty, daily: OverlayDaily | null | undefined): string {
+  if (daily === null || daily === undefined) return `this ${DIFFICULTY_LABEL[difficulty]} puzzle`;
+  return dailyPhrase(daily.date, difficulty, daily.today);
+}
+
 /** The challenge line: "Dan solved this Hard puzzle in 5:23. Can you beat it?" */
 function ChallengeText({
   difficulty,
   challenge,
+  daily,
   textId,
   noteId,
 }: {
   difficulty: Difficulty;
   challenge: Challenge;
+  daily: OverlayDaily | null | undefined;
   textId: string;
   noteId: string;
 }) {
@@ -67,8 +87,8 @@ function ChallengeText({
       <p className="board-overlay__text" id={textId}>
         {/* Names come from links anyone can write: <bdi> keeps a
             right-to-left one from pulling the sentence around it. */}
-        {challenge.name === null ? 'Your friend' : <bdi>{challenge.name}</bdi>} solved this{' '}
-        {DIFFICULTY_LABEL[difficulty]} puzzle in {formatDuration(challenge.seconds * 1000)}. Can you
+        {challenge.name === null ? 'Your friend' : <bdi>{challenge.name}</bdi>} solved{' '}
+        {puzzlePhrase(difficulty, daily)} in {formatDuration(challenge.seconds * 1000)}. Can you
         beat it?
       </p>
       {assists !== null && (
@@ -129,7 +149,11 @@ export function BoardOverlay(props: BoardOverlayProps) {
         <div className="board-overlay__card" role="status">
           <span className="spinner" aria-hidden="true" />
           <p className="board-overlay__text">
-            Generating {withArticle(DIFFICULTY_LABEL[props.difficulty])} puzzle…
+            Generating{' '}
+            {props.daily === null || props.daily === undefined
+              ? `${withArticle(DIFFICULTY_LABEL[props.difficulty])} puzzle`
+              : dailyPhrase(props.daily.date, props.difficulty, props.daily.today)}
+            …
           </p>
         </div>
       )}
@@ -161,16 +185,26 @@ export function BoardOverlay(props: BoardOverlayProps) {
             <ChallengeText
               difficulty={props.difficulty}
               challenge={props.challenge}
+              daily={props.daily}
               textId={textId}
               noteId={noteId}
             />
           ) : props.isShared ? (
             <p className="board-overlay__text" id={textId}>
-              Someone shared {withArticle(DIFFICULTY_LABEL[props.difficulty])} puzzle with you.
+              Someone shared{' '}
+              {props.daily === null || props.daily === undefined
+                ? `${withArticle(DIFFICULTY_LABEL[props.difficulty])} puzzle`
+                : dailyPhrase(props.daily.date, props.difficulty, props.daily.today)}{' '}
+              with you.
             </p>
           ) : (
             <p className="board-overlay__text" id={textId}>
-              Your {DIFFICULTY_LABEL[props.difficulty]} puzzle is ready.
+              {props.daily === null || props.daily === undefined
+                ? `Your ${DIFFICULTY_LABEL[props.difficulty]} puzzle`
+                : capitalise(
+                    dailyPhrase(props.daily.date, props.difficulty, props.daily.today),
+                  )}{' '}
+              is ready.
             </p>
           )}
           <p className="board-overlay__note" id={timerNoteId}>
@@ -203,7 +237,9 @@ export function BoardOverlay(props: BoardOverlayProps) {
             Paused
           </h2>
           <p className="board-overlay__text" id={textId}>
-            {DIFFICULTY_LABEL[props.difficulty]}
+            {props.daily === null || props.daily === undefined
+              ? DIFFICULTY_LABEL[props.difficulty]
+              : dailyName(props.daily.date, props.difficulty, props.daily.today)}
             {props.showTimer && <> · {formatDuration(props.elapsedMs)}</>}
           </p>
           <button

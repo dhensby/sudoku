@@ -37,8 +37,17 @@ jobs:
       - name: Type-check
         run: npm run typecheck
 
+      # The daily archive's guard holds a pull request's archive to the one
+      # main has released (src/daily/archive.guard.test.ts), so it needs
+      # main's copy; on main itself there is nothing to compare with.
+      - name: Fetch the base branch, for the daily archive's guard
+        if: github.event_name == 'pull_request'
+        run: git fetch --no-tags --depth=1 origin "+refs/heads/${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}"
+
       - name: Unit & component tests (with coverage)
         run: npm run coverage
+        env:
+          DAILY_ARCHIVE_BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || '' }}
 
       - name: Build
         run: npm run build

@@ -614,7 +614,7 @@ test.describe('Space after the mouse', () => {
     await page.keyboard.press('Tab');
     await expect(page.getByRole('menu')).toHaveCount(0);
     // Onwards along the header, not dropped to the page.
-    await expect(page.getByRole('button', { name: 'History' })).toBeFocused();
+    await expect(page.getByRole('button', { name: 'Daily puzzles' })).toBeFocused();
     await page.keyboard.press('Shift+Tab');
     await expect(button).toBeFocused();
   });

@@ -2,6 +2,7 @@ import {
   STOPPED_CLOCK,
   checkGivens,
   createGame,
+  dateKeyOf,
   deserialiseGame,
   elapsedMs,
   gridValues,
@@ -13,6 +14,7 @@ import {
   toSeconds,
   type Assists,
   type Clock,
+  type DateKey,
   type Difficulty,
   type GameState,
   type GridString,
@@ -132,13 +134,33 @@ export interface ShareTarget {
   givens: GridString;
   difficulty: Difficulty;
   result: { seconds: number; assists: Assists } | null;
+  /** The date of the daily the puzzle is, if it was played as one: the link and message name it. */
+  daily: DateKey | null;
 }
 
-/** A link to a puzzle already solved: the earlier solve, and the link's result to compare. */
+/**
+ * A puzzle already solved, offered again: the earlier solve, and a link's
+ * result to compare (from a link), or the daily it is (a solved daily chosen
+ * from the New game menu, or a link to one).
+ */
 export interface ChallengeOffer {
   puzzle: Puzzle;
   previous: GameRecord;
   challenge: Challenge | null;
+  /** The date of the daily the puzzle is, if it is one; a fresh attempt is recorded as that daily. */
+  daily?: DateKey;
+}
+
+/**
+ * A link's claim that its puzzle is a date's daily (`&d=`), still to be
+ * checked against that date's dailies (which is asynchronous: a daily may
+ * have to be dealt first). `tier` is the tier the puzzle grades as, the
+ * daily most worth checking first.
+ */
+export interface DailyHint {
+  date: DateKey;
+  givens: GridString;
+  tier: Difficulty;
 }
 
 /** What a visit opens with. */
@@ -160,6 +182,8 @@ export interface Startup {
    * behind as a New game leaves one (see `isGlimpse`). Null otherwise.
    */
   left: Session | null;
+  /** A link's claim to be a daily, for the hook to check once mounted; null without one. */
+  dailyHint: DailyHint | null;
 }
 
 /** The phase a session is in. `isGenerating` wins: a new puzzle is on its way. */
@@ -186,13 +210,19 @@ export function attemptSource(
   return hasSeen(storage, records, givens) ? 'replay' : source;
 }
 
-/** A fresh record for a game of `puzzle` begun at `now` (epoch ms). */
+/**
+ * A fresh record for a game of `puzzle` created at `now` (epoch ms) — an
+ * attempt at the daily of date `daily`, if one is given, `isStarted` (its
+ * clock running from now) or not yet.
+ */
 export function createRecord(
   puzzle: Puzzle,
   source: GameSource,
   now: number,
   challenge: Challenge | null,
   assists: Assists,
+  daily?: DateKey,
+  isStarted = true,
 ): GameRecord {
   return {
     id: createGameId(now),
@@ -206,6 +236,9 @@ export function createRecord(
     elapsedMs: 0,
     assists: { ...assists },
     challenge,
+    // Left off for every other game, as the history stores it (see `GameRecord.daily`).
+    ...(daily === undefined ? {} : { daily }),
+    ...(daily !== undefined && isStarted ? { startedOn: dateKeyOf(now) } : {}),
   };
 }
 
@@ -219,18 +252,62 @@ export function newSession(
     /** The "Start new games in auto candidate mode" setting. */
     autoCandidates: boolean;
     start: SessionStart;
+    /** The date of the daily this is an attempt at, if it is one; `puzzle` carries its tier. */
+    daily?: DateKey;
   },
 ): Session {
-  const { source, challenge, now, autoCandidates, start } = options;
+  const { source, challenge, now, autoCandidates, start, daily } = options;
   const game = createGame(puzzle, { autoCandidates });
   return {
-    record: createRecord(puzzle, source, now.wall, challenge, game.assists),
+    record: createRecord(
+      puzzle,
+      source,
+      now.wall,
+      challenge,
+      game.assists,
+      daily,
+      start === 'running',
+    ),
     game,
     clock: start === 'running' ? startClock(STOPPED_CLOCK, now.clock) : STOPPED_CLOCK,
     pause: start === 'running' ? null : start,
     isCelebrating: false,
     isSeen: start !== 'dialog',
   };
+}
+
+/**
+ * A record as an attempt at the daily of `date` and `tier` — see `asDaily`.
+ * One already `isStarted` is dated as started on the day it was created, by
+ * this device's clock, as near as anything now knows (an attempt is tagged
+ * within moments of being opened); one not yet started is dated when it is
+ * (see `resumeSession`).
+ */
+export function tagDaily(
+  record: GameRecord,
+  date: DateKey,
+  tier: Difficulty,
+  isStarted: boolean,
+): GameRecord {
+  const startedOn = record.startedOn ?? (isStarted ? dateKeyOf(record.createdAt) : undefined);
+  return {
+    ...record,
+    daily: date,
+    difficulty: tier,
+    ...(startedOn === undefined ? {} : { startedOn }),
+  };
+}
+
+/**
+ * The session as an attempt at the daily of `date` and `tier`: a game whose
+ * puzzle turns out to be that daily — a link's, once its date hint checks
+ * out, or an attempt at the puzzle begun before it was opened as the daily.
+ * The tier is the daily's own, which an archived daily's puzzle may not
+ * grade as today.
+ */
+export function asDaily(session: Session, date: DateKey, tier: Difficulty): Session {
+  if (session.record.daily === date && session.record.difficulty === tier) return session;
+  return { ...session, record: tagDaily(session.record, date, tier, hasBoardShown(session)) };
 }
 
 /**
@@ -243,9 +320,26 @@ export function pauseSession(session: Session, reason: PauseReason, clock: numbe
   return { ...session, clock: pauseClock(session.clock, clock), pause: reason };
 }
 
-/** Start the clock again (or for the first time) at the play clock's reading `clock`: the game is on show. */
-export function resumeSession(session: Session, clock: number): Session {
-  return { ...session, clock: startClock(session.clock, clock), pause: null, isSeen: true };
+/**
+ * Start the clock again (or for the first time) at `now`: the game is on
+ * show. A daily attempt started for the first time is dated now, by the
+ * player's own clock — the date its streak is judged by (see
+ * `GameRecord.startedOn`), so one opened from a link the evening before its
+ * day, and started on the day, counts like any other.
+ */
+export function resumeSession(session: Session, now: Moment): Session {
+  const { record } = session;
+  const isUndated = record.daily !== undefined && record.startedOn === undefined;
+  // One that has run before without its date written down (saved by an
+  // earlier version of the game) is dated as tagging dates it.
+  const startedOn = hasBoardShown(session) ? dateKeyOf(record.createdAt) : dateKeyOf(now.wall);
+  return {
+    ...session,
+    record: isUndated ? { ...record, startedOn } : record,
+    clock: startClock(session.clock, now.clock),
+    pause: null,
+    isSeen: true,
+  };
 }
 
 /**
@@ -407,6 +501,7 @@ export function shareTargetOf(session: Session): ShareTarget {
       game.status === 'solved' && record.source !== 'replay'
         ? { seconds: toSeconds(clock.bankedMs), assists: { ...game.assists } }
         : null,
+    daily: record.daily ?? null,
   };
 }
 
@@ -419,6 +514,7 @@ export function shareTargetOfRecord(record: GameRecord): ShareTarget {
       record.status === 'solved' && record.source !== 'replay'
         ? { seconds: toSeconds(record.elapsedMs), assists: { ...record.assists } }
         : null,
+    daily: record.daily ?? null,
   };
 }
 
@@ -443,6 +539,9 @@ export function shareTargetOfRecord(record: GameRecord): ShareTarget {
  *      been pruned, or one deleted from History).
  * A link that does not decode, or decodes to something that is not a proper
  * puzzle, is reported and otherwise ignored.
+ *
+ * A link's daily date (`&d=`) is passed on as a hint for the hook to check
+ * (`dailyHint`): until it has, the puzzle is opened as any shared puzzle is.
  */
 export function planStartup(
   storage: StorageLike,
@@ -462,6 +561,7 @@ export function planStartup(
     isLinkConsumed: false,
     isNewCurrent: false,
     left: null,
+    dailyHint: null,
   };
 
   const link = readSharedLink(search);
@@ -474,6 +574,13 @@ export function planStartup(
     givens: link.givens,
     solution: check.solution,
     difficulty: rate(gridValues(link.givens)),
+  };
+  const linked: Startup = {
+    ...opened,
+    dailyHint:
+      link.daily === null
+        ? null
+        : { date: link.daily, givens: puzzle.givens, tier: puzzle.difficulty },
   };
   const attempts = findAttempts(records, puzzle.givens);
 
@@ -488,7 +595,7 @@ export function planStartup(
     if (session === null || session.game.status !== 'playing') continue;
     const challenge = link.challenge ?? session.record.challenge;
     return {
-      ...opened,
+      ...linked,
       session: { ...session, record: { ...session.record, challenge } },
       isNewCurrent: true,
       left: session === restored ? null : restored,
@@ -498,11 +605,11 @@ export function planStartup(
   const solves = attempts.filter((attempt) => attempt.status === 'solved');
   const previous = solves.find((attempt) => attempt.source !== 'replay') ?? solves[0];
   if (previous !== undefined) {
-    return { ...opened, offer: { puzzle, previous, challenge: link.challenge } };
+    return { ...linked, offer: { puzzle, previous, challenge: link.challenge } };
   }
 
   return {
-    ...opened,
+    ...linked,
     session: newSession(puzzle, {
       source: attemptSource(storage, records, puzzle.givens, 'shared'),
       challenge: link.challenge,

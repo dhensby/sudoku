@@ -520,4 +520,35 @@ describe('HistoryDialog', () => {
       expect(screen.queryByRole('button', { name: /^Show more/ })).toBeNull();
     });
   });
+
+  describe('HistoryDialog with dailies', () => {
+    it("labels a daily with its own date, and says so in its buttons' names", () => {
+      renderHistory({
+        records: [
+          record('daily', {
+            source: 'daily',
+            daily: '2026-10-04',
+            createdAt: at(5, 9, 0),
+            status: 'solved',
+            completedAt: at(5, 9, 6),
+          }),
+        ],
+        currentId: null,
+      });
+      const row = screen.getByRole('listitem');
+      expect(within(row).getByText('Daily · 4 Oct')).toBeInTheDocument();
+      // Played on the 5th, though it is the 4th's daily.
+      expect(within(row).getByText('Today 09:00')).toBeInTheDocument();
+      expect(
+        within(row).getByRole('button', {
+          name: 'Play again, Hard daily for 4 Oct, from Today 09:00',
+        }),
+      ).toBeInTheDocument();
+    });
+
+    it('labels no other game a daily', () => {
+      renderHistory();
+      expect(screen.queryByText(/^Daily ·/)).not.toBeInTheDocument();
+    });
+  });
 });

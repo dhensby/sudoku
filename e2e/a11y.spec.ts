@@ -9,11 +9,13 @@ import {
   boardArea,
   cellLabels,
   chooseMore,
+  dailyRecord,
   emptyCells,
   getStuck,
   gotoPuzzle,
   modeButton,
   openHeaderDialog,
+  seedHistory,
   selectCell,
   solveFromKeyboard,
   startButton,
@@ -122,6 +124,31 @@ async function closeDialog(page: Page): Promise<void> {
   await expect(page.getByRole('dialog')).toHaveCount(0);
 }
 
+/** London noon on a date of October 2026, in epoch ms. */
+const octoberNoon = (day: number) => new Date(`2026-10-0${day}T12:00:00+01:00`).getTime();
+
+/**
+ * A week of dailies played every way there is, on a clock fixed at Tuesday
+ * 6 October 2026 (Daily #6): solved on the day, solved later, in progress
+ * and not started, so the calendar shows every mark, on the chosen day and
+ * off it.
+ */
+async function openSeededCalendar(page: Page): Promise<void> {
+  await page.clock.install({ time: new Date('2026-10-06T10:00:00+01:00') });
+  await seedHistory(page, [
+    dailyRecord('d1', PUZZLES.easy, '2026-10-01', octoberNoon(1)),
+    dailyRecord('d2', PUZZLES.hard, '2026-10-01', octoberNoon(3)),
+    dailyRecord('d3', PUZZLES.medium, '2026-10-02', octoberNoon(2), 'playing'),
+    dailyRecord('d4', PUZZLES.expert, '2026-10-05', octoberNoon(5)),
+    dailyRecord('d5', PUZZLES.easy, '2026-10-05', octoberNoon(5)),
+    dailyRecord('d6', PUZZLES.hard, '2026-10-06', octoberNoon(6) - 7_200_000, 'playing'),
+  ]);
+  await page.goto('/');
+  await waitForPlaying(page);
+  await openHeaderDialog(page, 'Daily puzzles');
+  await expect(dialog(page, 'Daily puzzles').getByRole('grid')).toBeVisible();
+}
+
 for (const scheme of ['light', 'dark'] as const) {
   test.describe(`the ${scheme} theme`, () => {
     test.use({ colorScheme: scheme });
@@ -218,6 +245,28 @@ for (const scheme of ['light', 'dark'] as const) {
       }
     });
 
+    test('the daily calendar, its marks and a day chosen, and New game with today’s', async ({
+      page,
+    }) => {
+      await openSeededCalendar(page);
+      await expectScheme(page, scheme);
+      await expectAccessible(page, 'the daily calendar on today');
+      const calendar = dialog(page, 'Daily puzzles');
+      await calendar.getByRole('gridcell', { name: /^Thursday 1 October/ }).click();
+      await expect(calendar.getByRole('heading', { name: 'Thursday 1 October' })).toBeVisible();
+      await expectAccessible(page, 'the daily calendar on a day played every way');
+      // The keyboard's ring on a day.
+      await page.keyboard.press('ArrowRight');
+      await expectAccessible(page, 'the daily calendar under the keyboard');
+      await closeDialog(page);
+
+      await page.getByRole('button', { name: 'New game' }).click();
+      await expect(
+        page.getByRole('menuitem', { name: "Today's Hard puzzle, in progress" }),
+      ).toBeVisible();
+      await expectAccessible(page, 'New game with today’s dailies');
+    });
+
     test('every entry of the technique guide', async ({ page }) => {
       await startPuzzle(page, EASY);
       await openHeaderDialog(page, 'Solving techniques');
@@ -298,6 +347,35 @@ test.describe('on a phone', () => {
         await expectAccessible(page, `step ${step} of Show me`);
         if (step < 3) await walkthrough.getByRole('button', { name: /^Next:/ }).click();
       }
+    });
+  }
+
+  for (const scheme of ['light', 'dark'] as const) {
+    test(`the daily calendar as a bottom sheet in the ${scheme} theme`, async ({ page }) => {
+      await page.emulateMedia({ colorScheme: scheme });
+      await openSeededCalendar(page);
+      await expectScheme(page, scheme);
+      await expectAccessible(page, 'the daily calendar on today');
+      const calendar = dialog(page, 'Daily puzzles');
+      await calendar.getByRole('gridcell', { name: /^Thursday 1 October/ }).tap();
+      await expect(calendar.getByRole('heading', { name: 'Thursday 1 October' })).toBeVisible();
+      await expectAccessible(page, 'the daily calendar on a day played every way');
+    });
+  }
+
+  for (const scheme of ['light', 'dark'] as const) {
+    test(`New game and the daily calendar on its side, in the ${scheme} theme`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width: 844, height: 390 });
+      await page.emulateMedia({ colorScheme: scheme });
+      await openSeededCalendar(page);
+      await expectScheme(page, scheme);
+      await expectAccessible(page, 'the daily calendar on its side');
+      await closeDialog(page);
+      await page.getByRole('button', { name: 'New game' }).click();
+      await expect(page.getByRole('menuitem', { name: 'Expert', exact: true })).toBeVisible();
+      await expectAccessible(page, 'New game on its side');
     });
   }
 

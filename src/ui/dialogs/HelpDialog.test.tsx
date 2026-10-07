@@ -11,6 +11,7 @@ describe('HelpDialog', () => {
         .map((heading) => heading.textContent),
     ).toEqual([
       'How to play',
+      'Daily puzzles',
       'Entering numbers',
       'Auto candidates',
       'Hints',
@@ -136,5 +137,23 @@ describe('HelpDialog', () => {
     render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={onClose} />);
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  describe('HelpDialog on the daily puzzles', () => {
+    it('explains the dailies, the calendar and its marks, and the streak rule', () => {
+      render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={vi.fn()} />);
+      const section = screen.getByRole('heading', { name: 'Daily puzzles' }).parentElement!;
+      expect(section).toHaveTextContent(/daily puzzle of each difficulty/);
+      expect(section).toHaveTextContent(/your own midnight/);
+      expect(section).toHaveTextContent(/Easy, Medium, Hard and Expert, left to right/);
+      expect(section).toHaveTextContent(/started on its own day/);
+      expect(section).toHaveTextContent(/never adds to a streak/);
+      for (const status of ['solved-on-the-day', 'solved-later', 'in-progress', 'not-started']) {
+        expect(section.querySelector(`.daily-mark--${status}`)).not.toBeNull();
+      }
+      expect(
+        within(screen.getByRole('table')).getByText('Daily calendar and streaks'),
+      ).toBeVisible();
+    });
   });
 });
