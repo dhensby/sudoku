@@ -9,7 +9,7 @@ import {
   type GridString,
   type Puzzle,
 } from '../core';
-import { cacheDaily } from '../storage/dailyCache';
+import { cacheDaily, readCachedDaily } from '../storage/dailyCache';
 import { memoryStorage, type StorageLike } from '../storage/storage';
 import { WIKIPEDIA_PUZZLE, WIKIPEDIA_SOLUTION } from '../test/grids';
 import {
@@ -33,8 +33,8 @@ import { DAILY_TIERS } from './generate';
 const PUZZLE = formatGrid(parseGrid(WIKIPEDIA_PUZZLE));
 const SOLUTION = formatGrid(parseGrid(WIKIPEDIA_SOLUTION));
 
-/** Noon UTC on 6 October 2026: the 6th by any clock from UTC−12 to UTC+11, and the 7th in UTC+14. */
-const NOW = Date.UTC(2026, 9, 6, 12);
+/** Noon UTC on 12 October 2026: the 12th by any clock from UTC−12 to UTC+11, and the 13th in UTC+14. */
+const NOW = Date.UTC(2026, 9, 12, 12);
 
 /** The Wikipedia puzzle with its digits relabelled `shift` places on: as valid, and told apart by its givens. */
 function variant(grid: string, shift: number): GridString {
@@ -94,24 +94,24 @@ async function settle(): Promise<void> {
 
 /** The archive as dailies began: nothing frozen. */
 const FRESH: Archive = {
-  epoch: '2026-10-01',
-  segments: [{ version: GENERATOR_VERSION, from: '2026-10-01' }],
+  epoch: '2026-10-07',
+  segments: [{ version: GENERATOR_VERSION, from: '2026-10-07' }],
   frozenThrough: null,
   days: [],
 };
 
-/** An archive with 1–3 October frozen by the engine before this one, which deals from the 4th. */
+/** An archive with 7–9 October frozen by the engine before this one, which deals from the 10th. */
 const FROZEN = switchEngine(
   freezeDays(
-    { ...FRESH, segments: [{ version: GENERATOR_VERSION - 1, from: '2026-10-01' }] },
-    ['2026-10-01', '2026-10-02', '2026-10-03'].map((date, d) => ({
+    { ...FRESH, segments: [{ version: GENERATOR_VERSION - 1, from: '2026-10-07' }] },
+    ['2026-10-07', '2026-10-08', '2026-10-09'].map((date, d) => ({
       date,
       codes: DAILY_TIERS.map((_, t) => encodeGivens(variant(PUZZLE, (d * 4 + t) % 9))),
     })),
     GENERATOR_VERSION - 1,
   ),
   GENERATOR_VERSION,
-  Date.UTC(2026, 9, 2),
+  Date.UTC(2026, 9, 8),
 );
 
 function setup(options: Partial<DailyStoreOptions> & { archive?: Archive } = {}) {
@@ -132,12 +132,12 @@ function setup(options: Partial<DailyStoreOptions> & { archive?: Archive } = {})
 describe('hasDaily', () => {
   it('holds from Daily #1 to the latest date begun anywhere', () => {
     const { store } = setup();
-    expect(store.hasDaily('2026-10-01')).toBe(true);
-    expect(store.hasDaily('2026-10-06')).toBe(true);
-    // Already the 7th in UTC+14, so a friend there has a daily for it.
     expect(store.hasDaily('2026-10-07')).toBe(true);
-    expect(store.hasDaily('2026-10-08')).toBe(false);
-    expect(store.hasDaily('2026-09-30')).toBe(false);
+    expect(store.hasDaily('2026-10-12')).toBe(true);
+    // Already the 13th in UTC+14, so a friend there has a daily for it.
+    expect(store.hasDaily('2026-10-13')).toBe(true);
+    expect(store.hasDaily('2026-10-14')).toBe(false);
+    expect(store.hasDaily('2026-10-06')).toBe(false);
     expect(store.hasDaily('2026-02-30')).toBe(false);
     expect(store.hasDaily('today')).toBe(false);
   });
@@ -145,58 +145,58 @@ describe('hasDaily', () => {
   it('moves on as the clock does', () => {
     let now = NOW;
     const { store } = setup({ now: () => now });
-    expect(store.hasDaily('2026-10-08')).toBe(false);
+    expect(store.hasDaily('2026-10-14')).toBe(false);
     now += 24 * 3_600_000;
-    expect(store.hasDaily('2026-10-08')).toBe(true);
+    expect(store.hasDaily('2026-10-14')).toBe(true);
   });
 });
 
 describe('dailyPuzzle', () => {
   it('deals a live daily from its date’s seed, labelled with its tier and solved', async () => {
     const { store, dealer } = setup();
-    const puzzle = store.dailyPuzzle('2026-10-06', 'hard');
+    const puzzle = store.dailyPuzzle('2026-10-12', 'hard');
     expect(dealer.waiting()).toEqual([]);
     await settle();
-    expect(dealer.waiting()).toEqual(['daily/2026-10-06/hard']);
+    expect(dealer.waiting()).toEqual(['daily/2026-10-12/hard']);
     await dealer.finish();
-    await expect(puzzle).resolves.toEqual(puzzleFor('hard', 'daily/2026-10-06/hard'));
+    await expect(puzzle).resolves.toEqual(puzzleFor('hard', 'daily/2026-10-12/hard'));
   });
 
   it('deals each daily once a visit, however often it is asked for', async () => {
     const { store, dealer } = setup();
-    const first = store.dailyPuzzle('2026-10-06', 'easy');
-    const second = store.dailyPuzzle('2026-10-06', 'easy');
+    const first = store.dailyPuzzle('2026-10-12', 'easy');
+    const second = store.dailyPuzzle('2026-10-12', 'easy');
     await settle();
     await dealer.finish();
     expect(await first).toBe(await second);
-    await store.dailyPuzzle('2026-10-06', 'easy');
-    expect(dealer.seeds).toEqual(['daily/2026-10-06/easy']);
+    await store.dailyPuzzle('2026-10-12', 'easy');
+    expect(dealer.seeds).toEqual(['daily/2026-10-12/easy']);
   });
 
   it('keeps a daily between visits, so the next one need not deal it', async () => {
     const storage = memoryStorage();
     const first = setup({ storage });
-    const dealt = first.store.dailyPuzzle('2026-10-06', 'expert');
+    const dealt = first.store.dailyPuzzle('2026-10-12', 'expert');
     await settle();
     await first.dealer.finish();
     const second = setup({ storage });
-    await expect(second.store.dailyPuzzle('2026-10-06', 'expert')).resolves.toEqual(await dealt);
+    await expect(second.store.dailyPuzzle('2026-10-12', 'expert')).resolves.toEqual(await dealt);
     expect(second.dealer.seeds).toEqual([]);
   });
 
   it('deals afresh what another engine kept', async () => {
     const storage = memoryStorage();
-    cacheDaily(storage, GENERATOR_VERSION - 1, '2026-10-06', 'easy', variant(PUZZLE, 8));
+    cacheDaily(storage, GENERATOR_VERSION - 1, '2026-10-12', 'easy', variant(PUZZLE, 8));
     const { store, dealer } = setup({ storage });
-    const puzzle = store.dailyPuzzle('2026-10-06', 'easy');
+    const puzzle = store.dailyPuzzle('2026-10-12', 'easy');
     await settle();
     await dealer.finish();
-    expect((await puzzle)?.givens).toBe(puzzleFor('easy', 'daily/2026-10-06/easy').givens);
+    expect((await puzzle)?.givens).toBe(puzzleFor('easy', 'daily/2026-10-12/easy').givens);
   });
 
   it('takes a frozen day from the archive and never deals it', async () => {
     const { store, dealer } = setup({ archive: FROZEN });
-    await expect(store.dailyPuzzle('2026-10-02', 'medium')).resolves.toEqual({
+    await expect(store.dailyPuzzle('2026-10-08', 'medium')).resolves.toEqual({
       givens: variant(PUZZLE, 5),
       solution: variant(SOLUTION, 5),
       difficulty: 'medium',
@@ -206,14 +206,14 @@ describe('dailyPuzzle', () => {
 
   it('deals the days after the archive’s last frozen one live', async () => {
     const { store, dealer } = setup({ archive: FROZEN });
-    void store.dailyPuzzle('2026-10-04', 'easy');
+    void store.dailyPuzzle('2026-10-10', 'easy');
     await settle();
-    expect(dealer.waiting()).toEqual(['daily/2026-10-04/easy']);
+    expect(dealer.waiting()).toEqual(['daily/2026-10-10/easy']);
   });
 
   it('is null for a date without a daily, reading and dealing nothing', async () => {
     const { store, dealer, loadArchive } = setup();
-    for (const date of ['2026-09-30', '2026-10-08', 'soon']) {
+    for (const date of ['2026-10-06', '2026-10-14', 'soon']) {
       await expect(store.dailyPuzzle(date, 'easy')).resolves.toBeNull();
     }
     expect(loadArchive).not.toHaveBeenCalled();
@@ -224,10 +224,10 @@ describe('dailyPuzzle', () => {
     const { store, loadArchive } = setup({ archive: FROZEN });
     const offline = new Error('offline');
     loadArchive.mockRejectedValueOnce(offline);
-    const failure = await store.dailyPuzzle('2026-10-01', 'easy').catch((error: unknown) => error);
+    const failure = await store.dailyPuzzle('2026-10-07', 'easy').catch((error: unknown) => error);
     expect(failure).toBeInstanceOf(ArchiveUnavailableError);
     expect((failure as Error).cause).toBe(offline);
-    await expect(store.dailyPuzzle('2026-10-01', 'easy')).resolves.toMatchObject({
+    await expect(store.dailyPuzzle('2026-10-07', 'easy')).resolves.toMatchObject({
       difficulty: 'easy',
     });
     expect(loadArchive).toHaveBeenCalledTimes(2);
@@ -235,7 +235,7 @@ describe('dailyPuzzle', () => {
 
   it('rejects rather than guess when the archive is not well formed', async () => {
     const { store } = setup({ loadArchive: async () => ({ epoch: 'whenever' }) });
-    await expect(store.dailyPuzzle('2026-10-06', 'easy')).rejects.toThrow('"epoch"');
+    await expect(store.dailyPuzzle('2026-10-12', 'easy')).rejects.toThrow('"epoch"');
   });
 
   it('rejects a frozen code that no longer makes a puzzle', async () => {
@@ -244,22 +244,22 @@ describe('dailyPuzzle', () => {
       variant(PUZZLE, 0).replace(/[1-9]/g, (d, i) => (i < 20 ? d : '0')),
     );
     const { store } = setup({ archive: broken });
-    await expect(store.dailyPuzzle('2026-10-01', 'medium')).rejects.toThrow(
-      'The archived medium daily for 2026-10-01 is broken',
+    await expect(store.dailyPuzzle('2026-10-07', 'medium')).rejects.toThrow(
+      'The archived medium daily for 2026-10-07 is broken',
     );
   });
 
   it('rejects when dealing fails, and deals again next time', async () => {
     const { store, dealer } = setup();
-    const failed = store.dailyPuzzle('2026-10-06', 'hard');
+    const failed = store.dailyPuzzle('2026-10-12', 'hard');
     await settle();
     await dealer.fail();
     await expect(failed).rejects.toThrow('worker gone');
-    const retried = store.dailyPuzzle('2026-10-06', 'hard');
+    const retried = store.dailyPuzzle('2026-10-12', 'hard');
     await settle();
     await dealer.finish();
     await expect(retried).resolves.toMatchObject({ difficulty: 'hard' });
-    expect(dealer.seeds).toEqual(['daily/2026-10-06/hard', 'daily/2026-10-06/hard']);
+    expect(dealer.seeds).toEqual(['daily/2026-10-12/hard', 'daily/2026-10-12/hard']);
   });
 
   it('labels a daily with its tier, and tries the next seed if the engine fell back to another', async () => {
@@ -268,12 +268,12 @@ describe('dailyPuzzle', () => {
       difficulty: seed.endsWith('/2') ? tier : ('hard' as const),
     }));
     const { store } = setup({ generate });
-    await expect(store.dailyPuzzle('2026-10-06', 'expert')).resolves.toMatchObject({
+    await expect(store.dailyPuzzle('2026-10-12', 'expert')).resolves.toMatchObject({
       difficulty: 'expert',
     });
     expect(generate.mock.calls.map(([, seed]) => seed)).toEqual([
-      'daily/2026-10-06/expert',
-      'daily/2026-10-06/expert/2',
+      'daily/2026-10-12/expert',
+      'daily/2026-10-12/expert/2',
     ]);
   });
 });
@@ -281,32 +281,32 @@ describe('dailyPuzzle', () => {
 describe('the dealing queue', () => {
   it('deals one daily at a time, a date’s four easiest first', async () => {
     const { store, dealer } = setup();
-    store.prefetch('2026-10-06');
+    store.prefetch('2026-10-12');
     await settle();
-    expect(dealer.waiting()).toEqual(['daily/2026-10-06/easy']);
+    expect(dealer.waiting()).toEqual(['daily/2026-10-12/easy']);
     await dealer.finish();
-    expect(dealer.waiting()).toEqual(['daily/2026-10-06/medium']);
+    expect(dealer.waiting()).toEqual(['daily/2026-10-12/medium']);
     await dealer.finish();
     await dealer.finish();
     await dealer.finish();
-    expect(dealer.seeds).toEqual(DAILY_TIERS.map((tier) => `daily/2026-10-06/${tier}`));
+    expect(dealer.seeds).toEqual(DAILY_TIERS.map((tier) => `daily/2026-10-12/${tier}`));
   });
 
   it('puts a daily someone is waiting for ahead of those being made ahead of time', async () => {
     const { store, dealer } = setup();
-    store.prefetch('2026-10-06');
+    store.prefetch('2026-10-12');
     await settle();
-    const expert = store.dailyPuzzle('2026-10-06', 'expert');
-    const yesterday = store.dailyPuzzle('2026-10-05', 'hard');
+    const expert = store.dailyPuzzle('2026-10-12', 'expert');
+    const yesterday = store.dailyPuzzle('2026-10-11', 'hard');
     await settle();
     await dealer.finish(); // today's Easy, already under way
     await dealer.finish();
     await dealer.finish();
     expect(dealer.seeds).toEqual([
-      'daily/2026-10-06/easy',
-      'daily/2026-10-06/expert',
-      'daily/2026-10-05/hard',
-      'daily/2026-10-06/medium',
+      'daily/2026-10-12/easy',
+      'daily/2026-10-12/expert',
+      'daily/2026-10-11/hard',
+      'daily/2026-10-12/medium',
     ]);
     await expect(expert).resolves.toMatchObject({ difficulty: 'expert' });
     await expect(yesterday).resolves.toMatchObject({ difficulty: 'hard' });
@@ -321,24 +321,24 @@ describe('the dealing queue', () => {
         return JSON.parse(serialiseArchive(FRESH));
       },
     });
-    store.prefetch('2026-10-06');
+    store.prefetch('2026-10-12');
     // Asked for while all four are still waiting on the archive.
-    const hard = store.dailyPuzzle('2026-10-06', 'hard');
+    const hard = store.dailyPuzzle('2026-10-12', 'hard');
     openArchive();
     await settle();
-    expect(dealer.waiting()).toEqual(['daily/2026-10-06/easy']);
+    expect(dealer.waiting()).toEqual(['daily/2026-10-12/easy']);
     await dealer.finish();
-    expect(dealer.waiting()).toEqual(['daily/2026-10-06/hard']);
+    expect(dealer.waiting()).toEqual(['daily/2026-10-12/hard']);
     await dealer.finish();
     await expect(hard).resolves.toMatchObject({ difficulty: 'hard' });
   });
 
   it('carries on with the rest after a daily fails to deal', async () => {
     const { store, dealer } = setup();
-    store.prefetch('2026-10-06');
+    store.prefetch('2026-10-12');
     await settle();
     await dealer.fail();
-    expect(dealer.waiting()).toEqual(['daily/2026-10-06/medium']);
+    expect(dealer.waiting()).toEqual(['daily/2026-10-12/medium']);
   });
 });
 
@@ -346,43 +346,61 @@ describe('peekDaily', () => {
   it('hands over a daily dealt this visit or kept from the last, and nothing else', async () => {
     const storage = memoryStorage();
     const { store, dealer } = setup({ storage });
-    expect(store.peekDaily('2026-10-06', 'easy')).toBeNull();
-    void store.dailyPuzzle('2026-10-06', 'easy');
+    expect(store.peekDaily('2026-10-12', 'easy')).toBeNull();
+    void store.dailyPuzzle('2026-10-12', 'easy');
     await settle();
-    expect(store.peekDaily('2026-10-06', 'easy')).toBeNull();
+    expect(store.peekDaily('2026-10-12', 'easy')).toBeNull();
     await dealer.finish();
-    const dealt = store.peekDaily('2026-10-06', 'easy');
-    expect(dealt).toEqual(puzzleFor('easy', 'daily/2026-10-06/easy'));
-    expect(setup({ storage }).store.peekDaily('2026-10-06', 'easy')).toEqual(dealt);
+    const dealt = store.peekDaily('2026-10-12', 'easy');
+    expect(dealt).toEqual(puzzleFor('easy', 'daily/2026-10-12/easy'));
+    expect(setup({ storage }).store.peekDaily('2026-10-12', 'easy')).toEqual(dealt);
   });
 
   it('hands over a frozen day once the archive has been read', async () => {
     const { store } = setup({ archive: FROZEN });
-    expect(store.peekDaily('2026-10-03', 'expert')).toBeNull();
-    await store.dailyPuzzle('2026-10-03', 'easy');
-    expect(store.peekDaily('2026-10-03', 'expert')).toMatchObject({
+    expect(store.peekDaily('2026-10-09', 'expert')).toBeNull();
+    await store.dailyPuzzle('2026-10-09', 'easy');
+    expect(store.peekDaily('2026-10-09', 'expert')).toMatchObject({
       givens: variant(PUZZLE, 2),
       difficulty: 'expert',
     });
   });
 
   it('is null for a date without a daily', () => {
-    expect(setup().store.peekDaily('2026-09-30', 'easy')).toBeNull();
+    expect(setup().store.peekDaily('2026-10-06', 'easy')).toBeNull();
+  });
+});
+
+describe('a day before Daily #1, as 1–6 October became when Daily #1 moved to the 7th', () => {
+  it('never hands over a daily kept for it from before the move, nor deals or finds one', async () => {
+    const storage = memoryStorage();
+    // Kept on the launch morning, when the 3rd still had a daily.
+    cacheDaily(storage, GENERATOR_VERSION, '2026-10-03', 'easy', PUZZLE);
+    expect(readCachedDaily(storage, GENERATOR_VERSION, '2026-10-03', 'easy')).toBe(PUZZLE);
+    const { store, dealer } = setup({ storage });
+    expect(store.hasDaily('2026-10-03')).toBe(false);
+    expect(store.peekDaily('2026-10-03', 'easy')).toBeNull();
+    await expect(store.dailyPuzzle('2026-10-03', 'easy')).resolves.toBeNull();
+    await expect(store.dailiesFor('2026-10-03')).resolves.toBeNull();
+    await expect(store.findDaily('2026-10-03', PUZZLE, 'easy')).resolves.toBeNull();
+    store.prefetch('2026-10-03');
+    await settle();
+    expect(dealer.seeds).toEqual([]);
   });
 });
 
 describe('dailiesFor', () => {
   it('hands over a date’s four, with its daily number', async () => {
     const { store } = setup({ archive: FROZEN });
-    const set = await store.dailiesFor('2026-10-02');
-    expect(set?.date).toBe('2026-10-02');
+    const set = await store.dailiesFor('2026-10-08');
+    expect(set?.date).toBe('2026-10-08');
     expect(set?.number).toBe(2);
     expect(Object.keys(set!.puzzles)).toEqual(DAILY_TIERS);
     expect(set?.puzzles.hard).toMatchObject({ givens: variant(PUZZLE, 6), difficulty: 'hard' });
   });
 
   it('is null for a date without a daily', async () => {
-    await expect(setup().store.dailiesFor('2026-09-30')).resolves.toBeNull();
+    await expect(setup().store.dailiesFor('2026-10-06')).resolves.toBeNull();
   });
 });
 
@@ -390,13 +408,13 @@ describe('findDaily', () => {
   it('names the tier of the daily with these givens, dealing the tier tried first first', async () => {
     const generate = vi.fn(async (tier: Difficulty, seed: string) => puzzleFor(tier, seed));
     const { store } = setup({ generate });
-    const hard = await store.dailyPuzzle('2026-10-06', 'hard');
+    const hard = await store.dailyPuzzle('2026-10-12', 'hard');
     generate.mockClear();
-    const medium = puzzleFor('medium', 'daily/2026-10-06/medium');
-    await expect(store.findDaily('2026-10-06', medium.givens, 'medium')).resolves.toBe('medium');
+    const medium = puzzleFor('medium', 'daily/2026-10-12/medium');
+    await expect(store.findDaily('2026-10-12', medium.givens, 'medium')).resolves.toBe('medium');
     expect(generate.mock.calls.map(([tier]) => tier)).toEqual(['medium']);
     // Without a hint, in tier order, from what is to hand where it can.
-    await expect(store.findDaily('2026-10-06', hard!.givens)).resolves.toBe('hard');
+    await expect(store.findDaily('2026-10-12', hard!.givens)).resolves.toBe('hard');
     expect(generate.mock.calls.map(([tier]) => tier)).toEqual(['medium', 'easy']);
   });
 
@@ -404,21 +422,21 @@ describe('findDaily', () => {
     const generate = vi.fn(async (tier: Difficulty, seed: string) => puzzleFor(tier, seed));
     const { store } = setup({ generate });
     const stranger = generatePuzzle('easy', createRng('not a daily')).givens;
-    await expect(store.findDaily('2026-10-06', stranger, 'hard')).resolves.toBeNull();
+    await expect(store.findDaily('2026-10-12', stranger, 'hard')).resolves.toBeNull();
     expect(generate).toHaveBeenCalledTimes(4);
   });
 
   it('checks a frozen day against the archive', async () => {
     const { store, dealer } = setup({ archive: FROZEN });
-    await expect(store.findDaily('2026-10-01', variant(PUZZLE, 3))).resolves.toBe('expert');
+    await expect(store.findDaily('2026-10-07', variant(PUZZLE, 3))).resolves.toBe('expert');
     expect(dealer.seeds).toEqual([]);
   });
 
   it('is null for a date without a daily, or givens that are not a grid', async () => {
     const { store, dealer } = setup();
-    await expect(store.findDaily('2026-10-08', PUZZLE)).resolves.toBeNull();
+    await expect(store.findDaily('2026-10-14', PUZZLE)).resolves.toBeNull();
     await expect(store.findDaily('yesterday', PUZZLE)).resolves.toBeNull();
-    await expect(store.findDaily('2026-10-06', 'not a grid')).resolves.toBeNull();
+    await expect(store.findDaily('2026-10-12', 'not a grid')).resolves.toBeNull();
     expect(dealer.seeds).toEqual([]);
   });
 });
@@ -428,15 +446,15 @@ describe('prefetch', () => {
     // So a tab has it before a deploy can take its chunk away (see dailies.ts).
     const storage = memoryStorage();
     for (const tier of DAILY_TIERS) {
-      cacheDaily(storage, GENERATOR_VERSION, '2026-10-06', tier, variant(PUZZLE, 1));
+      cacheDaily(storage, GENERATOR_VERSION, '2026-10-12', tier, variant(PUZZLE, 1));
     }
     const { store, dealer, loadArchive } = setup({ storage });
-    store.prefetch('2026-10-06');
+    store.prefetch('2026-10-12');
     await settle();
     expect(loadArchive).toHaveBeenCalledTimes(1);
     expect(dealer.seeds).toEqual([]);
     // Read once: later prefetches use what was read.
-    store.prefetch('2026-10-05');
+    store.prefetch('2026-10-11');
     await settle();
     expect(loadArchive).toHaveBeenCalledTimes(1);
   });
@@ -444,15 +462,15 @@ describe('prefetch', () => {
   it('forgets an archive it could not read, so the next ask tries again', async () => {
     const { store, loadArchive } = setup({ archive: FROZEN });
     loadArchive.mockRejectedValueOnce(new Error('offline'));
-    store.prefetch('2026-10-06');
+    store.prefetch('2026-10-12');
     await settle();
-    await expect(store.dailyPuzzle('2026-10-01', 'easy')).resolves.not.toBeNull();
+    await expect(store.dailyPuzzle('2026-10-07', 'easy')).resolves.not.toBeNull();
     expect(loadArchive).toHaveBeenCalledTimes(2);
   });
 
   it('deals nothing for a date without a daily', async () => {
     const { store, dealer, loadArchive } = setup();
-    store.prefetch('2026-10-08');
+    store.prefetch('2026-10-14');
     await settle();
     expect(dealer.seeds).toEqual([]);
     expect(loadArchive).not.toHaveBeenCalled();
@@ -460,19 +478,19 @@ describe('prefetch', () => {
 
   it('leaves the dailies it dealt ready, and forgets those it could not', async () => {
     const { store, dealer } = setup();
-    store.prefetch('2026-10-06');
+    store.prefetch('2026-10-12');
     await settle();
     await dealer.fail();
     await dealer.finish();
-    expect(store.peekDaily('2026-10-06', 'easy')).toBeNull();
-    expect(store.peekDaily('2026-10-06', 'medium')).not.toBeNull();
+    expect(store.peekDaily('2026-10-12', 'easy')).toBeNull();
+    expect(store.peekDaily('2026-10-12', 'medium')).not.toBeNull();
   });
 
   it('starts today’s four by the player’s own date', async () => {
     const store = { ...setup().store, prefetch: vi.fn() };
-    const lateEvening = new Date(2026, 9, 6, 23, 30).getTime();
+    const lateEvening = new Date(2026, 9, 12, 23, 30).getTime();
     prefetchToday(store, lateEvening);
-    expect(store.prefetch).toHaveBeenCalledWith('2026-10-06');
+    expect(store.prefetch).toHaveBeenCalledWith('2026-10-12');
   });
 });
 
@@ -498,14 +516,14 @@ describe('the app’s store', () => {
   });
 
   it('is ready to use, and today is worked out from the real clock', () => {
-    expect(dailies.hasDaily('2026-10-01')).toBe(true);
-    expect(dailies.hasDaily('2026-09-30')).toBe(false);
+    expect(dailies.hasDaily('2026-10-07')).toBe(true);
+    expect(dailies.hasDaily('2026-10-06')).toBe(false);
     const prefetch = vi.spyOn(dailies, 'prefetch').mockImplementation(() => {});
     vi.useFakeTimers({ toFake: ['Date'] });
-    vi.setSystemTime(new Date(2026, 9, 6, 23, 59));
+    vi.setSystemTime(new Date(2026, 9, 12, 23, 59));
     prefetchToday();
     vi.useRealTimers();
-    expect(prefetch).toHaveBeenCalledWith('2026-10-06');
+    expect(prefetch).toHaveBeenCalledWith('2026-10-12');
     prefetch.mockRestore();
   });
 });

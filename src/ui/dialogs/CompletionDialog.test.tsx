@@ -204,14 +204,14 @@ describe('CompletionDialog', () => {
 
   describe('CompletionDialog for a daily', () => {
     const daily = (streak: NonNullable<CompletionDialogProps['daily']>['streak']) => ({
-      date: '2026-10-06',
-      today: '2026-10-06',
+      date: '2026-10-13',
+      today: '2026-10-13',
       streak,
     });
 
     it('names the daily in place of the tier', () => {
       renderCompletion({ daily: daily({ kind: 'started' }) });
-      expect(within(dialog()).getByText('Daily · 6 Oct · Hard')).toBeInTheDocument();
+      expect(within(dialog()).getByText('Daily · 13 Oct · Hard')).toBeInTheDocument();
       expect(within(dialog()).queryByText(/^Hard$/)).not.toBeInTheDocument();
     });
 

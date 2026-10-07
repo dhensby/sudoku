@@ -25,16 +25,16 @@ import { DAILY_SEED_PATTERN, DAILY_TIERS, type NewDay } from './generate';
  * takes over from the day after:
  *
  *   {
- *     "epoch": "2026-10-01",
+ *     "epoch": "2026-10-07",
  *     "seed": "daily/<date>/<tier>",
  *     "tiers": ["easy", "medium", "hard", "expert"],
  *     "segments": [
- *       { "version": 4, "from": "2026-10-01" },
+ *       { "version": 4, "from": "2026-10-07" },
  *       { "version": 5, "from": "2026-11-15" }
  *     ],
  *     "frozenThrough": "2026-11-14",
  *     "days": [
- *       "2026-10-01 v4 <easy> <medium> <hard> <expert>",
+ *       "2026-10-07 v4 <easy> <medium> <hard> <expert>",
  *       …one line a day, through frozenThrough…
  *     ]
  *   }
@@ -66,7 +66,10 @@ import { DAILY_SEED_PATTERN, DAILY_TIERS, type NewDay } from './generate';
  * main — at the moment it is checked (`checkAgainstRelease`): only what no
  * player can have been dealt yet may change. Until dailies are first
  * released, nothing has been dealt to anyone, and the one segment simply
- * follows `GENERATOR_VERSION` (`switchEngine` re-points it).
+ * follows `GENERATOR_VERSION` (`switchEngine` re-points it). The one other
+ * thing that may change is the epoch itself, and only later, while nothing
+ * is frozen: a date's puzzle comes from its own seed, so a later Daily #1
+ * only takes days off the front of the calendar (see `checkAgainstRelease`).
  *
  * The file is read as a chunk of its own (see `dailies.ts`), so it costs the
  * app's first load nothing; frozen days only ever accumulate up to the last
@@ -91,7 +94,12 @@ export interface FrozenDay {
 
 /** The archive, as read from `archive.json` (see the module comment). */
 export interface Archive {
-  /** The date of Daily #1: always `DAILY_EPOCH`. */
+  /**
+   * The date of Daily #1: `DAILY_EPOCH` for the archive the app reads. The
+   * released copy on main (`readRelease`) may hold an earlier one, since moved
+   * later, which `checkAgainstRelease` allows only while nothing is frozen
+   * (see `parseArchive`'s `expectedEpoch`).
+   */
   epoch: DateKey;
   /** Which engine deals which dates, oldest first; the first starts on the epoch. */
   segments: Segment[];
@@ -180,12 +188,22 @@ function parseDay(line: unknown, date: DateKey): FrozenDay {
  * dealing anything from it, rather than be trusted. Throws an error saying
  * what is wrong. Whether it fits the engine in the code is the guard's
  * business (`checkArchive`).
+ *
+ * `expectedEpoch` is the date of Daily #1 the file must give: the code's own,
+ * `DAILY_EPOCH`, unless it is null — for the released copy on main, which
+ * main's code wrote and whose Daily #1 a change may since have moved (see
+ * `checkAgainstRelease`). Then any real date will do, so long as everything
+ * in the file starts on it.
  */
-export function parseArchive(raw: unknown): Archive {
+export function parseArchive(raw: unknown, expectedEpoch: DateKey | null = DAILY_EPOCH): Archive {
   if (!isObject(raw)) throw new Error('The daily archive must hold a JSON object');
   const { epoch, seed, tiers, segments, frozenThrough, days } = raw;
-  if (epoch !== DAILY_EPOCH) {
-    throw new Error(`"epoch" must be ${DAILY_EPOCH}, the date of Daily #1`);
+  if (!isDateKey(epoch) || (expectedEpoch !== null && epoch !== expectedEpoch)) {
+    throw new Error(
+      expectedEpoch === null
+        ? '"epoch" must be a YYYY-MM-DD date, the date of Daily #1'
+        : `"epoch" must be ${expectedEpoch}, the date of Daily #1`,
+    );
   }
   if (seed !== DAILY_SEED_PATTERN) throw new Error(`"seed" must be "${DAILY_SEED_PATTERN}"`);
   if (!Array.isArray(tiers) || tiers.join() !== DAILY_TIERS.join()) {
@@ -495,6 +513,64 @@ function isAhead(date: DateKey, now: number): boolean {
 }
 
 /**
+ * The released archive as it would read had it begun on `epoch`, a later
+ * Daily #1, which only one with nothing frozen is ever asked to (see
+ * `checkAgainstRelease`): the engine that deals `epoch` deals from it, and a
+ * segment that starts after it keeps its own start.
+ */
+function startingOn(released: Archive, epoch: DateKey): Archive {
+  const first = segmentFor(released, epoch);
+  return {
+    ...released,
+    epoch,
+    segments: [
+      { version: first.version, from: epoch },
+      ...released.segments.filter((segment) => daysBetween(epoch, segment.from) > 0),
+    ],
+  };
+}
+
+/** What moving Daily #1 from the released archive's epoch to this one's would break at `now`, or null. */
+function epochProblem(released: Archive, archive: Archive, now: number): string | null {
+  const moved = daysBetween(released.epoch, archive.epoch);
+  const dates =
+    `DAILY_EPOCH (src/core/dates.ts), and "epoch" and the first segment's "from" in ` +
+    `${ARCHIVE_PATH}, back to ${released.epoch}.`;
+  if (moved < 0) {
+    return (
+      `Daily #1 is ${released.epoch} in the released archive (on main), but ${archive.epoch} ` +
+      `here: Daily #1 never moves earlier. It is the day the dailies launched — the days before ` +
+      `it never had a daily — and the archive counts its segments and frozen days from it. ` +
+      // A branch cut before main moved Daily #1 later is the likeliest way here, so that
+      // comes first; putting the dates back by hand is only for a branch that moved them.
+      `If this branch is behind main, rebase onto main, and if it changes the engine, freeze ` +
+      `and switch again on top of what main holds (README, "Changing the engine"). If it ` +
+      `moved Daily #1 itself, put ${dates}`
+    );
+  }
+  if (moved > 0 && (released.frozenThrough !== null || released.days.length > 0)) {
+    return (
+      `Daily #1 is ${released.epoch} in the released archive (on main), but ${archive.epoch} ` +
+      `here, and the released archive has days frozen through ${released.frozenThrough}: moving ` +
+      `Daily #1 later would throw away frozen dailies players may have played, and the frozen ` +
+      `days are counted from it. Daily #1 may move later only while nothing is frozen. Put ${dates}`
+    );
+  }
+  if (moved > 0 && isAhead(archive.epoch, now)) {
+    return (
+      `Daily #1 is ${released.epoch} in the released archive (on main), but ${archive.epoch} ` +
+      `here, a day that has not begun anywhere yet (it is ${latestDateAnywhere(now)} in ` +
+      `UTC+14): Daily #1 may move later only to a day that has begun somewhere. One still to ` +
+      `come would take today's dailies away from every player, and a new engine moved in with ` +
+      `it would deal again, differently, days the old one has already dealt. Move Daily #1 to a ` +
+      `day that has begun, and change the engine on its own (README, "Changing the engine"), ` +
+      `or put ${dates}`
+    );
+  }
+  return null;
+}
+
+/**
  * Hold a change to the archive to the one already released — the file on
  * main, or null while there is none — at `now` (see the module comment): the
  * problems found, each a message that says how to put it right, or none.
@@ -505,6 +581,19 @@ function isAhead(date: DateKey, now: number): boolean {
  * everywhere, so a switch that waited too long to merge — the old engine
  * dealing on meanwhile — is caught. Once merged, the released archive is
  * this one, and nothing here can fail later just because time has passed.
+ *
+ * Daily #1 (the epoch) may move later, but only while the released archive
+ * has nothing frozen, and only to a day that has begun somewhere. A date's
+ * puzzle comes from its own seed, never from its distance from Daily #1, so
+ * a later Daily #1 changes no remaining day's puzzle — it only takes days off
+ * the front of the calendar — and with nothing frozen, no frozen day is
+ * lost. A Daily #1 still to come would take today's dailies from everyone,
+ * and could carry a new engine in over days the old one had dealt, unfrozen:
+ * as a re-pointed segment needs its first day ahead everywhere, a move never
+ * stands in for freezing. The released archive is then held to as though it
+ * had begun on the new epoch, its one segment starting there, and every rule
+ * above applies unchanged. Daily #1 never moves earlier, nor later once
+ * anything is frozen.
  */
 export function checkAgainstRelease(
   released: Archive | null,
@@ -512,7 +601,10 @@ export function checkAgainstRelease(
   now: number,
 ): string[] {
   if (released === null) return [];
-  if (!isExtensionOf(released, archive)) {
+  const epochRefusal = epochProblem(released, archive, now);
+  if (epochRefusal !== null) return [epochRefusal];
+  const base = released.epoch === archive.epoch ? released : startingOn(released, archive.epoch);
+  if (!isExtensionOf(base, archive)) {
     return [
       'The daily archive no longer holds everything the released one (on main) does: frozen ' +
         'days and engine segments are only ever added to. Rebase onto main, and if this branch ' +
@@ -521,25 +613,25 @@ export function checkAgainstRelease(
     ];
   }
   const problems: string[] = [];
-  const lastReleased = released.segments.length - 1;
-  const was = released.segments[lastReleased];
+  const lastReleased = base.segments.length - 1;
+  const was = base.segments[lastReleased];
   const kept = archive.segments[lastReleased];
   if (kept.version !== was.version && !isAhead(was.from, now)) {
     problems.push(
       `Version ${was.version} has dealt the dailies from ${was.from}, which has begun, so ` +
         `re-pointing its segment to version ${kept.version} would deal every one of them again, ` +
         `differently. Put it back to version ${was.version}. ` +
-        handOver(was.version, firstUnfrozenDate(released), kept.version),
+        handOver(was.version, firstUnfrozenDate(base), kept.version),
     );
   }
-  for (const segment of archive.segments.slice(released.segments.length)) {
+  for (const segment of archive.segments.slice(base.segments.length)) {
     if (isAhead(segment.from, now)) continue;
     problems.push(
       `Version ${segment.version} takes over the dailies on ${segment.from}, but that day has ` +
         `already begun somewhere (it is ${latestDateAnywhere(now)} in UTC+14), so the engine ` +
         'before it has dealt it, and would have it dealt again, differently: the switch has ' +
         'gone stale while it waited to be merged. Rebase onto main, then freeze and switch ' +
-        `again (README, "Changing the engine"). ${handOver(was.version, firstUnfrozenDate(released), segment.version)}`,
+        `again (README, "Changing the engine"). ${handOver(was.version, firstUnfrozenDate(base), segment.version)}`,
     );
   }
   return problems;

@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { DifficultyMenu, type DifficultyMenuProps, type TodayDailies } from './DifficultyMenu';
 
 const TODAY: TodayDailies = {
-  date: '2026-10-06',
+  date: '2026-10-13',
   statuses: {
     easy: 'solved-on-the-day',
     medium: 'in-progress',
@@ -34,11 +34,11 @@ describe('DifficultyMenu', () => {
     renderMenu();
     const groups = within(screen.getByRole('menu', { name: 'New game' })).getAllByRole('group');
     expect(groups.map((g) => g.getAttribute('aria-label'))).toEqual([
-      "Today's puzzles, Tuesday 6 October",
+      "Today's puzzles, Tuesday 13 October",
       'Random puzzle',
     ]);
     // The date of today's puzzles shows beside the heading.
-    expect(groups[0]).toHaveTextContent(/^Today's puzzlesTue 6 Oct/);
+    expect(groups[0]).toHaveTextContent(/^Today's puzzlesTue 13 Oct/);
   });
 
   it("names each of today's dailies with how it stands, marked by shape", () => {
@@ -124,7 +124,7 @@ describe('DifficultyMenu', () => {
   });
 
   it("marks nothing as current while a past day's daily is on show", () => {
-    renderMenu({ dailyOnShow: '2026-10-01' });
+    renderMenu({ dailyOnShow: '2026-10-08' });
     expect(screen.queryByRole('menuitem', { name: /\(current\)/ })).not.toBeInTheDocument();
   });
 
@@ -134,9 +134,18 @@ describe('DifficultyMenu', () => {
   });
 
   it('offers no daily on a device whose clock is set before Daily #1', () => {
-    renderMenu({ today: { ...TODAY, date: '2026-09-30' } });
+    renderMenu({ today: { ...TODAY, date: '2026-10-06' } });
     expect(screen.getByRole('menuitem', { name: /^Today's Hard puzzle/ })).toBeDisabled();
     expect(screen.getByRole('menuitem', { name: 'Daily puzzles' })).toBeEnabled();
+  });
+
+  it('offers today’s dailies from Daily #1, 7 October 2026, the day they launched', () => {
+    renderMenu({ today: { ...TODAY, date: '2026-10-07' } });
+    for (const tier of ['Easy', 'Medium', 'Hard', 'Expert']) {
+      expect(
+        screen.getByRole('menuitem', { name: new RegExp(`^Today's ${tier} puzzle`) }),
+      ).toBeEnabled();
+    }
   });
 
   it('moves through both runs with the arrow keys, as through one list', () => {

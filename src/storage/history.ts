@@ -572,7 +572,7 @@ export function freeSpace(storage: StorageLike): void {
  * Stored as one short string per date, a letter per tier in DIFFICULTIES
  * order — `d` solved on the day, `l` solved on another day, `-` neither:
  *
- *   sudoku.dailyLedger  { "2026-10-06": "dd-l", "2026-10-07": "-d--" }
+ *   sudoku.dailyLedger  { "2026-10-13": "dd-l", "2026-10-14": "-d--" }
  *
  * Some 20 bytes a day, so it is never pruned.
  */

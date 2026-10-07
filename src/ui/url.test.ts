@@ -27,8 +27,8 @@ describe('readSharedLink', () => {
   });
 
   it("reads a daily's date, which the app has still to check", () => {
-    const url = buildShareUrl('https://x.test/', GIVENS, undefined, '2026-10-06');
-    expect(readSharedLink(searchOf(url))).toMatchObject({ givens: GIVENS, daily: '2026-10-06' });
+    const url = buildShareUrl('https://x.test/', GIVENS, undefined, '2026-10-13');
+    expect(readSharedLink(searchOf(url))).toMatchObject({ givens: GIVENS, daily: '2026-10-13' });
   });
 
   it.each(['2026-02-30', '2026-10-6', 'yesterday', ''])(
@@ -95,7 +95,7 @@ describe('clearShareParams', () => {
   afterEach(() => window.history.replaceState({}, '', '/'));
 
   it('removes the share parameters and keeps the rest of the URL', () => {
-    window.history.replaceState({}, '', '/?p=abc&d=2026-10-06&t=10&n=Dan&a=c&keep=1#here');
+    window.history.replaceState({}, '', '/?p=abc&d=2026-10-13&t=10&n=Dan&a=c&keep=1#here');
     clearShareParams();
     expect(window.location.search).toBe('?keep=1');
     expect(window.location.hash).toBe('#here');

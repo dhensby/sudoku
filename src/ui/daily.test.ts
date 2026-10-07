@@ -69,13 +69,13 @@ describe('dates, as the calendar writes them', () => {
 
 describe('naming a daily', () => {
   it('names a daily as the completion dialog and History do', () => {
-    expect(dailyName('2026-10-06', 'hard', '2026-10-06')).toBe('Daily · 6 Oct · Hard');
-    expect(dailyName('2025-12-31', 'easy', '2026-10-06')).toBe('Daily · 31 Dec 2025 · Easy');
+    expect(dailyName('2026-10-13', 'hard', '2026-10-13')).toBe('Daily · 13 Oct · Hard');
+    expect(dailyName('2026-12-31', 'easy', '2027-01-02')).toBe('Daily · 31 Dec 2026 · Easy');
   });
 
   it("calls today's today's, and any other day's by its date", () => {
-    expect(dailyPhrase('2026-10-06', 'expert', '2026-10-06')).toBe("today's Expert puzzle");
-    expect(dailyPhrase('2026-10-05', 'medium', '2026-10-06')).toBe('the Medium daily for 5 Oct');
+    expect(dailyPhrase('2026-10-13', 'expert', '2026-10-13')).toBe("today's Expert puzzle");
+    expect(dailyPhrase('2026-10-12', 'medium', '2026-10-13')).toBe('the Medium daily for 12 Oct');
   });
 
   it('words each standing for the key', () => {
@@ -90,35 +90,35 @@ describe('naming a daily', () => {
 
 describe('describeDay', () => {
   it('says how each tier stands, telling tiers in the same state together', () => {
-    expect(describeDay('2026-10-06', { easy: 'solved-on-the-day', medium: 'in-progress' })).toBe(
-      'Tuesday 6 October: Easy solved on the day, Medium in progress, Hard and Expert not started',
+    expect(describeDay('2026-10-13', { easy: 'solved-on-the-day', medium: 'in-progress' })).toBe(
+      'Tuesday 13 October: Easy solved on the day, Medium in progress, Hard and Expert not started',
     );
   });
 
   it('keeps the order of the tiers, whatever the order of the states', () => {
     expect(
-      describeDay('2026-10-01', {
+      describeDay('2026-10-08', {
         easy: 'not-started',
         medium: 'solved-later',
         hard: 'not-started',
         expert: 'solved-later',
       }),
     ).toBe(
-      'Thursday 1 October: Easy and Hard not started, Medium and Expert solved on another day',
+      'Thursday 8 October: Easy and Hard not started, Medium and Expert solved on another day',
     );
   });
 
   it('says it once for a day of one state', () => {
-    expect(describeDay('2026-10-02', {})).toBe(
-      'Friday 2 October: Easy, Medium, Hard and Expert not started',
+    expect(describeDay('2026-10-09', {})).toBe(
+      'Friday 9 October: Easy, Medium, Hard and Expert not started',
     );
   });
 });
 
 describe('statusesOn and summariseDaily', () => {
   it('stands every tier of a day, attempted or not', () => {
-    const records = [attempt('2026-10-06', 'hard'), attempt('2026-10-05', 'easy')];
-    expect(statusesOn(records, '2026-10-06')).toEqual({
+    const records = [attempt('2026-10-13', 'hard'), attempt('2026-10-12', 'easy')];
+    expect(statusesOn(records, '2026-10-13')).toEqual({
       easy: 'not-started',
       medium: 'not-started',
       hard: 'solved-on-the-day',
@@ -127,47 +127,47 @@ describe('statusesOn and summariseDaily', () => {
   });
 
   it('has nothing to show for a daily not started', () => {
-    expect(summariseDaily([], '2026-10-06', 'hard')).toEqual({
+    expect(summariseDaily([], '2026-10-13', 'hard')).toEqual({
       status: 'not-started',
       record: null,
     });
   });
 
   it('shows the unfinished attempt played last for a daily in progress', () => {
-    const older = attempt('2026-10-06', 'hard', '2026-10-06', { status: 'playing' });
+    const older = attempt('2026-10-13', 'hard', '2026-10-13', { status: 'playing' });
     const newer = { ...older, id: 'newer', updatedAt: older.updatedAt + 1000 };
     // Newest first, as the history lists them — but by when each was begun.
-    const { status, record } = summariseDaily([older, newer], '2026-10-06', 'hard');
+    const { status, record } = summariseDaily([older, newer], '2026-10-13', 'hard');
     expect(status).toBe('in-progress');
     expect(record).toBe(newer);
   });
 
   it('shows the first solve on the day, not a later replay, for a daily solved on the day', () => {
-    const first = attempt('2026-10-06', 'hard', '2026-10-06', { elapsedMs: 300_000 });
+    const first = attempt('2026-10-13', 'hard', '2026-10-13', { elapsedMs: 300_000 });
     const replay = {
-      ...attempt('2026-10-06', 'hard', '2026-10-06', { elapsedMs: 100_000, source: 'replay' }),
+      ...attempt('2026-10-13', 'hard', '2026-10-13', { elapsedMs: 100_000, source: 'replay' }),
       createdAt: first.createdAt + 3_600_000,
     };
-    const later = attempt('2026-10-06', 'hard', '2026-10-07');
-    const summary = summariseDaily([later, replay, first], '2026-10-06', 'hard');
+    const later = attempt('2026-10-13', 'hard', '2026-10-14');
+    const summary = summariseDaily([later, replay, first], '2026-10-13', 'hard');
     expect(summary).toEqual({ status: 'solved-on-the-day', record: first });
     // Whatever order the list is in.
-    expect(summariseDaily([first, replay], '2026-10-06', 'hard').record).toBe(first);
+    expect(summariseDaily([first, replay], '2026-10-13', 'hard').record).toBe(first);
   });
 
   it('shows how a daily stands from the ledger alone, with no attempt to show, once its records are pruned', () => {
-    const ledger = new Map([['2026-10-03', { hard: 'solved-on-the-day' as const }]]);
-    expect(summariseDaily([], '2026-10-03', 'hard', ledger)).toEqual({
+    const ledger = new Map([['2026-10-10', { hard: 'solved-on-the-day' as const }]]);
+    expect(summariseDaily([], '2026-10-10', 'hard', ledger)).toEqual({
       status: 'solved-on-the-day',
       record: null,
     });
-    expect(statusesOn([], '2026-10-03', ledger).hard).toBe('solved-on-the-day');
+    expect(statusesOn([], '2026-10-10', ledger).hard).toBe('solved-on-the-day');
   });
 
   it('shows the first solve for a daily only ever solved later', () => {
-    const first = attempt('2026-10-04', 'easy', '2026-10-05');
-    const second = attempt('2026-10-04', 'easy', '2026-10-06');
-    expect(summariseDaily([second, first], '2026-10-04', 'easy')).toEqual({
+    const first = attempt('2026-10-11', 'easy', '2026-10-12');
+    const second = attempt('2026-10-11', 'easy', '2026-10-13');
+    expect(summariseDaily([second, first], '2026-10-11', 'easy')).toEqual({
       status: 'solved-later',
       record: first,
     });
@@ -175,10 +175,10 @@ describe('statusesOn and summariseDaily', () => {
 });
 
 describe('streakNote', () => {
-  const TODAY = '2026-10-06';
+  const TODAY = '2026-10-13';
 
   it('says a daily begun after its day never counts', () => {
-    const solve = attempt('2026-10-05', 'hard', TODAY);
+    const solve = attempt('2026-10-12', 'hard', TODAY);
     expect(streakNote(solve, [solve], TODAY)).toEqual({ kind: 'later' });
   });
 
@@ -189,13 +189,13 @@ describe('streakNote', () => {
 
   it('gives the streak run on', () => {
     const solve = attempt(TODAY, 'hard');
-    const records = [solve, attempt('2026-10-05', 'hard'), attempt('2026-10-04', 'hard')];
+    const records = [solve, attempt('2026-10-12', 'hard'), attempt('2026-10-11', 'hard')];
     expect(streakNote(solve, records, TODAY)).toEqual({ kind: 'streak', days: 3 });
   });
 
   it("counts only the tier's own days", () => {
     const solve = attempt(TODAY, 'hard');
-    const records = [solve, attempt('2026-10-05', 'easy')];
+    const records = [solve, attempt('2026-10-12', 'easy')];
     expect(streakNote(solve, records, TODAY)).toEqual({ kind: 'started' });
   });
 
@@ -206,14 +206,14 @@ describe('streakNote', () => {
   });
 
   it("counts yesterday's daily begun yesterday and solved after midnight", () => {
-    const solve = attempt('2026-10-05', 'hard', '2026-10-05', { completedAt: at(TODAY, 0) });
-    const records = [solve, attempt('2026-10-04', 'hard')];
+    const solve = attempt('2026-10-12', 'hard', '2026-10-12', { completedAt: at(TODAY, 0) });
+    const records = [solve, attempt('2026-10-11', 'hard')];
     expect(streakNote(solve, records, TODAY)).toEqual({ kind: 'streak', days: 2 });
   });
 
   it('says only that it counts for a day the current streak does not reach', () => {
     // Begun on its day, three days ago, and only finished now.
-    const solve = attempt('2026-10-03', 'hard');
+    const solve = attempt('2026-10-10', 'hard');
     expect(streakNote(solve, [solve], TODAY)).toEqual({ kind: 'counted' });
     const records = [solve, attempt(TODAY, 'hard')];
     expect(streakNote(solve, records, TODAY)).toEqual({ kind: 'counted' });
@@ -226,23 +226,23 @@ describe('streakNote', () => {
 
   it('says a daily started before its day had begun here never counts, and was early', () => {
     // From a friend's link, a time zone ahead, the evening before.
-    const solve = attempt('2026-10-07', 'hard', TODAY);
+    const solve = attempt('2026-10-14', 'hard', TODAY);
     expect(streakNote(solve, [solve], TODAY)).toEqual({ kind: 'early' });
   });
 
   it('runs the streak on from the ledger, where pruned records left it', () => {
     const solve = attempt(TODAY, 'hard');
     const ledger = new Map([
-      ['2026-10-04', { hard: 'solved-on-the-day' as const }],
-      ['2026-10-05', { hard: 'solved-on-the-day' as const }],
+      ['2026-10-11', { hard: 'solved-on-the-day' as const }],
+      ['2026-10-12', { hard: 'solved-on-the-day' as const }],
     ]);
     expect(streakNote(solve, [solve], TODAY, ledger)).toEqual({ kind: 'streak', days: 3 });
     // A day already counted in the ledger, solved again: the streak, not a new start.
-    const again = attempt('2026-10-05', 'hard', '2026-10-05', { completedAt: at(TODAY, 0) });
-    const today = new Map([['2026-10-05', { hard: 'solved-on-the-day' as const }]]);
+    const again = attempt('2026-10-12', 'hard', '2026-10-12', { completedAt: at(TODAY, 0) });
+    const today = new Map([['2026-10-12', { hard: 'solved-on-the-day' as const }]]);
     expect(streakNote(again, [again], TODAY, today)).toEqual({ kind: 'streak', days: 1 });
     // Today counted in the ledger: the streak runs to today.
-    const yesterday = attempt('2026-10-05', 'hard', '2026-10-05', { completedAt: at(TODAY, 0) });
+    const yesterday = attempt('2026-10-12', 'hard', '2026-10-12', { completedAt: at(TODAY, 0) });
     const withToday = new Map([[TODAY, { hard: 'solved-on-the-day' as const }]]);
     expect(streakNote(yesterday, [yesterday], TODAY, withToday)).toEqual({
       kind: 'streak',

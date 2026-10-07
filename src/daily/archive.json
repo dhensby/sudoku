@@ -1,9 +1,9 @@
 {
   "$comment": "Daily puzzles dealt by engines since replaced, frozen so they never change. Every later day is dealt live, by the engine of the last segment (GENERATOR_VERSION). Each line in \"days\" is a date, the engine version that dealt it and its encodeGivens codes in \"tiers\" order. Do not edit by hand: npm run dailies:freeze and npm run dailies:switch maintain it (README, \"Changing the engine\").",
-  "epoch": "2026-10-01",
+  "epoch": "2026-10-07",
   "seed": "daily/<date>/<tier>",
   "tiers": ["easy", "medium", "hard", "expert"],
-  "segments": [{ "version": 7, "from": "2026-10-01" }],
+  "segments": [{ "version": 7, "from": "2026-10-07" }],
   "frozenThrough": null,
   "days": []
 }

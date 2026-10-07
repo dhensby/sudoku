@@ -51,14 +51,14 @@ const STATUS_ORDER: readonly DailyStatus[] = [
   'not-started',
 ];
 
-/** A daily's name, as the completion dialog and History give it: "Daily · 6 Oct · Hard". */
+/** A daily's name, as the completion dialog and History give it: "Daily · 13 Oct · Hard". */
 export function dailyName(date: DateKey, tier: Difficulty, today: DateKey): string {
   return `Daily · ${formatDay(date, today)} · ${DIFFICULTY_LABEL[tier]}`;
 }
 
 /**
  * A daily, mid-sentence: "today's Hard puzzle" on its own day, else "the
- * Hard daily for 5 Oct". Lower case, to sit after "Generating" or "solved".
+ * Hard daily for 12 Oct". Lower case, to sit after "Generating" or "solved".
  */
 export function dailyPhrase(date: DateKey, tier: Difficulty, today: DateKey): string {
   const label = DIFFICULTY_LABEL[tier];
@@ -83,7 +83,7 @@ export function statusesOn(
 
 /**
  * A calendar day's accessible name: the date, then how each tier stands,
- * tiers in the same state told together — "Tuesday 6 October: Easy solved
+ * tiers in the same state told together — "Tuesday 13 October: Easy solved
  * on the day, Medium in progress, Hard and Expert not started". A tier with
  * no standing given has not been started.
  */

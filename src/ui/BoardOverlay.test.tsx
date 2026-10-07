@@ -181,15 +181,15 @@ describe('BoardOverlay', () => {
   });
 
   describe('BoardOverlay for a daily', () => {
-    const today = { date: '2026-10-06', today: '2026-10-06' };
-    const earlier = { date: '2026-10-05', today: '2026-10-06' };
+    const today = { date: '2026-10-13', today: '2026-10-13' };
+    const earlier = { date: '2026-10-12', today: '2026-10-13' };
 
     it("names the daily being dealt: today's, or another day's", () => {
       const { unmount } = render(<BoardOverlay kind="loading" difficulty="hard" daily={today} />);
       expect(screen.getByRole('status')).toHaveTextContent("Generating today's Hard puzzle…");
       unmount();
       render(<BoardOverlay kind="loading" difficulty="hard" daily={earlier} />);
-      expect(screen.getByRole('status')).toHaveTextContent('Generating the Hard daily for 5 Oct…');
+      expect(screen.getByRole('status')).toHaveTextContent('Generating the Hard daily for 12 Oct…');
     });
 
     it('names a daily waiting behind Start, whether shared, raced or reopened', () => {
@@ -203,7 +203,7 @@ describe('BoardOverlay', () => {
           onStart={vi.fn()}
         />,
       );
-      expect(screen.getByText('The Hard daily for 5 Oct is ready.')).toBeInTheDocument();
+      expect(screen.getByText('The Hard daily for 12 Oct is ready.')).toBeInTheDocument();
       unmount();
       const shared = render(
         <BoardOverlay
@@ -247,7 +247,7 @@ describe('BoardOverlay', () => {
           onResume={vi.fn()}
         />,
       );
-      expect(screen.getByText('Daily · 5 Oct · Medium · 2:31')).toBeInTheDocument();
+      expect(screen.getByText('Daily · 12 Oct · Medium · 2:31')).toBeInTheDocument();
     });
   });
 });

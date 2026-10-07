@@ -54,6 +54,19 @@ test.use({ reducedMotion: 'reduce' });
 
 /** Run axe over the whole page as it stands, and fail naming each violation and where. */
 async function expectAccessible(page: Page, state: string): Promise<void> {
+  // Less motion still leaves every change of style a transition of 0.01ms (index.css sets the
+  // duration on everything, and transition-property defaults to all), and WebKit can take a frame
+  // or more to end one: axe, run inside it, read a calendar day just unchosen in its old ink over
+  // its new ground. Waiting on getAnimations() did not catch it there. Turning transitions off
+  // cancels any in flight, which jumps it to its end, so the page is read at rest — all a scan
+  // of colours and names is about.
+  await page.evaluate(() => {
+    if (document.getElementById('a11y-at-rest') !== null) return;
+    const style = document.createElement('style');
+    style.id = 'a11y-at-rest';
+    style.textContent = '*, *::before, *::after { transition: none !important; }';
+    document.head.append(style);
+  });
   const { violations } = await new AxeBuilder({ page }).withTags(WCAG_A_AA).analyze();
   const found = violations.map(
     ({ id, help, nodes }) => `${id} (${help}): ${nodes.map((n) => n.target.join(' ')).join(', ')}`,
@@ -125,23 +138,24 @@ async function closeDialog(page: Page): Promise<void> {
 }
 
 /** London noon on a date of October 2026, in epoch ms. */
-const octoberNoon = (day: number) => new Date(`2026-10-0${day}T12:00:00+01:00`).getTime();
+const octoberNoon = (day: number) =>
+  new Date(`2026-10-${String(day).padStart(2, '0')}T12:00:00+01:00`).getTime();
 
 /**
  * A week of dailies played every way there is, on a clock fixed at Tuesday
- * 6 October 2026 (Daily #6): solved on the day, solved later, in progress
+ * 13 October 2026 (Daily #7): solved on the day, solved later, in progress
  * and not started, so the calendar shows every mark, on the chosen day and
  * off it.
  */
 async function openSeededCalendar(page: Page): Promise<void> {
-  await page.clock.install({ time: new Date('2026-10-06T10:00:00+01:00') });
+  await page.clock.install({ time: new Date('2026-10-13T10:00:00+01:00') });
   await seedHistory(page, [
-    dailyRecord('d1', PUZZLES.easy, '2026-10-01', octoberNoon(1)),
-    dailyRecord('d2', PUZZLES.hard, '2026-10-01', octoberNoon(3)),
-    dailyRecord('d3', PUZZLES.medium, '2026-10-02', octoberNoon(2), 'playing'),
-    dailyRecord('d4', PUZZLES.expert, '2026-10-05', octoberNoon(5)),
-    dailyRecord('d5', PUZZLES.easy, '2026-10-05', octoberNoon(5)),
-    dailyRecord('d6', PUZZLES.hard, '2026-10-06', octoberNoon(6) - 7_200_000, 'playing'),
+    dailyRecord('d1', PUZZLES.easy, '2026-10-08', octoberNoon(8)),
+    dailyRecord('d2', PUZZLES.hard, '2026-10-08', octoberNoon(10)),
+    dailyRecord('d3', PUZZLES.medium, '2026-10-09', octoberNoon(9), 'playing'),
+    dailyRecord('d4', PUZZLES.expert, '2026-10-12', octoberNoon(12)),
+    dailyRecord('d5', PUZZLES.easy, '2026-10-12', octoberNoon(12)),
+    dailyRecord('d6', PUZZLES.hard, '2026-10-13', octoberNoon(13) - 7_200_000, 'playing'),
   ]);
   await page.goto('/');
   await waitForPlaying(page);
@@ -252,8 +266,8 @@ for (const scheme of ['light', 'dark'] as const) {
       await expectScheme(page, scheme);
       await expectAccessible(page, 'the daily calendar on today');
       const calendar = dialog(page, 'Daily puzzles');
-      await calendar.getByRole('gridcell', { name: /^Thursday 1 October/ }).click();
-      await expect(calendar.getByRole('heading', { name: 'Thursday 1 October' })).toBeVisible();
+      await calendar.getByRole('gridcell', { name: /^Thursday 8 October/ }).click();
+      await expect(calendar.getByRole('heading', { name: 'Thursday 8 October' })).toBeVisible();
       await expectAccessible(page, 'the daily calendar on a day played every way');
       // The keyboard's ring on a day.
       await page.keyboard.press('ArrowRight');
@@ -357,8 +371,8 @@ test.describe('on a phone', () => {
       await expectScheme(page, scheme);
       await expectAccessible(page, 'the daily calendar on today');
       const calendar = dialog(page, 'Daily puzzles');
-      await calendar.getByRole('gridcell', { name: /^Thursday 1 October/ }).tap();
-      await expect(calendar.getByRole('heading', { name: 'Thursday 1 October' })).toBeVisible();
+      await calendar.getByRole('gridcell', { name: /^Thursday 8 October/ }).tap();
+      await expect(calendar.getByRole('heading', { name: 'Thursday 8 October' })).toBeVisible();
       await expectAccessible(page, 'the daily calendar on a day played every way');
     });
   }

@@ -45,7 +45,8 @@ export function readRelease(ref: string, git: GitRunner = runGit): Release {
   const text = git(['show', `${ref}:${ARCHIVE_PATH}`]);
   if (text === null) return { kind: 'unreleased' };
   try {
-    return { kind: 'released', archive: parseArchive(JSON.parse(text)) };
+    // Whatever Daily #1 main's code had: a change may move it (see `checkAgainstRelease`).
+    return { kind: 'released', archive: parseArchive(JSON.parse(text), null) };
   } catch (error) {
     // JSON.parse and parseArchive throw nothing but Errors.
     throw new Error(`${ARCHIVE_PATH} on ${ref}: ${(error as Error).message}`, { cause: error });
