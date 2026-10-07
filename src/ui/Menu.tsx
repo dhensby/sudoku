@@ -8,6 +8,15 @@ export interface MenuItem {
   key: string;
   label: string;
   icon?: ReactNode;
+  /** A word or two at the item's end, quieter than its label: how a daily stands, say. */
+  detail?: ReactNode;
+  /**
+   * The accessible name, when the label alone would not do: "Today's Hard
+   * puzzle, in progress" for an item that shows "Hard" under a heading and
+   * "In progress" as its detail. It should contain the label, so a
+   * speech-input user can say what they see.
+   */
+  name?: string;
   disabled?: boolean;
   /**
    * Marks the item that stands for what is current — the tier on show, in
@@ -19,14 +28,34 @@ export interface MenuItem {
   onSelect: () => void;
 }
 
+/** A run of items under a heading of their own, such as New game's "Today's puzzles". */
+export interface MenuGroup {
+  /** Unique within the menu. */
+  key: string;
+  /** The heading shown above the items, and the group's accessible name. */
+  label: string;
+  /** Shown beside the heading, quieter: the date of today's puzzles, say. */
+  aside?: string;
+  /** The accessible name, when it should say more than the heading shows. */
+  name?: string;
+  items: readonly MenuItem[];
+}
+
 export interface MenuProps {
   /** The accessible name of the button, and of the menu it opens. */
   label: string;
   /** What the button shows — usually an icon, as the label names it. */
   children: ReactNode;
-  items: readonly MenuItem[];
+  /** The items, in one run — or, given as `groups`, in runs under headings. */
+  items: readonly MenuItem[] | readonly MenuGroup[];
   /** A visible heading at the top of the menu. */
   heading?: string;
+  /**
+   * Called as the menu opens, before its items are drawn — the moment to
+   * bring what they show up to date (New game works out "today" here, so a
+   * menu opened after midnight offers the new day's puzzles).
+   */
+  onOpen?: () => void;
   /** Disabled: the button cannot be pressed, and an open menu closes. */
   disabled?: boolean;
   /** Which way the menu opens: below the button (the header), or above it (the bottom of a phone screen). */
@@ -41,6 +70,10 @@ type OpenFocus = 'first' | 'last';
 
 /** Where focus goes as the menu closes: its button, or back to where it was before it opened. */
 type CloseFocus = 'button' | 'back';
+
+function isGroup(entry: MenuItem | MenuGroup): entry is MenuGroup {
+  return 'items' in entry;
+}
 
 /**
  * Where a click sends focus as it closes the menu — or, opening it, where
@@ -75,8 +108,9 @@ function closeFocusFor(event: React.MouseEvent): CloseFocus {
 export function Menu({
   label,
   children,
-  items,
+  items: entries,
   heading,
+  onOpen,
   disabled = false,
   placement = 'below',
   className,
@@ -100,6 +134,13 @@ export function Menu({
   // even onto its own button.
   const isTabbingRef = useRef(false);
 
+  // Groups are runs of items: the keys move through every item in order,
+  // across headings, as through one list.
+  const groups: readonly MenuGroup[] | null = entries.some(isGroup)
+    ? (entries as readonly MenuGroup[])
+    : null;
+  const items: readonly MenuItem[] =
+    groups === null ? (entries as readonly MenuItem[]) : groups.flatMap((group) => group.items);
   const enabled = items.flatMap((item, index) => (item.disabled ? [] : [index]));
 
   const focusItem = (index: number | undefined): void => {
@@ -110,6 +151,7 @@ export function Menu({
     backRef.current = document.activeElement;
     escapeRef.current = escapeTo;
     isTabbingRef.current = false;
+    onOpen?.();
     setOpenWith(where);
   };
 
@@ -195,6 +237,32 @@ export function Menu({
     if (isLeaving || isTabbingRef.current) setOpenWith(null);
   };
 
+  function renderItem(item: MenuItem, index: number) {
+    // The visible label (or the name given), then what the check beside it means.
+    const name = item.isCurrent === true ? `${item.name ?? item.label} (current)` : item.name;
+    return (
+      <button
+        key={item.key}
+        type="button"
+        className="menu__item"
+        role="menuitem"
+        aria-label={name}
+        tabIndex={-1}
+        disabled={item.disabled}
+        ref={(element) => {
+          itemRefs.current[index] = element;
+        }}
+        onMouseDown={keepFocus}
+        onClick={(event) => choose(item, event)}
+      >
+        {item.icon !== undefined && <span className="menu__icon">{item.icon}</span>}
+        <span className="menu__label">{item.label}</span>
+        {item.detail !== undefined && <span className="menu__detail">{item.detail}</span>}
+        {item.isCurrent === true && <CheckIcon className="menu__check" />}
+      </button>
+    );
+  }
+
   return (
     <div
       className={className === undefined ? 'menu' : `menu ${className}`}
@@ -235,27 +303,31 @@ export function Menu({
               {heading}
             </div>
           )}
-          {items.map((item, index) => (
-            <button
-              key={item.key}
-              type="button"
-              className="menu__item"
-              role="menuitem"
-              // The visible label, then what the check beside it means.
-              aria-label={item.isCurrent === true ? `${item.label} (current)` : undefined}
-              tabIndex={-1}
-              disabled={item.disabled}
-              ref={(element) => {
-                itemRefs.current[index] = element;
-              }}
-              onMouseDown={keepFocus}
-              onClick={(event) => choose(item, event)}
-            >
-              {item.icon !== undefined && <span className="menu__icon">{item.icon}</span>}
-              <span className="menu__label">{item.label}</span>
-              {item.isCurrent === true && <CheckIcon className="menu__check" />}
-            </button>
-          ))}
+          {groups === null
+            ? items.map((item, index) => renderItem(item, index))
+            : groups.map((group, g) => {
+                // Each item keeps its place in the one list the keys move through.
+                const start = groups
+                  .slice(0, g)
+                  .reduce((n, earlier) => n + earlier.items.length, 0);
+                return (
+                  <div
+                    key={group.key}
+                    className="menu__group"
+                    role="group"
+                    aria-label={group.name ?? group.label}
+                  >
+                    {/* Hidden from assistive technology, which hears the group's name instead. */}
+                    <div className="menu__heading" aria-hidden="true">
+                      <span>{group.label}</span>
+                      {group.aside !== undefined && (
+                        <span className="menu__aside">{group.aside}</span>
+                      )}
+                    </div>
+                    {group.items.map((item, i) => renderItem(item, start + i))}
+                  </div>
+                );
+              })}
         </div>
       )}
     </div>

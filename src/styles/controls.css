@@ -660,6 +660,42 @@
   font-weight: 700;
 }
 
+.menu__group {
+  display: flex;
+  flex-direction: column;
+}
+
+.menu__group + .menu__group {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+
+.menu__group .menu__heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.menu__aside {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+/* How a daily stands, after its tier: quieter than the label, and kept to
+   one line. */
+.menu__detail {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
 /* ==========================================================================
    Header: icon buttons and the timer
    ========================================================================== */
