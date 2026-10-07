@@ -54,6 +54,19 @@ test.use({ reducedMotion: 'reduce' });
 
 /** Run axe over the whole page as it stands, and fail naming each violation and where. */
 async function expectAccessible(page: Page, state: string): Promise<void> {
+  // Less motion still leaves every change of style a transition of 0.01ms (index.css sets the
+  // duration on everything, and transition-property defaults to all), and WebKit can take a frame
+  // or more to end one: axe, run inside it, read a calendar day just unchosen in its old ink over
+  // its new ground. Waiting on getAnimations() did not catch it there. Turning transitions off
+  // cancels any in flight, which jumps it to its end, so the page is read at rest — all a scan
+  // of colours and names is about.
+  await page.evaluate(() => {
+    if (document.getElementById('a11y-at-rest') !== null) return;
+    const style = document.createElement('style');
+    style.id = 'a11y-at-rest';
+    style.textContent = '*, *::before, *::after { transition: none !important; }';
+    document.head.append(style);
+  });
   const { violations } = await new AxeBuilder({ page }).withTags(WCAG_A_AA).analyze();
   const found = violations.map(
     ({ id, help, nodes }) => `${id} (${help}): ${nodes.map((n) => n.target.join(' ')).join(', ')}`,
