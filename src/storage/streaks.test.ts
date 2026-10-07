@@ -4,8 +4,10 @@ import {
   EMPTY_LEDGER,
   addToLedger,
   computeStreak,
+  computeStreaks,
   countsTowardsStreak,
   dailyStatus,
+  dailyStatuses,
   isCounted,
   isStartedEarly,
   isStartedOnTheDay,
@@ -173,7 +175,7 @@ describe('streaks in Europe/London', () => {
     it('never counts a past day caught up on later, nor lets it fill a gap', () => {
       const records = [
         onTheDay('2026-10-04'),
-        // The 5th, played on the 6th.
+        // The 5th, played from the calendar on the 6th.
         attempt('2026-10-05', '2026-10-06 09:00'),
         onTheDay('2026-10-06'),
       ];
@@ -252,6 +254,18 @@ describe('streaks in Europe/London', () => {
     });
   });
 
+  describe('computeStreaks', () => {
+    it('works out every tier', () => {
+      const records = [onTheDay('2026-10-06', 'easy'), onTheDay('2026-10-06', 'expert')];
+      expect(computeStreaks(records, '2026-10-06')).toEqual({
+        easy: { current: 1, best: 1 },
+        medium: { current: 0, best: 0 },
+        hard: { current: 0, best: 0 },
+        expert: { current: 1, best: 1 },
+      });
+    });
+  });
+
   describe('dailyStatus', () => {
     it('is not started without an attempt', () => {
       expect(dailyStatus([onTheDay('2026-10-05')], '2026-10-06', 'hard')).toBe('not-started');
@@ -275,6 +289,36 @@ describe('streaks in Europe/London', () => {
       expect(dailyStatus([playing, later], '2026-10-06', 'hard')).toBe('solved-later');
       expect(dailyStatus([later, playing], '2026-10-06', 'hard')).toBe('solved-later');
       expect(dailyStatus([playing, onDay, later], '2026-10-06', 'hard')).toBe('solved-on-the-day');
+    });
+  });
+
+  describe('dailyStatuses', () => {
+    it('holds how each attempted daily stands, by date and tier, and nothing else', () => {
+      const records = [
+        attempt('2026-10-06', '2026-10-08 09:00', { status: 'playing' }),
+        attempt('2026-10-06', '2026-10-07 09:00'),
+        onTheDay('2026-10-06', 'easy'),
+        attempt('2026-10-05', '2026-10-05 09:00', { difficulty: 'expert', status: 'playing' }),
+        attempt(undefined, '2026-10-06 09:00', { source: 'generated' }),
+        onTheDay('2026-10-06', 'easy'),
+      ];
+      expect(dailyStatuses(records)).toEqual(
+        new Map([
+          ['2026-10-06', { hard: 'solved-later', easy: 'solved-on-the-day' }],
+          ['2026-10-05', { expert: 'in-progress' }],
+        ]),
+      );
+    });
+
+    it('agrees with dailyStatus', () => {
+      const records = [
+        attempt('2026-10-06', '2026-10-06 09:00', { status: 'playing' }),
+        onTheDay('2026-10-06'),
+        attempt('2026-10-06', '2026-10-07 09:00'),
+      ];
+      expect(dailyStatuses(records).get('2026-10-06')?.hard).toBe(
+        dailyStatus(records, '2026-10-06', 'hard'),
+      );
     });
   });
 });
@@ -350,6 +394,7 @@ describe('the ledger', () => {
     const records = [onTheDay('2026-10-05'), onTheDay('2026-10-06')];
     expect(computeStreak(records, 'hard', '2026-10-06')).toEqual({ current: 2, best: 2 });
     expect(computeStreak(records, 'hard', '2026-10-06', LEDGER)).toEqual({ current: 4, best: 4 });
+    expect(computeStreaks(records, '2026-10-06', LEDGER).easy).toEqual({ current: 0, best: 0 });
   });
 
   it('counts nothing after today, nor a day solved on another day', () => {
@@ -365,6 +410,17 @@ describe('the ledger', () => {
     );
     const playing = attempt('2026-10-03', '2026-10-03 09:00', { status: 'playing' });
     expect(dailyStatus([playing], '2026-10-03', 'hard', LEDGER)).toBe('solved-on-the-day');
+    expect(dailyStatuses([playing], LEDGER)).toEqual(
+      new Map([
+        ['2026-10-03', { hard: 'solved-on-the-day' }],
+        ['2026-10-04', { hard: 'solved-on-the-day', easy: 'solved-later' }],
+      ]),
+    );
+  });
+
+  it('is never changed by working out the marks', () => {
+    dailyStatuses([onTheDay('2026-10-04', 'easy')], LEDGER);
+    expect(LEDGER.get('2026-10-04')).toEqual({ hard: 'solved-on-the-day', easy: 'solved-later' });
   });
 
   describe('isCounted', () => {

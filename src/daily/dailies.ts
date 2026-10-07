@@ -31,8 +31,8 @@ import { DAILY_TIERS, generateDailyAsync, type GenerateAsyncFn } from './generat
  * a laptop, rarely a tenth of a second (an Expert has the long tail), and a
  * few hundred milliseconds on a slow phone — so a daily, once dealt, is
  * kept: in memory for the visit, and in localStorage between visits
- * (`dailyCache.ts`), so today's puzzles and any day's opened again are to
- * hand at once. Today's four are worth starting as soon as the page
+ * (`dailyCache.ts`), so today's puzzles and any calendar day opened again
+ * are to hand at once. Today's four are worth starting as soon as the page
  * has loaded (`prefetchToday`), so they are usually ready before anyone asks.
  *
  * The archive comes in a chunk of its own, named by a hash of its content, so
@@ -48,11 +48,11 @@ import { DAILY_TIERS, generateDailyAsync, type GenerateAsyncFn } from './generat
  * Medium and Hard), and neither waits behind the next random puzzle.
  *
  * Which dates have a daily: every date from Daily #1 (`DAILY_EPOCH`) up to
- * the latest one that has begun anywhere on Earth. New game offers only the
- * player's own today, but a friend a time zone ahead can send a link to a
- * daily that is still "tomorrow" here, and it must check out. A date beyond
- * that has not begun for anyone, so nothing is dealt for it — not that it
- * would stop a determined player, who has the generator.
+ * the latest one that has begun anywhere on Earth. The calendar offers only
+ * the player's own dates up to today, but a friend a time zone ahead can
+ * send a link to a daily that is still "tomorrow" here, and it must check
+ * out. A date beyond that has not begun for anyone, so nothing is dealt for
+ * it — not that it would stop a determined player, who has the generator.
  */
 
 /**

@@ -381,7 +381,7 @@ export async function newGame(page: Page, label: string): Promise<void> {
  */
 export async function openHeaderDialog(
   page: Page,
-  label: 'History' | 'Share' | 'Settings' | 'Solving techniques' | 'Help',
+  label: 'Daily puzzles' | 'History' | 'Share' | 'Settings' | 'Solving techniques' | 'Help',
 ): Promise<void> {
   const direct = page.getByRole('banner').getByRole('button', { name: label, exact: true });
   if (await direct.isVisible()) {

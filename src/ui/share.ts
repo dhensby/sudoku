@@ -19,8 +19,8 @@ export { MAX_NAME_LENGTH } from '../storage/storage';
  * needs travels in the URL.
  *
  * A daily's link says which daily it is, too (`&d=2026-10-06`), so the
- * friend's game is recorded as that daily, once the app has checked that
- * the date's daily really is this puzzle.
+ * friend's game is recorded as that daily — once the app has checked that
+ * the date's daily really is this puzzle — and shows in their calendar.
  */
 
 /** A result to put in a link: the time to beat and the help it came with. */

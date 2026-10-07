@@ -33,6 +33,7 @@ import {
   COMPLETION_DELAY_MS,
   SAVE_DELAY_MS,
   useSudoku,
+  type CalendarView,
   type UseSudokuOptions,
 } from './useSudoku';
 
@@ -1803,6 +1804,19 @@ describe('useSudoku', () => {
       expect(result.current.phase).toBe('playing');
     });
 
+    it('goes back to the daily on screen, cancelling a new game on its way', async () => {
+      const { result } = await started();
+      act(() => result.current.actions.openDaily(TODAY, 'hard'));
+      await settle();
+      const daily = result.current.record!;
+      act(() => result.current.actions.openDialog('daily'));
+      expect(result.current.phase).toBe('paused');
+      act(() => result.current.actions.openDaily(TODAY, 'hard'));
+      expect(result.current.dialog).toBeNull();
+      expect(result.current.phase).toBe('playing');
+      expect(result.current.record?.id).toBe(daily.id);
+    });
+
     it('keeps an unplayed daily, to resume, where an unplayed random puzzle is dropped', async () => {
       const { result, storage } = await started();
       act(() => result.current.actions.openDaily(TODAY, 'hard'));
@@ -1828,6 +1842,31 @@ describe('useSudoku', () => {
       act(() => result.current.actions.playAgain());
       expect(result.current.record).toMatchObject({ source: 'replay', daily: TODAY });
       expect(result.current.record!.id).not.toBe(solved.id);
+    });
+
+    it('plays a solved daily again straight from the calendar', async () => {
+      const dailies = fakeDailies({ puzzles: { [`${YESTERDAY}/easy`]: NEAR_HARD } });
+      const { result } = await started({ dailies });
+      act(() => result.current.actions.openDaily(YESTERDAY, 'easy'));
+      await settle();
+      enter(result, 0, answerAt(0, NEAR_HARD));
+      advance(COMPLETION_DELAY_MS);
+      act(() => result.current.actions.closeDialog());
+      act(() => result.current.actions.openDialog('daily'));
+      act(() => result.current.actions.replayDaily(YESTERDAY, 'easy'));
+      expect(result.current.dialog).toBeNull();
+      expect(result.current.record).toMatchObject({
+        source: 'replay',
+        daily: YESTERDAY,
+        difficulty: 'easy',
+      });
+    });
+
+    it('opens a daily never solved when asked to play it again', async () => {
+      const { result } = await started();
+      act(() => result.current.actions.replayDaily(TODAY, 'medium'));
+      await settle();
+      expect(result.current.record).toMatchObject({ source: 'daily', daily: TODAY });
     });
 
     it('records an attempt at the puzzle begun before it was opened as the daily as that daily', async () => {
@@ -1925,6 +1964,11 @@ describe('useSudoku', () => {
       expect(result.current.dialog).toMatchObject({
         result: { daily: { streak: { kind: 'streak', days: 3 } } },
       });
+      act(() => result.current.actions.closeDialog());
+      act(() => result.current.actions.openDialog('daily'));
+      expect(result.current.dialog).toMatchObject({ kind: 'daily' });
+      const calendar = (result.current.dialog as { calendar: CalendarView }).calendar;
+      expect(calendar.ledger.get('2026-10-04')).toEqual({ hard: 'solved-on-the-day' });
     });
 
     describe("a friend's link to a daily whose day has not begun here yet", () => {
@@ -1992,6 +2036,50 @@ describe('useSudoku', () => {
       await settle();
       act(() => result.current.actions.openDialog('share'));
       expect(result.current.dialog).toMatchObject({ kind: 'share', target: { daily: TODAY } });
+    });
+
+    it('opens the calendar on the history as it stands, the game on screen saved first', async () => {
+      const { result } = await started();
+      act(() => result.current.actions.openDaily(TODAY, 'hard'));
+      await settle();
+      act(() => result.current.actions.openDialog('daily'));
+      expect(result.current.phase).toBe('paused');
+      expect(result.current.dialog).toMatchObject({ kind: 'daily', calendar: { today: TODAY } });
+      const { calendar } = result.current.dialog as {
+        calendar: { records: readonly GameRecord[] };
+      };
+      expect(calendar.records.map((record) => record.daily)).toContain(TODAY);
+      // Closing it lifts the pause it caused.
+      act(() => result.current.actions.closeDialog());
+      expect(result.current.phase).toBe('playing');
+    });
+
+    it('moves the open calendar on to a new day when the page comes back into view', async () => {
+      const { result } = await started();
+      act(() => result.current.actions.openDialog('daily'));
+      act(() => vi.setSystemTime(NOW + 86_400_000));
+      setVisibility('hidden');
+      setVisibility('visible');
+      expect(result.current.dialog).toMatchObject({
+        kind: 'daily',
+        calendar: { today: '2026-10-06' },
+      });
+    });
+
+    it('plays a daily from the calendar, leaving the game behind it paused by the player', async () => {
+      const dailies = fakeDailies({ held: true });
+      const { result } = await started({ dailies });
+      const left = result.current.record!;
+      enter(result, FIRST_EMPTY, 4);
+      act(() => result.current.actions.openDialog('daily'));
+      act(() => result.current.actions.openDaily(YESTERDAY, 'expert'));
+      expect(result.current.dialog).toBeNull();
+      expect(result.current.phase).toBe('loading');
+      act(() => dailies.release());
+      await settle();
+      expect(result.current.record).toMatchObject({ daily: YESTERDAY, difficulty: 'expert' });
+      act(() => result.current.actions.resumeRecord(left.id));
+      expect(result.current.record?.id).toBe(left.id);
     });
 
     it('holds a daily that arrives behind a dialog until the dialog closes', async () => {

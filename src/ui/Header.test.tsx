@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { Header, type HeaderProps } from './Header';
-import { BookIcon, MenuIcon, MoreIcon } from './icons';
+import { BookIcon, CalendarIcon, MenuIcon, MoreIcon } from './icons';
 
 function renderHeader(overrides: Partial<HeaderProps> = {}) {
   const props: HeaderProps = {
@@ -50,6 +50,7 @@ describe('Header', () => {
   });
 
   it.each([
+    ['Daily puzzles', 'daily'],
     ['History', 'history'],
     ['Share', 'share'],
     ['Settings', 'settings'],
@@ -68,7 +69,7 @@ describe('Header', () => {
     );
   });
 
-  it.each(['History', 'Share', 'Settings', 'Solving techniques', 'Help'])(
+  it.each(['Daily puzzles', 'History', 'Share', 'Settings', 'Solving techniques', 'Help'])(
     'does not take focus from the board when %s is clicked',
     (label) => {
       // Focus left on a cell keeps Space for the mode toggle, instead of
@@ -78,6 +79,13 @@ describe('Header', () => {
     },
   );
 
+  it('draws the daily puzzles as a calendar', () => {
+    renderHeader();
+    expect(screen.getByRole('button', { name: 'Daily puzzles' }).innerHTML).toBe(
+      drawing(<CalendarIcon />),
+    );
+  });
+
   it('starts a new game from the New game menu', () => {
     const props = renderHeader();
     fireEvent.click(screen.getByRole('button', { name: 'New game' }));
@@ -85,12 +93,15 @@ describe('Header', () => {
     expect(props.onNewGame).toHaveBeenCalledWith('hard');
   });
 
-  it("opens today's dailies from the New game menu, today worked out afresh", () => {
+  it("opens today's dailies and the calendar from the New game menu, today worked out afresh", () => {
     const props = renderHeader();
     fireEvent.click(screen.getByRole('button', { name: 'New game' }));
     expect(props.onRefreshToday).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole('menuitem', { name: "Today's Expert puzzle, not started" }));
     expect(props.onOpenDaily).toHaveBeenCalledWith('expert');
+    fireEvent.click(screen.getByRole('button', { name: 'New game' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Daily puzzles' }));
+    expect(props.onOpenDialog).toHaveBeenCalledWith('daily');
   });
 
   it("marks no random tier as current while a past day's daily is on show", () => {
@@ -127,7 +138,7 @@ describe('Header', () => {
       within(menu)
         .getAllByRole('menuitem')
         .map((item) => item.textContent),
-    ).toEqual(['History', 'Share', 'Settings', 'Solving techniques', 'Help']);
+    ).toEqual(['Daily puzzles', 'History', 'Share', 'Settings', 'Solving techniques', 'Help']);
     fireEvent.click(within(menu).getByRole('menuitem', { name: 'Settings' }));
     expect(props.onOpenDialog).toHaveBeenCalledWith('settings');
     fireEvent.click(screen.getByRole('button', { name: 'Menu' }));

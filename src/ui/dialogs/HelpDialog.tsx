@@ -1,5 +1,8 @@
 import { Fragment, type ReactNode } from 'react';
+import { DailyMark } from '../DailyMark';
+import { STATUS_TEXT } from '../daily';
 import { BookIcon } from '../icons';
+import type { DailyStatus } from '../../storage/streaks';
 import { Dialog } from './Dialog';
 
 export interface HelpDialogProps {
@@ -92,6 +95,11 @@ const CONTROLS: readonly Control[] = [
   { action: 'Show me how to solve a cell', keyboard: null, pointer: 'Show me, after a hint' },
   { action: 'New game, or today’s puzzles', keyboard: null, pointer: 'The + button' },
   {
+    action: 'Daily calendar and streaks',
+    keyboard: null,
+    pointer: 'The calendar in the header (on a phone, the ☰ menu), or the + button',
+  },
+  {
     action: 'History, share, settings, help',
     keyboard: null,
     pointer: 'The header (on a phone, the ☰ menu)',
@@ -134,10 +142,23 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
               left off. Random puzzles are still there too, under <strong>Random puzzle</strong>.
             </li>
             <li>
+              The <strong>Daily puzzles</strong> calendar shows every day since the first, today
+              ringed, with a mark for each difficulty — Easy, Medium, Hard and Expert, left to
+              right. Pick a day to play it, carry on, or play it again. The marks:
+              <span className="help__marks">
+                {(Object.keys(STATUS_TEXT) as DailyStatus[]).map((status) => (
+                  <span key={status} className="help__mark">
+                    <DailyMark status={status} />
+                    {STATUS_TEXT[status]}
+                  </span>
+                ))}
+              </span>
+            </li>
+            <li>
               A <strong>streak</strong> counts the days in a row you&apos;ve solved a
               difficulty&apos;s daily, started on its own day — one begun before midnight and
-              finished after still counts. Catching up on an earlier day is kept in your history,
-              but never adds to a streak.
+              finished after still counts. Catching up on an earlier day is kept in the calendar and
+              your history, but never adds to a streak.
             </li>
             <li>
               Sharing a daily names it. A friend who opens your link plays the same daily, and it

@@ -495,9 +495,9 @@
   line-height: 1.4;
 }
 
-/* A daily's streak, under its time: in ink, led by the solid mark of a
-   daily solved on its day when the solve counts; a quiet aside, like the
-   replay's note, when it was played after its day. */
+/* A daily's streak, under its time: in ink, led by the calendar's solid
+   mark when the solve counts; a quiet aside, like the replay's note, when
+   it was played after its day. */
 .result__streak {
   display: flex;
   align-items: center;
@@ -1185,10 +1185,15 @@
 }
 
 /* ==========================================================================
-   Daily puzzles: the marks
+   Daily puzzles: the marks, the streaks, the calendar and the day panel
 
-   How a daily stands — in New game, and leading a solve's streak — is a
-   small square (DailyMark), told apart by shape, never by colour alone.
+   One column on a phone (a bottom sheet) and on a narrow window; on a wide
+   card the calendar stands beside the day it has chosen, the streaks across
+   the top of both, so choosing a day never sends its puzzles below the
+   fold. Each day is a cell of the month grid with its date over four marks
+   (DailyMark): Easy, Medium, Hard, Expert, left to right, told apart by
+   shape, never by colour alone. The chosen day is printed as the board's
+   selection is, a solid ultramarine block; today is ringed in ink.
    ========================================================================== */
 
 /* A daily's standing, in ink — the empty square muted, as not started is
@@ -1202,6 +1207,444 @@
 
 .daily-mark--not-started {
   color: var(--text-muted);
+}
+
+.dialog--daily {
+  max-width: 760px;
+}
+
+.daily {
+  display: grid;
+  gap: 18px;
+}
+
+/* The key comes last on a phone, after the day chosen, so a day's puzzles
+   sit straight under the month; on a wide card it stays under the month —
+   as on a phone on its side, too short for the day under the month. */
+@media (min-width: 800px), (min-width: 640px) and (max-height: 500px) {
+  .daily {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: auto auto 1fr;
+    grid-template-areas:
+      'streaks streaks'
+      'calendar day'
+      'key day';
+    column-gap: 32px;
+    row-gap: 12px;
+  }
+
+  .streaks {
+    grid-area: streaks;
+    margin-bottom: 6px;
+  }
+
+  .calendar {
+    grid-area: calendar;
+  }
+
+  .daily-key {
+    grid-area: key;
+  }
+
+  /* Its own height, not the two rows' it spans, and held at the top of the
+     card as the month scrolls under it: on a phone on its side the card is
+     short, and opening it on the chosen day (or choosing another) would
+     otherwise leave the day's name and first puzzles scrolled out of view,
+     with nothing able to bring them back. */
+  .daily-day {
+    grid-area: day;
+    position: sticky;
+    top: 0;
+    align-self: start;
+    background: var(--surface-raised);
+  }
+}
+
+/* ---- Streaks: a tile a tier, like the stats ---- */
+.streaks__heading {
+  margin: 0 0 8px;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.streaks__list {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.streaks__item {
+  display: grid;
+  justify-items: center;
+  padding: 8px 4px 7px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  text-align: center;
+}
+
+.streaks__tier {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.streaks__current {
+  font-size: 0.8125rem;
+  line-height: 1.2;
+}
+
+.streaks__value {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 800;
+  line-height: 1.15;
+}
+
+.streaks__best {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.streaks__note {
+  margin: 8px 0 0;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  text-align: center;
+}
+
+/* ---- The month ---- */
+.calendar__nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 4px;
+}
+
+.calendar__month {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.0625rem;
+  font-weight: 800;
+}
+
+.calendar__step {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text);
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.calendar__step .icon {
+  width: 20px;
+  height: 20px;
+}
+
+/* Greyed out at the first and last months on offer, but never `disabled`:
+   that would drop focus to the page from the very button just pressed. */
+.calendar__step[aria-disabled='true'] {
+  opacity: 0.35;
+  cursor: default;
+}
+
+@media (hover: hover) {
+  .calendar__step:hover:not([aria-disabled='true']) {
+    background: var(--surface);
+  }
+}
+
+.calendar__step:active:not([aria-disabled='true']) {
+  background: var(--key-bg-active);
+}
+
+/* Seven equal columns, whatever the dates in them; a hair of space between
+   days, so the chosen block and today's ring never touch a neighbour. */
+.calendar__grid {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 2px;
+  table-layout: fixed;
+}
+
+.calendar__weekday {
+  padding: 2px 0 4px;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.calendar__day {
+  position: relative;
+  height: 50px;
+  padding: 0;
+  border-radius: var(--radius);
+  text-align: center;
+  vertical-align: middle;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.calendar__day--outside,
+.calendar__day--unavailable {
+  cursor: default;
+}
+
+.calendar__date {
+  display: block;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+
+.calendar__marks {
+  display: flex;
+  justify-content: center;
+  gap: 2px;
+  margin-top: 5px;
+}
+
+.calendar__mark {
+  width: 8px;
+  height: 8px;
+}
+
+/* A day still to come has no daily: its date only, muted. */
+.calendar__day--unavailable .calendar__date {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+@media (hover: hover) {
+  .calendar__day:not(
+      .calendar__day--outside,
+      .calendar__day--unavailable,
+      .calendar__day--selected
+    ):hover {
+    background: var(--surface);
+  }
+}
+
+/* Today, ringed in ink. */
+.calendar__day--today {
+  box-shadow: inset 0 0 0 2px var(--text);
+}
+
+/* The chosen day, printed as the board prints its selection: a solid
+   block, every mark knocked out to the paper colour on it — and, when it
+   is today, its ring a paper line inside the block. */
+.calendar__day.calendar__day--selected {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.calendar__day--selected .daily-mark {
+  color: var(--accent-text);
+}
+
+.calendar__day--selected.calendar__day--today {
+  box-shadow: inset 0 0 0 2px var(--accent-text);
+}
+
+.calendar__day:focus {
+  outline: none;
+}
+
+.calendar__day:focus-visible {
+  z-index: 1;
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ---- The key ---- */
+.daily-key {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.daily-key__order {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 8px;
+}
+
+/* A day's marks drawn small, each with its tier's letter over it. */
+.daily-key__day {
+  display: grid;
+  flex: none;
+  grid-template-columns: repeat(4, 8px);
+  column-gap: 2px;
+  row-gap: 2px;
+  justify-items: center;
+}
+
+.daily-key__letter {
+  display: flex;
+  justify-content: center;
+  width: 8px;
+  color: var(--text);
+  font-size: 0.5625rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* Two columns, each as wide as its longest standing when there is room, and
+   wrapping its words when there is not: the narrowest phone is 278px. */
+.daily-key__list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, max-content));
+  gap: 4px 20px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.daily-key__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ---- The day chosen ---- */
+.daily-day__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 2px 12px;
+  padding: 0 0 6px;
+  border-bottom: 2px solid var(--text);
+}
+
+.daily-day__heading {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.0625rem;
+  font-weight: 800;
+}
+
+.daily-day__number {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.daily-day__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.daily-day__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 58px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.daily-day__mark {
+  width: 14px;
+  height: 14px;
+}
+
+.daily-day__text {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+
+.daily-day__tier {
+  font-weight: 700;
+}
+
+.daily-day__status {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+/* One width for every row's button, so Play, Resume and Play again line up. */
+.daily-day__row .button {
+  flex: none;
+  min-width: 104px;
+}
+
+/* A phone: the sheet's height is short, so the days and rows tighten to a
+   little over a finger's 44px, and the streak tiles to their content. */
+@media (max-width: 499px) {
+  .calendar__day {
+    height: 46px;
+  }
+
+  .calendar__marks {
+    margin-top: 4px;
+  }
+
+  .daily-day__row {
+    min-height: 54px;
+    padding: 6px 0;
+  }
+
+  .streaks__item {
+    padding: 6px 2px 5px;
+  }
+}
+
+/* The narrowest phones: seven 44px days need the sheet's whole width, so
+   the month reaches into the body's padding and its days close up. At 320px
+   the body is 318px inside the sheet's borders and 278px inside its
+   padding; 15px either side makes 308px, seven days of exactly 44px. */
+@media (max-width: 374px) {
+  .calendar {
+    margin: 0 -15px;
+  }
+
+  .calendar__nav,
+  .daily-key {
+    padding: 0 15px;
+  }
+
+  .calendar__grid {
+    border-spacing: 0;
+  }
+}
+
+/* ---- Help: the marks, as the calendar's key draws them ---- */
+.help__marks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 6px 0 0;
+}
+
+.help__mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.875rem;
 }
 
 /* ==========================================================================
@@ -2197,6 +2640,11 @@
   .guide__link {
     min-height: 44px;
   }
+
+  .calendar__step {
+    width: 44px;
+    height: 44px;
+  }
 }
 
 /* ------------------------------------------------------------------------
@@ -2260,6 +2708,7 @@
 
   .comparison,
   .stats__item,
+  .streaks__item,
   .share__preview,
   .result__badge,
   .history-item__current,
@@ -2341,6 +2790,28 @@
     color: HighlightText;
   }
 
+  /* The chosen day keeps its block, in the Highlight pair; today's ring is
+     a shadow, which this mode drops, so it is an outline here. */
+  .calendar__day.calendar__day--selected {
+    forced-color-adjust: none;
+    background: Highlight;
+    color: HighlightText;
+  }
+
+  .calendar__day--selected .daily-mark {
+    color: HighlightText;
+  }
+
+  .calendar__day--today {
+    outline: 2px solid CanvasText;
+    outline-offset: -2px;
+  }
+
+  .calendar__day--selected.calendar__day--today {
+    outline-color: HighlightText;
+    outline-offset: -4px;
+  }
+
   .settings__switch {
     forced-color-adjust: none;
     border: 1px solid CanvasText;
@@ -2371,6 +2842,7 @@
   .walkthrough__title:focus-visible,
   .walkthrough__question:focus-visible,
   .walkthrough__page:focus-visible,
+  .calendar__day:focus-visible,
   .settings__switch:focus-visible,
   .settings__theme-option:has(input:focus-visible) {
     outline-color: Highlight;

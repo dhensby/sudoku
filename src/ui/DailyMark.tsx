@@ -2,6 +2,8 @@ import type { DailyStatus } from '../storage/streaks';
 
 export interface DailyMarkProps {
   status: DailyStatus;
+  /** Extra classes, after the base ones (the calendar sizes its marks smaller than the menu). */
+  className?: string;
 }
 
 /**
@@ -13,13 +15,14 @@ export interface DailyMarkProps {
  * for not started. Drawn on a 10-unit square in the text colour (the empty
  * one in the muted text colour, see dialogs.css).
  *
- * Decorative: whatever it sits in — a menu item, the completion dialog's
- * streak — says the same in words for assistive technology.
+ * Decorative: whatever it sits in — a calendar day, a menu item, a row of
+ * the day panel — says the same in words for assistive technology.
  */
-export function DailyMark({ status }: DailyMarkProps) {
+export function DailyMark({ status, className }: DailyMarkProps) {
+  const classes = `daily-mark daily-mark--${status}${className === undefined ? '' : ` ${className}`}`;
   return (
     <svg
-      className={`daily-mark daily-mark--${status}`}
+      className={classes}
       viewBox="0 0 10 10"
       width="10"
       height="10"

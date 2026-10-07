@@ -14,6 +14,7 @@ import {
   ChallengeDialog,
   CompletionDialog,
   ConfirmDialog,
+  DailyDialog,
   HelpDialog,
   HistoryDialog,
   SettingsDialog,
@@ -147,7 +148,7 @@ export function App({ options }: AppProps = {}) {
     },
     [actions, requestBoardFocus],
   );
-  // A daily, from New game: the keyboard carries on from its board.
+  // A daily, from New game or the calendar: the keyboard carries on from its board.
   const handleOpenDaily = useCallback(
     (date: DateKey, difficulty: Difficulty) => {
       requestBoardFocus();
@@ -407,6 +408,19 @@ export function App({ options }: AppProps = {}) {
             walkthrough={dialog.walkthrough}
             initialStep={dialog.step}
             onOpenGuide={actions.openTechniques}
+            onClose={actions.closeDialog}
+          />
+        )}
+        {dialog?.kind === 'daily' && (
+          <DailyDialog
+            records={dialog.calendar.records}
+            ledger={dialog.calendar.ledger}
+            today={dialog.calendar.today}
+            onPlay={handleOpenDaily}
+            onReplay={(date, difficulty) => {
+              requestBoardFocus();
+              actions.replayDaily(date, difficulty);
+            }}
             onClose={actions.closeDialog}
           />
         )}

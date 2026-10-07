@@ -3,7 +3,7 @@ import { DIFFICULTIES } from '../storage/storage';
 import type { DailyStatus } from '../storage/streaks';
 import { DailyMark } from './DailyMark';
 import { DIFFICULTY_LABEL, formatLongDay, formatShortDay } from './format';
-import { NewGameIcon } from './icons';
+import { CalendarIcon, NewGameIcon } from './icons';
 import { Menu } from './Menu';
 
 /** Today's dailies as the menu offers them. */
@@ -27,6 +27,8 @@ export interface DifficultyMenuProps {
   onSelect: (difficulty: Difficulty) => void;
   /** Open today's daily of a tier: resumed if unfinished, offered again if solved. */
   onSelectDaily: (difficulty: Difficulty) => void;
+  /** Open the daily calendar. */
+  onOpenCalendar: () => void;
   /** The menu is opening: bring `today` up to date (see `Menu`'s `onOpen`). */
   onOpen?: () => void;
 }
@@ -52,16 +54,16 @@ function statusDetail(status: DailyStatus) {
 
 /**
  * New game, in two runs: today's daily puzzles — one of each tier, the same
- * for everyone today, each marked with how it stands; then a random puzzle
- * of each tier. The game on show is marked current wherever it is in the
- * menu — today's daily of its tier, or its random tier (though choosing it
- * still starts a new game like the others); a past day's daily is in
- * neither.
+ * for everyone today, each marked with how it stands — with the calendar of
+ * past days after them; then a random puzzle of each tier. The game on show
+ * is marked current wherever it is in the menu — today's daily of its tier,
+ * or its random tier (though choosing it still starts a new game like the
+ * others); a past day's daily is in neither.
  *
  * A new game needs no confirmation: the one on screen is saved and stays
- * resumable from History. "Today" is worked out each time the menu opens, so
- * one left open across midnight — or opened in a tab left overnight — offers
- * the new day's puzzles.
+ * resumable from History (and from the calendar, if it is a daily). "Today"
+ * is worked out each time the menu opens, so one left open across midnight
+ * — or opened in a tab left overnight — offers the new day's puzzles.
  */
 export function DifficultyMenu({
   current,
@@ -69,6 +71,7 @@ export function DifficultyMenu({
   today,
   onSelect,
   onSelectDaily,
+  onOpenCalendar,
   onOpen,
 }: DifficultyMenuProps) {
   // Only on a device whose clock is set before Daily #1: there is no daily yet.
@@ -85,16 +88,24 @@ export function DifficultyMenu({
           label: "Today's puzzles",
           aside: formatShortDay(today.date),
           name: `Today's puzzles, ${formatLongDay(today.date)}`,
-          items: DIFFICULTIES.map((difficulty) => ({
-            key: `daily-${difficulty}`,
-            label: DIFFICULTY_LABEL[difficulty],
-            name: `Today's ${DIFFICULTY_LABEL[difficulty]} puzzle, ${STATUS_NAME[today.statuses[difficulty]]}`,
-            icon: <DailyMark status={today.statuses[difficulty]} />,
-            detail: statusDetail(today.statuses[difficulty]),
-            isCurrent: dailyOnShow === today.date && difficulty === current,
-            disabled: isBeforeDailies,
-            onSelect: () => onSelectDaily(difficulty),
-          })),
+          items: [
+            ...DIFFICULTIES.map((difficulty) => ({
+              key: `daily-${difficulty}`,
+              label: DIFFICULTY_LABEL[difficulty],
+              name: `Today's ${DIFFICULTY_LABEL[difficulty]} puzzle, ${STATUS_NAME[today.statuses[difficulty]]}`,
+              icon: <DailyMark status={today.statuses[difficulty]} />,
+              detail: statusDetail(today.statuses[difficulty]),
+              isCurrent: dailyOnShow === today.date && difficulty === current,
+              disabled: isBeforeDailies,
+              onSelect: () => onSelectDaily(difficulty),
+            })),
+            {
+              key: 'calendar',
+              label: 'Daily puzzles',
+              icon: <CalendarIcon />,
+              onSelect: onOpenCalendar,
+            },
+          ],
         },
         {
           key: 'random',

@@ -87,8 +87,8 @@ export interface Challenge {
 
 /**
  * Where a game's puzzle came from: the generator, a daily puzzle opened as
- * one (from the New game menu), a shared link, or a replay of a puzzle
- * already seen — which is what any attempt at a seen puzzle is,
+ * one (from the New game menu or the calendar), a shared link, or a replay of
+ * a puzzle already seen — which is what any attempt at a seen puzzle is,
  * whatever brought it back (see `hasSeen`). Only replays are left out of best
  * and average times; and only generated games are dropped as glimpses, so an
  * unplayed daily is kept, to resume, rather than turned into a replay.
@@ -120,8 +120,8 @@ export interface GameRecord {
    * that happens to be a daily but was not opened as one, such as from a
    * link without a date hint. Set on every attempt at a daily, whatever its
    * source: a first attempt ('daily'), a link whose date hint checked out
-   * ('shared') and a replay alike. Which of them count towards a streak is
-   * `streaks.ts`'s business.
+   * ('shared') and a replay alike, so each shows in the calendar. Which of
+   * them count towards a streak is `streaks.ts`'s business.
    */
   daily?: DateKey;
   /**
@@ -307,7 +307,7 @@ function normaliseChallenge(value: unknown): Challenge | null {
  * that are merely odd are coerced: an unknown source reads as 'generated',
  * timestamps out of order are pulled level, missing assists count as none,
  * and a broken challenge or daily date is dropped on its own — the game is
- * still a game, just not one against a rival or a daily.
+ * still a game, just not one against a rival or on the calendar.
  */
 function normaliseRecord(value: unknown): GameRecord | null {
   if (!isObject(value)) return null;
@@ -618,7 +618,7 @@ function decodeLedger(value: unknown): DailyLedger {
 
 /**
  * What the solved dailies among pruned records said (see `DailyLedger`) —
- * read with the records wherever streaks and the dailies' marks are worked
+ * read with the records wherever streaks and the calendar's marks are worked
  * out.
  */
 export function loadDailyLedger(storage: StorageLike): DailyLedger {

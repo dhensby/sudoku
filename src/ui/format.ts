@@ -3,6 +3,7 @@ import {
   type Assists,
   type DateKey,
   type Difficulty,
+  type MonthKey,
   type TechniqueId,
 } from '../core';
 
@@ -109,6 +110,7 @@ const WEEKDAY_DAY_MONTH_SHORT = new Intl.DateTimeFormat('en-GB', {
   day: 'numeric',
   month: 'short',
 });
+const MONTH_YEAR = new Intl.DateTimeFormat('en-GB', { month: 'long', year: 'numeric' });
 
 function startOfDay(epochMs: number): number {
   const date = new Date(epochMs);
@@ -157,4 +159,9 @@ export function formatLongDay(date: DateKey): string {
 /** A date in short, with its weekday, for a heading with little room: "Tue 6 Oct". */
 export function formatShortDay(date: DateKey): string {
   return WEEKDAY_DAY_MONTH_SHORT.format(localDateOf(date));
+}
+
+/** A month and its year, as a calendar's heading: "October 2026". */
+export function formatMonth(month: MonthKey): string {
+  return MONTH_YEAR.format(localDateOf(`${month}-01`));
 }

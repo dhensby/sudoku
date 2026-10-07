@@ -1,10 +1,11 @@
 # Sudoku
 
 An NYT-style Sudoku for when the day's three puzzles are done: **a daily puzzle of each
-difficulty**, the same for everyone, with streaks, and **unlimited Easy, Medium, Hard and Expert
-puzzles** besides; Normal and Candidate modes, **Auto Candidate Mode**, a pause that really hides
-the board, a **history** of everything you have played — and **links to race your friends** on
-the same puzzle. Built with React, TypeScript and Vite, and runs entirely in your browser.
+difficulty**, the same for everyone, with a calendar and streaks, and **unlimited Easy, Medium,
+Hard and Expert puzzles** besides; Normal and Candidate modes, **Auto Candidate Mode**, a pause
+that really hides the board, a **history** of everything you have played — and **links to race
+your friends** on the same puzzle. Built with React, TypeScript and Vite, and runs entirely in
+your browser.
 
 **[▶ Play it in your browser](https://dhensby.github.io/sudoku/)** — the latest green build of
 `main`, deployed to GitHub Pages.
@@ -20,12 +21,19 @@ the same puzzle. Built with React, TypeScript and Vite, and runs entirely in you
   its own, the same for everyone, so friends can compare times; a new day's arrive at each
   player's own midnight. New game offers **Today's puzzles**, each marked with how it stands, above
   a **Random puzzle** of each tier, and a daily you have started carries on where you left off.
-  Each tier keeps a **streak**: the days in a row its daily was solved — and started — on its own
-  day, by the date your device had when you started it (so a flight across time zones never
-  rewrites a streak), so a daily begun at 23:50 and finished after midnight still counts, but
-  catching up on an earlier day never does. A daily on show says so in the header
-  ("Daily · Hard") and is marked current in New game; a solved one says what it did for the
-  streak; sharing one names it.
+  The **calendar** (the calendar button in the header; on a phone, the ☰ menu) shows every day
+  since Daily #1, 1 October 2026, with a mark for each tier — solid for solved on the day,
+  hatched for solved on another day, half filled for in progress, an empty square for not
+  started, Easy to Expert from left to right, so it reads without colour — and the day chosen
+  with its four puzzles to play, carry on with or play again. It is a WAI-ARIA date grid: the arrow keys move a
+  day or a week, Home and End to the week's ends, Page Up and Page Down a month, and each day's
+  name says how its four stand. Each tier keeps a **streak**, current and best: the days in a row
+  its daily was solved — and started — on its own day, by the date your device had when you
+  started it (so a flight across time zones never rewrites a streak), so a daily begun at 23:50
+  and finished after midnight still counts, but catching up on an earlier day never does (it
+  shows in the calendar all the same). A daily on show says so in the header ("Daily · Hard") and
+  is marked current in New game; a solved one says what it did for the streak; sharing one names
+  it.
 - **Plays like the NYT game** — Normal and Candidate modes (<kbd>Space</kbd> to switch, or hold
   <kbd>Shift</kbd>/<kbd>Alt</kbd> to switch while held), the two-step erase, highlighting of the
   row, column, box and matching numbers, a red dot on every conflict, givens on grey, and clicking
@@ -77,8 +85,9 @@ the same puzzle. Built with React, TypeScript and Vite, and runs entirely in you
   from the keyboard.
 - **At home on a phone** — the whole game fits a 320×568 screen, or a phone turned on its side,
   without scrolling, and on a taller phone the controls sit at the foot of the screen, under your
-  thumb; History, Share, Settings, the technique guide and Help fold into a ☰ menu so the header
-  stays one row; touch targets are at least 44px; and the game can be added to your home screen.
+  thumb; the daily calendar, History, Share, Settings, the technique guide and Help fold into a ☰
+  menu so the header stays one row; touch targets are at least 44px; and the game can be added to
+  your home screen.
 - **Broadsheet, a theme drawn for clarity** — the puzzle page of a morning paper: warm newsprint,
   ink-black box lines, one ultramarine spot colour, the selected cell printed as a solid block,
   givens typeset in a slab and your own numbers in a grotesque. Givens and your own numbers hold
@@ -309,8 +318,8 @@ the parameters are cleared from the address bar once read, so reloading never dr
 A daily's link names it — "Sudoku Daily · 6 Oct 2026 · Hard · 5:23" — and carries its date as
 well as its givens. The link opens as any shared puzzle while the game checks the date against
 that day's daily (dealt live, or taken from the archive); if the puzzle is that daily, the
-friend's game is recorded as it, and counts towards their streak if they start it on that date.
-A date that does not match, or has no daily yet, is simply ignored.
+friend's game is recorded as it, shows in their calendar, and counts towards their streak if they
+start it on that date. A date that does not match, or has no daily yet, is simply ignored.
 
 Times are on the honour system: the link says what time you claim, and nothing can verify it. It
 is a game between friends. What the game does do is keep its own records honest — a reset clears
@@ -322,11 +331,12 @@ time is never offered as one to beat, either: sharing it shares the puzzle alone
 
 Everything is stored in your browser's `localStorage` under `sudoku.*` keys — preferences, the
 history (up to 1,000 games, a daily's with the date it is the daily of and the date you started
-it — the streaks are worked out from it), what the dailies of games pruned from the history said
-(a few bytes a day, kept for good, so no streak forgets them), the saved state of unfinished
-games (up to 50), the puzzles you have seen (up to 2,000, so a puzzle stays seen after its game
-is deleted) and the daily puzzles already dealt (the last 112, so they need not be dealt again).
-There are no accounts and no tracking.
+it — the calendar and the streaks are worked out from it), what the dailies of games pruned from
+the history said (a few bytes a day, kept for good, so neither a best streak nor the calendar
+forgets them), the saved state of unfinished games (up to 50), the puzzles you
+have seen (up to 2,000, so a puzzle stays seen after its game is deleted) and the daily puzzles
+already dealt (the last 112, so they need not be dealt again). There are no accounts and no
+tracking.
 
 Some browsers clear a site's storage after a while away (Safari does after seven days without a
 visit, unless the game has been added to the home screen). Use **Export** in History to keep a
@@ -351,11 +361,13 @@ puzzles seen and the dailies' record are merged with what is already there.
 - **End-to-end** (`e2e/`, Playwright): full journeys against the built app — playing and solving,
   pausing and reloading, share links between two browsers, the history, the technique guide, a
   hint's Show me walkthrough, the daily puzzles on a fixed clock (today's Hard from New game to
-  the end and its streak, a friend's daily link recognised) and the phone layout from 320px wide
-  up and on its side (New game whole on a phone on its side). An accessibility pass
+  the end and its streak, yesterday's from the calendar kept but not counted, a friend's daily
+  link recognised) and the phone layout from 320px wide up and on its side (the calendar's days
+  measured at 44px at 320px, New game and the calendar whole on a phone on its side). An accessibility pass
   (`a11y.spec.ts`) runs axe-core's WCAG 2.2 A and AA rules over the main states — the board with
-  every kind of mark, the Ready and Paused cards, the menus, every dialog (Show me's included) and
-  each guide entry — in both themes, and allows no violations. Three projects:
+  every kind of mark, the Ready and Paused cards, the menus, every dialog (Show me's and the daily
+  calendar's included) and each guide entry — in both themes, and allows no violations. Three
+  projects:
 
   | Project    | Device         | Engine   | Specs                                                 |
   | ---------- | -------------- | -------- | ----------------------------------------------------- |
@@ -391,5 +403,6 @@ no change is needed — the base is derived from the repository name at build ti
 | Hint, check, reveal, reset     | —                                                                                        | The "…" menu                         |
 | Show me how to solve a cell    | —                                                                                        | Show me, after a hint                |
 | New game, or today's puzzles   | —                                                                                        | The + button                         |
+| Daily calendar and streaks     | Arrow keys, Home/End, Page Up/Page Down in the month                                     | The calendar in the header, or +     |
 | History, share, settings, help | —                                                                                        | The header (on a phone, the ☰ menu) |
 | Solving techniques             | —                                                                                        | The header, or a hint's question     |

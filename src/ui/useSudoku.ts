@@ -51,6 +51,7 @@ import {
   type Settings,
 } from '../storage/prefs';
 import { DIFFICULTIES, browserStorage, type StorageLike } from '../storage/storage';
+import type { DailyLedger } from '../storage/streaks';
 import { describeChange, type DescribedAction } from './announce';
 import { capitalise, DIFFICULTY_LABEL } from './format';
 import { dailyPhrase, statusesOn, streakNote, type StreakNote } from './daily';
@@ -156,6 +157,15 @@ export interface CompletionResult {
   daily: DailyResult | null;
 }
 
+/** What the daily calendar shows, read from storage as it opens. */
+export interface CalendarView {
+  records: readonly GameRecord[];
+  /** What the dailies of pruned records said, for the marks and streaks they no longer show. */
+  ledger: DailyLedger;
+  /** The player's date as it opened: the last day it offers, ringed. */
+  today: DateKey;
+}
+
 /** "Show me" open: the steps that solve the hinted cell, at `step` (from 0). */
 export interface WalkthroughView {
   kind: 'walkthrough';
@@ -179,10 +189,12 @@ export type DialogState =
   | { kind: 'techniques'; initial: GuideId | null; returnTo?: WalkthroughView }
   | WalkthroughView
   | { kind: 'challenge'; offer: ChallengeOffer }
-  | { kind: 'confirmReset' };
+  | { kind: 'confirmReset' }
+  /** The daily calendar and streaks. */
+  | { kind: 'daily'; calendar: CalendarView };
 
 /** The dialogs the header opens. */
-export type HeaderDialog = 'history' | 'settings' | 'techniques' | 'help' | 'share';
+export type HeaderDialog = 'daily' | 'history' | 'settings' | 'techniques' | 'help' | 'share';
 
 /** What the History dialog lists, read from storage when it opens. */
 export interface HistoryView {
@@ -224,11 +236,14 @@ export interface SudokuActions {
   resume: () => void;
   newGame: (difficulty: Difficulty) => void;
   /**
-   * Open the daily of a date and tier, from New game: the unfinished attempt
-   * at it if there is one; else, if it has been solved, the offer to play it
-   * again; else a new attempt, dealt first if need be.
+   * Open the daily of a date and tier, from New game or the calendar: the
+   * unfinished attempt at it if there is one; else, if it has been solved,
+   * the offer to play it again (from New game — the calendar asks for that
+   * with `replayDaily`); else a new attempt, dealt first if need be.
    */
   openDaily: (date: DateKey, difficulty: Difficulty) => void;
+  /** Play a solved daily again, from the calendar: the unfinished attempt at it if there is one. */
+  replayDaily: (date: DateKey, difficulty: Difficulty) => void;
   /** Work out today's date and how its dailies stand afresh — as New game opens. */
   refreshToday: () => void;
   retry: () => void;
@@ -570,6 +585,12 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     return { date, statuses: statusesOn(records, date, loadDailyLedger(storage)) };
   };
 
+  const readCalendar = (wall: number): CalendarView => ({
+    records: loadHistory(storage),
+    ledger: loadDailyLedger(storage),
+    today: dateKeyOf(wall),
+  });
+
   /**
    * Start dealing today's dailies in the background, once for each date: so
    * they are to hand by the time anyone opens New game. Called once the
@@ -647,13 +668,18 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
 
   /**
    * Save the game on screen, its clock stopped, as another is asked for: it
-   * stays in History, resumable, so starting another needs no confirmation.
-   * One only glimpsed goes as its replacement arrives (see `isGlimpse`), so
-   * a puzzle that never arrives leaves it as it was.
+   * stays in History (and the calendar), resumable, so starting another needs
+   * no confirmation. One only glimpsed goes as its replacement arrives (see
+   * `isGlimpse`), so a puzzle that never arrives leaves it as it was. Paused
+   * by the player rather than by a dialog, as a dialog it sat behind (the
+   * calendar's) closes without resuming it.
    */
   const holdForNext = (t: Moment): void => {
     if (session === null || generating !== null) return;
-    const held = pauseSession(session, 'user', t.clock);
+    const held: Session =
+      session.pause === 'dialog'
+        ? { ...session, pause: 'user' }
+        : pauseSession(session, 'user', t.clock);
     persist(held, t);
     setSession(held);
   };
@@ -978,10 +1004,10 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
   // A link that says its puzzle is a date's daily (`&d=`), checked against
   // that date's dailies — which may mean dealing one, so it is checked once
   // mounted, and the game is opened as any shared puzzle until it checks
-  // out. If it does, the attempt is recorded as that daily, and counts
-  // towards a streak by the usual rule (begun on the daily's own date). A
-  // date that does not match, or has no daily, is ignored, as is a check
-  // that fails.
+  // out. If it does, the attempt is recorded as that daily: it shows in the
+  // calendar, and counts towards a streak by the usual rule (begun on the
+  // daily's own date). A date that does not match, or has no daily, is
+  // ignored, as is a check that fails.
   const handleDailyVerified = useEffectEvent((date: DateKey, tier: Difficulty) => {
     const hint = startup.dailyHint!;
     if (session !== null && session.record.givens === hint.givens) {
@@ -1063,8 +1089,11 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
 
   const handleVisibilityChange = useEffectEvent(() => {
     if (document.visibilityState !== 'hidden') {
-      // Back in view, perhaps on a new day: today's dailies may be new ones.
-      setToday(todayOf(loadHistory(storage), now()));
+      // Back in view, perhaps on a new day: today's dailies may be new ones,
+      // and the calendar, if it is open, has a new day to offer.
+      const wall = now();
+      setToday(todayOf(loadHistory(storage), wall));
+      if (dialog?.kind === 'daily') setDialog({ kind: 'daily', calendar: readCalendar(wall) });
       if (session !== null) prefetchDailies();
       return;
     }
@@ -1219,6 +1248,17 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       setCompletionDue(null);
       generate(difficulty, date);
     },
+    replayDaily: (date, difficulty) => {
+      const solved = findDailyAttempts(loadHistory(storage), date, difficulty).find(
+        (attempt) => attempt.status === 'solved',
+      );
+      const puzzle = solved === undefined ? null : puzzleOf(solved);
+      if (puzzle === null) {
+        actions.openDaily(date, difficulty);
+        return;
+      }
+      startPuzzle({ ...puzzle, difficulty }, null, date);
+    },
     refreshToday: () => {
       // The game on screen as it is now, so its own daily's mark is up to date.
       flush();
@@ -1240,6 +1280,12 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       }
       if (kind === 'techniques') {
         setDialog({ kind, initial: null });
+        return;
+      }
+      if (kind === 'daily') {
+        // Its marks should show the game on screen as it is now.
+        if (current !== null && savedRef.current !== current) persist(current, t);
+        setDialog({ kind, calendar: readCalendar(t.wall) });
         return;
       }
       if (kind === 'history') {

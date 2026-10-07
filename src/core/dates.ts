@@ -8,8 +8,8 @@
  *
  * All arithmetic on keys happens on the calendar fields themselves, through
  * the UTC calendar: a key's day is placed at UTC midnight, moved by whole
- * days with the `setUTC*` field setters (which carry overflow into the month
- * and year), and read back from the UTC fields. UTC has no daylight
+ * days or months with the `setUTC*` field setters (which carry overflow into
+ * the month and year), and read back from the UTC fields. UTC has no daylight
  * saving, so a local day of 23 or 25 hours never enters into it — unlike
  * adding 86,400,000 ms to a local timestamp, which lands on the wrong date
  * when the clocks change.
@@ -17,6 +17,16 @@
 
 /** A calendar date as `YYYY-MM-DD` — always a real date (see `isDateKey`). */
 export type DateKey = string;
+
+/** A calendar month as `YYYY-MM`. */
+export type MonthKey = string;
+
+/** One cell of a month grid. */
+export interface MonthGridDay {
+  date: DateKey;
+  /** False for the days of the months either side that fill out the first and last weeks. */
+  inMonth: boolean;
+}
 
 /** The date of Daily #1. */
 export const DAILY_EPOCH: DateKey = '2026-10-01';
@@ -38,6 +48,7 @@ const MAX_UTC_OFFSET_MS = 14 * 3_600_000;
 const MIN_UTC_OFFSET_MS = -12 * 3_600_000;
 
 const DATE_KEY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
+const MONTH_KEY_PATTERN = /^(\d{4})-(\d{2})$/;
 
 /**
  * UTC midnight of a calendar date, in milliseconds.
@@ -74,6 +85,11 @@ export function isDateKey(value: unknown): value is DateKey {
   // A date that does not exist carries over into the next month, so it fails
   // to come back as itself.
   return keyOfUtc(utcMidnight(Number(match[1]), Number(match[2]), Number(match[3]))) === value;
+}
+
+/** Whether a value is a `YYYY-MM` string naming a real month. */
+export function isMonthKey(value: unknown): value is MonthKey {
+  return typeof value === 'string' && MONTH_KEY_PATTERN.test(value) && isDateKey(`${value}-01`);
 }
 
 /** The local calendar date a timestamp falls on: the player's own date, by their own clock. */
@@ -123,6 +139,12 @@ export function daysBetween(from: DateKey, to: DateKey): number {
   return Math.round((utcMidnight(y2, m2, d2) - utcMidnight(y1, m1, d1)) / UTC_DAY_MS);
 }
 
+/** The day of the week, counted from Monday (0) to Sunday (6), as an en-GB calendar sets out its weeks. */
+export function weekdayOf(key: DateKey): number {
+  const [year, month, day] = fieldsOf(key);
+  return (new Date(utcMidnight(year, month, day)).getUTCDay() + 6) % 7;
+}
+
 /**
  * A local `Date` for a calendar date, at noon — for handing to `Intl` to
  * format. Noon, because a few time zones skip local midnight when their
@@ -141,4 +163,38 @@ export function dailyNumber(key: DateKey): number {
 /** The date of a daily number — the inverse of `dailyNumber`. */
 export function dateOfDaily(number: number): DateKey {
   return addDays(DAILY_EPOCH, number - 1);
+}
+
+/** The month a date falls in. */
+export function monthOf(key: DateKey): MonthKey {
+  return key.slice(0, 7);
+}
+
+/** The month `months` calendar months after `month` (before it, for a negative count). */
+export function addMonths(month: MonthKey, months: number): MonthKey {
+  const [year, monthNumber] = fieldsOf(`${month}-01`);
+  return monthOf(keyOfUtc(utcMidnight(year, monthNumber + months, 1)));
+}
+
+/** The number of days in a month. */
+export function daysInMonth(month: MonthKey): number {
+  return daysBetween(`${month}-01`, `${addMonths(month, 1)}-01`);
+}
+
+/**
+ * A month laid out as calendar weeks, Monday first: every week has seven
+ * days, and the first and last are filled out with the days of the months
+ * either side (marked `inMonth: false`), so a month takes four to six weeks.
+ */
+export function monthGrid(month: MonthKey): MonthGridDay[][] {
+  const first = `${month}-01`;
+  const start = addDays(first, -weekdayOf(first));
+  const last = addDays(first, daysInMonth(month) - 1);
+  const weekCount = (daysBetween(start, last) + 1 + (6 - weekdayOf(last))) / 7;
+  return Array.from({ length: weekCount }, (_, week) =>
+    Array.from({ length: 7 }, (_, weekday) => {
+      const date = addDays(start, week * 7 + weekday);
+      return { date, inMonth: monthOf(date) === month };
+    }),
+  );
 }

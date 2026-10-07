@@ -18,6 +18,7 @@ function renderMenu(overrides: Partial<DifficultyMenuProps> = {}) {
     today: TODAY,
     onSelect: vi.fn(),
     onSelectDaily: vi.fn(),
+    onOpenCalendar: vi.fn(),
     onOpen: vi.fn(),
     ...overrides,
   };
@@ -52,6 +53,7 @@ describe('DifficultyMenu', () => {
       "Today's Medium puzzle, in progress",
       "Today's Hard puzzle, not started",
       "Today's Expert puzzle, not started",
+      'Daily puzzles',
     ]);
     const easy = within(today).getByRole('menuitem', { name: "Today's Easy puzzle, solved" });
     expect(easy).toHaveTextContent('EasySolved');
@@ -70,10 +72,13 @@ describe('DifficultyMenu', () => {
     expect(screen.getByRole('menuitem', { name: "Today's Easy puzzle, solved" })).toBeVisible();
   });
 
-  it("opens today's daily of a tier", () => {
+  it("opens today's daily of a tier, and the calendar", () => {
     const props = renderMenu();
     fireEvent.click(screen.getByRole('menuitem', { name: "Today's Hard puzzle, not started" }));
     expect(props.onSelectDaily).toHaveBeenCalledWith('hard');
+    fireEvent.click(screen.getByRole('button', { name: 'New game' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Daily puzzles' }));
+    expect(props.onOpenCalendar).toHaveBeenCalled();
   });
 
   it('lists the four random tiers easiest first as commands, the current one marked', () => {
@@ -131,18 +136,19 @@ describe('DifficultyMenu', () => {
   it('offers no daily on a device whose clock is set before Daily #1', () => {
     renderMenu({ today: { ...TODAY, date: '2026-09-30' } });
     expect(screen.getByRole('menuitem', { name: /^Today's Hard puzzle/ })).toBeDisabled();
+    expect(screen.getByRole('menuitem', { name: 'Daily puzzles' })).toBeEnabled();
   });
 
   it('moves through both runs with the arrow keys, as through one list', () => {
     renderMenu();
     const items = screen.getAllByRole('menuitem');
-    expect(items).toHaveLength(8);
+    expect(items).toHaveLength(9);
     expect(items[0]).toHaveFocus();
     fireEvent.keyDown(items[0], { key: 'End' });
+    expect(items[8]).toHaveFocus();
+    fireEvent.keyDown(items[8], { key: 'ArrowUp' });
     expect(items[7]).toHaveFocus();
-    fireEvent.keyDown(items[7], { key: 'ArrowUp' });
-    expect(items[6]).toHaveFocus();
-    fireEvent.keyDown(items[6], { key: 'Home' });
+    fireEvent.keyDown(items[7], { key: 'Home' });
     fireEvent.keyDown(items[0], { key: 'ArrowDown' });
     expect(items[1]).toHaveFocus();
   });

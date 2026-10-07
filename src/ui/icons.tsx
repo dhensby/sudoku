@@ -172,6 +172,39 @@ export function BookIcon(props: IconProps) {
   );
 }
 
+/**
+ * A calendar page with its two binding rings and a day marked as a filled
+ * square — the calendar's own mark for a daily solved on its day: the daily
+ * puzzles and their calendar.
+ */
+export function CalendarIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="3.5" y="5" width="17" height="15.5" rx="1.5" />
+      <path d="M3.5 10h17M8 3v4M16 3v4" />
+      <rect x="7" y="13" width="3.5" height="3.5" fill="currentColor" strokeWidth={1} />
+    </Icon>
+  );
+}
+
+/** A chevron pointing left: back a step (the previous month). */
+export function ChevronLeftIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="m14.5 5.5-6.5 6.5 6.5 6.5" />
+    </Icon>
+  );
+}
+
+/** A chevron pointing right: on a step (the next month). */
+export function ChevronRightIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="m9.5 5.5 6.5 6.5-6.5 6.5" />
+    </Icon>
+  );
+}
+
 /** A plus: start a new game. */
 export function NewGameIcon(props: IconProps) {
   return (

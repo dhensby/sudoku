@@ -3,14 +3,15 @@ import type { GameRecord } from './history';
 import { DIFFICULTIES } from './storage';
 
 /*
- * Daily streaks and how each daily stands, worked out from the history.
+ * Daily streaks and the calendar's marks, worked out from the history.
  *
  * A streak is kept per tier, and only by playing each day's daily on that
  * day: a date counts for a tier if a daily attempt at that date and tier was
  * solved and had been *started* on that date, by the player's own clock.
  * Started, not finished, so a daily begun at 23:50 and solved at 00:10 still
- * counts for the day it was begun; but catching up on a past day never does,
- * however soon after. It is still recorded — as solved on another day.
+ * counts for the day it was begun; but catching up on a past day from the
+ * calendar never does, however soon after. It is still recorded, and the
+ * calendar shows it — as solved on another day.
  *
  * The date an attempt was started is the one the device wrote down at the
  * time (`GameRecord.startedOn`), never worked out again later from the
@@ -25,8 +26,8 @@ import { DIFFICULTIES } from './storage';
  * `history.ts`), which every reckoning here reads with the records.
  *
  * "Today" is always passed in, never read from the clock here: the page works
- * it out when the menu opens, so a tab left open overnight moves on to the
- * new day, and the tests pin it.
+ * it out when the menu or calendar opens, so a tab left open overnight moves
+ * on to the new day, and the tests pin it.
  */
 
 /** A tier's streak, in days. */
@@ -42,7 +43,7 @@ export interface Streak {
 }
 
 /**
- * How a daily stands, for its mark — best first: solved on its
+ * How a daily stands, for the calendar's marks — best first: solved on its
  * own day, solved but begun on another (a later one, catching up; or, from a
  * friend's link a time zone ahead, an earlier one), begun but not solved, or
  * not begun.
@@ -52,11 +53,14 @@ export type DailyStatus = 'solved-on-the-day' | 'solved-later' | 'in-progress' |
 /** How a solved daily stands: what the ledger keeps of it. */
 export type SolvedStatus = Extract<DailyStatus, 'solved-on-the-day' | 'solved-later'>;
 
+/** Each tier's standing on one date, for the tiers that have one. */
+export type DayStatuses = Partial<Record<Difficulty, DailyStatus>>;
+
 /**
  * What the dailies of pruned records said, by date and tier: only solves, as
  * an unfinished game whose record is gone cannot be resumed anyway. Never
- * pruned itself — some 20 bytes a day — so streaks and the marks outlast the
- * records they came from.
+ * pruned itself — some 20 bytes a day — so best streaks and the calendar's
+ * marks outlast the records they came from.
  */
 export type DailyLedger = ReadonlyMap<DateKey, Partial<Record<Difficulty, SolvedStatus>>>;
 
@@ -121,6 +125,27 @@ export function dailyStatus(
     if (record.daily === date && record.difficulty === tier) best = better(best, statusOf(record));
   }
   return best;
+}
+
+/**
+ * Every daily that has an attempt (or a place in the ledger), with how it
+ * stands, by date and tier — one pass over the history, for a calendar month
+ * that needs the marks of some 170 dailies at once. A daily with no attempt
+ * is missing: not started.
+ */
+export function dailyStatuses(
+  records: readonly GameRecord[],
+  ledger: DailyLedger = EMPTY_LEDGER,
+): Map<DateKey, DayStatuses> {
+  const byDate = new Map<DateKey, DayStatuses>();
+  for (const [date, solved] of ledger) byDate.set(date, { ...solved });
+  for (const record of records) {
+    if (record.daily === undefined) continue;
+    const day = byDate.get(record.daily) ?? {};
+    day[record.difficulty] = better(statusOf(record), day[record.difficulty]);
+    byDate.set(record.daily, day);
+  }
+  return byDate;
 }
 
 /**
@@ -218,4 +243,15 @@ export function computeStreak(
     day = addDays(day, -1);
   }
   return { current, best };
+}
+
+/** Every tier's streak as of `today`. */
+export function computeStreaks(
+  records: readonly GameRecord[],
+  today: DateKey,
+  ledger: DailyLedger = EMPTY_LEDGER,
+): Record<Difficulty, Streak> {
+  return Object.fromEntries(
+    DIFFICULTIES.map((tier) => [tier, computeStreak(records, tier, today, ledger)]),
+  ) as Record<Difficulty, Streak>;
 }

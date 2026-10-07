@@ -1,14 +1,20 @@
 import {
   DAILY_EPOCH,
   addDays,
+  addMonths,
   dailyNumber,
   dateKeyOf,
   dateOfDaily,
   daysBetween,
+  daysInMonth,
   isDateKey,
+  isMonthKey,
   earliestDateAnywhere,
   latestDateAnywhere,
   localDateOf,
+  monthGrid,
+  monthOf,
+  weekdayOf,
 } from './dates';
 
 const HOUR = 3_600_000;
@@ -49,6 +55,20 @@ describe('isDateKey', () => {
     }
     expect(isDateKey(20261006)).toBe(false);
     expect(isDateKey(null)).toBe(false);
+  });
+});
+
+describe('isMonthKey', () => {
+  it('accepts real months written as YYYY-MM', () => {
+    expect(isMonthKey('2026-10')).toBe(true);
+    expect(isMonthKey('2027-01')).toBe(true);
+  });
+
+  it('refuses months that do not exist and anything else', () => {
+    expect(isMonthKey('2026-13')).toBe(false);
+    expect(isMonthKey('2026-00')).toBe(false);
+    expect(isMonthKey('2026-10-01')).toBe(false);
+    expect(isMonthKey(202610)).toBe(false);
   });
 });
 
@@ -228,6 +248,15 @@ describe('daysBetween', () => {
   });
 });
 
+describe('weekdayOf', () => {
+  it('counts from Monday (0) to Sunday (6)', () => {
+    expect(weekdayOf('2026-10-05')).toBe(0);
+    expect(weekdayOf('2026-10-06')).toBe(1);
+    expect(weekdayOf('2026-10-01')).toBe(3);
+    expect(weekdayOf('2026-10-11')).toBe(6);
+  });
+});
+
 describe('dailyNumber and dateOfDaily', () => {
   it('numbers the dailies from 1 on the epoch', () => {
     expect(DAILY_EPOCH).toBe('2026-10-01');
@@ -243,5 +272,88 @@ describe('dailyNumber and dateOfDaily', () => {
     for (const key of ['2026-10-01', '2027-03-28', '2028-02-29', '2030-12-31']) {
       expect(dateOfDaily(dailyNumber(key))).toBe(key);
     }
+  });
+});
+
+describe('months', () => {
+  it('finds the month a date falls in', () => {
+    expect(monthOf('2026-10-06')).toBe('2026-10');
+  });
+
+  it('moves by whole months across years', () => {
+    expect(addMonths('2026-10', 0)).toBe('2026-10');
+    expect(addMonths('2026-10', 1)).toBe('2026-11');
+    expect(addMonths('2026-10', 3)).toBe('2027-01');
+    expect(addMonths('2026-10', -10)).toBe('2025-12');
+  });
+
+  it('knows how long each month is', () => {
+    expect(daysInMonth('2026-10')).toBe(31);
+    expect(daysInMonth('2026-11')).toBe(30);
+    expect(daysInMonth('2027-02')).toBe(28);
+    expect(daysInMonth('2028-02')).toBe(29);
+  });
+});
+
+describe('monthGrid', () => {
+  /** The grid as week rows of day numbers, with days outside the month in brackets. */
+  function sketch(month: string): string[] {
+    return monthGrid(month).map((week) =>
+      week
+        .map(({ date, inMonth }) => {
+          const day = String(Number(date.slice(8)));
+          return inMonth ? day : `(${day})`;
+        })
+        .join(' '),
+    );
+  }
+
+  it('lays a month out in Monday-first weeks, filled out from the months either side', () => {
+    // 1 October 2026 is a Thursday, and the 31st a Saturday.
+    expect(sketch('2026-10')).toEqual([
+      '(28) (29) (30) 1 2 3 4',
+      '5 6 7 8 9 10 11',
+      '12 13 14 15 16 17 18',
+      '19 20 21 22 23 24 25',
+      '26 27 28 29 30 31 (1)',
+    ]);
+    expect(monthGrid('2026-10')[0][0].date).toBe('2026-09-28');
+    expect(monthGrid('2026-10')[4][6].date).toBe('2026-11-01');
+  });
+
+  it('takes four weeks for a February that starts on a Monday', () => {
+    const grid = monthGrid('2027-02');
+    expect(grid).toHaveLength(4);
+    expect(grid.flat().every((day) => day.inMonth)).toBe(true);
+  });
+
+  it('takes six weeks for a long month that starts late in the week', () => {
+    // 1 August 2026 is a Saturday and the 31st a Monday.
+    const grid = monthGrid('2026-08');
+    expect(grid).toHaveLength(6);
+    expect(grid[5].map((day) => day.inMonth)).toEqual([
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+    ]);
+  });
+
+  describe('across the clocks changing', () => {
+    inTimeZone('Europe/London');
+
+    it('holds every date once, in order, seven to a week', () => {
+      for (const month of ['2026-03', '2026-10']) {
+        const days = monthGrid(month).flat();
+        days.forEach((day, i) => {
+          if (i > 0) expect(daysBetween(days[i - 1].date, day.date)).toBe(1);
+          if (i % 7 === 0) expect(weekdayOf(day.date)).toBe(0);
+        });
+        expect(days.filter((day) => day.inMonth)).toHaveLength(31);
+      }
+    });
   });
 });

@@ -1,7 +1,15 @@
 import type { DateKey, Difficulty } from '../core';
 import { DifficultyMenu, type TodayDailies } from './DifficultyMenu';
 import { DIFFICULTY_LABEL, formatLongDay } from './format';
-import { BookIcon, HelpIcon, HistoryIcon, MenuIcon, SettingsIcon, ShareIcon } from './icons';
+import {
+  BookIcon,
+  CalendarIcon,
+  HelpIcon,
+  HistoryIcon,
+  MenuIcon,
+  SettingsIcon,
+  ShareIcon,
+} from './icons';
 import { keepFocus } from './keepFocus';
 import { Menu } from './Menu';
 import type { Phase } from './session';
@@ -29,6 +37,7 @@ export interface HeaderProps {
 
 /** The icon buttons beside New game, in the order they appear. */
 const ACTIONS: readonly { kind: HeaderDialog; label: string; Icon: typeof HelpIcon }[] = [
+  { kind: 'daily', label: 'Daily puzzles', Icon: CalendarIcon },
   { kind: 'history', label: 'History', Icon: HistoryIcon },
   { kind: 'share', label: 'Share', Icon: ShareIcon },
   { kind: 'settings', label: 'Settings', Icon: SettingsIcon },
@@ -51,7 +60,7 @@ const SHORT_LABEL: Readonly<Record<Difficulty, string>> = {
 /**
  * The bar across the top: the wordmark and the tier on the left — "Daily ·
  * Medium" for a daily, so it is plain which games build a streak — the timer
- * and the app's actions on the right. On a phone the five less-used actions
+ * and the app's actions on the right. On a phone the six less-used actions
  * fold into an overflow menu (the stylesheet shows one or the other), so the
  * header stays one row and the board keeps the height a second would take.
  * The overflow has a menu icon of its own, so it is never confused with the
@@ -112,6 +121,7 @@ export function Header({
             today={today}
             onSelect={onNewGame}
             onSelectDaily={onOpenDaily}
+            onOpenCalendar={() => onOpenDialog('daily')}
             onOpen={onRefreshToday}
           />
           {ACTIONS.map(({ kind, label, Icon }) => (

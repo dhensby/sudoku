@@ -231,7 +231,7 @@ describe('CompletionDialog', () => {
     ])('says what it did for the streak: %o', (streak, text) => {
       renderCompletion({ daily: daily(streak) });
       const line = within(dialog()).getByText(text);
-      // Counted, it is led by the mark of a daily solved on its day.
+      // Counted, it is led by the calendar's own mark for a day solved on it.
       expect(line.querySelector('.daily-mark--solved-on-the-day') !== null).toBe(
         streak.kind !== 'later' && streak.kind !== 'early',
       );

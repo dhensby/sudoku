@@ -27,7 +27,7 @@ import {
   type GameRecord,
 } from './history';
 import { memoryStorage, type StorageLike } from './storage';
-import { computeStreak } from './streaks';
+import { computeStreak, dailyStatuses } from './streaks';
 import { quotaStorage, throwingStorage } from '../test/misc-storage';
 import { WIKIPEDIA_PUZZLE } from '../test/grids';
 
@@ -1411,11 +1411,14 @@ describe('daily records', () => {
       const records = loadHistory(storage);
       expect(records).toHaveLength(MAX_RECORDS);
       expect(records.filter((record) => record.daily !== undefined)).toEqual([]);
-      // ...but not out of the streak.
+      // ...but not out of the streak, nor the calendar.
       const ledger = loadDailyLedger(storage);
       expect(computeStreak(records, 'hard', '2026-10-30', ledger)).toEqual({
         current: 30,
         best: 30,
+      });
+      expect(dailyStatuses(records, ledger).get('2026-10-05')).toEqual({
+        hard: 'solved-on-the-day',
       });
       expect(storage.getItem('sudoku.dailyLedger')).toContain('"2026-10-05":"--d-"');
     });

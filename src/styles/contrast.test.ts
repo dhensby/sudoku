@@ -230,14 +230,24 @@ const PAIRS: Pair[] = [
   ['answer frame against where to look', 'success', 'hl-same', NON_TEXT],
   ['answer digit', mixed('success', 0.85, 'text'), mixed('success', 0.14, 'cell-bg'), TEXT],
 
-  // ---- The daily puzzles: their marks ----
+  // ---- The daily puzzles: their marks, the calendar and the streaks ----
   // A daily's mark is told by its shape, and each shape must be seen: in
   // ink, or the muted ink for one not started, on every surface it sits on
-  // (a dialog, a menu or a menu item under focus).
+  // (a dialog, a menu, a day under the pointer or a menu item under focus).
   ...(['surface-raised', 'surface'] as const).flatMap((surface): Pair[] => [
     [`a daily's mark on ${surface}`, 'text', surface, NON_TEXT],
     [`a daily not started, its empty mark on ${surface}`, 'text-muted', surface, NON_TEXT],
   ]),
+  ['a calendar day’s date on a dialog', 'text', 'surface-raised', TEXT],
+  ['a day still to come, its date muted on a dialog', 'text-muted', 'surface-raised', TEXT],
+  ['a day under the pointer, its date', 'text', 'surface', TEXT],
+  ['today’s ring against a dialog', 'text', 'surface-raised', NON_TEXT],
+  // The chosen day is the board's selection: a solid block, knocked out.
+  ['the chosen day against a dialog', 'accent', 'surface-raised', NON_TEXT],
+  ['the chosen day’s date on its block', 'accent-text', 'accent', TEXT],
+  ['the chosen day’s marks, and today’s ring, on its block', 'accent-text', 'accent', NON_TEXT],
+  ['a streak’s count on its tile', 'text', 'surface', TEXT],
+  ['a streak’s tier and best on its tile', 'text-muted', 'surface', TEXT],
   ['History’s daily label and its rule', 'text', 'surface-raised', TEXT],
 
   // ---- Show me: the walkthrough ----

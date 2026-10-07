@@ -388,10 +388,10 @@
     display: none;
   }
 
-  /* Six icon buttons rather than two, a larger wordmark and roomier gaps:
-     348.5px + 13.5em, and 24px more for a finger's 44px buttons on a
+  /* Seven icon buttons rather than two, a larger wordmark and roomier gaps:
+     390.5px + 13.5em, and 28px more for a finger's 44px buttons on a
      tablet. */
-  @container header (max-width: calc(375px + 13.5em)) {
+  @container header (max-width: calc(420px + 13.5em)) {
     .header__title {
       position: absolute;
       width: 1px;

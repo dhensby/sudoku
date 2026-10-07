@@ -9,7 +9,10 @@ describe('icons', () => {
     expect(ICONS.map(([name]) => name).sort()).toEqual(
       [
         'BookIcon',
+        'CalendarIcon',
         'CheckIcon',
+        'ChevronLeftIcon',
+        'ChevronRightIcon',
         'CloseIcon',
         'CopyIcon',
         'DownloadIcon',

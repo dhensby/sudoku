@@ -27,4 +27,12 @@ describe('DailyMark', () => {
     expect(half).toMatch(/y="5"/);
     expect(empty).not.toMatch(/fill="currentColor"/);
   });
+
+  it('takes extra classes for its size', () => {
+    const { container } = render(<DailyMark status="in-progress" className="calendar__mark" />);
+    expect(container.querySelector('svg')).toHaveAttribute(
+      'class',
+      'daily-mark daily-mark--in-progress calendar__mark',
+    );
+  });
 });

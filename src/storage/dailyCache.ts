@@ -11,7 +11,7 @@ import { isDifficulty, isObject, readJson, writeItem, type StorageLike } from '.
 
 /*
  * The daily puzzles this browser has dealt, kept between visits, so today's
- * (and any day's opened again) are to hand at once rather than dealt
+ * (and a calendar day opened again) are to hand at once rather than dealt
  * afresh: an Expert can take a tenth of a second on a laptop, and a few
  * tenths on a slow phone — and a page showing a spinner for it needs none.
  *
