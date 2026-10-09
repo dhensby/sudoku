@@ -331,8 +331,18 @@ git commit --fixup=<the engine change> -- src/daily/archive.json
 
 ## The move log
 
-The engine can keep a game as a log of its moves, `src/core/moves.ts` — a record to replay the
-game from, step by step, with nothing but the puzzle. Nothing in the game records one yet.
+The engine keeps a game as a log of its moves, `src/core/moves.ts` — a record to replay the game
+from, step by step, with nothing but the puzzle. Every game records one as it is played: each
+change the game makes goes through one step, `advance` in `src/ui/session.ts`, which runs the
+reducer and logs the move at the time on the play clock, and a guard test fails if the main hook
+ever calls the reducer itself. A game is recorded from its first move or not at all — never from
+part-way, which would read as a whole game — so one begun before logs were kept, one whose saved
+board no longer replays from its saved log (a tab still on an older version played on without
+logging), or one past 5,000 moves keeps no log. The log is saved just before the board, so it is
+never behind it: if the board's write is refused, or lost to a crash, the log reopens trimmed back
+to the moves that reach the board saved, which is the whole log of the game as saved. A log
+written by a newer version, which this one cannot read, is left alone for that version to judge.
+Nothing is shown from the logs yet; where they are kept is under [Your data](#your-data).
 
 - **What is logged:** every move that changed the game, with its time on the play clock (which
   stops while paused), rounded down to a tenth of a second so that a logged time is never later
@@ -412,22 +422,56 @@ Everything is stored in your browser's `localStorage` under `sudoku.*` keys — 
 history (up to 1,000 games, a daily's with the date it is the daily of and the date you started
 it — the calendar and the streaks are worked out from it), what the dailies of games pruned from
 the history said (a few bytes a day, kept for good, so neither a best streak nor the calendar
-forgets them), the saved state of unfinished games (up to 50), the puzzles you
-have seen (up to 2,000, so a puzzle stays seen after its game is deleted) and the daily puzzles
-already dealt (the last 112, so they need not be dealt again). There are no accounts and no
-tracking.
+forgets them), the saved state of unfinished games (up to 50), every game's move log, the
+puzzles you have seen (up to 2,000, so a puzzle stays seen after its game is deleted) and the
+daily puzzles already dealt (the last 112, so they need not be dealt again). There are no accounts
+and no tracking.
+
+Every game in the history, finished or not, keeps its **move log** (see
+[The move log](#the-move-log)) under a key of its own, `sudoku.moves.<id>`, listed in
+`sudoku.moveLogs` — never inside the history, which is rewritten whole as you play, nor the saved
+board, which a finished game loses once it is off screen while its log stays. A log is written with
+its game, only when it has changed, and goes when its game does: deleted from History, pruned past
+1,000, dropped as a glimpse, or replaced by an import. Once a visit, a sweep deletes what a tab
+still on an older version, which knows nothing of logs, can leave behind: a log whose game is no
+longer in the history, and a finished game's log whose last move is not the solve (that tab played
+the game to the end without logging, and dropped the board that would have shown the log to be
+short) — as well as a log that no longer reads back at all. A log is some 3–4
+characters a move: about 200 for a solve that only places digits, 300 with auto candidates and up
+to 1,100 for one that pencils in every candidate. With a full history of 1,000 games, 50 of them
+unfinished, everything the game stores comes to about 0.9 million characters, 0.4 million of it
+logs, for a mix of those three kinds of solve — 0.75 million if every game only placed digits, and
+1.5 million if every game pencilled in every candidate. That is under a third of the ~5 MB (some
+5.2 million characters) the browser allows the whole of `dhensby.github.io`, which every project
+hosted there shares.
+
+When that space runs out, the game makes room, cheapest loss first, trying the write again after
+each step: the logs of games no longer in the history, then the oldest finished games' logs, about
+50,000 characters at a time (an eighth or so of a full history's), until the write fits — so no
+more than one such chunk beyond what the write needed is ever lost; and only once every finished
+game's log is gone, the saved boards of all but the 10 most recently played unfinished games, and
+finished games beyond the newest 300, with their logs. The game on screen, and the logs of
+unfinished games, are never shed. Finished games' logs go first because nothing needs them to
+carry on playing. In a test with a full history and the storage filled to the brim, one chunk
+(130 logs) makes room for the whole of a pencil-every-candidate game played after it; with the
+quota cut by another 300,000 characters, 754 of the 950 finished games' logs go and every record
+and board stays. If a log cannot be written even then, its game's old log is deleted rather than
+left stopping short of the board saved beside it.
 
 A tab left open on an older version after an update carries on saving, so the game keeps what it
 does not recognise rather than wiping it: small fields a newer version added to a game's record,
 its saved board or the preferences (up to 8 per object, each at most 200 characters of JSON) are
 written back untouched, and a theme it does not know is applied as System, with none shown as
-chosen in Settings, but kept until you pick one. Nothing ever deletes the keys `sudoku.moves.<id>`
-and `sudoku.moveLogs`, which are kept for move logs.
+chosen in Settings, but kept until you pick one.
 
 Some browsers clear a site's storage after a while away (Safari does after seven days without a
 visit, unless the game has been added to the home screen). Use **Export** in History to keep a
 copy, and **Import** to bring it back or move it to another browser — imported games, the
-puzzles seen and the dailies' record are merged with what is already there.
+puzzles seen and the dailies' record are merged with what is already there. The file carries every
+game's move log too; an import takes the log of each game it adds or replaces, leaving out (on its
+own) any log that does not read back exactly, and never makes room for one by deleting anything:
+logs go only into space that was free, and if the imported games themselves only fitted once some
+of the logs here were shed, none of the file's logs are taken.
 
 ## Testing
 
@@ -446,7 +490,9 @@ puzzles seen and the dailies' record are merged with what is already there.
   a change of time zone between starting a daily and looking at its streak. The move log is
   replayed after every move of random games — every action there is, with reloads in between —
   and must rebuild the live game each time; its golden logs hold the reducer to its rules (see
-  [The move log](#the-move-log)).
+  [The move log](#the-move-log)). The game's own logs are checked move by move through the main
+  hook on a play clock of the test's own, and a full history of them is held under a third of the
+  storage quota, shedding in the order [Your data](#your-data) gives.
   Coverage thresholds are enforced in CI, with the engine held to 100%.
 - **End-to-end** (`e2e/`, Playwright): full journeys against the built app — playing and solving,
   pausing and reloading, share links between two browsers, the history, the technique guide, a

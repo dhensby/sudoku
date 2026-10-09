@@ -1,23 +1,30 @@
 import {
   STOPPED_CLOCK,
+  appendMove,
   checkGivens,
   createGame,
+  createMoveLog,
   dateKeyOf,
   deserialiseGame,
   elapsedMs,
   gridValues,
   isRunning,
+  moveFor,
   pauseClock,
   rate,
+  reduce,
   serialiseGame,
   startClock,
   toSeconds,
+  verifiedMoveCount,
   type Assists,
   type Clock,
   type DateKey,
   type Difficulty,
+  type GameAction,
   type GameState,
   type GridString,
+  type MoveLog,
   type Puzzle,
 } from '../core';
 import {
@@ -28,19 +35,22 @@ import {
   loadGameBlob,
   loadHistory,
   saveGameBlob,
+  saveGameMoves,
   upsertRecord,
   type Challenge,
   type GameRecord,
   type GameSource,
 } from '../storage/history';
+import { loadMoveLog } from '../storage/moveLogs';
 import type { StorageLike } from '../storage/storage';
 import { readSharedLink } from './url';
 
 /*
- * The game on screen as the app holds it — the board, its clock and its
- * history record travelling together — and the pure steps the main hook
- * takes with it: starting one, pausing it, saving it, reopening it, and
- * working out at startup what a visit (or a shared link) should open.
+ * The game on screen as the app holds it — the board, its clock, its move log
+ * and its history record travelling together — and the pure steps the main
+ * hook takes with it: starting one, making a move in it, pausing it, saving
+ * it, reopening it, and working out at startup what a visit (or a shared
+ * link) should open.
  *
  * Kept apart from the hook so each step can be tested on its own, with plain
  * storage and no React in the way.
@@ -92,6 +102,18 @@ export interface Session {
   record: GameRecord;
   game: GameState;
   clock: Clock;
+  /**
+   * Every move made in the game, with its time on the play clock (see
+   * `src/core/moves.ts`), kept up by `advance`; null when the game is not
+   * being recorded. A game is recorded from its first moment or not at all —
+   * never from part-way, which would make a partial log that reads as a
+   * whole one — so this is null for a game begun before logs were kept, one
+   * whose saved log no longer matches its board (a tab still on an older
+   * version played on without logging), one whose saved log this version
+   * cannot read (a newer version's, left in storage for it), and one past
+   * `MAX_MOVES`.
+   */
+  moves: MoveLog | null;
   /** Why the clock is stopped, while the game is unsolved; null while it runs (and once solved). */
   pause: PauseReason | null;
   /** Solved during this visit, so the board plays its wave. A game reopened solved does not. */
@@ -270,6 +292,7 @@ export function newSession(
     ),
     game,
     clock: start === 'running' ? startClock(STOPPED_CLOCK, now.clock) : STOPPED_CLOCK,
+    moves: createMoveLog({ autoCandidates: game.autoCandidates }),
     pause: start === 'running' ? null : start,
     isCelebrating: false,
     isSeen: start !== 'dialog',
@@ -318,6 +341,26 @@ export function asDaily(session: Session, date: DateKey, tier: Difficulty): Sess
 export function pauseSession(session: Session, reason: PauseReason, clock: number): Session {
   if (!isRunning(session.clock)) return session;
   return { ...session, clock: pauseClock(session.clock, clock), pause: reason };
+}
+
+/**
+ * Make a move: `action` through the reducer, and the move it makes (see
+ * `moveFor`) added to the log at the time on the play clock at `clock`, its
+ * monotonic reading now. The one way the game on screen changes, so that the
+ * log can never miss a move — and the reading is required, so that no move is
+ * ever logged at a time made up for it.
+ *
+ * Comes back unchanged — the same object — when the action changed nothing
+ * and logged nothing. A log that reaches `MAX_MOVES` stops being kept (see
+ * `moves`): cut off, it would no longer reach the game.
+ */
+export function advance(session: Session, action: GameAction, clock: number): Session {
+  const game = reduce(session.game, action);
+  const log = session.moves;
+  const move = log === null ? null : moveFor(session.game, action, game);
+  if (log === null || move === null) return game === session.game ? session : { ...session, game };
+  const moves = appendMove(log, move, elapsedMs(session.clock, clock));
+  return { ...session, game, moves: moves.truncated ? null : moves };
 }
 
 /**
@@ -400,22 +443,37 @@ export function recordOf(session: Session, now: Moment): GameRecord {
 }
 
 /**
- * Save a session: the game itself (so it can be resumed) and its record.
- * Best-effort, like every write; the result says how far it got.
+ * Save a session: its move log, the game itself (so it can be resumed), then
+ * its record. Best-effort, like every write; the result says how far it got.
+ *
+ * The log goes first, and is written only when it has changed since it was
+ * last saved (see `saveMoveLog`). First, so that it is never behind the board
+ * saved beside it: a board refused for space, or lost to a crash before it is
+ * written, leaves the log a few moves ahead, which reopening the game trims
+ * back to the board (see `restoreSession`); a log behind the board could only
+ * be thrown away. A log that cannot be written takes its old one with it, for
+ * the same reason. A game not being recorded has any log it had deleted, as
+ * one that no longer matches the game (bar a newer build's, which that build
+ * judges).
+ *
+ * Only a new game's very first save writes its log before its record exists,
+ * which the sweep for logs without a record allows for (see `sweepMoveLogs`).
  */
 export function saveSession(storage: StorageLike, session: Session, now: Moment): SaveResult {
-  const isBoardSaved = saveGameBlob(storage, session.record.id, serialiseGame(session.game));
+  const { id } = session.record;
+  saveGameMoves(storage, id, session.moves);
+  const isBoardSaved = saveGameBlob(storage, id, serialiseGame(session.game));
   return { records: upsertRecord(storage, recordOf(session, now)), isBoardSaved };
 }
 
 /**
- * Whether a saved game was never started: no time on its clock and nothing
- * entered on its board. It reopens behind its Start button, as it was left,
- * rather than as a game paused at 0:00.
+ * Whether a saved game was never started: no time on its clock (`elapsed`)
+ * and nothing entered on its board. It reopens behind its Start button, as it
+ * was left, rather than as a game paused at 0:00.
  */
-function isUnstarted(record: GameRecord, game: GameState): boolean {
+function isUnstarted(elapsed: number, game: GameState): boolean {
   return (
-    record.elapsedMs === 0 &&
+    elapsed === 0 &&
     game.cells.every(
       (cell) => cell.given || (cell.value === 0 && cell.notes === 0 && cell.autoRemoved === 0),
     )
@@ -448,6 +506,18 @@ function orphanRecord(id: string, game: GameState, now: number): GameRecord {
  * there is no saved game under `id`, it does not validate, or its record
  * names a different puzzle (one of the two is corrupt, and guessing which
  * would be worse than starting afresh). `now` is the wall clock (epoch ms).
+ *
+ * Its move log is kept only if it replays to exactly the board saved — the
+ * whole log, or, when the board was saved a few moves behind it (see
+ * `saveSession`), the moves up to that board, which make the whole log of the
+ * game as saved (see `verifiedMoveCount`). Otherwise — none saved, as for a
+ * game begun before logs were kept, or one that does not decode, or one a tab
+ * still on an older version left behind as it played on — the game is not
+ * recorded from here on (see `Session.moves`). The clock takes up from the
+ * record's time, or from the log's last move kept if that is later: the log
+ * is written before the record, and a crash or a refused write between the
+ * two must not lose the player time they played — nor give them time to
+ * think for free.
  */
 export function restoreSession(
   storage: StorageLike,
@@ -461,9 +531,16 @@ export function restoreSession(
   const found = records.find((record) => record.id === id);
   if (found !== undefined && found.givens !== game.puzzle.givens) return null;
   const record = found ?? orphanRecord(id, game, now);
+  const log = loadMoveLog(storage, id);
+  const count = log === null ? null : verifiedMoveCount(game.puzzle, log, game);
+  let moves: MoveLog | null = null;
+  if (log !== null && count !== null) {
+    moves = count === log.moves.length ? log : { ...log, moves: log.moves.slice(0, count) };
+  }
+  const bankedMs = Math.max(record.elapsedMs, moves?.moves.at(-1)?.at ?? 0);
   const isSolved = game.status === 'solved';
   let pause: PauseReason | null = null;
-  if (!isSolved) pause = isUnstarted(record, game) ? 'ready' : reason;
+  if (!isSolved) pause = isUnstarted(bankedMs, game) ? 'ready' : reason;
   return {
     record: {
       ...record,
@@ -472,7 +549,8 @@ export function restoreSession(
       completedAt: isSolved ? (record.completedAt ?? now) : null,
     },
     game,
-    clock: { bankedMs: record.elapsedMs, runningSince: null },
+    clock: { bankedMs, runningSince: null },
+    moves,
     pause,
     isCelebrating: false,
     // It was saved, so it was seen.

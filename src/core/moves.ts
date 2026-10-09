@@ -843,3 +843,28 @@ export function verifyMoveLog(puzzle: Puzzle, log: MoveLog, state: GameState): b
   }
   return isSameGame(replayMoves(puzzle, log), state);
 }
+
+/**
+ * How many of the log's moves, from the start, rebuild `state` as a save
+ * records it (see `verifyMoveLog`): the most that do, or null if no prefix of
+ * the log — not even none of it — does.
+ *
+ * What reopening a saved game needs, as its log is saved before its board: a
+ * board refused for space, or lost to a crash between the two writes, leaves
+ * the log a few moves ahead of the board beside it. The moves the board
+ * never got are dropped with it, and what is left is not a partial log but
+ * the whole log of the game as saved. The most rather than the fewest, as
+ * Undo can bring a game back to where it stood before: the longer log is the
+ * one that went on to it. A truncated log vouches for nothing.
+ */
+export function verifiedMoveCount(puzzle: Puzzle, log: MoveLog, state: GameState): number | null {
+  if (log.truncated) return null;
+  if (state.puzzle.givens !== puzzle.givens || state.puzzle.solution !== puzzle.solution) {
+    return null;
+  }
+  let count = isSameGame(startOf(puzzle, log), state) ? 0 : null;
+  for (const { index, after } of replayMoveSteps(puzzle, log)) {
+    if (isSameGame(after, state)) count = index + 1;
+  }
+  return count;
+}

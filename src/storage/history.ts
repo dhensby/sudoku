@@ -16,14 +16,17 @@ import {
   newerFields,
   ASSIST_FIELDS,
   SERIALISED_GAME_FIELDS,
+  decodeMoveLog,
   type Assists,
   type DateKey,
   type Difficulty,
   type GridString,
+  type MoveLog,
   type RandomFn,
 } from '../core';
 import {
   DIFFICULTIES,
+  GAME_ID_PATTERN,
   deleteItem,
   isDifficulty,
   isObject,
@@ -31,8 +34,19 @@ import {
   readItem,
   readJson,
   writeItem,
+  type MakeRoom,
   type StorageLike,
 } from './storage';
+import {
+  deleteMoveLog,
+  dropMoveLogs,
+  isNewerMoveLog,
+  loadEncodedMoveLog,
+  moveLogSize,
+  readMoveLogIds,
+  saveMoveLog,
+  storeMoveLogs,
+} from './moveLogs';
 import {
   EMPTY_LEDGER,
   addToLedger,
@@ -45,7 +59,7 @@ import {
  * The history of every game played, the saved state of unfinished ones, and
  * the puzzles the player has seen.
  *
- * Six kinds of key:
+ * Six kinds of key here, and the move logs' two (see `moveLogs.ts`):
  *   sudoku.history      the list of `GameRecord`s, newest first
  *   sudoku.game.<id>    one game's saved state, opaque here (the game module
  *                       validates it on the way back in)
@@ -55,6 +69,8 @@ import {
  *                       show, least recently seen first (see `markSeen`)
  *   sudoku.dailyLedger  what the solved dailies among pruned records said,
  *                       so streaks outlast them (see `DailyLedger`)
+ *   sudoku.moves.<id>   one game's move log
+ *   sudoku.moveLogs     the ids that have a `sudoku.moves.<id>` key
  *
  * Records are small and kept for a long time (up to MAX_RECORDS); saved games
  * are a few times bigger and only worth keeping while someone might resume
@@ -62,8 +78,11 @@ import {
  * beyond MAX_SAVED_GAMES keeps its record and can still be replayed from its
  * givens, and a finished game's state is dropped as soon as it stops being
  * the game on screen — nothing but the current game ever reopens a finished
- * one. When the browser refuses a write for space, the store sheds the
- * cheapest data first (see `freeSpace`) and tries once more.
+ * one. A move log is kept for every record, finished or not, and goes with
+ * it: it is the game move by move, which outlives the board, and at a few
+ * hundred characters it costs a record or two.
+ * When the browser refuses a write for space, the store sheds the cheapest
+ * data first, trying again after each stage (see `MAKE_ROOM`).
  *
  * The list of saved games is what lets the store tidy up without touching
  * every record: the history is saved every few hundred milliseconds of play,
@@ -85,13 +104,9 @@ import {
  * export and import; the fields this version knows are validated as ever.
  * Saved games keep theirs the same way (see `saveGameBlob`).
  *
- * Reserved for the move logs a later version keeps, and never to be used for
- * anything else here:
- *   sudoku.moves.<id>   one game's move log
- *   sudoku.moveLogs     the ids that have a `sudoku.moves.<id>` key
- * Nothing in this module deletes a key by prefix or by enumerating storage —
- * only `sudoku.game.<id>` keys it has listed, and its own fixed keys — so
- * those survive any sweep or shedding done by this version.
+ * A log whose record has gone — pruned by a tab still on a version from
+ * before logs were kept, which knows nothing of them, or a delete that failed
+ * partway — is swept away once a visit (see `sweepMoveLogs`).
  *
  * A field kept this way is a snapshot, never updated here however the game
  * goes on; a later version must be able to tell when one has gone stale (see
@@ -186,6 +201,22 @@ export const MAX_SEEN = 2000;
 const SAVED_GAMES_WHEN_FULL = 10;
 /** …and finished records that survive. */
 const FINISHED_RECORDS_WHEN_FULL = 300;
+/**
+ * Before either, the oldest finished games' move logs are shed, at least this
+ * many characters of them at a time, until the write fits: an eighth or so of
+ * a full history's logs (see the README's "Your data"), which leaves room for
+ * many saves to come without shedding again for each.
+ */
+const LOG_SHED_CHARS = 50_000;
+/**
+ * How far a solved game's recorded time may be from its log's last move for
+ * the log still to count as reaching the solve (see `sweepMoveLogs`). The
+ * clock stops with the solving move, and the log rounds that move's time down
+ * to a tenth of a second, so the two are a tenth apart at most; a second
+ * leaves room for a slow device, while a move made since without logging,
+ * which means finding a cell and a digit, takes longer.
+ */
+const SOLVE_SLACK_MS = 1000;
 
 const HISTORY_KEY = 'sudoku.history';
 const CURRENT_KEY = 'sudoku.current';
@@ -201,12 +232,6 @@ const MIN_GIVENS = 17;
 const EXPORT_APP = 'sudoku';
 const EXPORT_VERSION = 1;
 
-/**
- * What an id may look like. `createGameId` writes far less than this allows;
- * the pattern is loose so ids from another version of the game still load,
- * and exists at all so an imported file cannot mint arbitrary storage keys.
- */
-const ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 const ID_ALPHABET = '0123456789abcdefghijklmnopqrstuvwxyz';
 const GAME_SOURCES: readonly string[] = ['generated', 'daily', 'shared', 'replay'];
 
@@ -363,7 +388,7 @@ function normaliseChallenge(value: unknown): Challenge | null {
 function normaliseRecord(value: unknown): GameRecord | null {
   if (!isObject(value)) return null;
   const { id, givens, difficulty, status, createdAt, elapsedMs } = value;
-  if (typeof id !== 'string' || !ID_PATTERN.test(id)) return null;
+  if (typeof id !== 'string' || !GAME_ID_PATTERN.test(id)) return null;
   if (!isGridString(givens) || !isPlayable(givens) || !isDifficulty(difficulty)) return null;
   if (status !== 'playing' && status !== 'solved') return null;
   if (!isFiniteNumber(createdAt) || createdAt < 0) return null;
@@ -435,7 +460,9 @@ function parseRecords(items: readonly unknown[]): GameRecord[] {
 function readSavedIds(storage: StorageLike): string[] {
   const parsed = readJson(storage, SAVED_KEY);
   if (!Array.isArray(parsed)) return [];
-  const ids = parsed.filter((id): id is string => typeof id === 'string' && ID_PATTERN.test(id));
+  const ids = parsed.filter(
+    (id): id is string => typeof id === 'string' && GAME_ID_PATTERN.test(id),
+  );
   return [...new Set(ids)];
 }
 
@@ -448,7 +475,7 @@ function storeGame(
   storage: StorageLike,
   id: string,
   json: string,
-  makeRoom?: (storage: StorageLike) => void,
+  makeRoom?: readonly MakeRoom[],
 ): boolean {
   if (!writeItem(storage, gameKey(id), json, makeRoom)) return false;
   const ids = readSavedIds(storage);
@@ -501,10 +528,10 @@ function oldest(
 }
 
 /**
- * Drop records by id, along with their saved games. A solved daily goes only
- * once what it said is safely in the ledger (see `DailyLedger`): if the
- * ledger cannot be written, the daily stays — a record too many is better
- * than a streak lost.
+ * Drop records by id, along with their saved games and move logs. A solved
+ * daily goes only once what it said is safely in the ledger (see
+ * `DailyLedger`): if the ledger cannot be written, the daily stays — a record
+ * too many is better than a streak lost.
  */
 function removeRecords(
   storage: StorageLike,
@@ -524,6 +551,7 @@ function removeRecords(
     }
   }
   dropSavedGames(storage, (id) => drop.has(id));
+  dropMoveLogs(storage, (id) => drop.has(id));
   return records.filter((record) => !drop.has(record.id));
 }
 
@@ -571,10 +599,50 @@ function sweepSavedGames(
 }
 
 /**
- * Make room after a refused write, cheapest losses first: the saved state of
- * all but the 10 most recently played unfinished games (their records stay,
- * replayable from the givens), then finished records beyond the newest 300.
- * Neither touches a protected game. Returns the records that remain.
+ * Make room by deleting move logs nobody will miss as much as anything else
+ * here: those whose record has gone, then the oldest finished games' — never a
+ * protected game's, nor an unfinished one's — until at least `LOG_SHED_CHARS`
+ * are freed (or every such log is gone). A finished game's log is only ever
+ * looked back on — nothing needs it to carry on playing — so it is cheaper to
+ * lose than a board someone might resume or a record in the stats.
+ *
+ * A stage that `writeItem` asks again while the write still does not fit (see
+ * `MakeRoom`), so the logs go a chunk at a time, oldest first, and no more of
+ * them than the write needed bar the last chunk's slack. Returns whether it
+ * freed anything: a log's characters, or its place on the list. A log whose
+ * key is gone but whose id the list could not lose (a storage too full for
+ * even a shorter list) frees nothing the next time, so asking again always
+ * comes to an end.
+ */
+function shedMoveLogs(
+  storage: StorageLike,
+  records: readonly GameRecord[],
+  keep: ReadonlySet<string>,
+): boolean {
+  const listed = new Set(readMoveLogIds(storage));
+  const known = new Set(records.map((record) => record.id));
+  const doomed = new Set<string>();
+  let freed = 0;
+  const doom = (id: string): void => {
+    doomed.add(id);
+    freed += moveLogSize(storage, id);
+  };
+  for (const id of listed) if (!known.has(id) && !keep.has(id)) doom(id);
+  for (let i = records.length - 1; i >= 0 && freed < LOG_SHED_CHARS; i--) {
+    const { id, status } = records[i];
+    if (status === 'solved' && listed.has(id) && !keep.has(id)) doom(id);
+  }
+  if (doomed.size === 0) return false;
+  dropMoveLogs(storage, (id) => doomed.has(id));
+  return freed > 0 || readMoveLogIds(storage).length < listed.size;
+}
+
+/**
+ * Make room after a refused write, at the last: the saved state of all but the
+ * 10 most recently played unfinished games (their records stay, replayable
+ * from the givens), then finished records beyond the newest 300, their logs
+ * with them. Neither touches a protected game. Returns the records that
+ * remain.
  */
 function shed(
   storage: StorageLike,
@@ -589,32 +657,73 @@ function shed(
 
 /**
  * Write the record list. If the browser refuses it, shed what can be spared —
- * from this very list, so the retry is smaller, and never a game in `keep` —
- * and try once more. Returns the list as it now stands, whether or not the
- * write went through: persistence is best-effort, and the session carries on
- * regardless.
+ * finished games' move logs first, a chunk at a time (see `shedMoveLogs`),
+ * then saved games and finished records from this very list, so the last
+ * retry is smaller, and never a game in `keep` — and try once more. Returns
+ * the list as it now stands, whether or not the write went through:
+ * persistence is best-effort, and the session carries on regardless.
  */
 function saveRecords(
   storage: StorageLike,
   records: GameRecord[],
   keep: ReadonlySet<string> = protectedIds(storage),
 ): GameRecord[] {
-  if (writeItem(storage, HISTORY_KEY, JSON.stringify(records))) return records;
-  const kept = shed(storage, records, keep);
-  writeItem(storage, HISTORY_KEY, JSON.stringify(kept));
-  return kept;
+  return writeRecords(storage, records, keep).records;
 }
 
 /**
- * Free space after some other write was refused (see `writeItem`): sheds
- * saved games and old finished records as `saveRecords` does, and rewrites
- * the history if that dropped any records.
+ * `saveRecords`, also saying whether the write had to make room (`isTight`):
+ * an import must not fill the space freed for its records with its own logs.
+ */
+function writeRecords(
+  storage: StorageLike,
+  records: GameRecord[],
+  keep: ReadonlySet<string>,
+): { records: GameRecord[]; isTight: boolean } {
+  let isTight = false;
+  const shedLogs: MakeRoom = (s) => {
+    isTight = true;
+    return shedMoveLogs(s, records, keep);
+  };
+  if (writeItem(storage, HISTORY_KEY, JSON.stringify(records), shedLogs)) {
+    return { records, isTight };
+  }
+  const kept = shed(storage, records, keep);
+  writeItem(storage, HISTORY_KEY, JSON.stringify(kept));
+  return { records: kept, isTight: true };
+}
+
+/**
+ * The last stage of making room after some other write was refused (see
+ * `MAKE_ROOM`): sheds saved games and old finished records as `saveRecords`
+ * does, and rewrites the history if that dropped any records.
  */
 export function freeSpace(storage: StorageLike): void {
   const records = loadHistory(storage);
   const kept = shed(storage, records, protectedIds(storage));
   if (kept.length < records.length) writeItem(storage, HISTORY_KEY, JSON.stringify(kept));
 }
+
+/**
+ * Making room after a write was refused, sparing the current game and those
+ * in `ids`: the stages `writeItem` works through, cheapest loss first and
+ * trying the write again after each — finished games' move logs, a chunk at
+ * a time (see `shedMoveLogs`), then saved games and old finished records (see
+ * `freeSpace`).
+ */
+function makeRoomSparing(...ids: string[]): readonly MakeRoom[] {
+  return [
+    (storage) => shedMoveLogs(storage, loadHistory(storage), protectedIds(storage, ...ids)),
+    freeSpace,
+  ];
+}
+
+/**
+ * Making room after a write was refused (see `makeRoomSparing`): what every
+ * write of the game's own data passes to `writeItem`, so that the cheapest
+ * data here goes first, whichever write found the storage full.
+ */
+export const MAKE_ROOM: readonly MakeRoom[] = makeRoomSparing();
 
 // ---------------------------------------------------------------------------
 // The daily ledger
@@ -754,8 +863,8 @@ function keepNewerFields(record: GameRecord, stored: GameRecord): GameRecord {
 }
 
 /**
- * Delete a record and its saved game; forgets the current game if it was this
- * one. Returns the new list.
+ * Delete a record, its saved game and its move log; forgets the current game
+ * if it was this one. Returns the new list.
  *
  * The puzzle stays seen if its board was ever on show — time on its clock, or
  * solved — whether or not `markSeen` heard of it at the time (a record from
@@ -769,6 +878,7 @@ export function deleteRecord(storage: StorageLike, id: string): GameRecord[] {
     markSeen(storage, doomed.givens);
   }
   deleteGameBlob(storage, id);
+  deleteMoveLog(storage, id);
   if (loadCurrentId(storage) === id) saveCurrentId(storage, null);
   const kept = records.filter((record) => record.id !== id);
   return kept.length === records.length ? records : saveRecords(storage, kept);
@@ -836,9 +946,10 @@ export function computeStats(records: readonly GameRecord[]): Record<Difficulty,
 
 /**
  * Save a game's state (anything JSON can hold — the game module's serialised
- * form). Best-effort: if the browser refuses it even after `freeSpace`, the
- * game simply is not resumable after a reload. Returns whether it was saved,
- * so the caller can avoid pointing `sudoku.current` at a game that was not.
+ * form). Best-effort: if the browser refuses it even after making room (see
+ * `MAKE_ROOM`), the game simply is not resumable after a reload. Returns
+ * whether it was saved, so the caller can avoid pointing `sudoku.current` at a
+ * game that was not.
  *
  * Small top-level fields of the state saved before that this version does
  * not know (see `SERIALISED_GAME_FIELDS` and `newerFields`) are carried over
@@ -854,7 +965,7 @@ export function saveGameBlob(storage: StorageLike, id: string, blob: unknown): b
     return false; // a cycle or a BigInt: a programmer error, but not one worth a crash
   }
   if (json === undefined) return false;
-  return storeGame(storage, id, json, freeSpace);
+  return storeGame(storage, id, json, MAKE_ROOM);
 }
 
 /** A game's state to save, with the small fields only a newer version wrote to its previous save put back. */
@@ -894,13 +1005,78 @@ export function deleteGameBlob(storage: StorageLike, id: string): void {
 /** The id of the game on screen when the page was last used, or null. */
 export function loadCurrentId(storage: StorageLike): string | null {
   const id = readItem(storage, CURRENT_KEY);
-  return id !== null && ID_PATTERN.test(id) ? id : null;
+  return id !== null && GAME_ID_PATTERN.test(id) ? id : null;
 }
 
 /** Remember the game on screen, or forget it with null. */
 export function saveCurrentId(storage: StorageLike, id: string | null): void {
   if (id === null) deleteItem(storage, CURRENT_KEY);
-  else writeItem(storage, CURRENT_KEY, id, freeSpace);
+  else writeItem(storage, CURRENT_KEY, id, MAKE_ROOM);
+}
+
+// ---------------------------------------------------------------------------
+// Move logs
+// ---------------------------------------------------------------------------
+
+/**
+ * Save a game's move log alongside its record (see `moveLogs.ts`), or with
+ * null make sure it has none. A log refused for space makes room as any other
+ * write does (see `MAKE_ROOM`) — but never at the cost of this game's own log,
+ * even before it is the current game. Returns whether storage now holds what
+ * was asked.
+ */
+export function saveGameMoves(storage: StorageLike, id: string, log: MoveLog | null): boolean {
+  return saveMoveLog(storage, id, log, makeRoomSparing(id));
+}
+
+/**
+ * Delete the logs that no longer go with a record, once a visit:
+ *
+ * - those whose record is gone — left by a tab still on a version from
+ *   before logs were kept, which prunes and deletes records knowing nothing
+ *   of them, or by a delete that failed partway;
+ * - a solved game's log whose last move was not the solve (see
+ *   `SOLVE_SLACK_MS`) — left when a tab on such a version took the game on
+ *   from a log this version started, played it to the end without logging,
+ *   and dropped its board, the one thing that could have shown the log to be
+ *   short. Kept, it would read as the whole game;
+ * - a log that does not decode and is not a newer build's (see
+ *   `isNewerMoveLog`): broken, it would only ever be refused.
+ *
+ * Never the current game's, whose record may yet be written (and whose log is
+ * checked against its board as it is reopened), nor a newer build's log, which
+ * that build judges. The list of logs is read before the history, so a log
+ * another tab adds meanwhile is never taken for an orphan — bar one written
+ * by the very first save of a game, a moment before its record (see
+ * `saveSession`), which that tab's next save puts back.
+ */
+export function sweepMoveLogs(storage: StorageLike): void {
+  const listed = readMoveLogIds(storage);
+  if (listed.length === 0) return;
+  const byId = new Map(loadHistory(storage).map((record) => [record.id, record]));
+  const keep = protectedIds(storage);
+  const doomed = new Set(
+    listed.filter((id) => {
+      if (keep.has(id)) return false;
+      const record = byId.get(id);
+      const encoded = loadEncodedMoveLog(storage, id);
+      if (record === undefined || encoded === null) return true;
+      const log = decodeMoveLog(encoded);
+      if (log === null) return !isNewerMoveLog(encoded);
+      return record.status === 'solved' && !endsAtSolve(record, log);
+    }),
+  );
+  if (doomed.size > 0) dropMoveLogs(storage, (id) => doomed.has(id));
+}
+
+/**
+ * Whether a solved record's log reaches the solve, judged by time alone, as
+ * the board may be long gone: its last move must be within `SOLVE_SLACK_MS`
+ * of the time recorded, which the clock stopped at with the solving move.
+ */
+function endsAtSolve(record: GameRecord, log: MoveLog): boolean {
+  const last = log.moves.at(-1);
+  return last !== undefined && Math.abs(record.elapsedMs - last.at) < SOLVE_SLACK_MS;
 }
 
 // ---------------------------------------------------------------------------
@@ -937,13 +1113,13 @@ function readSeen(storage: StorageLike): string[] {
 
 /** Write the list of seen puzzles, held to the MAX_SEEN seen most recently. */
 function writeSeen(storage: StorageLike, codes: readonly string[]): void {
-  writeItem(storage, SEEN_KEY, JSON.stringify(codes.slice(-MAX_SEEN)), freeSpace);
+  writeItem(storage, SEEN_KEY, JSON.stringify(codes.slice(-MAX_SEEN)), MAKE_ROOM);
 }
 
 /**
  * Remember that a puzzle's board has been on show, as its most recent sight.
- * Best-effort, like every write: a refused one makes room (see `freeSpace`)
- * and tries once more.
+ * Best-effort, like every write: a refused one makes room (see `MAKE_ROOM`)
+ * and tries again.
  */
 export function markSeen(storage: StorageLike, givens: GridString): void {
   const code = encodeGivens(givens);
@@ -992,10 +1168,11 @@ function mergeSeen(storage: StorageLike, incoming: unknown): void {
 /**
  * The whole history as a JSON file: every record, plus the saved state of
  * every game that has some, so an unfinished game can be resumed on the
- * other side; the puzzles seen, so one played and deleted here is no fresh
- * puzzle there either; and the daily ledger, so streaks travel whole. Safari
- * deletes the storage of a site not visited for seven days, so this file is
- * the only backup there is.
+ * other side; every game's move log, as stored (`moves`, by id — a file from
+ * before logs were kept has none, and still imports); the puzzles seen, so one
+ * played and deleted here is no fresh puzzle there either; and the daily
+ * ledger, so streaks travel whole. Safari deletes the storage of a site not
+ * visited for seven days, so this file is the only backup there is.
  */
 export function exportHistory(storage: StorageLike, now: number): string {
   const records = loadHistory(storage);
@@ -1008,6 +1185,13 @@ export function exportHistory(storage: StorageLike, now: number): string {
       return blob === null ? [] : [[record.id, blob] as const];
     }),
   );
+  const logged = new Set(readMoveLogIds(storage));
+  const moves = Object.fromEntries(
+    records.flatMap((record) => {
+      const encoded = logged.has(record.id) ? loadEncodedMoveLog(storage, record.id) : null;
+      return encoded === null ? [] : [[record.id, encoded] as const];
+    }),
+  );
   const seen = readSeen(storage);
   const dailyLedger = encodeLedger(loadDailyLedger(storage));
   return JSON.stringify(
@@ -1017,6 +1201,7 @@ export function exportHistory(storage: StorageLike, now: number): string {
       exportedAt: now,
       records,
       games,
+      moves,
       seen,
       dailyLedger,
     },
@@ -1036,10 +1221,15 @@ export function exportHistory(storage: StorageLike, now: number): string {
  * Saved state from the file is taken only for games that will keep it (the
  * MAX_SAVED_GAMES most recently played unfinished ones), newest first, and
  * only into space that is free: an import never evicts a game saved here to
- * make room for one of its own. The file's seen puzzles are added to the ones
- * here (see `mergeSeen`); a file from before they were exported has none,
- * which is no loss, as its records count as seen in their own right. So is
- * its daily ledger (see `mergeLedger`).
+ * make room for one of its own. The same goes for move logs, taken for every
+ * record it adds or updates and for no other, after the saved games: each is
+ * decoded strictly first, and one that does not decode is left out, costing
+ * that game its log and nothing more. If the records themselves only fitted
+ * once logs here were shed, none of the file's logs are taken: the space that
+ * freed is not theirs to fill. The file's seen puzzles are added to
+ * the ones here (see `mergeSeen`); a file from before they were exported has
+ * none, which is no loss, as its records count as seen in their own right. So
+ * is its daily ledger (see `mergeLedger`).
  */
 export function importHistory(storage: StorageLike, json: string): ImportResult {
   let data: unknown;
@@ -1057,6 +1247,7 @@ export function importHistory(storage: StorageLike, json: string): ImportResult 
     return { ok: false };
   }
   const games = isObject(data.games) ? data.games : {};
+  const moves = isObject(data.moves) ? data.moves : {};
   mergeSeen(storage, data.seen);
   mergeLedger(storage, data.dailyLedger);
 
@@ -1077,13 +1268,18 @@ export function importHistory(storage: StorageLike, json: string): ImportResult 
 
   const keep = protectedIds(storage);
   const merged = sortNewestFirst([...byId.values()]);
-  const saved = saveRecords(storage, capRecords(storage, merged, keep), keep);
+  const { records: saved, isTight } = writeRecords(
+    storage,
+    capRecords(storage, merged, keep),
+    keep,
+  );
   const isImported = (id: string): boolean => added.has(id) || updated.has(id);
   const imported = saved.filter((record) => isImported(record.id));
 
   // Anything already saved under an imported id belonged to the copy that
   // lost; resuming it would contradict the record that won.
   dropSavedGames(storage, isImported);
+  dropMoveLogs(storage, isImported);
   const slots = savedGameSlots(saved, MAX_SAVED_GAMES, keep);
   const incomingGames = imported
     .filter((record) => slots.has(record.id) && Object.hasOwn(games, record.id))
@@ -1093,6 +1289,18 @@ export function importHistory(storage: StorageLike, json: string): ImportResult 
     storeGame(storage, record.id, JSON.stringify(games[record.id]));
   }
   sweepSavedGames(storage, saved, MAX_SAVED_GAMES);
+  // If the records only fitted once logs here were shed, whatever that freed
+  // beyond their needs is not the file's to fill: its logs are left out.
+  if (!isTight)
+    storeMoveLogs(
+      storage,
+      [...imported]
+        .sort((a, b) => b.updatedAt - a.updatedAt)
+        .flatMap((record) => {
+          const encoded = Object.hasOwn(moves, record.id) ? moves[record.id] : null;
+          return decodeMoveLog(encoded) === null ? [] : [[record.id, encoded as string] as const];
+        }),
+    );
 
   const addedCount = imported.filter((record) => added.has(record.id)).length;
   return { ok: true, added: addedCount, updated: imported.length - addedCount };
