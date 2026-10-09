@@ -105,9 +105,22 @@ your browser.
   highlights beside and around it. Candidates are set large (28% of the cell, at least 11px on all
   but the smallest boards, and 9px on a phone on its side), and heavier on a phone-sized board. A
   night edition is drawn for the dark rather than inverted — box lines in the page's ink, bright
-  thin rules, and row, column and same-number fills strong enough to find at a glance (it follows
-  your system, or pick Light or Dark in Settings) — and the game stays playable in Windows High
-  Contrast.
+  thin rules, and row, column and same-number fills strong enough to find at a glance — and the
+  game stays playable in Windows High Contrast.
+- **High contrast, for when dark is still too faint** — a fourth theme: white givens on black
+  cells, your own numbers in a pale sky blue, near-white candidates, brighter thin rules, and white
+  box lines a pixel heavier (never under 3px, inside a frame never under 4px). The selected cell is
+  a solid yellow block with black numbers (a deeper gold when it holds a given), its row, column
+  and box a slate blue; every other cell with its number gets a yellow ring just inside its edge,
+  kept clear of the digit, and its number is lit in yellow among the candidates too (both with
+  Highlight identical numbers on, as it is by default); buttons, focus rings and the calendar's
+  chosen day take the same yellow. Every number, label and candidate holds at least 7:1 — but for
+  the technique guide's struck-out candidates, bold and struck through in red, at 5.8:1 on the
+  same-number fill — every mark at least 3:1, and conflicts, checked and revealed numbers keep
+  their dot, slash, tick and italic. Settings › Theme offers System, Light, Dark and High contrast;
+  under System it comes on by itself when the device is in dark mode and asks for more contrast
+  (Increase contrast on an iPhone or a Mac, for example). A light device asking for more contrast
+  keeps the light theme, which is ink on paper already.
 
 ## Tech stack
 
@@ -385,7 +398,8 @@ puzzles seen and the dailies' record are merged with what is already there.
   `isStepValid`, the check a walkthrough must pass before it is shown — golden puzzles pinned per
   tier, and property tests over many seeds. Components and hooks are tested through real
   interactions. The palette is read straight from the stylesheet and held to its contrast targets
-  pair by pair, in both themes and under simulated colour-blindness
+  pair by pair, in all three palettes (High contrast's text at 7:1, but for the guide's struck-out
+  candidate on the same-number fill, held at 4.5:1) and under simulated colour-blindness
   (`src/styles/contrast.test.ts`). The daily archive is held to the engine in the code, and on a
   pull request to the archive main has released, by a guard of its own
   (`src/daily/archive.guard.test.ts`, see [The daily archive](#the-daily-archive)), and date
@@ -402,8 +416,10 @@ puzzles seen and the dailies' record are merged with what is already there.
   side). An accessibility pass
   (`a11y.spec.ts`) runs axe-core's WCAG 2.2 A and AA rules over the main states — the board with
   every kind of mark, the Ready and Paused cards, the menus, every dialog (Show me's and the daily
-  calendar's included) and each guide entry — in both themes, and allows no violations. Three
-  projects:
+  calendar's included) and each guide entry — in both themes, and the board, the dialogs, the
+  menus and the calendar in High contrast, both chosen in Settings on a dark device and from a dark
+  system asking for more contrast, measuring its heavier lines and its same-number ring kept off
+  the digits — and allows no violations. Three projects:
 
   | Project    | Device         | Engine   | Specs                                                 |
   | ---------- | -------------- | -------- | ----------------------------------------------------- |

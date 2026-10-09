@@ -1,16 +1,17 @@
 /*
  * Global foundations: the design tokens every other stylesheet draws from,
- * the light and dark palettes, Windows High Contrast, and a small reset.
- * Components live in the files imported below, and use only these custom
- * properties for colour — so a palette is changed here, once, and the
- * forced-colours block can remap the whole app to system colours.
+ * the light, dark and High contrast palettes, Windows High Contrast, and a
+ * small reset. Components live in the files imported below, and use only
+ * these custom properties for colour — so a palette is changed here, once,
+ * and the forced-colours block can remap the whole app to system colours.
  *
  * The theme is Broadsheet: the puzzle page of a morning paper. Warm
  * newsprint, true ink-black rules and one ultramarine spot colour by day;
  * ink on charcoal, with a lamp-lit amber and a lit periwinkle, by night —
- * drawn for the dark rather than inverted from the day. Every pair a player
- * reads is held to a contrast target in contrast.test.ts, so a change here
- * that weakens one fails a test rather than a player's eyes.
+ * drawn for the dark rather than inverted from the day; and, for players
+ * who want more, white and yellow on black. Every pair a player reads is
+ * held to a contrast target in contrast.test.ts, so a change here that
+ * weakens one fails a test rather than a player's eyes.
  */
 
 /* @import has to come before every other rule, or the browser drops it. */
@@ -65,6 +66,14 @@
   --hl-ring: #17150f;
   /* Keyboard focus on the selected cell: a paper line inside the ring. */
   --cell-focus: #fffcf5;
+  /*
+   * High contrast's extras, which every other palette turns off: a ring
+   * inside each same-number cell (none here, and no width), and a pixel
+   * more on every box line and the frame (layout.css adds it in).
+   */
+  --hl-same-ring: transparent;
+  --hl-same-ring-width: 0px;
+  --line-boost: 0px;
 
   /*
    * Inks. Givens are typeset in ink; the player's own digits are in a
@@ -83,6 +92,9 @@
   --digit-revealed-selected: #fbc2ea;
   --candidate: #47423a;
   --candidate-selected: #f1ece0;
+  /* A candidate of the selected cell's number: in its plain ink but in
+     High contrast, where it is lit like the ring on the same numbers. */
+  --candidate-same: #47423a;
   /* Conflicts and wrong answers; a light coral on the selected block. */
   --danger: #920e0a;
   --danger-selected: #ffa294;
@@ -123,7 +135,8 @@
  * Dark comes two ways: from the system, unless the player has forced light
  * (theme.ts sets data-theme), and from forcing dark. The two blocks must stay
  * identical; CSS has no way to share one declaration block between a media
- * query and a plain selector.
+ * query and a plain selector. The system block also matches under High
+ * contrast, whose blocks come later and so win.
  */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
@@ -149,6 +162,9 @@
     --hl-selected-given: #a9b8ff;
     --hl-ring: #f3eee4;
     --cell-focus: #13120f;
+    --hl-same-ring: transparent;
+    --hl-same-ring-width: 0px;
+    --line-boost: 0px;
     --digit-given: #fcf6ec;
     --digit-given-selected: #13120f;
     --digit-player: #dfe5ff;
@@ -159,6 +175,7 @@
     --digit-revealed-selected: #541043;
     --candidate: #ddd6c8;
     --candidate-selected: #26231e;
+    --candidate-same: #ddd6c8;
     --danger: #ff988a;
     --danger-selected: #8a1209;
     --success: #7fdb9b;
@@ -194,6 +211,9 @@
   --hl-selected-given: #a9b8ff;
   --hl-ring: #f3eee4;
   --cell-focus: #13120f;
+  --hl-same-ring: transparent;
+  --hl-same-ring-width: 0px;
+  --line-boost: 0px;
   --digit-given: #fcf6ec;
   --digit-given-selected: #13120f;
   --digit-player: #dfe5ff;
@@ -204,6 +224,7 @@
   --digit-revealed-selected: #541043;
   --candidate: #ddd6c8;
   --candidate-selected: #26231e;
+  --candidate-same: #ddd6c8;
   --danger: #ff988a;
   --danger-selected: #8a1209;
   --success: #7fdb9b;
@@ -213,6 +234,127 @@
   --key-border: #7f786c;
   --button-bg: #3a3731;
   --shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
+}
+
+/* ---- Tokens: High contrast ---- */
+
+/*
+ * White and yellow on black, for players who find even the dark palette
+ * faint. Givens in white on a near-black screen, the player's own digits in
+ * a pale sky blue, candidates near-white; thin rules a mid grey and the box
+ * lines white and a pixel heavier (--line-boost); the selected cell a solid
+ * yellow block with black inks, ringed in white like the box lines (a
+ * selected given a deeper gold, so it still shows it is a given); the
+ * selection's row, column and box a slate as strong as the steps up to the
+ * same numbers allow; the same numbers on an olive fill with a yellow ring just inside their edge
+ * (--hl-same-ring), clear of the digit — yellow against white is barely
+ * 1.4:1 — and the candidates of the selected number lit in the same
+ * yellow (--candidate-same). The accent is that yellow too, so a button,
+ * a focus ring or the calendar's chosen day reads as the board's selection.
+ *
+ * It comes two ways, like dark: picked in Settings (data-theme), and under
+ * System when the device is dark and asks for more contrast (theme.ts clears
+ * data-theme for System). A light device asking for more contrast keeps
+ * light, which is ink on paper already. Both blocks come after the dark ones
+ * at the same specificity, so they win wherever dark matches too, and must
+ * stay identical; the forced-colours block, later still, beats both.
+ */
+:root[data-theme='contrast'] {
+  color-scheme: dark;
+
+  --bg: #000000;
+  --surface: #121212;
+  --surface-raised: #1a1a1a;
+  --border: #8c8c8c;
+  --text: #ffffff;
+  --text-muted: #d4d4d4;
+  --accent: #ffd60a;
+  --accent-text: #000000;
+  --grid-thin: #8c8c8c;
+  --grid-thick: #ffffff;
+  --cell-bg: #000000;
+  --cell-given-bg: #1f1f1f;
+  --hl-peer: #282e40;
+  --hl-same: #484400;
+  --hl-selected: #ffd60a;
+  --hl-peer-given: #32384a;
+  --hl-same-given: #524e06;
+  --hl-selected-given: #e6be00;
+  --hl-ring: #ffffff;
+  --cell-focus: #000000;
+  --hl-same-ring: #ffd60a;
+  --hl-same-ring-width: 2px;
+  --line-boost: 1px;
+  --digit-given: #ffffff;
+  --digit-given-selected: #000000;
+  --digit-player: #a6e1ff;
+  --digit-player-selected: #000000;
+  --digit-correct: #7dff9b;
+  --digit-correct-selected: #0b3d1d;
+  --digit-revealed: #ffcdf1;
+  --digit-revealed-selected: #541043;
+  --candidate: #ebebeb;
+  --candidate-selected: #000000;
+  --candidate-same: #ffd60a;
+  --danger: #ffa093;
+  --danger-selected: #8a1209;
+  --success: #7dff9b;
+  --key-bg: #121212;
+  --key-bg-active: #262626;
+  --key-bg-pressed: #3a3a3a;
+  --key-border: #a6a6a6;
+  --button-bg: #262626;
+  --shadow: none;
+}
+
+@media (prefers-color-scheme: dark) and (prefers-contrast: more) {
+  :root:not([data-theme]) {
+    color-scheme: dark;
+
+    --bg: #000000;
+    --surface: #121212;
+    --surface-raised: #1a1a1a;
+    --border: #8c8c8c;
+    --text: #ffffff;
+    --text-muted: #d4d4d4;
+    --accent: #ffd60a;
+    --accent-text: #000000;
+    --grid-thin: #8c8c8c;
+    --grid-thick: #ffffff;
+    --cell-bg: #000000;
+    --cell-given-bg: #1f1f1f;
+    --hl-peer: #282e40;
+    --hl-same: #484400;
+    --hl-selected: #ffd60a;
+    --hl-peer-given: #32384a;
+    --hl-same-given: #524e06;
+    --hl-selected-given: #e6be00;
+    --hl-ring: #ffffff;
+    --cell-focus: #000000;
+    --hl-same-ring: #ffd60a;
+    --hl-same-ring-width: 2px;
+    --line-boost: 1px;
+    --digit-given: #ffffff;
+    --digit-given-selected: #000000;
+    --digit-player: #a6e1ff;
+    --digit-player-selected: #000000;
+    --digit-correct: #7dff9b;
+    --digit-correct-selected: #0b3d1d;
+    --digit-revealed: #ffcdf1;
+    --digit-revealed-selected: #541043;
+    --candidate: #ebebeb;
+    --candidate-selected: #000000;
+    --candidate-same: #ffd60a;
+    --danger: #ffa093;
+    --danger-selected: #8a1209;
+    --success: #7dff9b;
+    --key-bg: #121212;
+    --key-bg-active: #262626;
+    --key-bg-pressed: #3a3a3a;
+    --key-border: #a6a6a6;
+    --button-bg: #262626;
+    --shadow: none;
+  }
 }
 
 /* ---- Tokens: forced colours (Windows High Contrast) ---- */
@@ -235,8 +377,12 @@
  * digits take LinkText so they still differ from the givens; checked and
  * revealed ones keep their tick and italic.
  *
- * `:root:root` is deliberate: it matches the specificity of the dark blocks
- * above, so this block wins by coming later even when the system is dark too.
+ * `:root:root` is deliberate: it matches the specificity of the dark and
+ * High contrast blocks above, so this block wins by coming later even when
+ * the system is dark too, or High contrast is chosen. High contrast's ring
+ * and heavier lines are turned off with the rest: the system's colours set
+ * this mode's contrast, and the board draws the same in it whatever the
+ * theme.
  */
 @media (forced-colors: active) {
   :root:root {
@@ -260,6 +406,9 @@
     --hl-selected-given: Highlight;
     --hl-ring: HighlightText;
     --cell-focus: HighlightText;
+    --hl-same-ring: transparent;
+    --hl-same-ring-width: 0px;
+    --line-boost: 0px;
     --digit-given: CanvasText;
     --digit-given-selected: HighlightText;
     --digit-player: LinkText;
@@ -270,6 +419,7 @@
     --digit-revealed-selected: HighlightText;
     --candidate: CanvasText;
     --candidate-selected: HighlightText;
+    --candidate-same: CanvasText;
     --danger: CanvasText;
     --danger-selected: HighlightText;
     --success: CanvasText;

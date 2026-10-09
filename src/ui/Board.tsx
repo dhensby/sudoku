@@ -6,6 +6,7 @@ import {
   ROW,
   computeCandidates,
   conflictsOf,
+  hasDigit,
   isEditable,
   valuesOf,
   visibleCandidates,
@@ -97,6 +98,12 @@ export function Board({
   }, [takeFocusRequest]);
 
   const selectedValue = cells[selected].value;
+  // The selected number among a cell's candidates, marked along with the
+  // same-number cells (lit in High contrast only).
+  const sameCandidateOf = (index: number): number =>
+    settings.highlightIdentical && selectedValue !== 0 && hasDigit(candidates[index], selectedValue)
+      ? selectedValue
+      : 0;
   const highlightOf = (index: number): Highlight => {
     if (index === selected) return 'selected';
     if (
@@ -138,6 +145,7 @@ export function Board({
                 given={cell.given}
                 mark={cell.mark}
                 candidates={candidates[index]}
+                sameCandidate={sameCandidateOf(index)}
                 highlight={highlightOf(index)}
                 conflict={settings.highlightConflicts && conflicts[index]}
                 ghosts={

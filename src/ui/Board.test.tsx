@@ -148,6 +148,27 @@ describe('Board', () => {
     expect(document.querySelectorAll('.cell--same')).toHaveLength(0);
   });
 
+  it('marks the selected number among the candidates, as it does the same numbers', () => {
+    // Index 0 is a given 5; index 2 is empty, with notes 3 and 5.
+    const game = play(
+      { type: 'enter', digit: 3, index: 2, mode: 'candidate' },
+      { type: 'enter', digit: 5, index: 2, mode: 'candidate' },
+      { type: 'select', index: 0 },
+    );
+    const marked = () =>
+      [...document.querySelectorAll('.cell__candidate--same')].map((spot) => spot.textContent);
+    const { rerender, props } = renderBoard({ game });
+    expect(marked()).toEqual(['5']);
+    expect(cellAt(2).querySelector('.cell__candidate--same')).toHaveTextContent('5');
+
+    rerender(<Board {...props} settings={{ ...ALL_ON, highlightIdentical: false }} />);
+    expect(marked()).toEqual([]);
+
+    // An empty cell selected has no number to mark.
+    rerender(<Board {...props} game={reduce(game, { type: 'select', index: 2 })} />);
+    expect(marked()).toEqual([]);
+  });
+
   it('draws candidates in their spots, and none in a filled cell', () => {
     renderBoard({ game: play({ type: 'enter', digit: 9, index: 2, mode: 'candidate' }) });
     const spots = cellAt(2).querySelectorAll('.cell__candidates > .cell__candidate');

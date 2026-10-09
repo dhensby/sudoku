@@ -61,11 +61,15 @@ const GROUPS: readonly { title: string; keys: readonly SwitchKey[] }[] = [
   { title: 'Candidates', keys: ['startInAutoCandidate', 'clearPeerNotes'] },
 ];
 
-const THEMES: readonly { value: ThemePreference; label: string }[] = [
-  { value: 'system', label: 'System' },
-  { value: 'light', label: 'Light' },
-  { value: 'dark', label: 'Dark' },
-];
+/** What each theme is called. A Record, so a new theme will not compile until it has a name here. */
+const THEME_LABELS: Readonly<Record<ThemePreference, string>> = {
+  system: 'System',
+  light: 'Light',
+  dark: 'Dark',
+  contrast: 'High contrast',
+};
+
+const THEMES = Object.entries(THEME_LABELS) as [ThemePreference, string][];
 
 /**
  * The game's settings. Every control applies at once — there is no Save — so
@@ -114,10 +118,10 @@ export function SettingsDialog({
           </fieldset>
         ))}
 
-        <fieldset className="settings__group">
+        <fieldset className="settings__group" aria-describedby={`${ids}-theme-description`}>
           <legend className="settings__legend">Theme</legend>
           <div className="settings__theme">
-            {THEMES.map(({ value, label }) => (
+            {THEMES.map(([value, label]) => (
               <label className="settings__theme-option" key={value}>
                 <input
                   type="radio"
@@ -130,6 +134,10 @@ export function SettingsDialog({
               </label>
             ))}
           </div>
+          <p className="settings__description" id={`${ids}-theme-description`}>
+            System follows your device, and turns to High contrast when it is dark and asks for more
+            contrast.
+          </p>
         </fieldset>
       </div>
     </Dialog>

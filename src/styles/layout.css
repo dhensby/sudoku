@@ -64,10 +64,12 @@
    * and a 4px frame round the outside, heavier still, as a printed puzzle
    * is boxed. On a board under 400px, where those crowd the cells, each
    * loses a pixel: 2px between boxes, a 3px frame. Each clamp() turns the
-   * board's size into that step.
+   * board's size into that step. High contrast gives both a pixel back
+   * (--line-boost, 0px in every other palette), so its box lines are never
+   * under 3px, inside a frame never under 4px.
    */
-  --frame: clamp(3px, 3px + (var(--board-size) - 399.98px) * 1000, 4px);
-  --thick: clamp(2px, 2px + (var(--board-size) - 399.98px) * 1000, 3px);
+  --frame: calc(clamp(3px, 3px + (var(--board-size) - 399.98px) * 1000, 4px) + var(--line-boost));
+  --thick: calc(clamp(2px, 2px + (var(--board-size) - 399.98px) * 1000, 3px) + var(--line-boost));
   --thin: 1px;
   --lines: calc(2 * var(--frame) + 2 * var(--thick) + 6 * var(--thin));
   --cell: calc((var(--board-size) - var(--lines)) / 9);

@@ -22,8 +22,12 @@ import {
  * storage until the player picks a theme here.
  */
 
-/** The colour scheme: follow the system, or force one. */
-export type ThemePreference = 'system' | 'light' | 'dark';
+/**
+ * The colour scheme: follow the system, or force one. 'contrast' is High
+ * contrast, a dark palette of white and yellow on black, which System also
+ * comes to when the device is dark and asks for more contrast (theme.ts).
+ */
+export type ThemePreference = 'system' | 'light' | 'dark' | 'contrast';
 
 /** Everything on the Settings dialog. */
 export interface Settings {
@@ -44,7 +48,7 @@ export interface Settings {
    * doesn't; many other apps do, and players who grew up on them expect it.
    */
   clearPeerNotes: boolean;
-  /** Light or dark, or whatever the system says. */
+  /** Light, dark or High contrast, or whatever the system says. */
   theme: ThemePreference;
 }
 
@@ -59,7 +63,17 @@ export interface Preferences {
 
 const STORAGE_KEY = 'sudoku.prefs';
 
-const THEMES: readonly string[] = ['system', 'light', 'dark'];
+/**
+ * Every theme this version knows. A Record, so a theme added to
+ * ThemePreference will not compile until it is listed here too — left out,
+ * it would be taken for a newer version's and shown as System.
+ */
+const THEMES: readonly string[] = Object.keys({
+  system: true,
+  light: true,
+  dark: true,
+  contrast: true,
+} satisfies Record<ThemePreference, true>);
 
 /**
  * What a theme a newer version added could be called: a short camelCase word,

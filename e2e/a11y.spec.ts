@@ -30,7 +30,7 @@ import {
  * rules over the states a player meets — the board in play with every kind
  * of mark on it, the Ready and Paused cards, the "…" menu, every dialog (each
  * step of Show me among them) and each entry of the technique guide — in the
- * light theme and the dark, and
+ * light theme and the dark (and the main ones in High contrast), and
  * each must come back with no violations at all, with no rule switched off.
  * Contrast is the rule that a palette change is likeliest to break:
  * contrast.test.ts holds the tokens to their targets pair by pair, and this
@@ -44,7 +44,10 @@ import {
  * The desktop layout runs on Chromium; a shorter pass runs on the phones
  * (`iphone`, `android`), whose layout folds the header into a menu and the
  * guide into a bottom sheet. Motion is reduced so nothing is caught
- * mid-fade.
+ * mid-fade. High contrast has passes of its own, both ways it comes —
+ * chosen in Settings, and from a dark system asking for more contrast —
+ * which also measure what a colour check cannot: its heavier box lines,
+ * and its same-number ring kept clear of the digits.
  */
 
 /** Every WCAG 2.0, 2.1 and 2.2 rule at levels A and AA (axe has no rules tagged 2.2 A). */
@@ -342,6 +345,154 @@ for (const scheme of ['light', 'dark'] as const) {
   });
 }
 
+/**
+ * High contrast comes two ways: chosen in Settings, and under System on a
+ * dark device that asks for more contrast. The chosen way runs on a dark
+ * device that asks for nothing more — the tester's own setup, and the one
+ * where the dark palette's block matches too, at the same specificity, so
+ * High contrast wins only by coming after it in the stylesheet. (On a light
+ * device it would win by specificity alone and prove nothing about order.)
+ * Each way runs the same checks.
+ */
+const HIGH_CONTRAST_WAYS = [
+  { way: 'chosen in Settings on a dark device', isChosen: true, media: { colorScheme: 'dark' } },
+  {
+    way: 'from a dark system asking for more contrast',
+    isChosen: false,
+    media: { colorScheme: 'dark', contrast: 'more' },
+  },
+] as const;
+
+/** Pick High contrast in Settings, checking the dialog as it stands in it. */
+async function chooseHighContrast(page: Page): Promise<void> {
+  await openHeaderDialog(page, 'Settings');
+  await dialog(page, 'Settings').getByRole('radio', { name: 'High contrast' }).check();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'contrast');
+  await expectAccessible(page, 'the Settings dialog in High contrast');
+  await closeDialog(page);
+}
+
+/** Open Settings and check it; the way High contrast came decides which theme shows as chosen. */
+async function checkSettings(page: Page, isChosen: boolean): Promise<void> {
+  await openHeaderDialog(page, 'Settings');
+  const settings = dialog(page, 'Settings');
+  await expect(
+    settings.getByRole('radio', { name: isChosen ? 'High contrast' : 'System' }),
+  ).toBeChecked();
+  await expectAccessible(page, 'the Settings dialog in High contrast');
+  await closeDialog(page);
+}
+
+/**
+ * The page is in High contrast: its palette, and the browser chrome's colour
+ * with it. The page is read as painted, not by its `--bg` token's text: the
+ * build minifies `#000000` to `#000`, so only the computed colour is stable.
+ * The theme-colour meta is set from script, so it keeps its long form.
+ */
+async function expectHighContrast(page: Page, isChosen: boolean): Promise<void> {
+  const shown = await page.evaluate(() => ({
+    theme: document.documentElement.dataset.theme ?? null,
+    bg: getComputedStyle(document.body).backgroundColor,
+    chrome: document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.content,
+  }));
+  expect(shown).toEqual({
+    theme: isChosen ? 'contrast' : null,
+    bg: 'rgb(0, 0, 0)',
+    chrome: '#000000',
+  });
+}
+
+/**
+ * Select a given, so its number's other cells take High contrast's yellow
+ * ring, and measure the board: box lines at least 3px inside a frame of at
+ * least 4px, at whatever size the board is, and the ring clear of every
+ * digit it surrounds — yellow against white is barely 1.4:1.
+ */
+async function expectHighContrastBoard(page: Page, givens: string): Promise<void> {
+  await selectCell(
+    page,
+    [...givens].findIndex((ch) => ch !== '0'),
+  );
+  const measured = await page.evaluate(() => {
+    const board = document.querySelector('.board')!;
+    const cells = [...board.querySelectorAll('.cell')].map((cell) => cell.getBoundingClientRect());
+    const clearances = [...board.querySelectorAll('.cell--same')].map((cell) => {
+      const edge = cell.getBoundingClientRect();
+      const digit = cell.querySelector('.cell__value')!.getBoundingClientRect();
+      return Math.min(
+        digit.left - edge.left,
+        edge.right - digit.right,
+        digit.top - edge.top,
+        edge.bottom - digit.bottom,
+      );
+    });
+    const root = getComputedStyle(document.documentElement);
+    return {
+      frame: parseFloat(getComputedStyle(board).borderTopWidth),
+      // Between the third and fourth cells of the first row.
+      boxLine: cells[3].left - cells[2].right,
+      ring: parseFloat(root.getPropertyValue('--hl-same-ring-width')),
+      ringed: clearances.length,
+      clearance: Math.min(...clearances),
+    };
+  });
+  expect(measured.frame).toBeGreaterThanOrEqual(4);
+  expect(measured.boxLine).toBeGreaterThanOrEqual(3);
+  expect(measured.ring).toBe(2);
+  expect(measured.ringed).toBeGreaterThan(0);
+  expect(measured.clearance).toBeGreaterThan(measured.ring);
+}
+
+for (const { way, isChosen, media } of HIGH_CONTRAST_WAYS) {
+  test.describe(`the High contrast theme, ${way}`, () => {
+    test.skip(({ isMobile }) => isMobile, 'the desktop layout; the phones have their own pass');
+
+    test('the board in play, with every mark, and the dialogs', async ({ page }) => {
+      await page.emulateMedia(media);
+      await playWithEveryMark(page);
+      if (isChosen) await chooseHighContrast(page);
+      await expectHighContrast(page, isChosen);
+      await checkSettings(page, isChosen);
+
+      await expectHighContrastBoard(page, EASY.givens);
+      await expectAccessible(page, 'the board with every mark');
+
+      await page.getByRole('button', { name: 'More' }).click();
+      await expect(page.getByRole('menu', { name: 'More' })).toBeVisible();
+      await expectAccessible(page, 'the "…" menu');
+      await page.keyboard.press('Escape');
+
+      for (const [label, title] of [
+        ['Help', 'Help'],
+        ['History', 'History'],
+      ] as const) {
+        await openHeaderDialog(page, label);
+        await expect(dialog(page, title)).toBeVisible();
+        await expectAccessible(page, `the ${title} dialog`);
+        await closeDialog(page);
+      }
+    });
+
+    test('the daily calendar, its marks and a day chosen', async ({ page }) => {
+      await page.emulateMedia(media);
+      await openSeededCalendar(page);
+      if (isChosen) {
+        await closeDialog(page);
+        await chooseHighContrast(page);
+        await openHeaderDialog(page, 'Daily puzzles');
+      }
+      await expectHighContrast(page, isChosen);
+      await expectAccessible(page, 'the daily calendar on today');
+      const calendar = dialog(page, 'Daily puzzles');
+      await calendar.getByRole('gridcell', { name: /^Thursday 8 October/ }).click();
+      await expect(calendar.getByRole('heading', { name: 'Thursday 8 October' })).toBeVisible();
+      await expectAccessible(page, 'the daily calendar on a day played every way');
+      await page.keyboard.press('ArrowRight');
+      await expectAccessible(page, 'the daily calendar under the keyboard');
+    });
+  });
+}
+
 test.describe('on a phone', () => {
   test.skip(({ isMobile }) => !isMobile, 'the phone layout');
 
@@ -390,6 +541,37 @@ test.describe('on a phone', () => {
       await page.getByRole('button', { name: 'New game' }).click();
       await expect(page.getByRole('menuitem', { name: 'Expert', exact: true })).toBeVisible();
       await expectAccessible(page, 'New game on its side');
+    });
+  }
+
+  // The calendar and the board are separate tests, as on the desktop: the
+  // calendar's seeded week holds this Easy puzzle solved, so opening it as a
+  // link after the seed lands on "You've solved this one", not a fresh board.
+  for (const { way, isChosen, media } of HIGH_CONTRAST_WAYS) {
+    test(`the daily calendar as a bottom sheet in High contrast, ${way}`, async ({ page }) => {
+      await page.emulateMedia(media);
+      await openSeededCalendar(page);
+      if (isChosen) {
+        await closeDialog(page);
+        await chooseHighContrast(page);
+        await openHeaderDialog(page, 'Daily puzzles');
+      }
+      await expectHighContrast(page, isChosen);
+      await expectAccessible(page, 'the daily calendar on today');
+      const calendar = dialog(page, 'Daily puzzles');
+      await calendar.getByRole('gridcell', { name: /^Thursday 8 October/ }).tap();
+      await expect(calendar.getByRole('heading', { name: 'Thursday 8 October' })).toBeVisible();
+      await expectAccessible(page, 'the daily calendar on a day played every way');
+    });
+
+    test(`the board and a dialog in High contrast, ${way}`, async ({ page }) => {
+      await page.emulateMedia(media);
+      await playWithEveryMark(page);
+      if (isChosen) await chooseHighContrast(page);
+      await expectHighContrast(page, isChosen);
+      await expectHighContrastBoard(page, EASY.givens);
+      await expectAccessible(page, 'the board with every mark');
+      await checkSettings(page, isChosen);
     });
   }
 

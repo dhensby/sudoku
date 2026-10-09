@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { DEFAULT_SETTINGS, type Settings } from '../../storage/prefs';
 import { SettingsDialog } from './SettingsDialog';
 
@@ -59,14 +59,37 @@ describe('SettingsDialog', () => {
     }
   });
 
-  it('offers the theme as one choice of three, and sends the one picked', () => {
+  it('offers the theme as one choice of four, and sends the one picked', () => {
     const { onChange } = renderSettings({ ...DEFAULT_SETTINGS, theme: 'light' });
+    const theme = screen.getByRole('group', { name: 'Theme' });
+    expect(
+      within(theme)
+        .getAllByRole('radio')
+        .map((radio) => radio.getAttribute('value')),
+    ).toEqual(['system', 'light', 'dark', 'contrast']);
     expect(screen.getByRole('radio', { name: 'Light' })).toBeChecked();
     expect(screen.getByRole('radio', { name: 'System' })).not.toBeChecked();
     fireEvent.click(screen.getByRole('radio', { name: 'Dark' }));
     expect(onChange).toHaveBeenCalledExactlyOnceWith({ theme: 'dark' });
+    fireEvent.click(screen.getByRole('radio', { name: 'High contrast' }));
+    expect(onChange).toHaveBeenLastCalledWith({ theme: 'contrast' });
     fireEvent.click(screen.getByRole('radio', { name: 'System' }));
     expect(onChange).toHaveBeenLastCalledWith({ theme: 'system' });
+  });
+
+  it('shows High contrast as chosen when it is', () => {
+    renderSettings({ ...DEFAULT_SETTINGS, theme: 'contrast' });
+    expect(screen.getByRole('radio', { name: 'High contrast' })).toBeChecked();
+    for (const name of ['System', 'Light', 'Dark']) {
+      expect(screen.getByRole('radio', { name })).not.toBeChecked();
+    }
+  });
+
+  it('says System can come to High contrast, as the theme’s description', () => {
+    renderSettings();
+    expect(screen.getByRole('group', { name: 'Theme' })).toHaveAccessibleDescription(
+      'System follows your device, and turns to High contrast when it is dark and asks for more contrast.',
+    );
   });
 
   it('shows no theme as chosen when a newer version’s is stored, so System can be picked', () => {
@@ -81,7 +104,7 @@ describe('SettingsDialog', () => {
         onClose={vi.fn()}
       />,
     );
-    for (const name of ['System', 'Light', 'Dark']) {
+    for (const name of ['System', 'Light', 'Dark', 'High contrast']) {
       expect(screen.getByRole('radio', { name })).not.toBeChecked();
     }
     fireEvent.click(screen.getByRole('radio', { name: 'System' }));
