@@ -9,6 +9,7 @@ import {
   rememberedHint,
   serialiseGame,
   shownHint,
+  SERIALISED_GAME_FIELDS,
   valuesOf,
   visibleCandidates,
   type Direction,
@@ -1608,8 +1609,82 @@ describe('serialiseGame / deserialiseGame', () => {
       expect(restored?.cells[0]).toEqual(rich.cells[0]);
     });
 
-    it('ignores fields it does not know', () => {
-      expect(deserialiseGame({ ...data, extra: true })).toEqual(deserialiseGame(data));
+    it('loads a save with top-level fields it does not know, leaving them to the store', () => {
+      // `saveGameBlob` carries them over; the board here is the same either way.
+      expect(deserialiseGame({ ...data, extra: true, moves: 'x'.repeat(500) })).toEqual(
+        deserialiseGame(data),
+      );
+    });
+  });
+
+  it('lists every top-level field a save has as one this version knows', () => {
+    // `saveGameBlob` carries over only fields not on this list, so one this
+    // version writes but leaves off it could have a stale value brought back.
+    expect(Object.keys(data).sort()).toEqual([...SERIALISED_GAME_FIELDS].sort());
+  });
+
+  describe('assists a newer version added', () => {
+    // As a later version would save them: a sticky "Check guesses" assist.
+    const newer = { ...data, assists: { ...data.assists, checkGuesses: true } };
+
+    it('loads the save, keeping the new field', () => {
+      expect(deserialiseGame(newer)?.assists).toEqual({ ...data.assists, checkGuesses: true });
+    });
+
+    it('carries the field through play and into the next save', () => {
+      const restored = deserialiseGame(JSON.parse(JSON.stringify(newer)))!;
+      const played = play(restored, select(3), CHECK_CELL, AUTO_OFF, AUTO_ON, RESET, {
+        type: 'hint',
+        hint: HINT,
+      });
+      expect(serialiseGame(played).assists).toMatchObject({ checkGuesses: true });
+    });
+
+    it('keeps the field when the assists are raised to cover the board', () => {
+      const restored = deserialiseGame({ ...newer, assists: { ...NO_ASSISTS, checkGuesses: 1 } });
+      expect(restored?.assists).toEqual({
+        autoCandidates: true,
+        hints: 1,
+        checks: 1,
+        reveals: 1,
+        checkGuesses: 1,
+      });
+    });
+
+    it('does not take a wrong mark for a Check while "Check guesses" was on', () => {
+      // A later version marks a wrong guess as it goes in, with no Check taken.
+      const wrong = serialiseGame(play(newGame(), place(2, 1), CHECK_CELL));
+      const assists = { ...NO_ASSISTS, checkGuesses: true };
+      const restored = deserialiseGame({ ...wrong, assists });
+      expect(restored?.cells[2].mark).toBe('wrong');
+      expect(restored?.assists).toEqual(assists);
+    });
+
+    it('still takes a wrong mark for a Check when "Check guesses" is anything but on', () => {
+      const wrong = serialiseGame(play(newGame(), place(2, 1), CHECK_CELL));
+      for (const checkGuesses of [false, 1, 'true']) {
+        const restored = deserialiseGame({ ...wrong, assists: { ...NO_ASSISTS, checkGuesses } });
+        expect(restored?.assists).toEqual({ ...NO_ASSISTS, checks: 1, checkGuesses });
+      }
+    });
+
+    it('still takes a mark of correct for a Check while "Check guesses" was on', () => {
+      // Only a Check says a digit is right; checking guesses marks wrong ones alone.
+      const right = serialiseGame(play(newGame(), place(2, 4), CHECK_CELL));
+      const assists = { ...NO_ASSISTS, checkGuesses: true };
+      expect(deserialiseGame({ ...right, assists })?.assists).toEqual({ ...assists, checks: 1 });
+    });
+
+    it('drops new fields too big or odd to keep, and still loads', () => {
+      const assists = { ...data.assists, Junk: 1, log: 'x'.repeat(300) };
+      expect(deserialiseGame({ ...data, assists })?.assists).toEqual(data.assists);
+    });
+
+    it('still rejects assists missing a count it knows, whatever else they carry', () => {
+      const { reveals: _reveals, ...rest } = newer.assists;
+      expect(deserialiseGame({ ...newer, assists: rest })).toBeNull();
+      const odd = { ...newer.assists, hints: -1 };
+      expect(deserialiseGame({ ...newer, assists: odd })).toBeNull();
     });
   });
 });

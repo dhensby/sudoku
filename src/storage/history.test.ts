@@ -275,10 +275,10 @@ describe('loadHistory', () => {
     expect(ids(loadHistory(storage))).toEqual(['x']);
   });
 
-  it('drops fields it does not know', () => {
+  it('drops fields it does not know that are too big or odd to be a newer version’s', () => {
     const storage = memoryStorage();
-    seed(storage, [{ ...playing('x', 1), favouriteColour: 'blue' }]);
-    expect(loadHistory(storage)[0]).not.toHaveProperty('favouriteColour');
+    seed(storage, [{ ...playing('x', 1), FavouriteColour: 'blue', notes: 'x'.repeat(300) }]);
+    expect(loadHistory(storage)).toEqual([playing('x', 1)]);
   });
 
   it('keeps one record per id: the copy that changed last', () => {
@@ -1239,6 +1239,294 @@ describe('freeSpace', () => {
     const storage = quotaStorage();
     freeSpace(storage);
     expect(storage.keys()).toEqual([]);
+  });
+});
+
+describe('fields a newer version added', () => {
+  /*
+   * A tab left open on this version after a deploy rewrites the history as it
+   * goes. Whatever the newer version added must come through every rewrite.
+   */
+
+  /** A record as a later version might write it: mistakes counted, and a new kind of help. */
+  function newer(id: string, createdAt: number, overrides: Partial<GameRecord> = {}): GameRecord {
+    const base = solved(id, createdAt, 60_000, overrides);
+    return {
+      ...base,
+      mistakes: { values: 2, candidates: 1 },
+      assists: { ...base.assists, checkGuesses: true },
+      challenge: {
+        name: 'Dan',
+        seconds: 323,
+        assists: { ...NO_ASSISTS, checkGuesses: false },
+        mistakes: { values: 0, candidates: 0 },
+      },
+    } as GameRecord;
+  }
+
+  /** What a page on this version holds for a record: the fields it knows, nothing more. */
+  function known(record: GameRecord): GameRecord {
+    return {
+      ...playing(record.id, record.createdAt),
+      ...Object.fromEntries(
+        Object.entries(record).filter(([key]) => Object.hasOwn(playing('x', 0), key)),
+      ),
+      assists: {
+        autoCandidates: record.assists.autoCandidates,
+        hints: record.assists.hints,
+        checks: record.assists.checks,
+        reveals: record.assists.reveals,
+      },
+    };
+  }
+
+  it('keeps them on a record, its assists and its challenge as it loads', () => {
+    const storage = memoryStorage();
+    seed(storage, [newer('x', 1)]);
+    expect(loadHistory(storage)).toEqual([newer('x', 1)]);
+  });
+
+  it('drops a newer field too big or odd to keep, but not the rest of the record', () => {
+    const storage = memoryStorage();
+    const record = newer('x', 1);
+    seed(storage, [
+      {
+        ...record,
+        moves: 'x'.repeat(500),
+        Odd: 1,
+        assists: { ...record.assists, log: 'x'.repeat(300) },
+        challenge: { ...record.challenge, 'odd-key': 1 },
+      },
+    ]);
+    expect(loadHistory(storage)).toEqual([record]);
+  });
+
+  it('holds each object to 8 of them', () => {
+    const storage = memoryStorage();
+    const extra = Object.fromEntries('abcdefghij'.split('').map((letter) => [`f${letter}`, 1]));
+    seed(storage, [{ ...playing('x', 1), ...extra, assists: { ...NO_ASSISTS, ...extra } }]);
+    const [record] = loadHistory(storage);
+    const kept = ['fa', 'fb', 'fc', 'fd', 'fe', 'ff', 'fg', 'fh'];
+    expect(Object.keys(record).filter((key) => key.startsWith('f'))).toEqual(kept);
+    expect(Object.keys(record.assists).filter((key) => key.startsWith('f'))).toEqual(kept);
+  });
+
+  it('still validates the fields it knows exactly as before', () => {
+    const storage = memoryStorage();
+    const record = newer('x', 1);
+    seed(storage, [
+      // A newer field does not rescue a record with a broken required field…
+      { ...newer('bad', 2), elapsedMs: '5:23' },
+      // …nor pass off a broken daily date, odd counts or a broken challenge as a newer field.
+      {
+        ...record,
+        daily: '2020-01-01',
+        startedOn: 'yesterday',
+        assists: { ...record.assists, hints: -2, autoCandidates: 'yes' },
+        challenge: { ...record.challenge, seconds: 0 },
+      },
+    ]);
+    const [loaded] = loadHistory(storage);
+    expect(ids(loadHistory(storage))).toEqual(['x']);
+    expect(loaded).not.toHaveProperty('daily');
+    expect(loaded).not.toHaveProperty('startedOn');
+    expect(loaded.assists).toEqual({ ...NO_ASSISTS, checkGuesses: true });
+    expect(loaded.challenge).toBeNull();
+  });
+
+  it('come through writing another record', () => {
+    const storage = memoryStorage();
+    seed(storage, [newer('x', 1)]);
+    upsertRecord(storage, playing('y', 2));
+    expect(loadHistory(storage)[1]).toEqual(newer('x', 1));
+  });
+
+  it('come through writing the same record from a page that does not know them', () => {
+    const storage = memoryStorage();
+    seed(storage, [newer('x', 1)]);
+    // The page's own values win; the newer fields it never had are put back.
+    const page = { ...known(newer('x', 1)), elapsedMs: 90_000 };
+    page.assists = { ...page.assists, hints: 3 };
+    const [saved] = upsertRecord(storage, page);
+    expect(saved).toEqual({
+      ...newer('x', 1),
+      elapsedMs: 90_000,
+      assists: { ...NO_ASSISTS, hints: 3, checkGuesses: true },
+    });
+    expect(loadHistory(storage)).toEqual([saved]);
+  });
+
+  it('let the page’s own value of a newer field win over the stored one', () => {
+    const storage = memoryStorage();
+    seed(storage, [newer('x', 1)]);
+    const page = { ...newer('x', 1), mistakes: { values: 5, candidates: 0 } } as GameRecord;
+    expect(upsertRecord(storage, page)[0]).toMatchObject({
+      mistakes: { values: 5, candidates: 0 },
+    });
+  });
+
+  it('leave a challenge the page replaced as the page has it', () => {
+    const storage = memoryStorage();
+    seed(storage, [newer('x', 1)]);
+    const challenge = { name: 'Sam', seconds: 100, assists: NO_ASSISTS };
+    const [saved] = upsertRecord(storage, { ...known(newer('x', 1)), challenge });
+    expect(saved.challenge).toEqual(challenge);
+  });
+
+  it('come through pruning beyond MAX_RECORDS', () => {
+    const storage = memoryStorage();
+    const records = [solved('oldest', 0)];
+    for (let i = 1; i < MAX_RECORDS; i++) records.push(newer(`n${i}`, i));
+    seed(storage, records);
+    const after = upsertRecord(storage, playing('new', 5000));
+    expect(ids(after)).not.toContain('oldest');
+    expect(loadHistory(storage).find((record) => record.id === 'n1')).toEqual(newer('n1', 1));
+  });
+
+  it('come through shedding in a full storage', () => {
+    const storage = quotaStorage();
+    const records: GameRecord[] = [];
+    for (let i = 0; i < 400; i++) records.push(newer(`s${i}`, i * 10));
+    seed(storage, records);
+    storage.capacity = storage.used() + 50;
+    const after = upsertRecord(storage, playing('new', 50_000));
+    expect(after.length).toBeLessThan(401);
+    expect(loadHistory(storage).find((record) => record.id === 's399')).toEqual(
+      newer('s399', 3990),
+    );
+  });
+
+  it('come through deleting another record', () => {
+    const storage = memoryStorage();
+    seed(storage, [newer('x', 1), playing('y', 2)]);
+    deleteRecord(storage, 'y');
+    expect(loadHistory(storage)).toEqual([newer('x', 1)]);
+  });
+
+  it('go out in an export and come back in an import, new and replacing alike', () => {
+    const source = memoryStorage();
+    seed(source, [newer('a', 1), newer('b', 2, { updatedAt: 99_999 })]);
+    const target = memoryStorage();
+    seed(target, [known(newer('b', 2))]);
+    expect(importHistory(target, exportHistory(source, 0))).toEqual({
+      ok: true,
+      added: 1,
+      updated: 1,
+    });
+    expect(loadHistory(target)).toEqual(loadHistory(source));
+    expect(loadHistory(target)[0]).toEqual(newer('b', 2, { updatedAt: 99_999 }));
+  });
+
+  it('come through an import that only adds other records', () => {
+    const storage = memoryStorage();
+    seed(storage, [newer('x', 1)]);
+    const json = JSON.stringify({
+      app: 'sudoku',
+      version: 1,
+      exportedAt: 0,
+      records: [playing('y', 2)],
+      games: {},
+    });
+    importHistory(storage, json);
+    expect(loadHistory(storage)[1]).toEqual(newer('x', 1));
+  });
+
+  describe('on a saved game', () => {
+    it('carry over to the next save the top-level fields it leaves out', () => {
+      const storage = memoryStorage();
+      saveGameBlob(storage, 'g', { v: 1, values: PUZZLE, undo: 'ab', future: { x: 1 } });
+      saveGameBlob(storage, 'g', { v: 1, values: OTHER_PUZZLE });
+      expect(loadGameBlob(storage, 'g')).toEqual({
+        undo: 'ab',
+        future: { x: 1 },
+        v: 1,
+        values: OTHER_PUZZLE,
+      });
+    });
+
+    it('give way to the new save’s own value of the field', () => {
+      const storage = memoryStorage();
+      saveGameBlob(storage, 'g', { v: 1, undo: 'ab' });
+      saveGameBlob(storage, 'g', { v: 1, undo: 'cd' });
+      expect(loadGameBlob(storage, 'g')).toEqual({ v: 1, undo: 'cd' });
+    });
+
+    it('never bring back a field this version knows, left out of the new save', () => {
+      // Whatever this version leaves out it meant to drop: a remembered hint
+      // spent, say, must not come back from the save before.
+      const storage = memoryStorage();
+      const cellHints = [{ index: 2, fill: null, mistake: 0, walkthrough: true }];
+      saveGameBlob(storage, 'g', { v: 1, values: PUZZLE, cellHints, undo: 'ab' });
+      saveGameBlob(storage, 'g', { v: 1, values: PUZZLE });
+      expect(loadGameBlob(storage, 'g')).toEqual({ undo: 'ab', v: 1, values: PUZZLE });
+    });
+
+    it('are not carried over when too big or odd to keep', () => {
+      const storage = memoryStorage();
+      saveGameBlob(storage, 'g', { v: 1, moves: 'x'.repeat(500), Odd: 1 });
+      saveGameBlob(storage, 'g', { v: 1 });
+      expect(loadGameBlob(storage, 'g')).toEqual({ v: 1 });
+    });
+
+    it('leave a save that is not an object, or one over something that was not, as it is', () => {
+      const storage = memoryStorage();
+      saveGameBlob(storage, 'g', { v: 1, undo: 'ab' });
+      saveGameBlob(storage, 'g', [1, 2]);
+      expect(loadGameBlob(storage, 'g')).toEqual([1, 2]);
+      saveGameBlob(storage, 'g', { v: 1 });
+      expect(loadGameBlob(storage, 'g')).toEqual({ v: 1 });
+    });
+
+    it('are written once, not stacked: the save is the same size every time', () => {
+      const storage = memoryStorage();
+      saveGameBlob(storage, 'g', { v: 1, undo: 'ab' });
+      saveGameBlob(storage, 'g', { v: 1 });
+      const once = storage.getItem('sudoku.game.g');
+      saveGameBlob(storage, 'g', { v: 1 });
+      expect(storage.getItem('sudoku.game.g')).toBe(once);
+    });
+  });
+
+  describe('the keys reserved for move logs', () => {
+    const RESERVED = ['sudoku.moves.a', 'sudoku.moves.s0', 'sudoku.moves.p0', 'sudoku.moveLogs'];
+
+    /** A storage holding move logs, that records every key anything tries to remove. */
+    function withMoveLogs(): ReturnType<typeof quotaStorage> & { removed: string[] } {
+      const inner = quotaStorage();
+      const remove = inner.removeItem;
+      const removed: string[] = [];
+      for (const key of RESERVED) inner.setItem(key, '"log"');
+      return Object.assign(inner, {
+        removed,
+        removeItem: (key: string) => {
+          removed.push(key);
+          remove(key);
+        },
+      });
+    }
+
+    it('are never removed by pruning, sweeping, shedding, deleting or importing', () => {
+      const storage = withMoveLogs();
+      const records: GameRecord[] = [];
+      for (let i = 0; i < 400; i++) records.push(solved(`s${i}`, i * 10));
+      for (let i = 0; i < 60; i++) {
+        records.push(playing(`p${i}`, 10_000 + i, { updatedAt: 20_000 + i }));
+        saveGameBlob(storage, `p${i}`, { state: 'x'.repeat(200) });
+      }
+      seed(storage, records);
+      upsertRecord(storage, playing('a', 50_000));
+      freeSpace(storage);
+      deleteRecord(storage, 'a');
+      deleteRecord(storage, 's0');
+      deleteGameBlob(storage, 'p0');
+      importHistory(storage, exportHistory(storage, 0));
+      storage.capacity = storage.used() + 10;
+      upsertRecord(storage, playing('b', 60_000, { elapsedMs: 1 }));
+
+      expect(storage.removed.length).toBeGreaterThan(0);
+      expect(storage.removed.filter((key) => key.startsWith('sudoku.move'))).toEqual([]);
+      for (const key of RESERVED) expect(storage.getItem(key)).toBe('"log"');
+    });
   });
 });
 

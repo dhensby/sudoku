@@ -44,6 +44,7 @@ import {
   type ImportResult,
 } from '../storage/history';
 import {
+  hasNewerTheme,
   loadPreferences,
   setLastDifficulty,
   setPlayerName,
@@ -307,6 +308,12 @@ export interface Sudoku {
   /** The mode digits go in with: the latched mode, flipped while Shift or Alt is held. */
   effectiveMode: InputMode;
   settings: Settings;
+  /**
+   * The stored theme is one a newer version added: it is applied as System
+   * (`settings.theme` says so), but no theme should show as chosen, so that
+   * picking System replaces it.
+   */
+  isThemeNewer: boolean;
   playerName: string;
   announcement: Announcement | null;
   notice: Notice | null;
@@ -425,6 +432,9 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
   const [clock] = useState<() => number>(() => options.clock ?? monotonicNow);
   const [dailyStore] = useState<DailyStore>(() => options.dailies ?? appDailies);
   const [prefs, setPrefs] = useState(() => loadPreferences(storage));
+  // Only a theme picked in Settings can replace a newer version's, so this is
+  // read again after each settings change and at no other time.
+  const [isThemeNewer, setThemeNewer] = useState(() => hasNewerTheme(storage));
   // What this visit opens with. Pure: the writes it calls for happen once
   // mounted, so a render React throws away leaves nothing behind.
   const [startup] = useState(() =>
@@ -1396,7 +1406,10 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       return result;
     },
 
-    updateSettings: (patch) => setPrefs(updateSettings(storage, patch)),
+    updateSettings: (patch) => {
+      setPrefs(updateSettings(storage, patch));
+      setThemeNewer(hasNewerTheme(storage));
+    },
     setPlayerName: (name) => setPrefs(setPlayerName(storage, name)),
 
     setModifier: (key, isDown) => {
@@ -1427,6 +1440,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     elapsedMs: elapsed,
     effectiveMode,
     settings,
+    isThemeNewer,
     playerName: prefs.playerName,
     announcement,
     notice,

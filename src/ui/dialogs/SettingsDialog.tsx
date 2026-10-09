@@ -4,6 +4,13 @@ import { Dialog } from './Dialog';
 
 export interface SettingsDialogProps {
   settings: Settings;
+  /**
+   * The stored theme is one a newer version of the game added. It is applied
+   * as System, but no theme shows as chosen: an already-checked radio sends
+   * no change when clicked, so showing System checked would leave the player
+   * no way to pick it and replace the newer theme.
+   */
+  isThemeNewer?: boolean;
   /** Called on every change with just the field that changed; the parent saves and applies it. */
   onChange: (patch: Partial<Settings>) => void;
   onClose: () => void;
@@ -66,7 +73,12 @@ const THEMES: readonly { value: ThemePreference; label: string }[] = [
  * checkboxes underneath their styling, so they keep checkbox semantics and
  * keyboard behaviour (Space toggles) everywhere.
  */
-export function SettingsDialog({ settings, onChange, onClose }: SettingsDialogProps) {
+export function SettingsDialog({
+  settings,
+  isThemeNewer = false,
+  onChange,
+  onClose,
+}: SettingsDialogProps) {
   const ids = useId();
 
   return (
@@ -111,7 +123,7 @@ export function SettingsDialog({ settings, onChange, onClose }: SettingsDialogPr
                   type="radio"
                   name={`${ids}-theme`}
                   value={value}
-                  checked={settings.theme === value}
+                  checked={!isThemeNewer && settings.theme === value}
                   onChange={() => onChange({ theme: value })}
                 />
                 <span>{label}</span>

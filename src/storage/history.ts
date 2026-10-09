@@ -12,6 +12,10 @@ import {
   isGridString,
   latestDateAnywhere,
   looksLikeShareCode,
+  fieldsOf,
+  newerFields,
+  ASSIST_FIELDS,
+  SERIALISED_GAME_FIELDS,
   type Assists,
   type DateKey,
   type Difficulty,
@@ -73,6 +77,25 @@ import {
  * Everything read back is validated record by record. Storage can be
  * hand-edited, written by another version of the game, or imported from a
  * file, and one bad record must cost that record only — never the history.
+ *
+ * A newer version may have written fields this one does not know, and a tab
+ * left open on this version after a deploy goes on rewriting the history. So
+ * a record keeps such fields — on itself, its assists and its challenge —
+ * when they are small (see `newerFields`), through every load, save, prune,
+ * export and import; the fields this version knows are validated as ever.
+ * Saved games keep theirs the same way (see `saveGameBlob`).
+ *
+ * Reserved for the move logs a later version keeps, and never to be used for
+ * anything else here:
+ *   sudoku.moves.<id>   one game's move log
+ *   sudoku.moveLogs     the ids that have a `sudoku.moves.<id>` key
+ * Nothing in this module deletes a key by prefix or by enumerating storage —
+ * only `sudoku.game.<id>` keys it has listed, and its own fixed keys — so
+ * those survive any sweep or shedding done by this version.
+ *
+ * A field kept this way is a snapshot, never updated here however the game
+ * goes on; a later version must be able to tell when one has gone stale (see
+ * `newerFields` — a count of mistakes stamped with the time it was taken at).
  */
 
 /** Someone else's result that a shared link carried, to compare against. */
@@ -187,6 +210,30 @@ const ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 const ID_ALPHABET = '0123456789abcdefghijklmnopqrstuvwxyz';
 const GAME_SOURCES: readonly string[] = ['generated', 'daily', 'shared', 'replay'];
 
+/**
+ * The fields of a record this version knows, optional ones included, so that
+ * a malformed `daily` is dropped as before rather than kept as a newer
+ * version's field. Anything else is kept if small (see `newerFields`).
+ */
+const RECORD_FIELDS = fieldsOf<GameRecord>({
+  id: true,
+  givens: true,
+  difficulty: true,
+  source: true,
+  createdAt: true,
+  updatedAt: true,
+  completedAt: true,
+  status: true,
+  elapsedMs: true,
+  assists: true,
+  challenge: true,
+  daily: true,
+  startedOn: true,
+});
+
+/** The fields of a challenge this version knows. */
+const CHALLENGE_FIELDS = fieldsOf<Challenge>({ name: true, seconds: true, assists: true });
+
 function gameKey(id: string): string {
   return GAME_KEY_PREFIX + id;
 }
@@ -217,9 +264,11 @@ function toCount(value: unknown): number {
   return isFiniteNumber(value) && value > 0 ? Math.floor(value) : 0;
 }
 
+/** Assists from storage or a file: the known counts coerced, a newer version's small fields kept. */
 function normaliseAssists(value: unknown): Assists {
   const source = isObject(value) ? value : {};
   return {
+    ...newerFields(source, ASSIST_FIELDS),
     autoCandidates: source.autoCandidates === true,
     hints: toCount(source.hints),
     checks: toCount(source.checks),
@@ -291,6 +340,7 @@ function normaliseChallenge(value: unknown): Challenge | null {
   if (!isFiniteNumber(seconds) || seconds < 1) return null;
   const name = normaliseName(value.name);
   return {
+    ...newerFields(value, CHALLENGE_FIELDS),
     name: name === '' ? null : name,
     seconds: Math.floor(seconds),
     assists: normaliseAssists(value.assists),
@@ -307,7 +357,8 @@ function normaliseChallenge(value: unknown): Challenge | null {
  * that are merely odd are coerced: an unknown source reads as 'generated',
  * timestamps out of order are pulled level, missing assists count as none,
  * and a broken challenge or daily date is dropped on its own — the game is
- * still a game, just not one against a rival or on the calendar.
+ * still a game, just not one against a rival or on the calendar. Small
+ * fields a newer version added are kept as they are (see `newerFields`).
  */
 function normaliseRecord(value: unknown): GameRecord | null {
   if (!isObject(value)) return null;
@@ -329,6 +380,7 @@ function normaliseRecord(value: unknown): GameRecord | null {
   }
   const isDaily = isDailyDate(value.daily, createdAt);
   return {
+    ...newerFields(value, RECORD_FIELDS),
     id,
     givens,
     difficulty,
@@ -660,10 +712,14 @@ export function loadHistory(storage: StorageLike): GameRecord[] {
  * The record is stored as a copy, so later changes to the caller's object do
  * not leak into the list returned. One that would not survive a reload (a
  * malformed id, givens or time) is not written at all.
+ *
+ * A newer version's fields on the stored copy, and on its assists, are kept
+ * when the caller's record lacks them (see `keepNewerFields`).
  */
 export function upsertRecord(storage: StorageLike, record: GameRecord): GameRecord[] {
   const records = loadHistory(storage);
-  const incoming = normaliseRecord(record);
+  const stored = records.find((existing) => existing.id === record.id);
+  const incoming = normaliseRecord(stored === undefined ? record : keepNewerFields(record, stored));
   if (incoming === null) return records;
   const index = records.findIndex((existing) => existing.id === incoming.id);
   if (index === -1) records.unshift(incoming);
@@ -674,6 +730,27 @@ export function upsertRecord(storage: StorageLike, record: GameRecord): GameReco
   const saved = saveRecords(storage, capRecords(storage, records, keep), keep);
   sweepSavedGames(storage, saved, MAX_SAVED_GAMES);
   return saved;
+}
+
+/**
+ * A record about to replace `stored`, with the newer version's fields of
+ * `stored` (and of its assists) put back wherever the record lacks them.
+ *
+ * The page builds the record it saves from the one it loaded, so it normally
+ * has them already. This covers the rest: a game restored with its assists
+ * taken from the saved board, which may not carry what the record did, and a
+ * newer version in another tab adding a field to the record since this page
+ * loaded it. Help is never taken back and a field this version does not know
+ * is never one it means to remove, so keeping the stored value is always
+ * right. The challenge is left alone: a link that brings a new one replaces
+ * the old one whole.
+ */
+function keepNewerFields(record: GameRecord, stored: GameRecord): GameRecord {
+  return {
+    ...newerFields(stored, RECORD_FIELDS),
+    ...record,
+    assists: { ...newerFields(stored.assists, ASSIST_FIELDS), ...record.assists },
+  };
 }
 
 /**
@@ -762,16 +839,32 @@ export function computeStats(records: readonly GameRecord[]): Record<Difficulty,
  * form). Best-effort: if the browser refuses it even after `freeSpace`, the
  * game simply is not resumable after a reload. Returns whether it was saved,
  * so the caller can avoid pointing `sudoku.current` at a game that was not.
+ *
+ * Small top-level fields of the state saved before that this version does
+ * not know (see `SERIALISED_GAME_FIELDS` and `newerFields`) are carried over
+ * when the new state leaves them out: they are a newer version's, which a tab
+ * still on this version must not wipe by saving over them. A field this
+ * version knows is never carried, so leaving one out of a save drops it.
  */
 export function saveGameBlob(storage: StorageLike, id: string, blob: unknown): boolean {
   let json: string | undefined;
   try {
-    json = JSON.stringify(blob);
+    json = JSON.stringify(isObject(blob) ? withNewerFields(storage, id, blob) : blob);
   } catch {
     return false; // a cycle or a BigInt: a programmer error, but not one worth a crash
   }
   if (json === undefined) return false;
   return storeGame(storage, id, json, freeSpace);
+}
+
+/** A game's state to save, with the small fields only a newer version wrote to its previous save put back. */
+function withNewerFields(
+  storage: StorageLike,
+  id: string,
+  blob: Record<string, unknown>,
+): Record<string, unknown> {
+  const carried = newerFields(readJson(storage, gameKey(id)), SERIALISED_GAME_FIELDS);
+  return Object.keys(carried).length === 0 ? blob : { ...carried, ...blob };
 }
 
 /** A game's saved state, or null if there is none or it is not valid JSON. Not validated further. */

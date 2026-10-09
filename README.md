@@ -354,6 +354,13 @@ have seen (up to 2,000, so a puzzle stays seen after its game is deleted) and th
 already dealt (the last 112, so they need not be dealt again). There are no accounts and no
 tracking.
 
+A tab left open on an older version after an update carries on saving, so the game keeps what it
+does not recognise rather than wiping it: small fields a newer version added to a game's record,
+its saved board or the preferences (up to 8 per object, each at most 200 characters of JSON) are
+written back untouched, and a theme it does not know is applied as System, with none shown as
+chosen in Settings, but kept until you pick one. Nothing ever deletes the keys `sudoku.moves.<id>`
+and `sudoku.moveLogs`, which are kept for move logs.
+
 Some browsers clear a site's storage after a while away (Safari does after seven days without a
 visit, unless the game has been added to the home screen). Use **Export** in History to keep a
 copy, and **Import** to bring it back or move it to another browser — imported games, the

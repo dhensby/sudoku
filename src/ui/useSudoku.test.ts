@@ -508,6 +508,20 @@ describe('useSudoku', () => {
       expect(loadPreferences(storage).settings.highlightBox).toBe(false);
     });
 
+    it('say a newer version’s theme is stored until a theme is picked here', async () => {
+      // Applied as System, but Settings must let the player pick System to replace it.
+      const storage = memoryStorage();
+      storage.setItem('sudoku.prefs', JSON.stringify({ settings: { theme: 'contrast' } }));
+      const { result } = await started({ storage });
+      expect(result.current.settings.theme).toBe('system');
+      expect(result.current.isThemeNewer).toBe(true);
+      act(() => result.current.actions.updateSettings({ highlightBox: false }));
+      expect(result.current.isThemeNewer).toBe(true);
+      act(() => result.current.actions.updateSettings({ theme: 'system' }));
+      expect(result.current.isThemeNewer).toBe(false);
+      expect(loadPreferences(storage).settings.theme).toBe('system');
+    });
+
     it('remember the player’s name, tidied', async () => {
       const { result, storage } = await started();
       act(() => result.current.actions.setPlayerName('  Dan   H  '));
