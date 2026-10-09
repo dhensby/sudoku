@@ -21,7 +21,8 @@
     "coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
     "dailies:freeze": "node scripts/dailies.mjs freeze",
-    "dailies:switch": "node scripts/dailies.mjs switch"
+    "dailies:switch": "node scripts/dailies.mjs switch",
+    "moves:golden": "node scripts/move-logs.mjs"
   },
   "dependencies": {
     "@fontsource-variable/bitter": "^5.3.0",

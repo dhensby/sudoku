@@ -1,0 +1,126 @@
+{
+  "$comment": "Golden move logs: each replays to its \"end\" through every step hashed in \"trace\". A change to the reducer that moves one needs MOVES_VERSION bumped (src/core/moves.ts). Do not edit by hand: npm run moves:golden writes this file (README, \"The move log\").",
+  "rules": 1,
+  "games": [
+    {
+      "name": "Easy, placing digits only, with slips",
+      "givens": "530070000600195000098000060800060003400803001700020006060000280000419005000080079",
+      "solution": "534678912672195348198342567859761423426853791713924856961537284287419635345286179",
+      "difficulty": "easy",
+      "log": "BBAI8pHGYiBGthBrCEFcJDRtDG7mJKl5CK4IK7KrCYJqEJIWLIIJ3LK-jHHiKCcmFBoTEJ-FC3HDcuIFsHF94GIEHIhOIQHJR6GrCIIAEAS0GKz8BB2QAGyFrCFKOFBYoBAHWBzmCBZzBD1NExkBA4jDBcyCHwLF4uCEUqCEDsECxHDonCFggDBxKAgHEl4BB_rCAuEGNYrCGE8PCQZE7zEDqEHfzIGOHBOHInGHa7F6EC",
+      "end": {
+        "values": "534678912672195348198342567859761423426853791713924856961537284287419635345286179",
+        "marks": ".................................................................................",
+        "notes": "",
+        "autoRemoved": "",
+        "autoCandidates": false,
+        "status": "solved",
+        "assists": "auto:false hints:0 checks:0 reveals:0",
+        "cellHints": "",
+        "undo": 57,
+        "redo": 0
+      },
+      "trace": "844cac0e"
+    },
+    {
+      "name": "Expert, in auto candidate mode",
+      "givens": "000005600054700030070920000080000010500200070009000000900000021003509004800300000",
+      "solution": "298135647154786239376924158482673915561298473739451862945867321623519784817342596",
+      "difficulty": "expert",
+      "log": "BBBYFFKJgBHuLdeGCe7DDeuIe1IF8_ILXJAYGJRjBZUNaoKI5jBFdnDWyQaoLD68BW2wBEK2ICmRC02EGpGBRPdUWADLAJaCRGBuHhZjBBDIIwSAmGAyuHd1NBJ3IEqTd0MHUsJgRXE_wIHlpGhJKgTwBGS5DHJlJJ9hChJRIrkEG6HgZLDQwBEdGJqTCGfdUJBg1EKprFf3aKZYKwsBJgqJZ3MDO7BezFbDUFnxBJE2BGjJDCkBeAHfSYIhOF1tIIFiGHPrFbDFJwyBITGEjGEOiBGzuGK-s",
+      "end": {
+        "values": "298135647154786239376924158482673915561298473739451862945867321623519784817342596",
+        "marks": ".................................................................................",
+        "notes": "",
+        "autoRemoved": "0:13 2:2 4:1 14:8 23:6 27:7 29:7 31:9 35:3 40:8 42:8 45:6 46:6 48:8 57:6 58:7",
+        "autoCandidates": true,
+        "status": "solved",
+        "assists": "auto:true hints:0 checks:0 reveals:0",
+        "cellHints": "",
+        "undo": 82,
+        "redo": 0
+      },
+      "trace": "2480e4a0"
+    },
+    {
+      "name": "Expert, every candidate pencilled in",
+      "givens": "050380079300250000000000000170034000000020000200008090005600020000000400008000601",
+      "solution": "654381279391257864827469315176934582589126743243578196715643928962815437438792651",
+      "difficulty": "expert",
+      "log": "BBAalDdHFW0HYFXanLdJDW3EdMHW4DYJGW8EavJdRFfzEhEVW9GawQdSOejEhFHXAFdVRemKhIDXBEf4RXCEa1LdXJf5Ra2TdYFf6Sa3EdZDeqPf7ShMDXFOYWDa4SdaJf8FhNDXGDYXEa5WdbEesEhOEXHRa6FetShPQXIDa7DddLeuPhQLXJDdeWevKhRSXKDYbFZsTcOKgBFXLLZtDa-XcPGdgGgCQYdQZuOa_QcQDdhEgDFdkJhXDcUGhYWYkTcXKgKIcYHdpFgLYYmFcZDdqIgMObJEcaKdrDgNLheDZ5EbKJdsEgOGhfOZ6EbLTdtDhgIXZDcdDe_HhhHXbFcfXdwGfBUhjDXcFZ-McgEfCDgTSXdEZ_RbQDchDdyDgUEaAFbRFciMdzDfEDgVDaCDbTZd1EaDKbUJd2XXiDcmEfIEXjEd4IfJEXlEaHIcpDfLKaJHbaDcrZd8EfNKbbIfODhwDXpZaLDbcEhxFXsDbfFfSTh0DXtDaPXfTEh1LaQPfUFglKh2RaSTfWEgnDeGEfXPh5WXyEZDDaUJeHEh6LXzOZEDaVDeIOfZDh7DX0Dc4EfaUgrHh8IX1QfbEh9OX2UZHKaYGc6RfcJh-DaaDc8EgvDabHc9HffSgwDbtMfgEiCEZMFadLbuKiDHbwHdBGfjDiFDbxKfkFiGKZQFahJdDDflEiHHajYdFEbLQdyLbUSRBcgUHd1zBU1wEXGGeGGUijBetIaYJbxFVSsBgKHWd8HYdFbRIfSOc8ac9OVOGZDHfZLUGkBYF7BMwaZ-GNNlBdMwBO2hCUfJUy2IdbhBSL7CWHGfBJfIGV_3BQ-rDXbGaHFRNYa1HdYFXKaQ35EXcOOnNfLhBajpBP3KZt1BPdoFSjGX2RSXLXssBSEGa5Le_FPhIejQXAFR-iCiCFRu8FaVMPO2BLe2FXjXP6jBOqlBSu2BPEGh9GNrxBeviBM92BVrIbbGMQyBV49DflFTNVLkyBTTfMcGMAKTpoCUK0BTwZMMhBOTWLyUT1wDdD3BQGiEWtgBQU3BWgkBN3JRs7BRhnBPBKZLn",
+      "end": {
+        "values": "654381279391257864827469315176934582589126743243578196715643928962815437438792651",
+        "marks": ".................................................................................",
+        "notes": "0:6 2:4 5:1 6:2 10:9 11:1 14:7 15:8 16:6 17:4 18:8 19:2 20:7 21:4 22:6 23:9 24:3 25:1 26:5 29:6 30:9 33:5 34:8 35:2 36:5 37:8 38:9 39:1 41:6 42:7 43:4 44:3 46:4 47:3 48:5 49:7 51:1 53:6 54:7 55:1 58:4 59:3 60:9 62:8 63:9 64:6 65:2 66:8 67:1 68:5 70:3 71:7 72:4 73:3 75:7 76:9 77:2 79:5",
+        "autoRemoved": "",
+        "autoCandidates": false,
+        "status": "solved",
+        "assists": "auto:false hints:0 checks:0 reveals:0",
+        "cellHints": "",
+        "undo": 338,
+        "redo": 0
+      },
+      "trace": "ce57e977"
+    },
+    {
+      "name": "Easy, with every kind of help and a reset",
+      "givens": "530070000600195000098000060800060003400803001700020006060000280000419005000080079",
+      "solution": "534678912672195348198342567859761423426853791713924856961537284287419635345286179",
+      "difficulty": "easy",
+      "log": "BBAD1GHp-FmBlGiOJW30FYI5EiQGrC4DrDKol7CW4Jp2zDnVrGrEsErF3BrGABGjhBwiCkyGjhBwgDI8hEGYtBFcoFDRpFG7kDKlmIK4MJqGJImCJ3qBK-LHiLknB2kGCcHBoUEJmFC3JDcGFsTF9HIEGIhqEIQGj2BxuHIAkCASGKzuBB2RKO8BAHvCj-B02CBz1DBZeD1iFExzGA4kJBcjBjmBT1GHwOF4Vj9BY6EEUvHEDZCxckiBRwIDoHFg7IAgLElgBAuMklBLoBE8bCQoJDqnIGOIBONInHkhBIGoUGR8Q",
+      "end": {
+        "values": "534678912672195348198342567859761423426853791713924856961537284287419635345286179",
+        "marks": ".....................................................................r...........",
+        "notes": "",
+        "autoRemoved": "",
+        "autoCandidates": false,
+        "status": "solved",
+        "assists": "auto:true hints:11 checks:2 reveals:2",
+        "cellHints": "",
+        "undo": 50,
+        "redo": 0
+      },
+      "trace": "4f2962f6"
+    },
+    {
+      "name": "Easy, a tour of the rules, solved by a Redo after a Reveal",
+      "givens": "530070000600195000098000060800060003400803001700020006060000280000419005000080079",
+      "solution": "534678912672195348198342567859761423426853791713924856961537284287419635345286179",
+      "difficulty": "easy",
+      "log": "BBAYGrBdKEYGeBUMmBhCmBWHp4BmB3BGYIW1EGYIiOrBiOErC7BrD2BkECrElVdlVZKwEkEAAEkEAAIJfyBizFkECrTFsVkECruBjeAAJrGABSasEAHwBmFJatLCqEargBPOFrEGnVSrCIrDgBol6BYIPYINb-FrCFp5gBrCbrDErFdD1JrCPrFHjeCrLrFGCcqBGOHE8wBDqRDoOHaJInEJ3zBCQFExLIhMDcGF9EA4EK-FF4bJqEElyBK4FDRPAuMKzfIQaFseG7QB2FBzNEUEAgIIEUKlFFgFIAQFczBBopBEJeC38BASRJIZEDJCxRBcGHwEBZfAHJKOlBI8dGYED1EBOSrCxBocgBrDEliY",
+      "end": {
+        "values": "534678912672195348198342567859761423426853791713924856961537284287419635345286179",
+        "marks": ".............................................................................r...",
+        "notes": "",
+        "autoRemoved": "",
+        "autoCandidates": false,
+        "status": "solved",
+        "assists": "auto:true hints:7 checks:5 reveals:2",
+        "cellHints": "",
+        "undo": 50,
+        "redo": 0
+      },
+      "trace": "8aaacc25"
+    },
+    {
+      "name": "Expert, random play",
+      "givens": "000005600054700030070920000080000010500200070009000000900000021003509004800300000",
+      "solution": "298135647154786239376924158482673915561298473739451862945867321623519784817342596",
+      "difficulty": "expert",
+      "log": "BBAMc7BCECDikBjlBAwBk2yBnh5BHuCEqFk26EGptCoJCa06Bbx1CgiuBrFIBRWCG7CrCmBrD1BT6nBhHapVuBrC0BAyPrCZHHyBmwHoBHUJVBZ4CG61BIr5BkDAG4BpHbGjqBrFIKprDkrAByBCRlBkOAAwBAySGztCElCrCGgbuBToVaG2CoBfCXECegBDd3CFdpCfX-BrCNqwKJEREjUrCeFFlBGpCEj4CkMAEPCBsCEjJY0HJnCocwDkpAJFcgCaAIkhAAvCJxCrCVRgjCl87CmfQEKmDrClBCGWo3dQfREKCDOPDeXLHaY_yCrC1BF8mCikYCN5DqtuCF1CrCdGm9Bl8JGSLXBUrCCYeDAYsBrCDAmqCLcJkUAA2CXqjDkrAH0BEO4BrC9BrCzCaMOIFgBrCGrDII43EohXG6iBMyFFd1BEQgBRAXrCIX7oCnyuDjdAAvBC6YIeRrCwBF8ZkQAAuBHJCl8JjfB0SDCTebDl8EEO2CJ9ZrCdJ9JoVqBfF9BHPDrEGkcCUHIrOBUMCICqoIrC7BrESrCCDZGkVATQWwCkgB0GKW6BIZvBjdAApCrCDrCqBrDtCp_LGj1BougBjdAA7CnQJJRlDrFwCUS3ET_pCEKyBKjkCrEKd8VmZITk5CrE2BLXMnX_DbZ0Dj8AOpEDCbirDrFoBC5IBRLpxoCrCCjfAOZAD_DBugBrCUDCCKwCHB3Bd_HBDvBnsVkeB-HrCsBJEnCrCDnc8CJg5BHjsBrCxDRrEegCrChCrDgBrC8BIwiCHloEJRRKHhBHu3BAYHEOiBKJtCFC7BKZEKWgBJ8-BrCfONsDUEeGpDrCVrCqBjzAAGiiFkNAKKFd1BrCzErC-BrCULXHnhDZ8pBJqQOwHGpFAmgBFdPCemC0z4",
+      "end": {
+        "values": "290105607054789039376923158482003010501208076009000803900000021003509004807302598",
+        "marks": ".............r....r....w.....r...................................................",
+        "notes": "",
+        "autoRemoved": "56:6",
+        "autoCandidates": true,
+        "status": "playing",
+        "assists": "auto:true hints:21 checks:7 reveals:12",
+        "cellHints": "49:deduction/nakedTriple/:0:false",
+        "undo": 28,
+        "redo": 0
+      },
+      "trace": "9e1d3cdd"
+    }
+  ]
+}
