@@ -40,6 +40,15 @@ describe('the palette', () => {
     expect(contrast(pressed, rest)).toBeGreaterThan(contrast(hover, rest));
   });
 
+  it.each([
+    ['light', LIGHT],
+    ['dark', DARK],
+  ] as const)('rings the %s selection in the box lines’ own ink', (_, tokens) => {
+    // Where the selected block meets a box line, the ring is what the line
+    // touches, so the box line is held to no contrast against the block.
+    expect(tokens['hl-ring']).toBe(tokens['grid-thick']);
+  });
+
   it('keeps the system dark palette and the forced dark one identical', () => {
     expect(DARK_FORCED).toEqual(DARK);
   });
@@ -144,6 +153,27 @@ describe('the board', () => {
     expect(rule(BOARD, '.cell--given')).toMatch(/font-family:\s*var\(--font-digits\)/);
     expect(rule(BOARD, '.cell')).toMatch(/font-family:\s*var\(--font\)/);
     expect(rule(BOARD, '.cell--revealed')).toMatch(/font-style:\s*italic/);
+  });
+
+  it('sets candidates at 28% of the cell, and 9–11px on a small board, as large as fits', () => {
+    // 11px from a 32⅓px cell up; below that, 34% of the cell, down to 9px
+    // at a 26½px cell, and below a 23.7px cell, 38% of it. Three rows of
+    // lines 0.8 high then fit inside the padding of any cell — at 24px,
+    // 3 × 7.2px + 2 × 0.96px is 23.5px — where a 1-high line at 9px
+    // spilled out of it.
+    const candidates = rule(BOARD, '.cell__candidates');
+    expect(candidates).toMatch(
+      /font-size:\s*max\(\s*calc\(var\(--cell\) \* 0\.28\),\s*clamp\(min\(9px, calc\(var\(--cell\) \* 0\.38\)\), calc\(var\(--cell\) \* 0\.34\), 11px\)\s*\)/,
+    );
+    expect(candidates).toMatch(/line-height:\s*0\.8/);
+    expect(candidates).toMatch(/padding:\s*calc\(var\(--cell\) \* 0\.04\)/);
+  });
+
+  it('sets candidates heavier on a board under 400px', () => {
+    expect(rule(BOARD, '.cell__candidates')).toMatch(/font-weight:\s*500/);
+    expect(BOARD).toMatch(
+      /@container board-column \(max-width: 399\.98px\)\s*\{\s*\.cell__candidates,\s*\.cell__ghosts\s*\{\s*font-weight:\s*600;/,
+    );
   });
 });
 

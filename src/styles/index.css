@@ -36,15 +36,16 @@
   --accent: #1d3ba8;
   --accent-text: #fffcf5;
 
-  /* Thin rules between cells (3:1 on paper); ink between boxes and round
-     the board. */
-  --grid-thin: #858072;
+  /* Thin rules between cells (3:1 on every fill but the same number's,
+     where their width carries them); ink between boxes and round the
+     board. */
+  --grid-thin: #6a665a;
   --grid-thick: #17150f;
 
   /* Givens sit on a neutral screen of ink, set apart by their cell as well
      as by their typeface. */
   --cell-bg: #fffcf5;
-  --cell-given-bg: #e1e0db;
+  --cell-given-bg: #d6d5d1;
 
   /*
    * Highlights are opaque fills, each a clear step from the last: plain
@@ -58,8 +59,8 @@
   --hl-peer: #f0deb0;
   --hl-same: #acb9e8;
   --hl-selected: #1d3ba8;
-  --hl-peer-given: #dac389;
-  --hl-same-given: #94a1d3;
+  --hl-peer-given: #cebc86;
+  --hl-same-given: #9a9ec7;
   --hl-selected-given: #162e86;
   --hl-ring: #17150f;
   /* Keyboard focus on the selected cell: a paper line inside the ring. */
@@ -136,27 +137,27 @@
     --text-muted: #b6ae9f;
     --accent: #93a5ff;
     --accent-text: #13120f;
-    --grid-thin: #6e695f;
-    --grid-thick: #c4bdb0;
+    --grid-thin: #8f897d;
+    --grid-thick: #f3eee4;
     --cell-bg: #131210;
     --cell-given-bg: #2a2826;
-    --hl-peer: #352910;
-    --hl-same: #313f7b;
+    --hl-peer: #3d2f12;
+    --hl-same: #34458a;
     --hl-selected: #93a5ff;
-    --hl-peer-given: #4a3915;
-    --hl-same-given: #3e4e8c;
+    --hl-peer-given: #4d3b16;
+    --hl-same-given: #3f4f8e;
     --hl-selected-given: #a9b8ff;
     --hl-ring: #f3eee4;
     --cell-focus: #13120f;
     --digit-given: #fcf6ec;
     --digit-given-selected: #13120f;
-    --digit-player: #d7dfff;
+    --digit-player: #dfe5ff;
     --digit-player-selected: #13120f;
     --digit-correct: #7fdb9b;
     --digit-correct-selected: #0b3d1d;
     --digit-revealed: #f2a9dd;
     --digit-revealed-selected: #541043;
-    --candidate: #c9c1b1;
+    --candidate: #ddd6c8;
     --candidate-selected: #26231e;
     --danger: #ff988a;
     --danger-selected: #8a1209;
@@ -181,27 +182,27 @@
   --text-muted: #b6ae9f;
   --accent: #93a5ff;
   --accent-text: #13120f;
-  --grid-thin: #6e695f;
-  --grid-thick: #c4bdb0;
+  --grid-thin: #8f897d;
+  --grid-thick: #f3eee4;
   --cell-bg: #131210;
   --cell-given-bg: #2a2826;
-  --hl-peer: #352910;
-  --hl-same: #313f7b;
+  --hl-peer: #3d2f12;
+  --hl-same: #34458a;
   --hl-selected: #93a5ff;
-  --hl-peer-given: #4a3915;
-  --hl-same-given: #3e4e8c;
+  --hl-peer-given: #4d3b16;
+  --hl-same-given: #3f4f8e;
   --hl-selected-given: #a9b8ff;
   --hl-ring: #f3eee4;
   --cell-focus: #13120f;
   --digit-given: #fcf6ec;
   --digit-given-selected: #13120f;
-  --digit-player: #d7dfff;
+  --digit-player: #dfe5ff;
   --digit-player-selected: #13120f;
   --digit-correct: #7fdb9b;
   --digit-correct-selected: #0b3d1d;
   --digit-revealed: #f2a9dd;
   --digit-revealed-selected: #541043;
-  --candidate: #c9c1b1;
+  --candidate: #ddd6c8;
   --candidate-selected: #26231e;
   --danger: #ff988a;
   --danger-selected: #8a1209;
