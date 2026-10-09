@@ -1,100 +1,12 @@
-import { useId, type ReactNode } from 'react';
+import { useId } from 'react';
 import { formatDuration, toSeconds, type Assists, type DateKey, type Difficulty } from '../../core';
 import type { Challenge, DifficultyStats } from '../../storage/history';
 import { DailyMark } from '../DailyMark';
 import { dailyName, type StreakNote } from '../daily';
-import { DIFFICULTY_LABEL, describeAssists } from '../format';
+import { DIFFICULTY_LABEL } from '../format';
+import { Comparison } from './Comparison';
 import { Dialog } from './Dialog';
 import { assistsSentence, formatStat } from './text';
-
-/** How one time compares with another. */
-export interface TimeComparison {
-  /** From the first time's point of view. */
-  result: 'faster' | 'slower' | 'tie';
-  /** The gap in whole seconds; 0 for a tie. */
-  differenceSeconds: number;
-}
-
-/**
- * Compare the player's time with a challenger's, in whole seconds — the unit
- * times are shared in, so a link's 5:23 and a clock's 5:23.9 are a dead heat
- * rather than a defeat by a fraction nobody was shown. Inputs are floored to
- * hold that even for a caller that passes raw seconds.
- */
-// eslint-disable-next-line react-refresh/only-export-components -- pure helper, unit-tested directly
-export function compareTimes(mySeconds: number, theirSeconds: number): TimeComparison {
-  const difference = Math.floor(theirSeconds) - Math.floor(mySeconds);
-  if (difference > 0) return { result: 'faster', differenceSeconds: difference };
-  if (difference < 0) return { result: 'slower', differenceSeconds: -difference };
-  return { result: 'tie', differenceSeconds: 0 };
-}
-
-export interface ComparisonProps {
-  /** The player's time in whole seconds. */
-  mySeconds: number;
-  challenge: Challenge;
-  /** An id for the verdict line, so a dialog can point `aria-describedby` at it. */
-  verdictId?: string;
-}
-
-/** Who won, in words; `name` is null for a challenger whose link gave none. */
-function verdictFor(comparison: TimeComparison, name: ReactNode | null): ReactNode {
-  const gap = formatDuration(comparison.differenceSeconds * 1000);
-  if (comparison.result === 'faster') {
-    return (
-      <>
-        You were {gap} faster than {name ?? 'your friend'}!
-      </>
-    );
-  }
-  if (comparison.result === 'slower') {
-    return (
-      <>
-        {name ?? 'Your friend'} was {gap} faster.
-      </>
-    );
-  }
-  return 'A dead heat!';
-}
-
-/**
- * Both times side by side and who won. Names come from links strangers can
- * write, so they sit inside <bdi>: a right-to-left name would otherwise pull
- * the punctuation and time beside it into its own direction.
- */
-export function Comparison({ mySeconds, challenge, verdictId }: ComparisonProps) {
-  const comparison = compareTimes(mySeconds, challenge.seconds);
-  const { result } = comparison;
-  const name = challenge.name === null ? null : <bdi>{challenge.name}</bdi>;
-  const theirAssists = describeAssists(challenge.assists);
-
-  return (
-    <section className="comparison" aria-label="Head to head">
-      <dl className="comparison__times">
-        <div
-          className={`comparison__entry${result === 'faster' ? ' comparison__entry--winner' : ''}`}
-        >
-          <dt className="comparison__who">You</dt>
-          <dd className="comparison__time">{formatDuration(mySeconds * 1000)}</dd>
-        </div>
-        <div
-          className={`comparison__entry${result === 'slower' ? ' comparison__entry--winner' : ''}`}
-        >
-          {/* The name is cut short with an ellipsis when it is long, and on a
-              tie the verdict doesn't repeat it, so a pointer can read it here. */}
-          <dt className="comparison__who" title={challenge.name ?? undefined}>
-            {name ?? 'Your friend'}
-          </dt>
-          <dd className="comparison__time">{formatDuration(challenge.seconds * 1000)}</dd>
-          {theirAssists !== null && <dd className="comparison__assists">With {theirAssists}</dd>}
-        </div>
-      </dl>
-      <p className="comparison__verdict" id={verdictId}>
-        {verdictFor(comparison, name)}
-      </p>
-    </section>
-  );
-}
 
 /** Whether the solve counted towards the streak, which its note shows with a solid mark. */
 function isCounting(note: StreakNote): boolean {
@@ -222,7 +134,12 @@ export function CompletionDialog({
       </div>
 
       {challenge !== null && (
-        <Comparison mySeconds={toSeconds(elapsedMs)} challenge={challenge} verdictId={verdictId} />
+        <Comparison
+          mySeconds={toSeconds(elapsedMs)}
+          myAssists={assists}
+          challenge={challenge}
+          verdictId={verdictId}
+        />
       )}
 
       <section className="stats" aria-labelledby={statsId}>

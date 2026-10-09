@@ -10,6 +10,7 @@ import {
   modeButton,
   padKey,
   resumeButton,
+  solveFromKeyboard,
   startButton,
   stubClipboard,
   typeDigits,
@@ -608,6 +609,63 @@ test.describe('a 320×568 phone', () => {
       expect(size.width, label).toBeGreaterThanOrEqual(44);
       expect(size.height, label).toBeGreaterThanOrEqual(44);
     }
+  });
+
+  /*
+   * The head-to-head at its fullest: every row of help, hour-long times and
+   * the longest name a link can carry, right to left. The friend wins, so
+   * the time to beat is drawn in the winner's heavier weight — the widest a
+   * time gets. Fixed columns hold it all inside the card; each time and
+   * count stays on one line, and the name is cut short at its end.
+   */
+  test('fits the head-to-head, hour-long times and a long right-to-left name, each on one line, with nothing to scroll sideways', async ({
+    page,
+  }) => {
+    await page.clock.install();
+    await gotoPuzzle(page, NEARLY_DONE.givens, {
+      challenge: { seconds: 35084, name: 'אלכסנדרה בת־שבע מרקוביץ', assists: 'ch2k3r1' },
+    });
+    await startButton(page).tap();
+    await waitForPlaying(page);
+    // A few minutes slower than the friend's 9:44:44.
+    await page.clock.fastForward('09:50:00');
+    await solveFromKeyboard(page, NEARLY_DONE);
+    const solved = page.getByRole('dialog', { name: 'Solved!' });
+    const versus = solved.getByRole('region', { name: 'Head to head' });
+    await expect(versus.getByRole('rowheader')).toHaveText([
+      'Time',
+      'Auto candidates',
+      'Hints',
+      'Checks',
+      'Reveals',
+    ]);
+    const times = versus.getByRole('row').nth(1).getByRole('cell');
+    await expect(times).toHaveText([/^9:5\d:\d\d$/, '9:44:44']);
+    await expect(times.nth(1)).toHaveClass(/comparison__time--winner/);
+    await settle(page);
+    expect(
+      await solved.locator('.dialog__body').evaluate((el) => el.scrollWidth - el.clientWidth),
+    ).toBe(0);
+    // Every time and count on a single line: one line box for all its text.
+    const lineCounts = await versus.getByRole('cell').evaluateAll((cells) =>
+      cells
+        .filter((el) => el.textContent !== '')
+        .map((el) => {
+          const range = document.createRange();
+          range.selectNodeContents(el);
+          return new Set(Array.from(range.getClientRects(), (rect) => Math.round(rect.top))).size;
+        }),
+    );
+    expect(lineCounts).toEqual(Array(10).fill(1));
+    // The name really is cut short, and runs right to left, so the ellipsis
+    // takes its end rather than its beginning.
+    const name = versus.getByRole('columnheader').nth(1).locator('bdi');
+    expect(
+      await name.evaluate((el) => ({
+        cut: el.scrollWidth > el.clientWidth,
+        direction: getComputedStyle(el).direction,
+      })),
+    ).toEqual({ cut: true, direction: 'rtl' });
   });
 
   test('keeps every control a 44px touch target', async ({ page }) => {

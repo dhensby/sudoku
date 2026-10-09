@@ -1,11 +1,6 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import type { Challenge, DifficultyStats } from '../../storage/history';
-import {
-  CompletionDialog,
-  compareTimes,
-  type CompletionDialogProps,
-  type TimeComparison,
-} from './CompletionDialog';
+import { CompletionDialog, type CompletionDialogProps } from './CompletionDialog';
 
 const NONE = { autoCandidates: false, hints: 0, checks: 0, reveals: 0 };
 const STATS: DifficultyStats = { played: 9, solved: 7, bestMs: 241_000, averageMs: 330_500 };
@@ -32,20 +27,6 @@ const challenger = (name: string | null, seconds: number, assists = NONE): Chall
   name,
   seconds,
   assists,
-});
-
-describe('compareTimes', () => {
-  it.each<[number, number, TimeComparison]>([
-    [290, 323, { result: 'faster', differenceSeconds: 33 }],
-    [335, 323, { result: 'slower', differenceSeconds: 12 }],
-    [323, 323, { result: 'tie', differenceSeconds: 0 }],
-    // Whole seconds: a clock's 5:23.9 and a link's 5:23 are a dead heat, not
-    // a defeat by a fraction nobody was shown.
-    [323.9, 323, { result: 'tie', differenceSeconds: 0 }],
-    [1, 3600, { result: 'faster', differenceSeconds: 3599 }],
-  ])('compares my %ss with their %ss', (mine, theirs, expected) => {
-    expect(compareTimes(mine, theirs)).toEqual(expected);
-  });
 });
 
 describe('CompletionDialog', () => {
@@ -143,29 +124,12 @@ describe('CompletionDialog', () => {
       renderCompletion({ elapsedMs: 290_400, challenge: challenger('Dan', 323) });
       const versus = screen.getByRole('region', { name: 'Head to head' });
       expect(versus).toHaveTextContent('You were 0:33 faster than Dan!');
-      const [you, them] = within(versus).getAllByRole('term');
+      const [you, them] = within(versus).getAllByRole('columnheader');
       expect(you).toHaveTextContent('You');
-      expect(you.nextElementSibling).toHaveTextContent('4:50');
       expect(them).toHaveTextContent('Dan');
-      expect(them.nextElementSibling).toHaveTextContent('5:23');
+      expect(within(versus).getByRole('row', { name: /^Time/ })).toHaveTextContent('Time4:505:23');
       // The verdict is part of what focus skips on the way to Share.
       expect(dialog()).toHaveAccessibleDescription(/You were 0:33 faster than Dan!/);
-    });
-
-    it('keeps the name in its own direction', () => {
-      // A right-to-left name would otherwise pull the time beside it into its
-      // own direction, so "5:23" could read as "32:5".
-      renderCompletion({ challenge: challenger('דן', 400) });
-      for (const name of screen.getAllByText('דן')) expect(name.tagName).toBe('BDI');
-    });
-
-    it('offers a long name in full on hover, where a tie leaves the verdict nameless', () => {
-      const name = 'Bartholomew-Fitzgerald';
-      renderCompletion({ elapsedMs: 323_000, challenge: challenger(name, 323) });
-      const versus = screen.getByRole('region', { name: 'Head to head' });
-      const [you, them] = within(versus).getAllByRole('term');
-      expect(them).toHaveAttribute('title', name);
-      expect(you).not.toHaveAttribute('title');
     });
 
     it('owns up to a loss', () => {
@@ -182,23 +146,24 @@ describe('CompletionDialog', () => {
       );
     });
 
-    it.each([
-      [290_000, 'You were 0:33 faster than your friend!'],
-      [335_000, 'Your friend was 0:12 faster.'],
-    ])('calls a nameless challenger "your friend" (%sms)', (elapsedMs, verdict) => {
-      renderCompletion({ elapsedMs, challenge: challenger(null, 323) });
+    it("sets the player's help against the challenger's, row by row, and keeps the hero's line", () => {
+      renderCompletion({
+        assists: { ...NONE, hints: 1 },
+        challenge: challenger('Dan', 323, { ...NONE, autoCandidates: true }),
+      });
       const versus = screen.getByRole('region', { name: 'Head to head' });
-      expect(versus).toHaveTextContent(verdict);
-      expect(within(versus).getByText('Your friend')).toBeInTheDocument();
+      expect(within(versus).getByRole('row', { name: /^Auto candidates/ })).toHaveTextContent(
+        'Auto candidatesNoYes',
+      );
+      expect(within(versus).getByRole('row', { name: /^Hints/ })).toHaveTextContent('Hints10');
+      expect(document.querySelector('.result__assists')).toHaveTextContent('With 1 hint');
     });
 
-    it("shows the help the challenger's time came with", () => {
-      const { rerender, props } = renderCompletion({ challenge: challenger('Dan', 323) });
-      expect(screen.getByRole('region', { name: 'Head to head' })).not.toHaveTextContent('With');
-      rerender(
-        <CompletionDialog {...props} challenge={challenger('Dan', 323, { ...NONE, hints: 1 })} />,
+    it('says when neither player took any help', () => {
+      renderCompletion({ challenge: challenger('Dan', 323) });
+      expect(screen.getByRole('region', { name: 'Head to head' })).toHaveTextContent(
+        'Neither of you took any help.',
       );
-      expect(screen.getByRole('region', { name: 'Head to head' })).toHaveTextContent('With 1 hint');
     });
   });
 

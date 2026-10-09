@@ -2,7 +2,7 @@ import { useId, useState } from 'react';
 import { dateKeyOf, formatDuration, toSeconds, type DateKey, type Difficulty } from '../../core';
 import type { Challenge, GameRecord } from '../../storage/history';
 import { DIFFICULTY_LABEL, formatDate, formatDay } from '../format';
-import { Comparison } from './CompletionDialog';
+import { Comparison } from './Comparison';
 import { Dialog } from './Dialog';
 import { assistsSentence } from './text';
 
@@ -90,6 +90,7 @@ export function ChallengeDialog({
       {challenge !== null && (
         <Comparison
           mySeconds={toSeconds(previous.elapsedMs)}
+          myAssists={previous.assists}
           challenge={challenge}
           verdictId={verdictId}
         />

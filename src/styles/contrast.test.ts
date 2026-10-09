@@ -165,7 +165,9 @@ const PAIRS: Pair[] = [
     mixed('success', 0.12, 'surface-raised'),
     TEXT,
   ],
-  ['a winning time', mixed('success', 0.8, 'text'), 'surface-raised', TEXT],
+  // The head-to-head is a card of --surface inside the dialog; the faster
+  // time's rule underneath is drawn in the same ink, so it is held here too.
+  ['a winning time, on the head-to-head card', mixed('success', 0.8, 'text'), 'surface', TEXT],
   ['History’s Delete', mixed('danger', 0.85, 'text'), 'surface-raised', TEXT],
 
   // ---- The accent ----
