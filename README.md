@@ -725,6 +725,14 @@ of the logs here were shed, none of the file's logs are taken.
   | `iphone`   | iPhone 15      | WebKit   | `touch.spec.ts`, and the phone pass of `a11y.spec.ts` |
   | `android`  | Pixel 7        | Chromium | `touch.spec.ts`, and the phone pass of `a11y.spec.ts` |
 
+  `npm run test:e2e` serves its build on a port of its own for each checkout, picked from the
+  checkout's path, so separate clones and git worktrees can run the suite at the same time, and a
+  `npm run preview` left running on 4173 is never in the way. It never tests a server it finds on
+  that port, which may be serving another build or stop halfway: one there fails the run before it
+  starts. So let a run finish before starting another in the same checkout — both would build into
+  its `dist/` anyway. Set `PLAYWRIGHT_PORT` to choose the port, should two checkouts ever land on
+  the same one.
+
 ## Deployment
 
 Pushing to `main` runs [CI](.github/workflows/ci.yml) (format, lint, type-check, tests, build, e2e);
