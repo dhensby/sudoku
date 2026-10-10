@@ -5,6 +5,7 @@ import {
   count,
   describeAssists,
   describeMistakes,
+  describeResult,
   formatDate,
   hasAssists,
   joinList,
@@ -87,6 +88,24 @@ describe('describeMistakes', () => {
     [{ values: 2, candidates: 5 }, '2 mistakes · 5 candidate mistakes'],
   ])('describes %o as "%s", wrong numbers and struck answers apart', (mistakes, text) => {
     expect(describeMistakes(mistakes)).toBe(text);
+  });
+});
+
+describe('describeResult', () => {
+  const CLEAN = { values: 0, candidates: 0 };
+  it.each<[string, typeof NONE, { values: number; candidates: number } | null, string | null]>([
+    ['a clean, unaided solve', NONE, CLEAN, 'No mistakes'],
+    ['a clean solve with help', { ...NONE, hints: 2 }, CLEAN, 'No mistakes · with 2 hints'],
+    [
+      'mistakes and help',
+      { ...NONE, autoCandidates: true, checks: 1 },
+      { values: 1, candidates: 2 },
+      '1 mistake · 2 candidate mistakes · with auto candidates, 1 check',
+    ],
+    ['help with the mistakes not known', { ...NONE, reveals: 1 }, null, 'With 1 reveal'],
+    ['an unaided solve with the mistakes not known', NONE, null, null],
+  ])('describes %s', (_label, assists, mistakes, text) => {
+    expect(describeResult(assists, mistakes)).toBe(text);
   });
 });
 

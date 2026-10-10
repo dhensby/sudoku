@@ -53,6 +53,38 @@ describe('readSharedLink', () => {
     });
   });
 
+  it("reads the sharer's mistakes from a result link, a clean solve as none", () => {
+    const linkWith = (mistakes: { values: number; candidates: number }) =>
+      buildShareUrl('https://x.test/', GIVENS, {
+        seconds: 323,
+        name: 'Dan',
+        assists: NONE,
+        mistakes,
+      });
+    expect(readSharedLink(searchOf(linkWith({ values: 2, candidates: 1 })))?.challenge).toEqual({
+      name: 'Dan',
+      seconds: 323,
+      assists: NONE,
+      mistakes: { values: 2, candidates: 1 },
+    });
+    expect(
+      readSharedLink(searchOf(linkWith({ values: 0, candidates: 0 })))?.challenge?.mistakes,
+    ).toEqual({ values: 0, candidates: 0 });
+  });
+
+  it.each([
+    ['carries no assists at all', null],
+    ['carries help alone', 'ch2'],
+    ['garbles them', 'm99999x'],
+  ])('leaves the mistakes not known, never none, when an old link %s', (_label, a) => {
+    const url = new URL(buildShareUrl('https://x.test/', GIVENS));
+    url.searchParams.set('t', '323');
+    if (a !== null) url.searchParams.set('a', a);
+    const challenge = readSharedLink(url.search)?.challenge;
+    expect(challenge).not.toBeNull();
+    expect(challenge).not.toHaveProperty('mistakes');
+  });
+
   it('keeps a challenge without a name', () => {
     const url = buildShareUrl('https://x.test/', GIVENS, { seconds: 60, name: '', assists: NONE });
     expect(readSharedLink(searchOf(url))?.challenge).toEqual({

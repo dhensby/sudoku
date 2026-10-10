@@ -19,6 +19,7 @@ import {
   decodeMoveLog,
   analyseMistakes,
   checkGivens,
+  isPossibleTally,
   replayMoves,
   tallyMistakes,
   type Assists,
@@ -127,6 +128,19 @@ export interface Challenge {
   seconds: number;
   /** The help their time came with. */
   assists: Assists;
+  /**
+   * The mistakes their solve made, as their link carried them (see
+   * `src/core/mistakes.ts`). Absent when the link said nothing of them — one
+   * from a version before mistakes went in links, or a solve whose count
+   * was not known — which is never the same as none: only a link that says
+   * "0" claims a clean solve.
+   *
+   * Unlike a record's own count (see `RecordedMistakes`) it needs no stamp:
+   * it is the friend's figure as sent, which nothing here ever updates, so a
+   * tab on an older version carrying it through untouched leaves it as true
+   * as it was.
+   */
+  mistakes?: MistakeTally;
 }
 
 /**
@@ -291,7 +305,12 @@ const RECORD_FIELDS = fieldsOf<GameRecord>({
 });
 
 /** The fields of a challenge this version knows. */
-const CHALLENGE_FIELDS = fieldsOf<Challenge>({ name: true, seconds: true, assists: true });
+const CHALLENGE_FIELDS = fieldsOf<Challenge>({
+  name: true,
+  seconds: true,
+  assists: true,
+  mistakes: true,
+});
 
 function gameKey(id: string): string {
   return GAME_KEY_PREFIX + id;
@@ -318,22 +337,22 @@ function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
 }
 
-/** Whether a value is a whole, non-negative count. */
-function isCount(value: unknown): value is number {
-  return Number.isInteger(value) && (value as number) >= 0;
-}
-
 /**
  * Stored mistakes, or null — not known — for anything malformed. Unlike the
  * help counts (see `toCount`), a broken or missing count is never read as
- * none: "No mistakes" is a claim, and one only the log can make.
+ * none: "No mistakes" is a claim, and one only the log can make. A count no
+ * game could reach (see `isPossibleTally`) is broken too, by the same rule a
+ * friend's link is read by — otherwise a hand-edited file could put a figure
+ * in our share message that the link beside it, read by anyone, says nothing
+ * of.
  */
 function normaliseMistakes(value: unknown): RecordedMistakes | null {
   if (!isObject(value)) return null;
   const { values, candidates, atMs } = value;
-  if (!isCount(values) || !isCount(candidates)) return null;
+  const tally = { values, candidates };
+  if (!isPossibleTally(tally)) return null;
   if (!isFiniteNumber(atMs) || atMs < 0) return null;
-  return { values, candidates, atMs };
+  return { ...tally, atMs };
 }
 
 /** A whole, non-negative count; anything else counts as none. */
@@ -410,17 +429,35 @@ function isStartDate(value: unknown, createdAt: number, updatedAt: number): valu
   );
 }
 
-/** A usable challenge, or null — a broken one only costs the comparison, so it never sinks the record. */
+/**
+ * A challenger's mistakes, or null — not known — for anything a game could
+ * not have counted (see `isPossibleTally`). Like a record's own, a broken
+ * count is never read as none.
+ */
+function normaliseChallengeMistakes(value: unknown): MistakeTally | null {
+  if (!isObject(value)) return null;
+  const tally = { values: value.values, candidates: value.candidates };
+  return isPossibleTally(tally) ? tally : null;
+}
+
+/**
+ * A usable challenge, or null — a broken one only costs the comparison, so it
+ * never sinks the record. Broken mistakes cost only themselves: the time and
+ * help still stand, with the mistakes not known.
+ */
 function normaliseChallenge(value: unknown): Challenge | null {
   if (!isObject(value)) return null;
   const { seconds } = value;
   if (!isFiniteNumber(seconds) || seconds < 1) return null;
   const name = normaliseName(value.name);
+  const mistakes = normaliseChallengeMistakes(value.mistakes);
   return {
     ...newerFields(value, CHALLENGE_FIELDS),
     name: name === '' ? null : name,
     seconds: Math.floor(seconds),
     assists: normaliseAssists(value.assists),
+    // Left off rather than null, as on a record: absent is "not known".
+    ...(mistakes === null ? {} : { mistakes }),
   };
 }
 

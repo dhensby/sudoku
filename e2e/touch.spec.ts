@@ -612,8 +612,8 @@ test.describe('a 320×568 phone', () => {
   });
 
   /*
-   * The head-to-head at its fullest: every row of help, hour-long times and
-   * the longest name a link can carry, right to left. The friend wins, so
+   * The head-to-head at its fullest: every row of help and of mistakes,
+   * hour-long times and the longest name a link can carry, right to left. The friend wins, so
    * the time to beat is drawn in the winner's heavier weight — the widest a
    * time gets. Fixed columns hold it all inside the card; each time and
    * count stays on one line, and the name is cut short at its end.
@@ -623,7 +623,7 @@ test.describe('a 320×568 phone', () => {
   }) => {
     await page.clock.install();
     await gotoPuzzle(page, NEARLY_DONE.givens, {
-      challenge: { seconds: 35084, name: 'אלכסנדרה בת־שבע מרקוביץ', assists: 'ch2k3r1' },
+      challenge: { seconds: 35084, name: 'אלכסנדרה בת־שבע מרקוביץ', assists: 'ch2k3r1m12x3' },
     });
     await startButton(page).tap();
     await waitForPlaying(page);
@@ -638,6 +638,8 @@ test.describe('a 320×568 phone', () => {
       'Hints',
       'Checks',
       'Reveals',
+      'Mistakes',
+      'Candidate mistakes',
     ]);
     const times = versus.getByRole('row').nth(1).getByRole('cell');
     await expect(times).toHaveText([/^9:5\d:\d\d$/, '9:44:44']);
@@ -656,7 +658,7 @@ test.describe('a 320×568 phone', () => {
           return new Set(Array.from(range.getClientRects(), (rect) => Math.round(rect.top))).size;
         }),
     );
-    expect(lineCounts).toEqual(Array(10).fill(1));
+    expect(lineCounts).toEqual(Array(14).fill(1));
     // The name really is cut short, and runs right to left, so the ellipsis
     // takes its end rather than its beginning.
     const name = versus.getByRole('columnheader').nth(1).locator('bdi');

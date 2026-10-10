@@ -169,6 +169,32 @@ export interface MistakeOptions {
 /** A tally of nothing. */
 export const NO_MISTAKES: MistakeTally = Object.freeze({ values: 0, candidates: 0 });
 
+/**
+ * The most of each kind one game can count: a wrong digit counts once per
+ * cell and digit, so 8 a cell at most, and a strike once per cell. Givens
+ * leave fewer cells than 81 to make them in; the bound need only be one no
+ * game can pass.
+ */
+export const MAX_MISTAKES: MistakeTally = Object.freeze({ values: 81 * 8, candidates: 81 });
+
+/**
+ * Whether a count from outside the game — a friend's link, a stored
+ * challenge — is one a game could have made: whole, not negative, and within
+ * `MAX_MISTAKES`. A count that fails is no count at all, and reads as not
+ * recorded rather than as some figure near it: a mistake count is a claim,
+ * and a garbled one claims nothing.
+ */
+export function isPossibleTally(tally: {
+  values: unknown;
+  candidates: unknown;
+}): tally is MistakeTally {
+  const within = (value: unknown, max: number) =>
+    Number.isInteger(value) && (value as number) >= 0 && (value as number) <= max;
+  return (
+    within(tally.values, MAX_MISTAKES.values) && within(tally.candidates, MAX_MISTAKES.candidates)
+  );
+}
+
 /** A mistake still being worked out: a `MistakeEvent` while its window is open. */
 interface Draft {
   kind: MistakeKind;

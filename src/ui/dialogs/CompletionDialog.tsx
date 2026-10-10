@@ -152,6 +152,7 @@ export function CompletionDialog({
         <Comparison
           mySeconds={toSeconds(elapsedMs)}
           myAssists={assists}
+          myMistakes={mistakes}
           challenge={challenge}
           verdictId={verdictId}
         />

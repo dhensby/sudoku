@@ -94,6 +94,15 @@ describe('HelpDialog', () => {
     expect(screen.getByText(/Everything stays in this browser/)).toBeInTheDocument();
   });
 
+  it('says links carry your mistakes, compared beside the help, and explains the dash', () => {
+    render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.getByText(/any help you took and your mistakes/)).toBeInTheDocument();
+    // The head-to-head shows a bare dash for a count not known, so Help names it as such.
+    expect(screen.getByText(/compared row by row/)).toHaveTextContent(
+      "A dash means the mistakes weren't recorded: a link from an older version of the game doesn't carry them, and a solve of yours that wasn't recorded move by move has none to show.",
+    );
+  });
+
   it('says Reset keeps the clock, and replays keep out of the records', () => {
     render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={vi.fn()} />);
     expect(

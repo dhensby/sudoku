@@ -26,6 +26,7 @@ import {
   type GameAction,
   type GameState,
   type GridString,
+  type MistakeTally,
   type MoveLog,
   type Puzzle,
 } from '../core';
@@ -36,6 +37,7 @@ import {
   loadCurrentId,
   loadGameBlob,
   loadHistory,
+  recordedMistakes,
   saveGameBlob,
   saveGameMoves,
   upsertRecord,
@@ -158,7 +160,12 @@ export type SessionStart =
 export interface ShareTarget {
   givens: GridString;
   difficulty: Difficulty;
-  result: { seconds: number; assists: Assists } | null;
+  /**
+   * The time to beat, with its help and its mistakes — the mistakes only as
+   * the solved record has them (`recordedMistakes`), and null when it has
+   * none to tell, which a link then says nothing of.
+   */
+  result: { seconds: number; assists: Assists; mistakes: MistakeTally | null } | null;
   /** The date of the daily the puzzle is, if it was played as one: the link and message name it. */
   daily: DateKey | null;
 }
@@ -437,14 +444,18 @@ export function isGlimpse(session: Session): boolean {
  * one, which nothing needs.
  */
 export function recordOf(session: Session, now: Moment): GameRecord {
-  const elapsed = Math.floor(elapsedMs(session.clock, now.clock));
+  return recordAt(session, Math.floor(elapsedMs(session.clock, now.clock)), now.wall);
+}
+
+/** `recordOf`, at a time on the play clock already read (whole ms) and a wall time. */
+function recordAt(session: Session, elapsed: number, wall: number): GameRecord {
   const mistakes = mistakesOf(session, elapsed);
   const record: GameRecord = {
     ...session.record,
     status: session.game.status,
     elapsedMs: elapsed,
     assists: { ...session.game.assists },
-    updatedAt: Math.max(now.wall, session.record.createdAt),
+    updatedAt: Math.max(wall, session.record.createdAt),
   };
   if (mistakes === null) delete record.mistakes;
   else record.mistakes = mistakes;
@@ -608,28 +619,47 @@ export function puzzleOf(record: GameRecord): Puzzle | null {
  * What sharing the game on screen shares: the puzzle, plus the time once it
  * is solved — unless it was a replay, which shares the puzzle alone (see
  * `ShareTarget`).
+ *
+ * Its mistakes are the record's as saving it would leave it (see
+ * `recordOf`): the session's own record is not kept up with them between
+ * saves, and a solved game's clock has stopped, so the record saved at the
+ * solve and this one agree.
  */
 export function shareTargetOf(session: Session): ShareTarget {
   const { game, record, clock } = session;
+  const isRaceable = game.status === 'solved' && record.source !== 'replay';
   return {
     givens: record.givens,
     difficulty: record.difficulty,
-    result:
-      game.status === 'solved' && record.source !== 'replay'
-        ? { seconds: toSeconds(clock.bankedMs), assists: { ...game.assists } }
-        : null,
+    result: isRaceable
+      ? {
+          seconds: toSeconds(clock.bankedMs),
+          assists: { ...game.assists },
+          mistakes: recordedMistakes(
+            recordAt(session, Math.floor(clock.bankedMs), record.updatedAt),
+          ),
+        }
+      : null,
     daily: record.daily ?? null,
   };
 }
 
-/** What sharing a history entry shares, by the same rules. */
+/**
+ * What sharing a history entry shares, by the same rules — its mistakes as
+ * `recordedMistakes` reads them, so only a count stamped at the solve goes in
+ * a link.
+ */
 export function shareTargetOfRecord(record: GameRecord): ShareTarget {
   return {
     givens: record.givens,
     difficulty: record.difficulty,
     result:
       record.status === 'solved' && record.source !== 'replay'
-        ? { seconds: toSeconds(record.elapsedMs), assists: { ...record.assists } }
+        ? {
+            seconds: toSeconds(record.elapsedMs),
+            assists: { ...record.assists },
+            mistakes: recordedMistakes(record),
+          }
         : null,
     daily: record.daily ?? null,
   };

@@ -219,6 +219,26 @@ describe('loadHistory', () => {
     expect(loadHistory(storage)).toEqual([record]);
   });
 
+  it("round-trips a challenger's mistakes, a clean solve's included, and leaves an old one's unset", () => {
+    const storage = memoryStorage();
+    const challenge = (mistakes?: { values: number; candidates: number }) => ({
+      name: 'Dan',
+      seconds: 323,
+      assists: NO_ASSISTS,
+      ...(mistakes === undefined ? {} : { mistakes }),
+    });
+    const records = [
+      solved('a', 3, 5000, { challenge: challenge({ values: 2, candidates: 1 }) }),
+      solved('b', 2, 5000, { challenge: challenge({ values: 0, candidates: 0 }) }),
+      solved('c', 1, 5000, { challenge: challenge() }),
+    ];
+    seed(storage, records);
+    const loaded = loadHistory(storage);
+    expect(loaded).toEqual(records);
+    // Not known is left off, never read as none.
+    expect(loaded[2].challenge).not.toHaveProperty('mistakes');
+  });
+
   it.each<[string, unknown]>([
     ['null', null],
     ['a number', 42],
@@ -288,6 +308,26 @@ describe('loadHistory', () => {
       { challenge: { name: ` ${'n'.repeat(30)} `, seconds: 5 } },
       { challenge: { name: `${'n'.repeat(23)}…`, seconds: 5, assists: NO_ASSISTS } },
     ],
+    ...(
+      [
+        ['mistakes that are not an object', 3],
+        ['mistakes with a count missing', { values: 2 }],
+        ['mistakes with a negative count', { values: -1, candidates: 0 }],
+        ['mistakes with a fractional count', { values: 1.5, candidates: 0 }],
+        ['mistakes counted as strings', { values: '2', candidates: '0' }],
+        ['more mistakes than a game can make', { values: 0, candidates: 82 }],
+      ] as const
+    ).map(
+      ([label, mistakes]): [
+        string,
+        Partial<Record<keyof GameRecord, unknown>>,
+        Partial<GameRecord>,
+      ] => [
+        `a challenge with ${label}, which then are not known`,
+        { challenge: { name: 'Dan', seconds: 5, mistakes } },
+        { challenge: { name: 'Dan', seconds: 5, assists: NO_ASSISTS } },
+      ],
+    ),
   ])('coerces %s instead of dropping the record', (_label, fields, expected) => {
     const storage = memoryStorage();
     seed(storage, [{ ...playing('x', 100), ...fields }]);
@@ -974,6 +1014,48 @@ describe('importHistory', () => {
     expect(loadGameBlob(target, 'b')).toEqual({ v: 1, values: PUZZLE });
     // The current game is the page's business, not the file's.
     expect(loadCurrentId(target)).toBeNull();
+  });
+
+  it("carries a challenger's mistakes through an export, and an old challenge's stay not known", () => {
+    const source = memoryStorage();
+    const challenge = { name: 'Dan', seconds: 323, assists: NO_ASSISTS };
+    upsertRecord(
+      source,
+      solved('a', 1, 5000, { challenge: { ...challenge, mistakes: { values: 0, candidates: 0 } } }),
+    );
+    upsertRecord(source, solved('b', 2, 5000, { challenge }));
+    const target = memoryStorage();
+    importHistory(target, exportHistory(source, 0));
+    const [b, a] = loadHistory(target);
+    expect(a.challenge?.mistakes).toEqual({ values: 0, candidates: 0 });
+    expect(b.challenge).not.toHaveProperty('mistakes');
+  });
+
+  it('reads an impossible count of your own in a file as not known, keeping the record', () => {
+    const target = memoryStorage();
+    const record = solved('a', 1, 5000, { mistakes: { values: 5000, candidates: 0, atMs: 5000 } });
+    importHistory(target, file([record]));
+    const [read] = loadHistory(target);
+    expect(read.id).toBe('a');
+    expect(read).not.toHaveProperty('mistakes');
+    expect(recordedMistakes(read)).toBeNull();
+  });
+
+  it('drops a broken challenger count in a file, keeping the challenge', () => {
+    const target = memoryStorage();
+    const record = solved('a', 1, 5000, {
+      challenge: { name: 'Dan', seconds: 323, assists: NO_ASSISTS },
+    });
+    importHistory(
+      target,
+      file([
+        {
+          ...record,
+          challenge: { ...record.challenge, mistakes: { values: 9999, candidates: 0 } },
+        },
+      ]),
+    );
+    expect(loadHistory(target)[0].challenge).toEqual(record.challenge);
   });
 
   it.each([
@@ -2454,6 +2536,8 @@ describe('mistakes', () => {
       ['a negative count', { values: -1, candidates: 0, atMs: 60_000 }],
       ['a fraction', { values: 1.5, candidates: 0, atMs: 60_000 }],
       ['a count in words', { values: '1', candidates: 0, atMs: 60_000 }],
+      ['more wrong numbers than a game can count', { values: 649, candidates: 0, atMs: 60_000 }],
+      ['more struck answers than a game can count', { values: 0, candidates: 82, atMs: 60_000 }],
       ['no candidates', { values: 1, atMs: 60_000 }],
       ['no stamp', { values: 1, candidates: 0 }],
       ['a negative stamp', { values: 1, candidates: 0, atMs: -1 }],

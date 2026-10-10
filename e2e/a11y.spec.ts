@@ -219,9 +219,13 @@ for (const scheme of ['light', 'dark'] as const) {
       await expectAccessible(page, 'the Ready card');
 
       await gotoPuzzle(page, PUZZLES.hard.givens, {
-        challenge: { seconds: 323, name: 'Dan', assists: 'ch2' },
+        challenge: { seconds: 323, name: 'Dan', assists: 'ch2m1' },
       });
       await expect(startButton(page)).toBeVisible();
+      // The friend's mistakes included.
+      await expect(boardArea(page)).toContainText(
+        "Dan's solve: 1 mistake · with auto candidates, 2 hints.",
+      );
       await expectAccessible(page, 'the Ready card with a challenge');
 
       await startButton(page).click();
@@ -319,17 +323,25 @@ for (const scheme of ['light', 'dark'] as const) {
       await gotoPuzzle(page, NEARLY_DONE.givens, { challenge: { seconds: 90, name: 'Dan' } });
       await expect(dialog(page, "You've solved this one")).toBeVisible();
       await expect(dialog(page, "You've solved this one").getByText('No mistakes.')).toBeVisible();
+      // A link without mistakes: the friend's show as a dash, "not recorded".
+      await expect(
+        dialog(page, "You've solved this one").getByRole('row', { name: /^Mistakes/ }),
+      ).toContainText('not recorded');
       await expectAccessible(page, "the You've solved this one dialog");
       await closeDialog(page);
 
       // Head to head: a friend's time to beat, then beaten.
       await startPuzzle(page, NEARLY_DONE_2, {
-        challenge: { seconds: 300, name: 'Alexandra', assists: 'ch2' },
+        challenge: { seconds: 300, name: 'Alexandra', assists: 'ch2m1x2' },
       });
       await page.clock.fastForward('00:05');
       await solveFromKeyboard(page, NEARLY_DONE_2);
       await expect(
         dialog(page, 'Solved!').getByRole('region', { name: 'Head to head' }),
+      ).toBeVisible();
+      // Its mistakes rows included.
+      await expect(
+        dialog(page, 'Solved!').getByRole('row', { name: /^Candidate mistakes/ }),
       ).toBeVisible();
       await expectAccessible(page, 'the Solved! dialog, head to head');
       await closeDialog(page);

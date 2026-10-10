@@ -1058,9 +1058,69 @@ describe('share targets', () => {
       difficulty: session.record.difficulty,
       result: null,
     });
-    const game = reduce(session.game, { type: 'enter', digit: answerAt(0) as 1 });
-    const solved = { ...session, game, clock: { bankedMs: 83_900, runningSince: null } };
-    expect(shareTargetOf(solved).result).toEqual({ seconds: 83, assists: NO_HELP });
+    const played = advance(
+      session,
+      { type: 'enter', digit: answerAt(0) as Digit, index: 0, mode: 'normal' },
+      NOW + 83_900,
+    );
+    const solved = { ...played, clock: { bankedMs: 83_900, runningSince: null } };
+    expect(shareTargetOf(solved).result).toEqual({
+      seconds: 83,
+      assists: NO_HELP,
+      mistakes: { values: 0, candidates: 0 },
+    });
+  });
+
+  describe('the mistakes it shares', () => {
+    /** A game solved in 5 s, its record saying `mistakes`, its log `moves` (or as played). */
+    function solvedWith(mistakes: GameRecord['mistakes'], moves?: MoveLog | null): Session {
+      const solved = advance(
+        running(nearlySolved([0])),
+        { type: 'enter', digit: answerAt(0) as Digit, index: 0, mode: 'normal' },
+        NOW + 5000,
+      );
+      return {
+        ...solved,
+        clock: { bankedMs: 5000, runningSince: null },
+        record: { ...solved.record, status: 'solved', elapsedMs: 5000, mistakes },
+        moves: moves === undefined ? solved.moves : moves,
+      };
+    }
+
+    it('are the count saving the game would leave on its record', () => {
+      const frozen = { values: 2, candidates: 1, atMs: 5000 };
+      expect(shareTargetOf(solvedWith(frozen, null)).result?.mistakes).toEqual({
+        values: 2,
+        candidates: 1,
+      });
+      // Counted before the solve (a tab that played on without counting): counted
+      // afresh from the log, never lower — as the record saved would have it.
+      const stale = { values: 1, candidates: 0, atMs: 3000 };
+      expect(shareTargetOf(solvedWith(stale)).result?.mistakes).toEqual({
+        values: 1,
+        candidates: 0,
+      });
+    });
+
+    it('are not known for a game not recorded move by move, and the link then says nothing', () => {
+      expect(shareTargetOf(solvedWith(undefined, null)).result?.mistakes).toBeNull();
+      expect(
+        shareTargetOf(solvedWith({ values: 1, candidates: 0, atMs: 3000 }, null)).result?.mistakes,
+      ).toBeNull();
+    });
+
+    it("are a history entry's only when stamped at its solve", () => {
+      const record: GameRecord = {
+        ...createRecord(PUZZLE, 'generated', NOW, null, NO_HELP),
+        status: 'solved',
+        elapsedMs: 61_500,
+      };
+      const stamped = { ...record, mistakes: { values: 3, candidates: 2, atMs: 61_500 } };
+      expect(shareTargetOfRecord(stamped).result?.mistakes).toEqual({ values: 3, candidates: 2 });
+      const stale = { ...record, mistakes: { values: 3, candidates: 2, atMs: 60_000 } };
+      expect(shareTargetOfRecord(stale).result?.mistakes).toBeNull();
+      expect(shareTargetOfRecord(record).result?.mistakes).toBeNull();
+    });
   });
 
   it('names the daily a game was played as, puzzle alone or with its time', () => {
@@ -1073,7 +1133,11 @@ describe('share targets', () => {
     const record = createRecord(PUZZLE, 'generated', NOW, null, NO_HELP);
     expect(shareTargetOfRecord(record).result).toBeNull();
     const solved: GameRecord = { ...record, status: 'solved', elapsedMs: 61_500 };
-    expect(shareTargetOfRecord(solved).result).toEqual({ seconds: 61, assists: NO_HELP });
+    expect(shareTargetOfRecord(solved).result).toEqual({
+      seconds: 61,
+      assists: NO_HELP,
+      mistakes: null,
+    });
   });
 
   it('shares a solved replay as the puzzle alone: its time was set on a board seen before', () => {

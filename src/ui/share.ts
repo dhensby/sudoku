@@ -1,13 +1,15 @@
 import {
   encodeGivens,
   formatDuration,
+  isPossibleTally,
   type Assists,
   type DateKey,
   type Difficulty,
   type GridString,
+  type MistakeTally,
 } from '../core';
 import { normaliseName } from '../storage/storage';
-import { DIFFICULTY_LABEL, describeAssists, formatDayWithYear } from './format';
+import { DIFFICULTY_LABEL, describeResult, formatDayWithYear } from './format';
 
 export { MAX_NAME_LENGTH } from '../storage/storage';
 
@@ -21,14 +23,24 @@ export { MAX_NAME_LENGTH } from '../storage/storage';
  * A daily's link says which daily it is, too (`&d=2026-10-13`), so the
  * friend's game is recorded as that daily — once the app has checked that
  * the date's daily really is this puzzle — and shows in their calendar.
+ *
+ * A solve's mistakes travel too, inside the assists parameter (see
+ * `encodeMistakes`) rather than in one of their own, so a link stays as short
+ * as it was and a version from before them opens it just the same.
  */
 
-/** A result to put in a link: the time to beat and the help it came with. */
+/** A result to put in a link: the time to beat, the help it came with and its mistakes. */
 export interface ShareResult {
   seconds: number;
   /** The sharer's name, or '' to stay anonymous. */
   name: string;
   assists: Assists;
+  /**
+   * The solve's mistakes, as its record has them (`recordedMistakes`), or
+   * null (or left out) when they are not known — which the link then says
+   * nothing about, as it is not the same as none.
+   */
+  mistakes?: MistakeTally | null;
 }
 
 /**
@@ -52,6 +64,12 @@ export function encodeAssists(assists: Assists): string {
   return out;
 }
 
+/**
+ * The assist codes, as every version since links carried help has read them.
+ * Anything else in the parameter is skipped, which is what lets later codes —
+ * the mistakes' `m` and `x` — ride along without breaking those versions; a
+ * new code must use a letter outside `c`, `h`, `k` and `r` for that reason.
+ */
 const ASSIST_PART = /c|([hkr])(\d{1,4})/g;
 
 /**
@@ -73,6 +91,48 @@ export function decodeAssists(raw: string | null): Assists {
     else assists.reveals = n;
   }
   return assists;
+}
+
+/**
+ * Pack a solve's mistakes, to follow its assists in the same parameter: `m`
+ * and the count of wrong numbers, always, once the count is known — so a
+ * clean solve sends `m0`, and a link that says nothing (one from an older
+ * version, or a solve not counted) is told apart from one that says none —
+ * then `x` and the count of candidate mistakes, when there were any. Not
+ * known packs to ''.
+ *
+ * Letters a version before mistakes never used: its decoder skips what it
+ * does not know (see `ASSIST_PART`), so such a link still opens there, with
+ * the same help, and only the mistakes go unsaid.
+ */
+export function encodeMistakes(mistakes: MistakeTally | null | undefined): string {
+  if (mistakes === null || mistakes === undefined) return '';
+  return mistakes.candidates > 0
+    ? `m${mistakes.values}x${mistakes.candidates}`
+    : `m${mistakes.values}`;
+}
+
+const MISTAKE_PART = /([mx])(\d{1,4})/g;
+
+/**
+ * Unpack a solve's mistakes from a link's assists parameter, or null when it
+ * does not say. Strict where `decodeAssists` is forgiving: without an `m`,
+ * the mistakes are not known — never none, as a link from before mistakes
+ * were shared has none to say — and a count no game could make (see
+ * `isPossibleTally`) is no count at all. A missing `x` is no candidate
+ * mistakes, as the encoder leaves it out for none.
+ */
+export function decodeMistakes(raw: string | null): MistakeTally | null {
+  if (raw === null) return null;
+  let values: number | null = null;
+  let candidates = 0;
+  for (const match of raw.matchAll(MISTAKE_PART)) {
+    if (match[1] === 'm') values = Number(match[2]);
+    else candidates = Number(match[2]);
+  }
+  if (values === null) return null;
+  const mistakes = { values, candidates };
+  return isPossibleTally(mistakes) ? mistakes : null;
 }
 
 /**
@@ -104,7 +164,8 @@ export function buildShareUrl(
     url.searchParams.set('t', String(sharedSeconds(result.seconds)));
     const name = normaliseName(result.name);
     if (name !== '') url.searchParams.set('n', name);
-    const assists = encodeAssists(result.assists);
+    // Mistakes after the help, in the same parameter (see `encodeMistakes`).
+    const assists = encodeAssists(result.assists) + encodeMistakes(result.mistakes);
     if (assists !== '') url.searchParams.set('a', assists);
   }
   return url.href;
@@ -118,6 +179,11 @@ export function buildShareUrl(
  * A daily names itself, date and year included — the message may be read
  * days later — as "Sudoku Daily · 13 Oct 2026 · Hard", the same first line
  * whether or not it carries a time, so a group chat's dailies line up.
+ *
+ * Under a time, a line says how it was earned, as the Ready card a friend
+ * opens it on does (see `describeResult`): "No mistakes · with 2 hints",
+ * "1 mistake", "With auto candidates" — the mistakes only when the count is
+ * known, and nothing at all for an unaided solve whose count is not.
  */
 export function buildShareText({
   difficulty,
@@ -125,7 +191,7 @@ export function buildShareText({
   daily = null,
 }: {
   difficulty: Difficulty;
-  result?: Pick<ShareResult, 'seconds' | 'assists'>;
+  result?: Pick<ShareResult, 'seconds' | 'assists' | 'mistakes'>;
   /** The date of the daily the puzzle is, if it is one. */
   daily?: DateKey | null;
 }): string {
@@ -136,8 +202,8 @@ export function buildShareText({
     return daily === null ? `Try this ${label} Sudoku!` : `${name}\nCan you solve it?`;
   }
   const lines = [`${name} · ${formatDuration(sharedSeconds(result.seconds) * 1000)}`];
-  const assists = describeAssists(result.assists);
-  if (assists !== null) lines.push(`(with ${assists})`);
+  const how = describeResult(result.assists, result.mistakes ?? null);
+  if (how !== null) lines.push(how);
   lines.push('Can you beat my time?');
   return lines.join('\n');
 }

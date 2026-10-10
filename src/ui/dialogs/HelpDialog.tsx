@@ -294,7 +294,14 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
           <ul className="help__list">
             <li>
               A share link carries the puzzle itself — and, once you have solved it, your time, your
-              name and any help you took.
+              name, any help you took and your mistakes.
+            </li>
+            <li>
+              Your friend&apos;s solve and yours are compared row by row: the time, each kind of
+              help, and the mistakes. The faster time wins; the rest is there to keep it fair. A
+              dash means the mistakes weren&apos;t recorded: a link from an older version of the
+              game doesn&apos;t carry them, and a solve of yours that wasn&apos;t recorded move by
+              move has none to show.
             </li>
             <li>Nothing is uploaded: everything a friend needs is in the link.</li>
             <li>Reset clears the board but not the clock, so a time is always the whole time.</li>
