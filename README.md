@@ -710,10 +710,7 @@ of the logs here were shed, none of the file's logs are taken.
 ## Deployment
 
 Pushing to `main` runs [CI](.github/workflows/ci.yml) (format, lint, type-check, tests, build, e2e);
-on success, [Deploy](.github/workflows/deploy.yml) publishes the very commit CI checked to **GitHub
-Pages**, as long as it is still `main`'s latest. A commit whose CI passes only after a newer one has
-landed (on a re-run, say) is not deployed, which keeps the site from rolling back but also means
-that if the latest commit fails CI, the site stays where it was until `main` is green again.
+once that passes, the same run publishes the commit to **GitHub Pages**.
 
 To set it up on a new repository, enable Pages once: in **Settings → Pages**, set **Source** to
 **GitHub Actions**.
