@@ -9,22 +9,25 @@ on:
   # compares with whatever branch the PR is based on. When the one beneath
   # merges, GitHub retargets it to main — an edit, which isn't among the
   # default triggers — so edits run too, but only one that changed the base
-  # (see the job's condition), not a new title or description.
+  # (see the jobs' condition), not a new title or description.
   pull_request:
     types: [opened, synchronize, reopened, edited]
+
+# A new run cancels the one in progress for the same branch or pull request,
+# all but its result job (below), which runs regardless and fails, as what it
+# waits on was cancelled. An edit that leaves the base alone runs nothing, so
+# it gets a group of its own instead, and never cancels the run in progress.
+concurrency:
+  group: ${{ github.event.action == 'edited' && github.event.changes.base == null && format('ci-edit-{0}', github.run_id) || format('ci-{0}', github.ref) }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
   verify:
-    name: Lint, test & build
+    name: Lint, unit tests & build
     if: github.event.action != 'edited' || github.event.changes.base != null
-    # On the job, not the workflow: a run whose job is skipped (an edit to the
-    # title) then never cancels the run in progress.
-    concurrency:
-      group: ci-${{ github.ref }}
-      cancel-in-progress: true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -46,6 +49,17 @@ jobs:
       - name: Type-check
         run: npm run typecheck
 
+      # Each Playwright project runs only in a job of its own, one per entry in
+      # the e2e job's matrix (below), so a project added to playwright.config.ts
+      # but not to the matrix would never run at all. Listing reads the config
+      # without building or serving the app; a line marked < is a project with
+      # no entry, > an entry with no project.
+      - name: Check every Playwright project has an e2e job
+        run: |
+          diff \
+            <(npx playwright test --list --reporter=json | jq -r '.config.projects[].name' | sort) \
+            <(yq '.jobs.e2e.strategy.matrix.include[].project' .github/workflows/ci.yml | sort)
+
       # The daily archive's guard holds a pull request's archive to the one
       # main has released (src/daily/archive.guard.test.ts), so it needs
       # main's copy; on main itself there is nothing to compare with.
@@ -61,12 +75,6 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium webkit
-
-      - name: End-to-end tests
-        run: npm run test:e2e
-
       - name: Upload coverage report
         if: always()
         uses: actions/upload-artifact@v7
@@ -75,10 +83,67 @@ jobs:
           path: coverage/
           if-no-files-found: ignore
 
+  # One job per Playwright project, side by side and alongside the checks
+  # above, rather than every project in turn in one job: end-to-end is most of
+  # CI's time, and this way only the slowest project sets the pace. Each job
+  # installs just the engine its project's device runs on, named in `browser`.
+  e2e:
+    name: End-to-end (${{ matrix.project }})
+    if: github.event.action != 'edited' || github.event.changes.base != null
+    runs-on: ubuntu-latest
+    strategy:
+      # Let every project finish, so one failing never hides another's result.
+      fail-fast: false
+      matrix:
+        include:
+          - project: chromium
+            browser: chromium
+          - project: iphone
+            browser: webkit
+          - project: android
+            browser: chromium
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps ${{ matrix.browser }}
+
+      - name: End-to-end tests
+        run: npm run test:e2e -- --project=${{ matrix.project }}
+
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.project }}
           path: playwright-report/
           if-no-files-found: ignore
+
+  # The "green-ci" ruleset on main requires a check named "Lint, test & build",
+  # from when one job did everything; this job now carries the name (rename
+  # both together), and passes only if every job above did. It runs even when
+  # one of them failed or was cancelled (`always()`), since a required check
+  # that is skipped counts as passed; only an edit that leaves the base alone
+  # skips it, as it does the jobs above. Coming last, it reports only once they
+  # finish: while a commit already checked is checked again (after a retarget,
+  # say), its earlier result stands until then.
+  result:
+    name: Lint, test & build
+    if: always() && (github.event.action != 'edited' || github.event.changes.base != null)
+    needs: [verify, e2e]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check every job passed
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          jq -r 'to_entries[] | "\(.key): \(.value.result)"' <<< "$NEEDS"
+          jq -e 'all(.[]; .result == "success")' <<< "$NEEDS" > /dev/null

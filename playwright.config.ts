@@ -15,6 +15,10 @@ export default defineConfig({
     baseURL,
     trace: 'on-first-retry',
   },
+  // In CI each project runs in a job of its own, side by side with the
+  // others, so a new one needs an entry in the e2e job's matrix in
+  // .github/workflows/ci.yml as well, naming the engine its device runs on;
+  // CI fails until it has one.
   projects: [
     {
       name: 'chromium',
