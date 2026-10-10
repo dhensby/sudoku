@@ -609,6 +609,10 @@ of the logs here were shed, none of the file's logs are taken.
 Pushing to `main` runs [CI](.github/workflows/ci.yml) (format, lint, type-check, tests, build, e2e);
 on success, [Deploy](.github/workflows/deploy.yml) publishes the site to **GitHub Pages**.
 
+Every commit pushed to `main` has its CI run to the end: neither a newer push nor a re-run of an
+older commit's CI cancels it, so the latest commit is always checked in full, and the site catches
+up with it once it passes. On a pull request, a newer push does cancel the run in progress.
+
 To set it up on a new repository, enable Pages once: in **Settings → Pages**, set **Source** to
 **GitHub Actions**.
 

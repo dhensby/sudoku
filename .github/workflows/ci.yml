@@ -13,12 +13,21 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, edited]
 
-# A new run cancels the one in progress for the same branch or pull request,
-# all but its result job (below), which runs regardless and fails, as what it
-# waits on was cancelled. An edit that leaves the base alone runs nothing, so
-# it gets a group of its own instead, and never cancels the run in progress.
+# A new run cancels the one in progress for the same pull request, all but its
+# result job (below), which runs regardless and fails, as what it waits on was
+# cancelled. On main, though, each commit gets a group of its own, so no run
+# there cancels another. A re-run keeps the ref and commit it first ran for, so
+# in one group for all of main, re-running an older commit's CI would cancel
+# the latest commit's (two pushes close together could race the same way), and
+# as Deploy publishes only a commit whose CI passed, and only while it is
+# main's latest, the site would stay behind until that CI is re-run or another
+# commit lands. Just not cancelling on main would not do: by default a run
+# queued for a group replaces the one already waiting there. The cost is that
+# a commit superseded on main is still checked to the end (Deploy skips it).
+# An edit that leaves the base alone runs nothing, so it gets a group of its
+# own too, and never cancels the run in progress.
 concurrency:
-  group: ${{ github.event.action == 'edited' && github.event.changes.base == null && format('ci-edit-{0}', github.run_id) || format('ci-{0}', github.ref) }}
+  group: ${{ github.event.action == 'edited' && github.event.changes.base == null && format('ci-edit-{0}', github.run_id) || format('ci-{0}', github.ref == 'refs/heads/main' && github.sha || github.ref) }}
   cancel-in-progress: true
 
 permissions:
