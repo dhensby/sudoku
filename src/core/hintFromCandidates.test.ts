@@ -318,5 +318,8 @@ describe('Show me on candidates with answers struck out', () => {
       }
     }
     expect(walkthroughs).toBeGreaterThan(0);
-  });
+    // Some four thousand walkthroughs: about 11 s on a CI runner, past the
+    // 15 s default on a slow one, so it gets the time the engine's other big
+    // sweeps have.
+  }, 60_000);
 });
