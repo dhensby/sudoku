@@ -78,6 +78,19 @@ async function nextFrame(): Promise<void> {
   await act(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
 }
 
+/**
+ * Let a puzzle being dealt arrive — the fixtures deal it in a resolved
+ * promise — with its board in place and the board's effects run, the focus
+ * it takes as it mounts among them. A grid found on the page may not have
+ * had them yet: a render React schedules itself runs its effects in a later
+ * task. Call it straight after the action that starts the deal, with
+ * nothing awaited between: work already handed to React's scheduler is not
+ * act's to flush.
+ */
+async function settle(): Promise<void> {
+  await act(async () => {});
+}
+
 beforeEach(() => {
   localStorage.clear();
   window.history.replaceState(null, '', '/');
@@ -729,8 +742,9 @@ describe('App', () => {
       await startApp({ source: fakeSource(PUZZLE, nearlySolved([0, 1, 2])) });
       clickWithMouse(screen.getByRole('button', { name: 'New game' }));
       clickWithMouse(screen.getByRole('menuitem', { name: 'Expert' }));
-      await screen.findByText('Expert');
-      await screen.findByRole('grid');
+      await settle();
+      expect(screen.getByText('Expert')).toBeInTheDocument();
+      expect(screen.getByRole('grid')).toBeInTheDocument();
       expect(selectedCell()).toHaveFocus();
     });
 
@@ -773,7 +787,8 @@ describe('App', () => {
       press(String(answerAt(0)));
       const dialog = await screen.findByRole('dialog', { name: 'Solved!' });
       fireEvent.click(within(dialog).getByRole('button', { name: 'New game' }));
-      await screen.findByRole('grid');
+      await settle();
+      expect(screen.getByRole('grid')).toBeInTheDocument();
       expect(selectedCell()).toHaveFocus();
     });
 
@@ -1069,7 +1084,8 @@ describe('App', () => {
         within(calendar).getByRole('button', { name: 'Play, Easy daily for Monday 12 October' }),
       );
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-      await screen.findByRole('grid');
+      await settle();
+      expect(screen.getByRole('grid')).toBeInTheDocument();
       expect(selectedCell()).toHaveFocus();
       expect(liveRegion()).toHaveTextContent('The Easy daily for 12 Oct.');
 
