@@ -8,8 +8,11 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  // Serialise in CI for stable timers; let Playwright pick locally.
-  ...(process.env.CI ? { workers: 1 } : {}),
+  // Two workers in CI: a trial there, running every test three times with one
+  // worker and with two, found none that needed a retry either way, and two
+  // made the Chromium projects about a quarter faster. WebKit is held to one
+  // at a time (see the iPhone project). Locally, Playwright picks.
+  ...(process.env.CI ? { workers: 2 } : {}),
   reporter: process.env.CI ? [['html', { open: 'never' }], ['list']] : 'list',
   use: {
     baseURL,
@@ -30,6 +33,10 @@ export default defineConfig({
       name: 'iphone',
       use: { ...devices['iPhone 15'] },
       testMatch: /(touch|a11y)\.spec\.ts/,
+      // One WebKit keeps a CI runner's CPUs busy on its own: with two at once,
+      // each test took twice as long, so they finished no sooner, only closer
+      // to their timeouts. Held to one, it runs beside the Chromium projects.
+      ...(process.env.CI ? { workers: 1 } : {}),
     },
     {
       // The same touch suite on Android Chrome, which reports a different
