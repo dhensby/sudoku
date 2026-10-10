@@ -333,6 +333,46 @@ export function tourTheRules(rng: RandomFn): Played {
   return played;
 }
 
+/**
+ * A scripted game with "Check guesses when entered" switched on part-way and
+ * off again, for the golden logs: a wrong digit left standing from before it
+ * came on (and never marked by its coming on, nor by Undo bringing it back
+ * while it is on), wrong and right digits placed while it is on, a marked
+ * digit brought back by Redo, marked, a marked digit cleared by a candidate
+ * entry, and, once it is off, a wrong digit left unmarked and a marked one
+ * brought back as it was — then a solve. Written for the Wikipedia puzzle's landmarks, as `tourTheRules` is.
+ */
+export function checkGuessesTour(rng: RandomFn): Played {
+  const puzzle = EASY_PUZZLE;
+  const t = () => thinking(rng, 400, 6000);
+  let played = startPlaying(puzzle);
+  const run = (...actions: GameAction[]) => {
+    for (const action of actions) played = act(played, action, t());
+  };
+  const undo: GameAction = { type: 'undo' };
+  const redo: GameAction = { type: 'redo' };
+  const checkGuesses = (enabled: boolean): GameAction => ({ type: 'setCheckGuesses', enabled });
+
+  // Cell 3 (answer 6) wrong before it comes on, and left unmarked as it does.
+  run(place(3, 2), checkGuesses(true));
+  run(place(40, 9), place(40, 5)); // cell 40 (answer 5): marked wrong, then the answer, unmarked
+  run(place(3, 7), undo); // typed over, marked; Undo brings back the 2 from before, unmarked
+  run(place(2, 1), undo, redo); // cell 2 (answer 4): a wrong 1, marked, and Redo brings it back so
+  run(pencil(2, 4)); // a candidate entry clears the marked value
+  run(checkGuesses(false), place(5, 2)); // cell 5 (answer 8): wrong, and unmarked now
+  run(place(40, 3), place(40, 5), undo); // the 3 was not marked; nor is it brought back marked
+  run(undo, undo, undo); // back past the strike: cell 2's 1, marked while it was on, marked still
+  run(checkGuesses(true), checkGuesses(false), checkGuesses(true)); // on, off and on again
+
+  const blanks = [...puzzle.givens].flatMap((ch, i) => (ch === '0' ? [i] : []));
+  for (const cell of blanks) {
+    if (played.game.cells[cell].value !== answerAt(puzzle, cell)) {
+      run(place(cell, answerAt(puzzle, cell)));
+    }
+  }
+  return played;
+}
+
 // ---------------------------------------------------------------------------
 // The random player
 // ---------------------------------------------------------------------------
@@ -387,8 +427,15 @@ function randomHint(game: GameState, rng: RandomFn): Hint {
  * Any action at all, weighted towards what changes the board, and towards
  * the right digit with probability `accuracy` — so some games get solved.
  * Indexes and modes are left to the state now and then, as the UI leaves them.
+ * Switching Check guesses is one of them only `withCheckGuesses`, so that the
+ * games played before it existed (the golden random game's) play as they did.
  */
-export function randomAction(game: GameState, rng: RandomFn, accuracy = 0.6): GameAction {
+export function randomAction(
+  game: GameState,
+  rng: RandomFn,
+  accuracy = 0.6,
+  withCheckGuesses = false,
+): GameAction {
   const empty = game.cells.flatMap((cell, i) => (cell.value === 0 ? [i] : []));
   const cell = rng() < 0.8 && empty.length > 0 ? pick(empty, rng) : Math.floor(rng() * 81);
   const index = rng() < 0.75 ? cell : undefined;
@@ -425,6 +472,7 @@ export function randomAction(game: GameState, rng: RandomFn, accuracy = 0.6): Ga
   if (roll < 95) return { type: 'check', scope: rng() < 0.7 ? 'cell' : 'puzzle' };
   if (roll < 98) return { type: 'reveal' };
   if (roll < 99.3) return { type: 'reset' };
+  if (withCheckGuesses && rng() < 0.75) return { type: 'setCheckGuesses', enabled: rng() < 0.6 };
   return { type: 'hint', hint: { kind: 'none' } };
 }
 

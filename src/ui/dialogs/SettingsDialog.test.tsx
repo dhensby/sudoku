@@ -17,6 +17,8 @@ const SWITCHES: [keyof Settings, string][] = [
   ['highlightConflicts', 'Highlight conflicts'],
   ['startInAutoCandidate', 'Start new games in auto candidate mode'],
   ['clearPeerNotes', 'Remove candidates from peers when placing a number'],
+  ['checkGuesses', 'Check guesses when entered'],
+  ['showErrorCounter', 'Show error counter'],
 ];
 
 describe('SettingsDialog', () => {
@@ -54,9 +56,23 @@ describe('SettingsDialog', () => {
 
   it('groups the switches under named headings', () => {
     renderSettings();
-    for (const name of ['Timer', 'Highlighting', 'Candidates', 'Theme']) {
+    for (const name of ['Timer', 'Highlighting', 'Candidates', 'Mistakes', 'Theme']) {
       expect(screen.getByRole('group', { name })).toBeInTheDocument();
     }
+  });
+
+  it('puts Check guesses and the error counter under Mistakes, saying which is help', () => {
+    renderSettings();
+    const group = screen.getByRole('group', { name: 'Mistakes' });
+    const checkGuesses = within(group).getByRole('checkbox', {
+      name: 'Check guesses when entered',
+    });
+    expect(checkGuesses).toHaveAccessibleDescription(
+      /marked the moment you enter it.*Counts as help, shown next to your time\./,
+    );
+    const counter = within(group).getByRole('checkbox', { name: 'Show error counter' });
+    expect(counter).toHaveAccessibleDescription(/Not counted as help\./);
+    expect(within(group).getAllByRole('checkbox')).toHaveLength(2);
   });
 
   it('offers the theme as one choice of four, and sends the one picked', () => {

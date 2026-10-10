@@ -61,6 +61,8 @@ const UNDO: GameAction = { type: 'undo' };
 const REDO: GameAction = { type: 'redo' };
 const RESET: GameAction = { type: 'reset' };
 const AUTO_ON: GameAction = { type: 'setAutoCandidates', enabled: true };
+const CHECK_GUESSES_ON: GameAction = { type: 'setCheckGuesses', enabled: true };
+const CHECK_GUESSES_OFF: GameAction = { type: 'setCheckGuesses', enabled: false };
 const CHECK_PUZZLE: GameAction = { type: 'check', scope: 'puzzle' };
 /** A hint about HIDDEN, as `findHint` gives one, and Show me for it. */
 const HIDDEN_HINT: GameAction = {
@@ -91,20 +93,27 @@ interface Scenario {
   readonly expected: MistakeTally;
   readonly puzzle?: Puzzle;
   readonly auto?: boolean;
+  /** Check guesses on from the start: switched on, and logged, at 0:00. */
   readonly checkGuesses?: boolean;
 }
 
-function play(steps: readonly Step[], puzzle = EASY_PUZZLE, auto = false): Played {
+function play(
+  steps: readonly Step[],
+  puzzle = EASY_PUZZLE,
+  auto = false,
+  checkGuesses = false,
+): Played {
+  const start = startPlaying(puzzle, auto);
   return steps.reduce(
     (played, [gapMs, action]) =>
       act(played, typeof action === 'function' ? action(played.game) : action, gapMs),
-    startPlaying(puzzle, auto),
+    checkGuesses ? act(start, CHECK_GUESSES_ON) : start,
   );
 }
 
 /** Every mistake counted, all windows settled. */
-function finalTally(played: Played, puzzle = EASY_PUZZLE, checkGuesses = false): MistakeTally {
-  return tallyMistakes(analyseMistakes(puzzle, played.log, { checkGuesses }), Infinity);
+function finalTally(played: Played, puzzle = EASY_PUZZLE): MistakeTally {
+  return tallyMistakes(analyseMistakes(puzzle, played.log), Infinity);
 }
 
 /** The puzzle solved but for `blanks`, each a full house. */
@@ -699,13 +708,104 @@ const SCENARIOS: readonly Scenario[] = [
     ],
     expected: ONE,
   },
+  {
+    name: 'with Check guesses on, a strike of a note of your own counts at once',
+    checkGuesses: true,
+    steps: [
+      [1000, pencil(HARD, answer(HARD))],
+      [1000, pencil(HARD, answer(HARD))],
+      [100, pencil(HARD, answer(HARD))],
+    ],
+    expected: ONE_CANDIDATE,
+  },
+  {
+    name: 'a slip made before Check guesses comes on keeps its window, and is forgiven',
+    steps: [
+      [1000, place(NAKED, 6)],
+      [500, CHECK_GUESSES_ON],
+      [1000, place(NAKED, answer(NAKED))],
+    ],
+    expected: NONE,
+  },
+  {
+    name: 'a slip made before Check guesses comes on still counts once its window runs out',
+    steps: [
+      [1000, place(NAKED, 6)],
+      [500, CHECK_GUESSES_ON],
+      [3000, place(NAKED, answer(NAKED))],
+    ],
+    expected: ONE,
+  },
+  {
+    name: 'a slip made once Check guesses has come on counts at once',
+    steps: [
+      [1000, CHECK_GUESSES_ON],
+      [1000, place(NAKED, 6)],
+      [100, place(NAKED, answer(NAKED))],
+    ],
+    expected: ONE,
+  },
+  {
+    name: 'a slip made once Check guesses is off again has its window again',
+    steps: [
+      [1000, CHECK_GUESSES_ON],
+      [1000, CHECK_GUESSES_OFF],
+      [1000, place(NAKED, 6)],
+      [100, place(NAKED, answer(NAKED))],
+    ],
+    expected: NONE,
+  },
+  {
+    name: 'a forgiven slip brought back by Undo once Check guesses is on has a window of its own',
+    steps: [
+      [1000, place(NAKED, 6)],
+      [500, place(NAKED, answer(NAKED))],
+      [500, CHECK_GUESSES_ON],
+      [500, UNDO],
+      [100, REDO],
+    ],
+    expected: NONE,
+  },
+  {
+    name: 'a slip made before Check guesses comes on, back by Undo and Redo, shares its window',
+    steps: [
+      [1000, place(NAKED, 6)],
+      [300, CHECK_GUESSES_ON],
+      [200, UNDO],
+      [200, REDO],
+      [300, place(NAKED, answer(NAKED))],
+    ],
+    expected: NONE,
+  },
+  {
+    name: 'a slip made before Check guesses comes on, erased and typed again once on, counts at once',
+    steps: [
+      [1000, place(NAKED, 6)],
+      [300, CHECK_GUESSES_ON],
+      [200, erase(NAKED)],
+      [200, place(NAKED, 6)],
+      [100, place(NAKED, answer(NAKED))],
+    ],
+    expected: ONE,
+  },
+  {
+    name: 'a slip made before Check guesses comes on, typed over and then typed again once on, counts',
+    steps: [
+      [1000, place(NAKED, 6)],
+      [300, CHECK_GUESSES_ON],
+      [200, place(NAKED, 7)],
+      [200, place(NAKED, 6)],
+      [100, place(NAKED, answer(NAKED))],
+    ],
+    expected: TWO,
+  },
 ];
 
 describe('mistakes', () => {
   describe('every rule, at exact play times', () => {
     it.each(SCENARIOS)('$name', ({ steps, expected, puzzle, auto, checkGuesses }) => {
-      const played = play(steps, puzzle, auto);
-      expect(finalTally(played, puzzle, checkGuesses)).toEqual(expected);
+      const played = play(steps, puzzle, auto, checkGuesses);
+      expect(finalTally(played, puzzle)).toEqual(expected);
     });
   });
 
@@ -898,8 +998,8 @@ describe('mistakes', () => {
     });
 
     it('is counted the moment it goes in with Check guesses on', () => {
-      const played = play([[1000, place(NAKED, 6)]]);
-      expect(analyseMistakes(EASY_PUZZLE, played.log, { checkGuesses: true }).events).toEqual([
+      const played = play([[1000, place(NAKED, 6)]], EASY_PUZZLE, false, true);
+      expect(analyseMistakes(EASY_PUZZLE, played.log).events).toEqual([
         expect.objectContaining({
           outcome: 'counted',
           settledAt: 1000,
@@ -907,6 +1007,47 @@ describe('mistakes', () => {
           why: 'checkGuesses',
         }),
       ]);
+      // So a tally taken at the very moment counts it.
+      expect(tallyMistakes(analyseMistakes(EASY_PUZZLE, played.log), 1000)).toEqual(ONE);
+    });
+
+    it('is counted the moment it is typed again with Check guesses on, before it was put right', () => {
+      const played = play([
+        [1000, place(NAKED, 6)],
+        [500, CHECK_GUESSES_ON],
+        [500, place(NAKED, 7)],
+        [500, place(NAKED, 6)],
+      ]);
+      expect(analyseMistakes(EASY_PUZZLE, played.log).events).toEqual([
+        expect.objectContaining({ digit: 6, at: 1000, settledAt: 2500, settledBy: 'entered' }),
+        expect.objectContaining({ digit: 7, at: 2000, settledAt: 2000, why: 'checkGuesses' }),
+      ]);
+      expect(tallyMistakes(analyseMistakes(EASY_PUZZLE, played.log), 2500)).toEqual(TWO);
+      // The board says so too: the 6 is marked as it goes in again.
+      expect(played.game.cells[NAKED]).toMatchObject({ value: 6, mark: 'wrong' });
+    });
+
+    it('keeps its window when Undo or Redo brings it back with Check guesses on, unmarked', () => {
+      const played = play([
+        [1000, place(NAKED, 6)],
+        [500, CHECK_GUESSES_ON],
+        [500, UNDO],
+        [500, REDO],
+      ]);
+      const [event] = analyseMistakes(EASY_PUZZLE, played.log).events;
+      expect(event).toMatchObject({ outcome: 'pending', settledAt: null, deadline: 4000 });
+      expect(played.game.cells[NAKED]).toMatchObject({ value: 6, mark: 'none' });
+    });
+
+    it('waits out its window when made before Check guesses came on, which settles nothing', () => {
+      const played = play([
+        [1000, place(NAKED, 6)],
+        [500, CHECK_GUESSES_ON],
+      ]);
+      const [event] = analyseMistakes(EASY_PUZZLE, played.log).events;
+      expect(event).toMatchObject({ outcome: 'pending', settledAt: null, deadline: 4000 });
+      expect(tallyMistakes(analyseMistakes(EASY_PUZZLE, played.log), 3900)).toEqual(NONE);
+      expect(tallyMistakes(analyseMistakes(EASY_PUZZLE, played.log), 4000)).toEqual(ONE);
     });
   });
 
@@ -966,15 +1107,19 @@ describe('mistakes', () => {
     });
   });
 
-  it('works a log out once, however often it is asked, and again for other rules or another puzzle', () => {
+  it('works a log out once, however often it is asked, and again for another puzzle', () => {
     const played = play([[1000, place(NAKED, 6)]]);
     const analysis = analyseMistakes(EASY_PUZZLE, played.log);
     expect(analyseMistakes(EASY_PUZZLE, played.log)).toBe(analysis);
-    const checked = analyseMistakes(EASY_PUZZLE, played.log, { checkGuesses: true });
-    expect(checked).not.toBe(analysis);
-    expect(analyseMistakes(EASY_PUZZLE, played.log, { checkGuesses: true })).toBe(checked);
-    const other = nearlySolved([NAKED]);
-    expect(analyseMistakes(other, played.log)).not.toBe(checked);
+    // The same givens with the digits 1 and 2 swapped in the solution: a
+    // puzzle whose answers differ.
+    const other = {
+      ...EASY_PUZZLE,
+      solution: EASY_PUZZLE.solution.replace(/[12]/g, (digit) => (digit === '1' ? '2' : '1')),
+    };
+    const otherAnalysis = analyseMistakes(other, played.log);
+    expect(otherAnalysis).not.toBe(analysis);
+    expect(analyseMistakes(other, played.log)).toBe(otherAnalysis);
   });
 
   describe('a log from elsewhere', () => {
@@ -1024,7 +1169,8 @@ describe('mistakes', () => {
     it('never counts below zero, and never counts less later, nor for a longer log', () => {
       for (let seed = 1; seed <= 40; seed++) {
         const rng = createRng(`mistakes/${seed}`);
-        const options = { checkGuesses: seed % 5 === 0 };
+        // Every fifth game switches Check guesses on and off as it goes.
+        const withCheckGuesses = seed % 5 === 0;
         let played = startPlaying(EASY_PUZZLE, rng() < 0.3);
         let floor: MistakeTally = NONE;
         for (let i = 0; i < 150 && played.game.status === 'playing'; i++) {
@@ -1032,16 +1178,42 @@ describe('mistakes', () => {
           // then the next move, and a tally of the longer log.
           const gapMs = rng() * 4000;
           const meanwhile = tallyMistakes(
-            analyseMistakes(EASY_PUZZLE, played.log, options),
+            analyseMistakes(EASY_PUZZLE, played.log),
             played.clockMs + rng() * gapMs,
           );
           expectNoLower(meanwhile, floor);
-          played = act(played, randomAction(played.game, rng, 0.7), gapMs);
-          floor = tallyMistakes(analyseMistakes(EASY_PUZZLE, played.log, options), played.clockMs);
+          const action = randomAction(played.game, rng, 0.7, withCheckGuesses);
+          played = act(played, action, gapMs);
+          floor = tallyMistakes(analyseMistakes(EASY_PUZZLE, played.log), played.clockMs);
           expectNoLower(floor, meanwhile);
         }
         expect(Math.min(floor.values, floor.candidates)).toBeGreaterThanOrEqual(0);
       }
+    });
+
+    it('keeps the count in step with the board: a digit Check guesses marks counts at once', () => {
+      let marked = 0;
+      for (let seed = 1; seed <= 30; seed++) {
+        const rng = createRng(`in step/${seed}`);
+        let played = startPlaying(EASY_PUZZLE, rng() < 0.3);
+        for (let i = 0; i < 200 && played.game.status === 'playing'; i++) {
+          const before = played.game;
+          played = act(played, randomAction(played.game, rng, 0.6, true), rng() * 4000);
+          const { game } = played;
+          const move = played.log.moves.at(-1);
+          // Marked by Check guesses: typed while it is on, a new value, marked wrong.
+          if (move?.op !== 'place' || !game.checkGuesses) continue;
+          const { value, mark } = game.cells[move.cell];
+          if (mark !== 'wrong' || value === before.cells[move.cell].value) continue;
+          const events = analyseMistakes(EASY_PUZZLE, played.log).events.filter(
+            (event) => event.kind === 'value' && event.cell === move.cell && event.digit === value,
+          );
+          expect(events.some((event) => mistakeOutcomeAt(event, move.at) === 'counted')).toBe(true);
+          marked++;
+        }
+      }
+      // Not a test of nothing: the random games do type guesses with it on.
+      expect(marked).toBeGreaterThan(10);
     });
 
     it('counts nothing for a game that never enters a wrong digit nor strikes an answer', () => {

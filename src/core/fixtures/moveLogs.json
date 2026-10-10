@@ -121,6 +121,27 @@
         "redo": 0
       },
       "trace": "9e1d3cdd"
+    },
+    {
+      "name": "Easy, with Check guesses when entered switched on and off",
+      "givens": "530070000600195000098000060800060003400803001700020006060000280000419005000080079",
+      "solution": "534678912672195348198342567859761423426853791713924856961537284287419635345286179",
+      "difficulty": "easy",
+      "log": "BBABULrHuBKwFFsJHpIrCGACIrCFrDNanhBrIEBWRDKOFsuBrCErCTrCMrCErHIrIGrHFD1KGYEI8gBKOnBAHOBZfHwNBcFCxEEDGJIoBASiBC3JEJPBoLFcqBIAbFgeKlqBIEnBAgEEUEBzqBB2GG7EIQWKzaAuXDRXK4cElKJqJF4TK-OA4NF9TDcKIhOExFCQEJ3JInJHaGDoQDqEE8PGOZCcMHisBBOTqAd",
+      "end": {
+        "values": "534678912672195348198342567859761423426853791713924856961537284287419635345286179",
+        "marks": ".................................................................................",
+        "notes": "",
+        "autoRemoved": "",
+        "autoCandidates": false,
+        "checkGuesses": true,
+        "status": "solved",
+        "assists": "auto:false hints:0 checks:0 reveals:0 checkGuesses:true",
+        "cellHints": "",
+        "undo": 54,
+        "redo": 0
+      },
+      "trace": "75b3efc2"
     }
   ]
 }

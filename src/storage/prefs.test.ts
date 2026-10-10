@@ -24,7 +24,7 @@ function storageWith(value: unknown): ReturnType<typeof memoryStorage> {
 }
 
 describe('defaults', () => {
-  it('match the spec: every aid on, auto candidates and peer-note clearing off', () => {
+  it('match the spec: every aid on; auto candidates, peer-note clearing, Check guesses and the error counter off', () => {
     expect(DEFAULT_SETTINGS).toEqual({
       showTimer: true,
       highlightRowColumn: true,
@@ -33,6 +33,8 @@ describe('defaults', () => {
       highlightConflicts: true,
       startInAutoCandidate: false,
       clearPeerNotes: false,
+      checkGuesses: false,
+      showErrorCounter: false,
       theme: 'system',
     });
     expect(DEFAULT_PREFERENCES).toEqual({
@@ -87,6 +89,8 @@ describe('loadPreferences', () => {
         highlightConflicts: false,
         startInAutoCandidate: true,
         clearPeerNotes: true,
+        checkGuesses: true,
+        showErrorCounter: true,
         theme: 'dark',
       },
       playerName: 'Dan',
@@ -101,6 +105,8 @@ describe('loadPreferences', () => {
         showTimer: 'no',
         highlightBox: false,
         clearPeerNotes: 1,
+        checkGuesses: 'yes',
+        showErrorCounter: null,
         theme: 'sepia',
         unknownSetting: true,
       },
@@ -123,6 +129,17 @@ describe('loadPreferences', () => {
     const prefs = loadPreferences(storageWith({ settings, playerName: 'Dan' }));
     expect(prefs.settings).toEqual(DEFAULT_SETTINGS);
     expect(prefs.playerName).toBe('Dan');
+  });
+
+  it('saves the two Mistakes settings like any other switch', () => {
+    const storage = memoryStorage();
+    updateSettings(storage, { checkGuesses: true });
+    const prefs = updateSettings(storage, { showErrorCounter: true });
+    expect(prefs.settings).toMatchObject({ checkGuesses: true, showErrorCounter: true });
+    expect(loadPreferences(storage).settings).toMatchObject({
+      checkGuesses: true,
+      showErrorCounter: true,
+    });
   });
 
   it.each(['system', 'light', 'dark', 'contrast'])('keeps the %s theme', (theme) => {
@@ -283,8 +300,8 @@ describe('what a newer version stored', () => {
     settings: {
       ...DEFAULT_SETTINGS,
       theme: 'sepia',
-      checkGuesses: true,
-      showErrorCounter: false,
+      soundOnSolve: true,
+      compactPad: false,
     },
     playerName: 'Dan',
     lastDifficulty: 'hard',
@@ -312,13 +329,13 @@ describe('what a newer version stored', () => {
     const storage = storageWith(NEWER);
     change(storage);
     expect(stored(storage)).toMatchObject({
-      settings: { theme: 'sepia', checkGuesses: true, showErrorCounter: false },
+      settings: { theme: 'sepia', soundOnSolve: true, compactPad: false },
       tourSeen: true,
     });
     // And again: what was kept is kept on the next save too.
     updateSettings(storage, { highlightBox: false });
     expect(stored(storage)).toMatchObject({
-      settings: { theme: 'sepia', checkGuesses: true, highlightBox: false },
+      settings: { theme: 'sepia', soundOnSolve: true, highlightBox: false },
       tourSeen: true,
     });
   });
@@ -329,7 +346,7 @@ describe('what a newer version stored', () => {
       const storage = storageWith(NEWER);
       const prefs = updateSettings(storage, { theme: theme as Settings['theme'] });
       expect(prefs.settings.theme).toBe(theme);
-      expect(stored(storage)).toMatchObject({ settings: { theme, checkGuesses: true } });
+      expect(stored(storage)).toMatchObject({ settings: { theme, soundOnSolve: true } });
     },
   );
 

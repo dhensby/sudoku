@@ -283,14 +283,23 @@ export function newSession(
     now: Moment;
     /** The "Start new games in auto candidate mode" setting. */
     autoCandidates: boolean;
+    /**
+     * The "Check guesses when entered" setting: on, a game that starts at
+     * once has it from its first moment, and its log says so. Default off. A
+     * game that starts later than it is made — behind Start or a dialog —
+     * takes it up only as its clock first starts (see `resumeSession`), so a
+     * player who switches it off before then plays, and is recorded, without
+     * it: the help is sticky, and none was given.
+     */
+    checkGuesses?: boolean;
     start: SessionStart;
     /** The date of the daily this is an attempt at, if it is one; `puzzle` carries its tier. */
     daily?: DateKey;
   },
 ): Session {
-  const { source, challenge, now, autoCandidates, start, daily } = options;
+  const { source, challenge, now, autoCandidates, checkGuesses = false, start, daily } = options;
   const game = createGame(puzzle, { autoCandidates });
-  return {
+  const session: Session = {
     record: createRecord(
       puzzle,
       source,
@@ -307,6 +316,10 @@ export function newSession(
     isCelebrating: false,
     isSeen: start !== 'dialog',
   };
+  if (!checkGuesses || start !== 'running') return session;
+  // At 0:00 on the play clock, which starts now.
+  const checked = followCheckGuesses(session, true, now.clock);
+  return { ...checked, record: { ...checked.record, assists: { ...checked.game.assists } } };
 }
 
 /**
@@ -374,22 +387,43 @@ export function advance(session: Session, action: GameAction, clock: number): Se
 }
 
 /**
+ * The session with "Check guesses when entered" switched to `enabled` — the
+ * setting as it now stands — logged at the play clock's reading `clock`. The
+ * same session when the game already has it so, or is solved (switching it
+ * then changes nothing).
+ *
+ * The setting is the player's, and follows them from game to game: switched
+ * in Settings, it takes effect in the game on screen as Settings closes; a
+ * game reopened takes it up as it starts again. Switching it on records the
+ * help from that moment, and never judges the numbers already entered.
+ */
+export function followCheckGuesses(session: Session, enabled: boolean, clock: number): Session {
+  return advance(session, { type: 'setCheckGuesses', enabled }, clock);
+}
+
+/**
  * Start the clock again (or for the first time) at `now`: the game is on
  * show. A daily attempt started for the first time is dated now, by the
  * player's own clock — the date its streak is judged by (see
  * `GameRecord.startedOn`), so one opened from a link the evening before its
  * day, and started on the day, counts like any other.
+ *
+ * Every way back into play comes through here, so here the game takes up the
+ * "Check guesses when entered" setting as it now stands (`checkGuesses`, see
+ * `followCheckGuesses`) — at the time on the clock before it starts again,
+ * while no move can have been made.
  */
-export function resumeSession(session: Session, now: Moment): Session {
-  const { record } = session;
+export function resumeSession(session: Session, now: Moment, checkGuesses: boolean): Session {
+  const synced = followCheckGuesses(session, checkGuesses, now.clock);
+  const { record } = synced;
   const isUndated = record.daily !== undefined && record.startedOn === undefined;
   // One that has run before without its date written down (saved by an
   // earlier version of the game) is dated as tagging dates it.
-  const startedOn = hasBoardShown(session) ? dateKeyOf(record.createdAt) : dateKeyOf(now.wall);
+  const startedOn = hasBoardShown(synced) ? dateKeyOf(record.createdAt) : dateKeyOf(now.wall);
   return {
-    ...session,
+    ...synced,
     record: isUndated ? { ...record, startedOn } : record,
-    clock: startClock(session.clock, now.clock),
+    clock: startClock(synced.clock, now.clock),
     pause: null,
     isSeen: true,
   };
@@ -414,11 +448,12 @@ export function hasBoardShown(session: Session): boolean {
  * (`hasBoardShown`), so seeing it again is still a replay. A shared puzzle is
  * always kept: a friend sent it, and its link may carry a time to race.
  *
- * Auto candidates are the one assist a glimpse may carry: with "Start new
- * games in auto candidate mode" on, every game begins with it, and a game the
- * player never touched is no less a glimpse for that. Switching the mode by
- * hand leaves an entry to undo (or, once undone, to redo), so that still
- * counts as doing something.
+ * Auto candidates and Check guesses are the assists a glimpse may carry:
+ * with "Start new games in auto candidate mode" or "Check guesses when
+ * entered" on, every game begins with it, and a game the player never
+ * touched is no less a glimpse for that — with nothing entered, no guess was
+ * checked. Switching auto candidates by hand leaves an entry to undo (or,
+ * once undone, to redo), so that still counts as doing something.
  */
 export function isGlimpse(session: Session): boolean {
   const { record, game } = session;
@@ -490,6 +525,25 @@ function mistakesOf(session: Session, elapsed: number): RecordedMistakes | null 
     candidates: Math.max(tally.candidates, stored?.candidates ?? 0),
     atMs: elapsed,
   };
+}
+
+/**
+ * The game's mistakes so far, as the error counter shows them: those that
+ * have settled by play time `elapsed` (see `tallyMistakes`) — or by the last
+ * move, if the time on show is behind it (the display reads the clock once a
+ * second, and a mistake that counts the moment it is made, with Check
+ * guesses on, must show with the move). With Check guesses off a mistake
+ * waits out its window first, so the counter never moves while a slip can
+ * still be put right: a count that moved at once would be a free Check.
+ *
+ * Null when they are not known: a game not recorded move by move (see
+ * `Session.moves`), unless it was solved with a count recorded.
+ */
+export function mistakesSoFar(session: Session, elapsed: number): MistakeTally | null {
+  const { game, moves, record } = session;
+  if (moves === null) return game.status === 'solved' ? recordedMistakes(record) : null;
+  const at = Math.max(elapsed, moves.moves.at(-1)?.at ?? 0);
+  return tallyMistakes(analyseMistakes(game.puzzle, moves), at);
 }
 
 /**

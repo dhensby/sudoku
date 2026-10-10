@@ -1156,6 +1156,185 @@ describe('useSudoku', () => {
     });
   });
 
+  describe('Check guesses when entered, and the error counter', () => {
+    const clock = (): number => Date.now() - NOW + 7_000_000;
+    const near = nearlySolved([0, 1]);
+    /** A wrong digit for a cell. */
+    const wrong = (cell: number) => (answerAt(cell) % 9) + 1;
+
+    function withSettings(settings: Record<string, boolean>): StorageLike {
+      const storage = memoryStorage();
+      storage.setItem('sudoku.prefs', JSON.stringify({ settings }));
+      return storage;
+    }
+
+    function completed(result: Hook) {
+      advance(COMPLETION_DELAY_MS);
+      const { dialog } = result.current;
+      if (dialog?.kind !== 'completion') throw new Error('no completion dialog');
+      return dialog.result;
+    }
+
+    it('marks a wrong number and counts it at once, and records the help with the time', async () => {
+      const storage = withSettings({ checkGuesses: true });
+      const { result } = await started({ clock, storage, source: fakeSource(near) });
+      expect(result.current.game?.checkGuesses).toBe(true);
+      advance(1000);
+      enter(result, 0, wrong(0));
+      expect(result.current.game?.cells[0].mark).toBe('wrong');
+      expect(result.current.announcement?.text).toMatch(/ Incorrect\.$/);
+      enter(result, 0, answerAt(0));
+      expect(result.current.game?.cells[0].mark).toBe('none');
+      enter(result, 1, answerAt(1));
+      const outcome = completed(result);
+      // Put right at once, but counted: with Check guesses on nothing is forgiven.
+      expect(outcome.mistakes).toEqual({ values: 1, candidates: 0 });
+      expect(outcome.assists).toEqual({ ...NO_HELP, checkGuesses: true });
+      expect(loadHistory(storage)[0].assists).toEqual({ ...NO_HELP, checkGuesses: true });
+      const id = result.current.record!.id;
+      expect(loadMoveLog(storage, id)?.moves[0]).toEqual({ op: 'checkGuessesOn', at: 0 });
+    });
+
+    it('takes effect as Settings closes, judging nothing entered before, and stays on the record', async () => {
+      const { result, storage } = await started({ clock, source: fakeSource(near) });
+      advance(1000);
+      enter(result, 0, wrong(0));
+      act(() => result.current.actions.openDialog('settings'));
+      act(() => result.current.actions.updateSettings({ checkGuesses: true }));
+      expect(result.current.game?.checkGuesses).toBe(false);
+      act(() => result.current.actions.closeDialog());
+      expect(result.current.game?.checkGuesses).toBe(true);
+      expect(result.current.game?.cells[0].mark).toBe('none');
+      expect(result.current.game?.assists.checkGuesses).toBe(true);
+      enter(result, 1, wrong(1));
+      expect(result.current.game?.cells[1].mark).toBe('wrong');
+
+      act(() => result.current.actions.openDialog('settings'));
+      act(() => result.current.actions.updateSettings({ checkGuesses: false }));
+      act(() => result.current.actions.closeDialog());
+      enter(result, 1, (wrong(1) % 9) + 1);
+      expect(result.current.game?.cells[1].mark).toBe('none');
+      expect(result.current.game?.assists.checkGuesses).toBe(true);
+
+      act(() => result.current.actions.pause());
+      const log = loadMoveLog(storage, result.current.record!.id)!;
+      expect(log.moves.map((move) => move.op)).toEqual([
+        'place',
+        'checkGuessesOn',
+        'place',
+        'checkGuessesOff',
+        'place',
+      ]);
+      expect(loadHistory(storage)[0].assists.checkGuesses).toBe(true);
+    });
+
+    it('records no help for a game behind Start whose player switches it off before starting', async () => {
+      const storage = withSettings({ checkGuesses: true });
+      // A first visit opened in a background tab: the game waits behind Start.
+      setVisibility('hidden');
+      const { result } = await started({ clock, storage, source: fakeSource(near) });
+      setVisibility('visible');
+      expect(result.current.phase).toBe('ready');
+      expect(result.current.record?.assists.checkGuesses).toBeUndefined();
+      act(() => result.current.actions.openDialog('settings'));
+      act(() => result.current.actions.updateSettings({ checkGuesses: false }));
+      act(() => result.current.actions.closeDialog());
+      act(() => result.current.actions.resume());
+      enter(result, 0, wrong(0));
+      expect(result.current.game?.cells[0].mark).toBe('none');
+      act(() => result.current.actions.pause());
+      expect(loadHistory(storage)[0].assists.checkGuesses).toBeUndefined();
+      const log = loadMoveLog(storage, result.current.record!.id)!;
+      expect(log.moves.map((move) => move.op)).toEqual(['place']);
+    });
+
+    it('takes it up from 0:00 for a game behind Start started with it still on', async () => {
+      const storage = withSettings({ checkGuesses: true });
+      setVisibility('hidden');
+      const { result } = await started({ clock, storage, source: fakeSource(near) });
+      setVisibility('visible');
+      act(() => result.current.actions.resume());
+      expect(result.current.game?.checkGuesses).toBe(true);
+      expect(result.current.game?.assists.checkGuesses).toBe(true);
+      enter(result, 0, wrong(0));
+      expect(result.current.game?.cells[0].mark).toBe('wrong');
+      act(() => result.current.actions.pause());
+      const log = loadMoveLog(storage, result.current.record!.id)!;
+      expect(log.moves[0]).toEqual({ op: 'checkGuessesOn', at: 0 });
+    });
+
+    it('is taken up by a game reopened with the setting changed since', async () => {
+      const storage = memoryStorage();
+      const first = await started({ clock, storage, source: fakeSource(near) });
+      enter(first.result, 0, wrong(0));
+      act(() => first.result.current.actions.pause());
+      first.unmount();
+      storage.setItem('sudoku.prefs', JSON.stringify({ settings: { checkGuesses: true } }));
+
+      const second = setup({ clock, storage });
+      expect(second.result.current.game?.checkGuesses).toBe(false);
+      act(() => second.result.current.actions.resume());
+      expect(second.result.current.game?.checkGuesses).toBe(true);
+      expect(second.result.current.game?.cells[0].mark).toBe('none');
+    });
+
+    it('counts nothing on the counter while the setting is off', async () => {
+      const { result } = await started({ clock, source: fakeSource(near) });
+      enter(result, 0, wrong(0));
+      advance(10_000);
+      expect(result.current.mistakesSoFar).toBeNull();
+    });
+
+    it('moves the counter only once a slip’s 3 seconds of play are up, with Check guesses off', async () => {
+      const storage = withSettings({ showErrorCounter: true });
+      const { result } = await started({ clock, storage });
+      expect(result.current.mistakesSoFar).toEqual({ values: 0, candidates: 0 });
+      advance(1000);
+      // Cell 2's answer (4) is not obvious: a wrong number there counts however soon it goes.
+      enter(result, FIRST_EMPTY, 1);
+      advance(2000);
+      expect(result.current.mistakesSoFar).toEqual({ values: 0, candidates: 0 });
+      // Paused, the window waits.
+      act(() => result.current.actions.pause());
+      advance(10_000);
+      expect(result.current.mistakesSoFar).toEqual({ values: 0, candidates: 0 });
+      act(() => result.current.actions.resume());
+      advance(1000);
+      expect(result.current.mistakesSoFar).toEqual({ values: 1, candidates: 0 });
+    });
+
+    it('never moves the counter for an obvious slip put right in time', async () => {
+      const storage = withSettings({ showErrorCounter: true });
+      const { result } = await started({ clock, storage, source: fakeSource(near) });
+      advance(1000);
+      enter(result, 0, wrong(0));
+      advance(1000);
+      enter(result, 0, answerAt(0));
+      advance(10_000);
+      expect(result.current.mistakesSoFar).toEqual({ values: 0, candidates: 0 });
+    });
+
+    it('moves the counter at once with Check guesses on', async () => {
+      const storage = withSettings({ showErrorCounter: true, checkGuesses: true });
+      const { result } = await started({ clock, storage });
+      advance(1500);
+      enter(result, FIRST_EMPTY, 1);
+      expect(result.current.mistakesSoFar).toEqual({ values: 1, candidates: 0 });
+    });
+
+    it('counts nothing it cannot vouch for: a game not recorded move by move', async () => {
+      const storage = withSettings({ showErrorCounter: true });
+      const first = await started({ clock, storage, source: fakeSource(near) });
+      const id = first.result.current.record!.id;
+      enter(first.result, 0, answerAt(0));
+      act(() => first.result.current.actions.pause());
+      first.unmount();
+      storage.removeItem(`sudoku.moves.${id}`);
+      const second = setup({ clock, storage });
+      expect(second.result.current.mistakesSoFar).toBeNull();
+    });
+  });
+
   describe('solving', () => {
     it('stops the clock at the solving move and records the time', async () => {
       const near = nearlySolved([0]);

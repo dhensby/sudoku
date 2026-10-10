@@ -52,12 +52,20 @@ export function shareBaseUrl(): string {
 }
 
 /**
- * Pack assists into a few characters: `c` for auto candidates, then `h`, `k`
- * and `r` each followed by a count of hints, checks and reveals. An unassisted
- * game packs to '', and the link leaves the parameter out.
+ * Pack assists into a few characters: `c` for auto candidates, `g` for
+ * guesses checked as entered, then `h`, `k` and `r` each followed by a count
+ * of hints, checks and reveals. An unassisted game packs to '', and the link
+ * leaves the parameter out.
+ *
+ * A link opened by a version from before a letter was added must still open,
+ * and read the rest right: its decoder skips what it does not know (`g` was
+ * added after the others, and a version from before it reads `cgh2` as auto
+ * candidates and 2 hints). So a new kind of help takes a new letter, never
+ * a new meaning for an old one.
  */
 export function encodeAssists(assists: Assists): string {
   let out = assists.autoCandidates ? 'c' : '';
+  if (assists.checkGuesses === true) out += 'g';
   if (assists.hints > 0) out += `h${assists.hints}`;
   if (assists.checks > 0) out += `k${assists.checks}`;
   if (assists.reveals > 0) out += `r${assists.reveals}`;
@@ -65,12 +73,14 @@ export function encodeAssists(assists: Assists): string {
 }
 
 /**
- * The assist codes, as every version since links carried help has read them.
- * Anything else in the parameter is skipped, which is what lets later codes —
- * the mistakes' `m` and `x` — ride along without breaking those versions; a
- * new code must use a letter outside `c`, `h`, `k` and `r` for that reason.
+ * The assist codes this version reads: `c` auto candidates, `g` guesses
+ * checked as entered, and the counted `h`, `k` and `r`. Every version
+ * skips letters it doesn't know, which is what lets later codes ride along
+ * without breaking the versions before them — `g` past those before it, and
+ * the mistakes' `m` and `x` past all of them; a new code must use a letter
+ * none of them reads.
  */
-const ASSIST_PART = /c|([hkr])(\d{1,4})/g;
+const ASSIST_PART = /[cg]|([hkr])(\d{1,4})/g;
 
 /**
  * Unpack assists from a link. Tolerant: anything it does not recognise is
@@ -83,6 +93,10 @@ export function decodeAssists(raw: string | null): Assists {
   for (const match of raw.matchAll(ASSIST_PART)) {
     if (match[0] === 'c') {
       assists.autoCandidates = true;
+      continue;
+    }
+    if (match[0] === 'g') {
+      assists.checkGuesses = true;
       continue;
     }
     const n = Number(match[2]);

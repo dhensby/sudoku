@@ -71,6 +71,11 @@ describe('assists', () => {
       'auto candidates, 1 hint, 2 checks, 3 reveals',
     ],
     [{ ...NONE, reveals: 1 }, '1 reveal'],
+    [{ ...NONE, checkGuesses: true as const }, 'guesses checked as entered'],
+    [
+      { autoCandidates: true, hints: 2, checks: 0, reveals: 0, checkGuesses: true as const },
+      'auto candidates, guesses checked as entered, 2 hints',
+    ],
   ])('describes %o as "%s"', (assists, text) => {
     expect(hasAssists(assists)).toBe(true);
     expect(describeAssists(assists)).toBe(text);

@@ -50,6 +50,8 @@ describe('the golden move logs', () => {
         'autoOn',
         'candidate',
         'checkCell',
+        'checkGuessesOff',
+        'checkGuessesOn',
         'checkPuzzle',
         'erase',
         'hint off the grid',

@@ -132,6 +132,12 @@ describe('Comparison', () => {
       ['Checks', 'Reveals'],
     ],
     ['hints on both sides', { ...NONE, hints: 1 }, { ...NONE, hints: 4 }, ['Hints']],
+    [
+      'guesses checked as entered on my side',
+      { ...NONE, checkGuesses: true },
+      NONE,
+      ['Checked as entered'],
+    ],
   ])('shows a row of help only when either player took it (%s)', (_, mine, theirs, rows) => {
     renderComparison({ myAssists: mine, challenge: challenger('Dan', 323, theirs) });
     expect(
@@ -139,6 +145,18 @@ describe('Comparison', () => {
         .getAllByRole('rowheader')
         .map((heading) => heading.textContent),
     ).toEqual(['Time', ...rows]);
+  });
+
+  it('sets guesses checked as entered on a row of its own, after auto candidates, as Yes or No', () => {
+    renderComparison({
+      myAssists: { ...NONE, autoCandidates: true },
+      challenge: challenger('Dan', 323, { ...NONE, checkGuesses: true, hints: 1 }),
+    });
+    expect(cellsByRow().slice(2)).toEqual([
+      ['Auto candidates', 'Yes', 'No'],
+      ['Checked as entered', 'No', 'Yes'],
+      ['Hints', '0', '1'],
+    ]);
   });
 
   it('says so, in place of the help rows and across both columns, when neither player took any', () => {

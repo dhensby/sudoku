@@ -88,6 +88,8 @@ describe('CompletionDialog', () => {
     expect(screen.queryByText(/^With /)).toBeNull();
     rerender(<CompletionDialog {...props} assists={{ ...NONE, autoCandidates: true, hints: 2 }} />);
     expect(screen.getByText('With auto candidates, 2 hints')).toBeInTheDocument();
+    rerender(<CompletionDialog {...props} assists={{ ...NONE, checkGuesses: true }} />);
+    expect(screen.getByText('With guesses checked as entered')).toBeInTheDocument();
   });
 
   it.each([

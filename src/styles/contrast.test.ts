@@ -236,6 +236,11 @@ const PAIRS: Pair[] = [
     TEXT,
   ],
 
+  // The error counter: its label muted and its counts in ink, on the page
+  // beside the timer or above the controls.
+  ['the error counter’s label on the page', 'text-muted', 'bg', TEXT],
+  ['the error counter’s counts on the page', 'text', 'bg', TEXT],
+
   // ---- Edges of controls, and focus rings ----
   ['key rule against the page', 'key-border', 'bg', NON_TEXT],
   ['key rule against a panel', 'key-border', 'surface', NON_TEXT],

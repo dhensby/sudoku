@@ -25,9 +25,50 @@ describe('assists in links', () => {
     [{ ...NONE, autoCandidates: true }, 'c'],
     [{ autoCandidates: true, hints: 2, checks: 1, reveals: 12 }, 'ch2k1r12'],
     [{ ...NONE, reveals: 3 }, 'r3'],
+    [{ ...NONE, checkGuesses: true as const }, 'g'],
+    [
+      { autoCandidates: true, hints: 2, checks: 0, reveals: 0, checkGuesses: true as const },
+      'cgh2',
+    ],
   ])('round-trips %o as "%s"', (assists, packed) => {
     expect(encodeAssists(assists)).toBe(packed);
     expect(decodeAssists(packed)).toEqual(assists);
+  });
+
+  it('writes guesses checked as entered in a letter a version from before it skips', () => {
+    // The decoder as it was before `g`, word for word: it must read the rest
+    // of a new link right, and open it.
+    const OLD_PART = /c|([hkr])(\d{1,4})/g;
+    const decodeAsBefore = (raw: string) => {
+      const assists = { ...NONE };
+      for (const match of raw.matchAll(OLD_PART)) {
+        if (match[0] === 'c') {
+          assists.autoCandidates = true;
+          continue;
+        }
+        const n = Number(match[2]);
+        if (match[1] === 'h') assists.hints = n;
+        else if (match[1] === 'k') assists.checks = n;
+        else assists.reveals = n;
+      }
+      return assists;
+    };
+    const assists = {
+      autoCandidates: true,
+      hints: 2,
+      checks: 1,
+      reveals: 3,
+      checkGuesses: true as const,
+    };
+    const packed = encodeAssists(assists);
+    expect(packed).toBe('cgh2k1r3');
+    expect(decodeAsBefore(packed)).toEqual({
+      autoCandidates: true,
+      hints: 2,
+      checks: 1,
+      reveals: 3,
+    });
+    expect(decodeAsBefore(encodeAssists({ ...NONE, checkGuesses: true }))).toEqual(NONE);
   });
 
   it('reads a missing or garbled parameter as no help, keeping what it can', () => {
@@ -220,6 +261,23 @@ describe('buildShareText', () => {
     expect(text({ ...NONE, checks: 1 }, null)).toBe(
       'Sudoku · Easy · 5:23\nWith 1 check\nCan you beat my time?',
     );
+    expect(
+      buildShareText({
+        difficulty: 'hard',
+        result: { seconds: 323, assists: { ...NONE, checkGuesses: true }, mistakes: null },
+      }),
+    ).toBe('Sudoku · Hard · 5:23\nWith guesses checked as entered\nCan you beat my time?');
+  });
+
+  it('puts guesses checked as entered in the link, as `g`', () => {
+    const url = new URL(
+      buildShareUrl(BASE, GIVENS, {
+        seconds: 90,
+        name: '',
+        assists: { ...NONE, checkGuesses: true },
+      }),
+    );
+    expect(url.searchParams.get('a')).toBe('g');
   });
 
   it("names a daily by its date and year, solved or not, so a group chat's dailies line up", () => {

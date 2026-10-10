@@ -48,6 +48,18 @@ export interface Settings {
    * doesn't; many other apps do, and players who grew up on them expect it.
    */
   clearPeerNotes: boolean;
+  /**
+   * "Check guesses when entered": a wrong number is marked wrong the moment
+   * it goes in, and counts as a mistake at once. Help, recorded next to the
+   * time from the moment it is on in a game (see `Assists.checkGuesses`).
+   */
+  checkGuesses: boolean;
+  /**
+   * "Show error counter": the game's mistakes so far, shown as it is played.
+   * Only a display: it shows a mistake once it has settled (see
+   * `src/core/mistakes.ts`), so it is no Check, and is not recorded.
+   */
+  showErrorCounter: boolean;
   /** Light, dark or High contrast, or whatever the system says. */
   theme: ThemePreference;
 }
@@ -98,6 +110,8 @@ const SWITCHES = [
   'highlightConflicts',
   'startInAutoCandidate',
   'clearPeerNotes',
+  'checkGuesses',
+  'showErrorCounter',
 ] as const satisfies readonly (keyof Settings)[];
 
 /** Every field of the settings this version knows. */
@@ -109,6 +123,8 @@ const SETTING_FIELDS = fieldsOf<Settings>({
   highlightConflicts: true,
   startInAutoCandidate: true,
   clearPeerNotes: true,
+  checkGuesses: true,
+  showErrorCounter: true,
   theme: true,
 });
 
@@ -121,6 +137,8 @@ export const DEFAULT_SETTINGS: Settings = {
   highlightConflicts: true,
   startInAutoCandidate: false,
   clearPeerNotes: false,
+  checkGuesses: false,
+  showErrorCounter: false,
   theme: 'system',
 };
 

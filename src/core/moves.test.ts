@@ -58,7 +58,9 @@ const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789
  * itself.
  */
 const BARE = 34 * 81;
-const RESERVED_CHECK_GUESSES = [BARE + 5, BARE + 6];
+/** Check guesses on and off: after the hint off the grid (BARE + 4), added later. */
+const CHECK_GUESSES_ON = BARE + 5;
+const CHECK_GUESSES_OFF = BARE + 6;
 const HINT_AT = (cell: number) => 28 * 81 + cell;
 
 /*
@@ -192,7 +194,16 @@ function everyMove(): Move[] {
     moves.push(...everyHint(cell).map((hint): Move => ({ op: 'hint', hint })));
   }
   moves.push({ op: 'hint', hint: { kind: 'deduction', index: -1, technique: 'xWing' } });
-  for (const op of ['undo', 'redo', 'checkPuzzle', 'reset'] as const) moves.push({ op });
+  for (const op of [
+    'undo',
+    'redo',
+    'checkPuzzle',
+    'reset',
+    'checkGuessesOn',
+    'checkGuessesOff',
+  ] as const) {
+    moves.push({ op });
+  }
   return moves;
 }
 
@@ -229,6 +240,7 @@ function boardOf(state: GameState) {
   return {
     cells: state.cells,
     autoCandidates: state.autoCandidates,
+    checkGuesses: state.checkGuesses,
     status: state.status,
     assists: state.assists,
     cellHints: state.cellHints,
@@ -354,6 +366,16 @@ describe('moveFor', () => {
     for (let index = 0; index < 81; index++) {
       expect(moveFor(solved, { type: 'walkthrough', index })).toBeNull();
     }
+  });
+
+  it('logs Check guesses switched on and off, with no cell: it acts on none', () => {
+    const on = { type: 'setCheckGuesses', enabled: true } as const;
+    expect(moveFor(game, on)).toEqual({ op: 'checkGuessesOn' });
+    const checked = reduce(game, on);
+    expect(moveFor(checked, on)).toBeNull();
+    expect(moveFor(checked, { type: 'setCheckGuesses', enabled: false })).toEqual({
+      op: 'checkGuessesOff',
+    });
   });
 
   it('logs Undo, Redo, Reset and Show me', () => {
@@ -538,15 +560,20 @@ describe('encodeMoveLog and decodeMoveLog', () => {
     expect(encodeMoveLog(written)).toBe(withCheck(body.join('')));
   });
 
-  it('accepts every code this rules version uses and refuses the rest, Check guesses’ included', () => {
+  it('writes Check guesses on and off in the codes kept for them, after the hint off the grid', () => {
+    const written = logOf([{ op: 'checkGuessesOn' }, { op: 'checkGuessesOff' }], 100);
+    const body = `${header()}${pair(CHECK_GUESSES_ON)}${ALPHABET[1]}${pair(CHECK_GUESSES_OFF)}${ALPHABET[1]}`;
+    expect(encodeMoveLog(written)).toBe(withCheck(body));
+  });
+
+  it('accepts every code this rules version uses, Check guesses’ included, and refuses the rest', () => {
     const accepted: number[] = [];
     for (let code = 0; code < 4096; code++) {
       const isHint = code === BARE + 4 || Math.floor(code / 81) === 28;
       const body = header() + pair(code) + (isHint ? pair(0) : '') + 'A';
       if (decodeMoveLog(withCheck(body)) !== null) accepted.push(code);
     }
-    expect(accepted).toEqual(Array.from({ length: BARE + 5 }, (_, code) => code));
-    for (const code of RESERVED_CHECK_GUESSES) expect(accepted).not.toContain(code);
+    expect(accepted).toEqual(Array.from({ length: CHECK_GUESSES_OFF + 1 }, (_, code) => code));
   });
 
   it('accepts every hint descriptor in the table and refuses the rest', () => {
@@ -733,6 +760,24 @@ describe('replayMoves', () => {
     expect(replayMoves(PUZZLE, auto)).toEqual(createGame(PUZZLE, { autoCandidates: true }));
   });
 
+  it('replays Check guesses switched on part-way: what it marks, and the help, as played', () => {
+    const played = playActions([
+      place(2, 1),
+      { type: 'setCheckGuesses', enabled: true },
+      place(3, 2),
+      { type: 'setCheckGuesses', enabled: false },
+      place(40, 9),
+    ]);
+    const replayed = replayMoves(PUZZLE, played.log);
+    expect(boardOf(replayed)).toEqual(boardOf(played.game));
+    expect(replayed.cells.map((cell) => cell.mark).filter((mark) => mark !== 'none')).toEqual([
+      'wrong',
+    ]);
+    expect(replayed.cells[3].mark).toBe('wrong');
+    expect(replayed.assists.checkGuesses).toBe(true);
+    expect(verifyMoveLog(PUZZLE, played.log, reload(played.game))).toBe(true);
+  });
+
   it('stops after the first upTo moves', () => {
     const { log } = playActions([place(2, 4), place(3, 6), place(40, 5)]);
     expect(replayMoves(PUZZLE, log, 0)).toEqual(createGame(PUZZLE));
@@ -843,6 +888,7 @@ describe('verifyMoveLog', () => {
     ['a cell’s eliminations', () => withCell(3, { autoRemoved: 0 })],
     ['a mark', () => withCell(40, { mark: 'none' })],
     ['the auto candidate flag', () => ({ ...game, autoCandidates: false })],
+    ['whether Check guesses is on', () => ({ ...game, checkGuesses: true })],
     ['the status', () => ({ ...game, status: 'solved' as const })],
     ['the help taken', () => ({ ...game, assists: { ...game.assists, checks: 1 } })],
     ['help of a kind added since', () => ({ ...game, assists: { ...game.assists, later: true } })],
@@ -952,7 +998,7 @@ describe('replaying a random game', () => {
       let played = startPlaying(puzzle, rng() < 0.3);
       let isExact = true;
       for (let step = 0; step < STEPS; step++) {
-        const action = randomAction(played.game, rng, accuracy);
+        const action = randomAction(played.game, rng, accuracy, true);
         const logged = played.log;
         played = act(played, action, thinking(rng, 0, 12_000));
         if (played.log !== logged && played.log.moves.at(-1)!.op === 'reset') isExact = true;

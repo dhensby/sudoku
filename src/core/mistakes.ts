@@ -9,10 +9,11 @@ import type { Digit, Puzzle } from './types';
  * alone, so that the count is the same live, saved and reloaded, and can be
  * worked out again from a log long after the board has gone.
  *
- * Nothing here is shown while a game is played (a count that moved as you
- * played would work as a free Check), and nothing here touches times, best
- * times or who wins a race: a mistake is told next to the time, never taken
- * off it.
+ * Nothing here is shown while a game is played unless the player asks for
+ * the error counter — a count that moved the moment a number went in would
+ * work as a free Check, so the counter shows a mistake only once it has
+ * settled — and nothing here touches times, best times or who wins a race: a
+ * mistake is told next to the time, never taken off it.
  *
  * Two kinds, counted apart:
  *
@@ -52,9 +53,18 @@ import type { Digit, Puzzle } from './types';
  *     has its window like any other.
  *
  * As it settles it is COUNTED unless FORGIVEN. With "Check guesses when
- * entered" on (`MistakeOptions.checkGuesses` — a later version's setting,
- * which marks a wrong number the moment it goes in) nothing waits: every
- * mistake counts at once. With it off, a value mistake is forgiven only if
+ * entered" on — the setting that marks a wrong number the moment it is
+ * typed, switched on and off by moves of its own, so the log says which
+ * mistakes were made while it was on — nothing waits: a wrong digit typed, or
+ * an answer struck by a candidate-mode entry, while it is on counts at once,
+ * just as the board marks it (an open window for the same digit in the same
+ * cell, from before it came on, included: the digit is judged as it goes in
+ * again). What it never judges, the count does not hurry either: a mistake
+ * made before it came on keeps its window, and so does one Undo or Redo
+ * brings back while it is on (the board brings the digit back with the mark
+ * it had, and a Redo of a strike is no entry), so neither switching it on nor
+ * Undo then Redo works as a free Check. With it off, a value mistake is
+ * forgiven only if
  *
  *   (a) the cell's answer was OBVIOUS when the wrong digit went in: the cell
  *       held its answer just before (a solved cell overwritten by tapping the
@@ -101,8 +111,9 @@ export type MistakeOutcome = 'pending' | 'counted' | 'forgiven';
  * out, a change to another cell, help, a Reset, the board becoming full or
  * solved, the same mistake made again after this one was put right (`again`:
  * put right is for good, so its outcome was already decided, and the new one
- * needs a window of its own) — or nothing, for one counted the moment it went
- * in because "Check guesses when entered" was on.
+ * needs a window of its own) — or the digit typed with "Check guesses when
+ * entered" on (`entered`): one counted the moment it went in, or the moment
+ * it was typed again before an earlier window for it was put right.
  */
 export type MistakeCloser =
   'time' | 'elsewhere' | 'help' | 'reset' | 'full' | 'solved' | 'again' | 'entered';
@@ -157,15 +168,6 @@ export interface MistakeTally {
   readonly candidates: number;
 }
 
-export interface MistakeOptions {
-  /**
-   * "Check guesses when entered" — a later version's setting, which marks a
-   * wrong number as it goes in. With it on, every mistake counts at once and
-   * nothing is forgiven. Default false.
-   */
-  readonly checkGuesses?: boolean;
-}
-
 /** A tally of nothing. */
 export const NO_MISTAKES: MistakeTally = Object.freeze({ values: 0, candidates: 0 });
 
@@ -213,10 +215,12 @@ interface Draft {
 
 /**
  * What a move acts on, for deciding which windows it closes: help, a Reset,
- * the whole board (auto candidates switched), one cell — or nothing, for an
- * Undo or Redo with nothing to take back or put back. Play never logs one
- * (only moves that changed something are logged), but a log read from
- * storage or a link may hold one, and judging it must not fail.
+ * the whole board (auto candidates switched), one cell — or nothing: Check
+ * guesses switched (a setting, which changes no cell and judges nothing
+ * already entered), or an Undo or Redo with nothing to take back or put back.
+ * Play never logs the last (only moves that changed something are logged),
+ * but a log read from storage or a link may hold one, and judging it must not
+ * fail.
  */
 type Scope =
   | { readonly kind: 'help' | 'reset' | 'board' | 'none' }
@@ -300,6 +304,9 @@ function scopeOf(move: LoggedMove, before: GameState): Scope {
       return BOARD;
     case 'reset':
       return RESET;
+    case 'checkGuessesOn':
+    case 'checkGuessesOff':
+      return NONE;
     case 'hint':
     case 'walkthrough':
     case 'checkCell':
@@ -343,33 +350,24 @@ function isForgivable(event: Pick<MistakeEvent, 'isObvious'>): boolean {
   return event.isObvious !== false;
 }
 
-const analyses = new WeakMap<
-  MoveLog,
-  { solution: string; checkGuesses: boolean; analysis: MistakeAnalysis }
->();
+const analyses = new WeakMap<MoveLog, { solution: string; analysis: MistakeAnalysis }>();
 
 /**
  * Every mistake in a game's log (see the module comment), each with how it
  * came out by the end of the log. Memoised per log object — a log is never
  * changed in place, only replaced by a longer one — so the many saves and
- * renders of one moment cost one replay.
+ * renders of one moment (the error counter's every second included) cost one
+ * replay.
  */
-export function analyseMistakes(
-  puzzle: Puzzle,
-  log: MoveLog,
-  options: MistakeOptions = {},
-): MistakeAnalysis {
-  const checkGuesses = options.checkGuesses ?? false;
+export function analyseMistakes(puzzle: Puzzle, log: MoveLog): MistakeAnalysis {
   const cached = analyses.get(log);
-  if (cached?.solution === puzzle.solution && cached.checkGuesses === checkGuesses) {
-    return cached.analysis;
-  }
-  const analysis = analyse(puzzle, log, checkGuesses);
-  analyses.set(log, { solution: puzzle.solution, checkGuesses, analysis });
+  if (cached?.solution === puzzle.solution) return cached.analysis;
+  const analysis = analyse(puzzle, log);
+  analyses.set(log, { solution: puzzle.solution, analysis });
   return analysis;
 }
 
-function analyse(puzzle: Puzzle, log: MoveLog, checkGuesses: boolean): MistakeAnalysis {
+function analyse(puzzle: Puzzle, log: MoveLog): MistakeAnalysis {
   const drafts: Draft[] = [];
   let open: Draft[] = [];
   // Mistakes counted, by cell and digit (value) or cell (candidate): each
@@ -403,17 +401,36 @@ function analyse(puzzle: Puzzle, log: MoveLog, checkGuesses: boolean): MistakeAn
     });
   };
 
+  /** Count a mistake at `at`, the moment Check guesses judged it. */
+  const countAtOnce = (draft: Draft, at: number): void => {
+    draft.outcome = 'counted';
+    draft.settledAt = at;
+    draft.settledBy = 'entered';
+    draft.why = 'checkGuesses';
+    counted.add(keyOf(draft.kind, draft.cell, draft.digit));
+  };
+
   /**
    * Open a window for a mistake just made — unless it has counted already, or
-   * it is back before an open window for it was put right.
+   * it is back before an open window for it was put right. Entered while
+   * Check guesses is on (`isChecked`), it counts at once instead, and so does
+   * the open window it is back before.
    */
   const make = (
     draft: Omit<Draft, 'deadline' | 'isPutRight' | 'outcome' | 'settledAt' | 'settledBy' | 'why'>,
+    isChecked: boolean,
   ) => {
     const key = keyOf(draft.kind, draft.cell, draft.digit);
     if (counted.has(key)) return;
     const already = open.find((other) => keyOf(other.kind, other.cell, other.digit) === key);
     if (already !== undefined) {
+      if (!already.isPutRight && isChecked) {
+        // Back, unfixed, and marked wrong as it goes in: the board has just
+        // told the player, so the shared window can forgive nothing now.
+        open = open.filter((other) => other !== already);
+        countAtOnce(already, draft.at);
+        return;
+      }
       if (!already.isPutRight) {
         // Back before it was put right: both windows now need the same fix,
         // and the earlier one closes first, so it decides for both — forgiven
@@ -440,15 +457,8 @@ function analyse(puzzle: Puzzle, log: MoveLog, checkGuesses: boolean): MistakeAn
       why: 'waiting',
     };
     drafts.push(made);
-    if (checkGuesses) {
-      made.outcome = 'counted';
-      made.settledAt = made.at;
-      made.settledBy = 'entered';
-      made.why = 'checkGuesses';
-      counted.add(key);
-    } else {
-      open.push(made);
-    }
+    if (isChecked) countAtOnce(made, made.at);
+    else open.push(made);
   };
 
   for (const { index, move, before, after } of replayMoveSteps(puzzle, log)) {
@@ -471,14 +481,18 @@ function analyse(puzzle: Puzzle, log: MoveLog, checkGuesses: boolean): MistakeAn
         const value = after.cells[cell].value;
         if (value === before.cells[cell].value || value === 0) continue;
         if (value === answerOf(puzzle, cell)) continue;
-        make({
-          kind: 'value',
-          cell,
-          digit: value as Digit,
-          move: index,
-          at,
-          isObvious: isObviousAnswer(before, cell),
-        });
+        make(
+          {
+            kind: 'value',
+            cell,
+            digit: value as Digit,
+            move: index,
+            at,
+            isObvious: isObviousAnswer(before, cell),
+          },
+          // Typed, as Check guesses judges: not brought back by Undo or Redo.
+          after.checkGuesses && move.op === 'place',
+        );
       }
     }
 
@@ -499,14 +513,17 @@ function analyse(puzzle: Puzzle, log: MoveLog, checkGuesses: boolean): MistakeAn
       }
     }
     if (struck !== null && isAnswerStruck(before, after, struck, answerOf(puzzle, struck))) {
-      make({
-        kind: 'candidate',
-        cell: struck,
-        digit: answerOf(puzzle, struck),
-        move: index,
-        at,
-        isObvious: null,
-      });
+      make(
+        {
+          kind: 'candidate',
+          cell: struck,
+          digit: answerOf(puzzle, struck),
+          move: index,
+          at,
+          isObvious: null,
+        },
+        after.checkGuesses && move.op === 'candidate',
+      );
     }
 
     // Put right, for good: the answer in the cell, or back in its candidates.

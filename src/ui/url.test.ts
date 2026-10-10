@@ -85,6 +85,19 @@ describe('readSharedLink', () => {
     expect(challenge).not.toHaveProperty('mistakes');
   });
 
+  it('reads guesses checked as entered from a result link', () => {
+    const url = buildShareUrl('https://x.test/', GIVENS, {
+      seconds: 323,
+      name: 'Dan',
+      assists: { ...NONE, checkGuesses: true },
+    });
+    expect(new URL(url).searchParams.get('a')).toBe('g');
+    expect(readSharedLink(searchOf(url))?.challenge?.assists).toEqual({
+      ...NONE,
+      checkGuesses: true,
+    });
+  });
+
   it('keeps a challenge without a name', () => {
     const url = buildShareUrl('https://x.test/', GIVENS, { seconds: 60, name: '', assists: NONE });
     expect(readSharedLink(searchOf(url))?.challenge).toEqual({

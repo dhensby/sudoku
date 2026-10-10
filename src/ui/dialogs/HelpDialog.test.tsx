@@ -30,7 +30,6 @@ describe('HelpDialog', () => {
     const section = heading.closest('section')!;
     expect(section).toHaveTextContent(/wrong numbers/);
     expect(section).toHaveTextContent(/counted apart as candidate mistakes/);
-    expect(section).toHaveTextContent(/Nothing shows while you play/);
     expect(section).toHaveTextContent(/never change your time/);
     expect(section).toHaveTextContent(
       /A wrong number is forgiven if the right number was obvious .* put it right within 3 seconds, before changing anything else/,
@@ -39,6 +38,21 @@ describe('HelpDialog', () => {
     expect(section).toHaveTextContent(
       /A struck candidate is forgiven if you put it back within 3 seconds, before changing anything else or taking any help\./,
     );
+  });
+
+  it('describes the error counter and Check guesses, and which of them is help', () => {
+    render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={vi.fn()} />);
+    const section = screen.getByRole('heading', { name: 'Mistakes' }).closest('section')!;
+    expect(section).toHaveTextContent(
+      /Show error counter, in Settings, shows your mistakes so far as you play, each once it counts .* It is not help, and is not recorded\./,
+    );
+    expect(section).toHaveTextContent(
+      /Check guesses when entered, in Settings, strikes a wrong number through .* the moment you enter it, and it counts as a mistake at once, with nothing forgiven\./,
+    );
+    expect(section).toHaveTextContent(
+      /Numbers entered before you turn it on are not checked, even when Undo or Redo brings them\s+back\./,
+    );
+    expect(section).toHaveTextContent(/It is help: .* “guesses checked as entered”/);
   });
 
   it('gives the controls for keyboard and for mouse or touch', () => {

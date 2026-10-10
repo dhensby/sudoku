@@ -230,13 +230,26 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
           <p className="help__text">
             Once you&apos;ve solved a puzzle, it tells you your mistakes: wrong numbers, and,
             counted apart as candidate mistakes, a right number struck out of a cell&apos;s
-            candidates. Nothing shows while you play, and mistakes never change your time. A wrong
-            number is forgiven if the right number was obvious — the cell already held it, nothing
-            else fitted there, or it fitted nowhere else in its row, column or box — and you put it
-            right within 3 seconds, before changing anything else or taking any help. A struck
-            candidate is forgiven if you put it back within 3 seconds, before changing anything else
-            or taking any help.
+            candidates. Mistakes never change your time. A wrong number is forgiven if the right
+            number was obvious — the cell already held it, nothing else fitted there, or it fitted
+            nowhere else in its row, column or box — and you put it right within 3 seconds, before
+            changing anything else or taking any help. A struck candidate is forgiven if you put it
+            back within 3 seconds, before changing anything else or taking any help.
           </p>
+          <ul className="help__list">
+            <li>
+              <strong>Show error counter</strong>, in Settings, shows your mistakes so far as you
+              play, each once it counts — so a slip you put right in time never shows. It is not
+              help, and is not recorded.
+            </li>
+            <li>
+              <strong>Check guesses when entered</strong>, in Settings, strikes a wrong number
+              through with a red slash the moment you enter it, and it counts as a mistake at once,
+              with nothing forgiven. Numbers entered before you turn it on are not checked, even
+              when Undo or Redo brings them back. It is help: from the moment it is on, your time
+              says “guesses checked as entered”, even if you turn it off again.
+            </li>
+          </ul>
         </section>
 
         <section className="help__section">

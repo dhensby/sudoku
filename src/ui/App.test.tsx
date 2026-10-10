@@ -509,6 +509,84 @@ describe('App', () => {
     expect(cells()[FIRST_EMPTY]).toHaveAccessibleName('5');
   });
 
+  describe('the Mistakes settings', () => {
+    const counters = () => [...document.querySelectorAll('.error-counter')];
+    /** The live region the error counter speaks in, after the app's own. */
+    const counterRegion = () => document.querySelectorAll<HTMLElement>('.app > [role="status"]')[1];
+
+    function switchOn(name: string) {
+      fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+      fireEvent.click(screen.getByRole('checkbox', { name }));
+      fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    }
+
+    it('has its counter’s live region ready before the first game arrives', async () => {
+      const storage = memoryStorage();
+      storage.setItem('sudoku.prefs', JSON.stringify({ settings: { showErrorCounter: true } }));
+      renderApp({ storage });
+      expect(document.querySelectorAll('.app > [role="status"]')).toHaveLength(2);
+      for (const counter of counters()) expect(counter).toBeEmptyDOMElement();
+      await screen.findByRole('grid');
+      for (const counter of counters()) expect(counter).toHaveTextContent(/^Mistakes 0/);
+    });
+
+    it('shows no error counter until it is switched on', async () => {
+      await startApp();
+      expect(counters()).toEqual([]);
+      expect(document.querySelector('.app')).not.toHaveClass('app--counter');
+      expect(document.querySelectorAll('.app > [role="status"]')).toHaveLength(1);
+    });
+
+    it('shows the counter beside the timer and above the controls, for the stylesheet to pick', async () => {
+      await startApp();
+      switchOn('Show error counter');
+      expect(document.querySelector('.app')).toHaveClass('app--counter');
+      expect(document.querySelector('.header')).toHaveClass('header--counter');
+      const [header, play] = counters();
+      expect(header).toHaveClass('error-counter--header');
+      expect(header.closest('.header__inner')).not.toBeNull();
+      expect(play).toHaveClass('error-counter--play');
+      expect(play.nextElementSibling).toHaveClass('controls');
+      for (const counter of counters()) expect(counter).toHaveTextContent(/^Mistakes 0/);
+    });
+
+    it('hides the count with the board while paused', async () => {
+      await startApp();
+      switchOn('Show error counter');
+      press('p');
+      for (const counter of counters()) expect(counter).toBeEmptyDOMElement();
+      press('p');
+      for (const counter of counters()) expect(counter).toHaveTextContent(/^Mistakes 0/);
+    });
+
+    it('marks a wrong number the moment it goes in with Check guesses on, and counts it aloud', async () => {
+      await startApp();
+      switchOn('Show error counter');
+      switchOn('Check guesses when entered');
+      // Cell 2's answer is 4.
+      press('1');
+      expect(cells()[FIRST_EMPTY]).toHaveAccessibleName('1, incorrect');
+      expect(liveRegion()).toHaveTextContent(/ Incorrect\.$/);
+      for (const counter of counters()) expect(counter).toHaveTextContent(/^Mistakes 1/);
+      expect(counterRegion()).toHaveTextContent('1 mistake counted.');
+      press(String(answerAt(FIRST_EMPTY)));
+      expect(cells()[FIRST_EMPTY]).toHaveAccessibleName(String(answerAt(FIRST_EMPTY)));
+    });
+
+    it('says nothing about mistakes while paused, nor says one again as play resumes', async () => {
+      await startApp();
+      switchOn('Show error counter');
+      switchOn('Check guesses when entered');
+      press('1');
+      expect(counterRegion()).toHaveTextContent('1 mistake counted.');
+      press('p');
+      expect(counterRegion()).toBeEmptyDOMElement();
+      press('p');
+      expect(counterRegion()).toBeEmptyDOMElement();
+      for (const counter of counters()) expect(counter).toHaveTextContent(/^Mistakes 1/);
+    });
+  });
+
   it('starts a new game from the New game menu', async () => {
     await startApp({ source: fakeSource(PUZZLE, nearlySolved([0, 1, 2])) });
     fireEvent.click(screen.getByRole('button', { name: 'New game' }));

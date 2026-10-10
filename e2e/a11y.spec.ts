@@ -126,6 +126,23 @@ async function playWithEveryMark(page: Page): Promise<void> {
   }
 }
 
+/** "Check guesses when entered" and "Show error counter" switched on, from Settings. */
+async function turnOnMistakeSettings(page: Page): Promise<void> {
+  await openHeaderDialog(page, 'Settings');
+  const settings = page.getByRole('dialog', { name: 'Settings' });
+  await settings.getByRole('checkbox', { name: 'Check guesses when entered' }).check();
+  await settings.getByRole('checkbox', { name: 'Show error counter' }).check();
+  await page.keyboard.press('Escape');
+  await expect(settings).toHaveCount(0);
+}
+
+/** A wrong number in the first empty cell, marked as it goes in with Check guesses on. */
+async function enterAWrongNumber(page: Page): Promise<void> {
+  const [first] = emptyCells(EASY.givens);
+  await typeDigits(page, [{ index: first, digit: (Number(EASY.solution[first]) % 9) + 1 }]);
+  expect((await cellLabels(page))[first]).toMatch(/, incorrect$/);
+}
+
 /** A worked example from the guide, as a link: its technique is the very next step. */
 function examplePuzzle(technique: TechniqueId): Puzzle {
   const givens = EXAMPLE_PUZZLES[technique];
@@ -193,6 +210,16 @@ for (const scheme of ['light', 'dark'] as const) {
       await page.goto('/?p=not-a-puzzle');
       await expect(page.getByRole('button', { name: 'Dismiss' })).toBeVisible();
       await expectAccessible(page, 'the broken-link notice');
+    });
+
+    test('the error counter, and a number marked as it was entered', async ({ page }) => {
+      await startPuzzle(page, EASY);
+      await turnOnMistakeSettings(page);
+      await enterAWrongNumber(page);
+      await expect(page.locator('.error-counter--header [aria-hidden="true"]')).toHaveText(
+        /^Mistakes 1$/,
+      );
+      await expectAccessible(page, 'the board with the error counter beside the timer');
     });
 
     test('a hint with Show me, and every step of its walkthrough', async ({ page }) => {
@@ -617,6 +644,16 @@ test.describe('on a phone', () => {
       await expect(dialog(page, 'Settings')).toBeVisible();
       await expectAccessible(page, 'the Settings dialog');
       await closeDialog(page);
+
+      // The error counter on its line above the controls. Two mistakes: the
+      // clash playWithEveryMark checked (Check settles it, counted), and the
+      // wrong number Check guesses counts as it goes in.
+      await turnOnMistakeSettings(page);
+      await enterAWrongNumber(page);
+      await expect(page.locator('.error-counter--play [aria-hidden="true"]')).toHaveText(
+        /^Mistakes 2$/,
+      );
+      await expectAccessible(page, 'the error counter above the controls');
 
       await openHeaderDialog(page, 'Solving techniques');
       const sheet = dialog(page, 'Solving techniques');

@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { DateKey, Difficulty } from '../core';
 import { DifficultyMenu, type TodayDailies } from './DifficultyMenu';
 import { DIFFICULTY_LABEL, formatLongDay } from './format';
@@ -33,6 +34,12 @@ export interface HeaderProps {
   /** New game is opening: bring today's dailies up to date. */
   onRefreshToday?: () => void;
   onOpenDialog: (kind: HeaderDialog) => void;
+  /**
+   * The error counter, while "Show error counter" is on, to sit beside the
+   * timer where the header has room for it (the stylesheet decides where,
+   * and makes the wordmark give way for it first).
+   */
+  errorCounter?: ReactNode;
 }
 
 /** The icon buttons beside New game, in the order they appear. */
@@ -83,9 +90,13 @@ export function Header({
   onOpenDaily,
   onRefreshToday,
   onOpenDialog,
+  errorCounter,
 }: HeaderProps) {
+  const className = ['header', daily !== null && 'header--daily', errorCounter && 'header--counter']
+    .filter(Boolean)
+    .join(' ');
   return (
-    <header className={daily === null ? 'header' : 'header header--daily'}>
+    <header className={className}>
       <div className="header__inner">
         <h1 className="header__title">Sudoku</h1>
         <p className="header__difficulty">
@@ -105,6 +116,7 @@ export function Header({
             {SHORT_LABEL[difficulty]}
           </span>
         </p>
+        {errorCounter}
         <div className="header__timer">
           <Timer
             elapsedMs={elapsedMs}

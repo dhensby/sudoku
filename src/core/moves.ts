@@ -32,7 +32,8 @@ import type {
  *
  * What is logged (see `moveFor`): placing and pencilling a digit, erasing,
  * hints, Show me, Check (a cell or the puzzle), Reveal, auto candidates on
- * and off, Undo, Redo and Reset. Not logged: selecting and moving the
+ * and off, "Check guesses when entered" on and off, Undo, Redo and Reset.
+ * Not logged: selecting and moving the
  * selection, the input mode, pauses, and a hint that has nothing to say (the
  * board is full). One move is logged that changes nothing: Show me opened
  * again for a cell already charged for it, which is still help seen (it ends a
@@ -57,9 +58,9 @@ import type {
  *               33 auto candidates off;
  *             the ops without one above them: 2754 undo, 2755 redo,
  *             2756 check the puzzle, 2757 reset, 2758 a hint off the grid
- *             (which the reducer counts but cannot point at). 2759 and 2760
- *             are reserved for turning "Check guesses when entered" on and
- *             off; this rules version has no such move, so they are refused.
+ *             (which the reducer counts but cannot point at), 2759 "Check
+ *             guesses when entered" on and 2760 off (added after the
+ *             others, with no new rules version: see below).
  *           A hint adds 2 chars: its kind, technique and unit, from the fixed
  *           table below (`describeHint`).
  *           Then the time since the previous move (or the start), in 100 ms
@@ -125,8 +126,14 @@ export type LoggedHint = Exclude<Hint, { kind: 'none' }>;
 /** The moves about one cell that need nothing more than the cell. */
 export type CellOp = 'erase' | 'walkthrough' | 'checkCell' | 'reveal' | 'autoOn' | 'autoOff';
 
-/** The moves that need no cell at all. */
-export type BareOp = 'undo' | 'redo' | 'checkPuzzle' | 'reset';
+/**
+ * The moves that need no cell at all. `checkGuessesOn` and `checkGuessesOff`
+ * switch "Check guesses when entered": a setting, which acts on no cell, but
+ * decides how the numbers entered after it are marked — and how mistakes are
+ * counted (see `mistakes.ts`) — so the log must say when.
+ */
+export type BareOp =
+  'undo' | 'redo' | 'checkPuzzle' | 'reset' | 'checkGuessesOn' | 'checkGuessesOff';
 
 /**
  * One move logged: one that changed the game, or help seen again (see
@@ -257,18 +264,18 @@ const BARE_CODE: Readonly<Record<BareOp, number>> = {
   redo: BARE_BASE + 1,
   checkPuzzle: BARE_BASE + 2,
   reset: BARE_BASE + 3,
+  // After the hint off the grid: added later, in the codes kept for them.
+  // Moves new to the log need no new rules version — no log written before
+  // them holds their codes, and builds from before them refuse those codes.
+  checkGuessesOn: BARE_BASE + 5,
+  checkGuessesOff: BARE_BASE + 6,
 };
 
 /** A hint whose index is off the grid (no cell to put in the code). */
 const OFF_GRID_HINT = BARE_BASE + 4;
 
-/**
- * The first code this build does not use. The next two are reserved for
- * "Check guesses when entered" on and off. Moves new to the log, they need no
- * new rules version: no log written before them holds their codes, and builds
- * from before them refuse those codes.
- */
-const UNUSED_CODES = BARE_BASE + 5;
+/** The first code this build does not use. */
+const UNUSED_CODES = BARE_BASE + 7;
 
 const FLAG_AUTO_CANDIDATES = 1;
 const FLAG_TRUNCATED = 2;
@@ -456,6 +463,8 @@ export function moveFor(
         : { op: 'checkPuzzle' };
     case 'reveal':
       return { op: 'reveal', cell: previous.selected };
+    case 'setCheckGuesses':
+      return { op: action.enabled ? 'checkGuessesOn' : 'checkGuessesOff' };
     case 'undo':
     case 'redo':
     case 'reset':
@@ -740,6 +749,9 @@ function actionsOf(move: Move): GameAction[] {
       return [SELECT(move.cell), { type: 'setAutoCandidates', enabled: move.op === 'autoOn' }];
     case 'checkPuzzle':
       return [{ type: 'check', scope: 'puzzle' }];
+    case 'checkGuessesOn':
+    case 'checkGuessesOff':
+      return [{ type: 'setCheckGuesses', enabled: move.op === 'checkGuessesOn' }];
     case 'undo':
     case 'redo':
     case 'reset':
@@ -813,6 +825,7 @@ function isSameHints(a: RememberedHints, b: RememberedHints | undefined): boolea
 /** Whether two games of the same puzzle are the same game, as saved: see `verifyMoveLog`. */
 function isSameGame(a: GameState, b: GameState): boolean {
   if (a.autoCandidates !== b.autoCandidates || a.status !== b.status) return false;
+  if (a.checkGuesses !== b.checkGuesses) return false;
   if (!isSameAssists(a.assists, b.assists) || a.cellHints.size !== b.cellHints.size) return false;
   for (const [index, hints] of a.cellHints)
     if (!isSameHints(hints, b.cellHints.get(index))) return false;
@@ -831,7 +844,7 @@ function isSameGame(a: GameState, b: GameState): boolean {
  * Whether replaying the log rebuilds `state` — a game of `puzzle`, such as one
  * just loaded from storage — as a save records it: every cell's value, notes,
  * auto candidate eliminations and mark, the help taken, the hints remembered,
- * the status and whether auto candidate mode is on. Selection and input mode
+ * the status, and whether auto candidate mode and Check guesses are on. Selection and input mode
  * are not compared (they are not logged), nor are the undo and redo stacks (a
  * saved game has none). A truncated log stops short of the game, so it never
  * vouches for one.

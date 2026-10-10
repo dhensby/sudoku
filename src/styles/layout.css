@@ -46,9 +46,14 @@
   --key-height: 46px;
   --controls-gap: 6px;
   --controls-height: calc(2 * var(--row-height) + 2 * var(--key-height) + 3 * var(--controls-gap));
+  /* The error counter's line above the controls, and the gap after it: none
+     unless "Show error counter" is on (.app--counter, below). */
+  --counter-height: 0px;
+  --counter-gap: 0px;
   --chrome: calc(
     var(--header-height) + var(--main-pad-top) + var(--main-pad-bottom) + var(--hint-gap) +
-      var(--hint-height) + var(--play-gap) + var(--controls-height)
+      var(--hint-height) + var(--play-gap) + var(--counter-height) + var(--counter-gap) +
+      var(--controls-height)
   );
   --board-floor: 240px;
 
@@ -87,6 +92,17 @@
      no text selection or callout from a long press on the board or keys. */
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
+}
+
+/*
+ * With the error counter on, a phone held upright gives it a line of its own
+ * above the controls (its header has no room): counted into --chrome, so the
+ * board gives up that line's height rather than the page scrolling. Elsewhere
+ * the counter sits in the header, and --chrome is not used.
+ */
+.app--counter {
+  --counter-height: 18px;
+  --counter-gap: var(--play-gap);
 }
 
 /* Where round() is known: whole-pixel cells. Elsewhere the board is merely
@@ -354,6 +370,43 @@
   }
 }
 
+/*
+ * A phone on its side has room for the error counter beside the timer: it
+ * takes up to 11.5em ("Mistakes 12 · 12 candidates") and a gap, so the
+ * wordmark, the short tier and "Daily ·" each give way that much sooner.
+ */
+@media (orientation: landscape) and (max-height: 500px) {
+  @container header (max-width: calc(173px + 23.6em)) {
+    .header--counter .header__title {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      clip-path: inset(50%);
+    }
+  }
+
+  @container header (max-width: calc(167px + 19.2em)) {
+    .header--counter .header__tier {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+
+    .header--counter .header__tier-short {
+      display: inline;
+    }
+  }
+
+  @container header (max-width: calc(167px + 22.5em)) {
+    .header--counter.header--daily .header__daily {
+      display: none;
+    }
+  }
+}
+
 /* An ink rule under the bar, as under a newspaper's masthead. */
 @media (min-width: 850px) {
   .header {
@@ -399,6 +452,61 @@
       width: 1px;
       height: 1px;
       clip-path: inset(50%);
+    }
+  }
+
+  /* And the error counter beside the timer, a size up here: up to 12.5em
+     and a gap more. */
+  @container header (max-width: calc(432px + 26em)) {
+    .header--counter .header__title {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      clip-path: inset(50%);
+    }
+  }
+
+  /*
+   * Then, with the counter, the row of seven buttons still needs more than a
+   * header held back by a short screen has (a large phone on its side is
+   * wide enough for this layout, and its board, and so its header, is held
+   * to the screen's height). Measured as above, at the widest — "Daily ·
+   * Medium", "Mistakes 12 · 12 candidates", h:mm:ss, a finger's 44px
+   * buttons and these 12px gaps — the row needs 418px + 23.35em: below that
+   * "Daily ·" goes, then (below 418px + 20.06em) the tier shortens to three
+   * letters, and then (below 418px + 18.32em, where even that no longer
+   * fits) the five less-used actions fold into the Menu, as on a phone. The
+   * row is then a phone's, and makes its room as one does (above), so the
+   * tier and "Daily ·" give way here only while the seven buttons show.
+   */
+  @container header (min-width: calc(419px + 18.4em)) and (max-width: calc(419px + 23.4em)) {
+    .header--counter.header--daily .header__daily {
+      display: none;
+    }
+  }
+
+  @container header (min-width: calc(419px + 18.4em)) and (max-width: calc(419px + 20.1em)) {
+    .header--counter .header__tier {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+
+    .header--counter .header__tier-short {
+      display: inline;
+    }
+  }
+
+  @container header (max-width: calc(419px + 18.4em)) {
+    .header--counter .header__actions .header__wide {
+      display: none;
+    }
+
+    .header--counter .header__actions .header__narrow {
+      display: inline-flex;
     }
   }
 }
@@ -479,6 +587,15 @@
   .play > .controls {
     margin-top: auto;
   }
+
+  /* The error counter goes down with them, on its line just above. */
+  .play > .error-counter--play {
+    margin-top: auto;
+  }
+
+  .play > .error-counter--play + .controls {
+    margin-top: 0;
+  }
 }
 
 @media (min-width: 850px) {
@@ -531,6 +648,70 @@
   .play .controls {
     grid-area: controls;
     margin-top: 0;
+  }
+}
+
+/* ==========================================================================
+   Error counter
+
+   "Mistakes 2 · 1 candidate", while "Show error counter" is on. Rendered
+   twice and shown once: beside the timer where the header has room (a
+   desktop, a phone on its side), and on a line of its own above the
+   controls on a phone held upright, where the header has none — a line
+   the layout counts in (see .app--counter). Quiet, like the timer's
+   digits: the label muted, the counts in ink and tabular, so the line holds
+   still as they change.
+   ========================================================================== */
+
+.error-counter {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.error-counter__count {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.error-counter--header {
+  display: none;
+  flex: none;
+  margin-left: auto;
+}
+
+/* At the right, over the end of the controls, a line high however it is
+   filled — empty while the board is hidden. */
+.error-counter--play {
+  flex: none;
+  height: var(--counter-height);
+  overflow: hidden;
+  line-height: var(--counter-height);
+  text-align: end;
+}
+
+@media (min-width: 850px), (orientation: landscape) and (max-height: 500px) {
+  .error-counter--header {
+    display: block;
+  }
+
+  /* Beside the timer, it takes the timer's place at the end of the space
+     the wordmark and tier leave. */
+  .error-counter--header + .header__timer {
+    margin-left: 0;
+  }
+
+  .error-counter--play {
+    display: none;
+  }
+}
+
+@media (min-width: 850px) {
+  .error-counter {
+    font-size: 0.875rem;
   }
 }
 

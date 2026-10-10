@@ -103,4 +103,12 @@ export interface Assists {
   checks: number;
   /** How many cells were revealed. A game with reveals never sets a best time. */
   reveals: number;
+  /**
+   * Whether "Check guesses when entered" was ever on during this game: every
+   * number entered while it was on was marked wrong at once if it was.
+   * Sticky, like `autoCandidates`. Absent rather than false when it never
+   * was, so an unaided game's assists — in storage, a link, an older
+   * version's hands — are exactly what they were before the setting existed.
+   */
+  checkGuesses?: true;
 }

@@ -21,6 +21,7 @@ import {
   EASY_PUZZLE,
   EXPERT_PUZZLES,
   act,
+  checkGuessesTour,
   playWithHelp,
   randomAction,
   solveByPlacing,
@@ -78,6 +79,11 @@ export interface PinnedState {
   /** Each cell with eliminations, as `cell:digits`. */
   autoRemoved: string;
   autoCandidates: boolean;
+  /**
+   * Whether Check guesses is on: left out when it is off, so the logs pinned
+   * before it existed — none of which can switch it on — pin as they did.
+   */
+  checkGuesses?: true;
   status: string;
   assists: string;
   /** Each cell's remembered hints, as `cell:fill:mistake value:walkthrough`. */
@@ -99,15 +105,18 @@ function masks(state: GameState, field: 'notes' | 'autoRemoved'): string {
 
 /** The game as a guard compares it: the board, the help, the hints and the depth of both stacks. */
 export function pinnedState(state: GameState): PinnedState {
-  const { autoCandidates, hints, checks, reveals } = state.assists;
+  const { autoCandidates, hints, checks, reveals, checkGuesses } = state.assists;
+  // Said only once it was ever on, for the same reason as `checkGuesses`.
+  const checked = checkGuesses === true ? ' checkGuesses:true' : '';
   return {
     values: formatGrid(valuesOf(state)),
     marks: state.cells.map((cell) => MARK_CODES[cell.mark]).join(''),
     notes: masks(state, 'notes'),
     autoRemoved: masks(state, 'autoRemoved'),
     autoCandidates: state.autoCandidates,
+    ...(state.checkGuesses ? { checkGuesses: true as const } : {}),
     status: state.status,
-    assists: `auto:${autoCandidates} hints:${hints} checks:${checks} reveals:${reveals}`,
+    assists: `auto:${autoCandidates} hints:${hints} checks:${checks} reveals:${reveals}${checked}`,
     cellHints: [...state.cellHints]
       .sort(([a], [b]) => a - b)
       .map(([index, { fill, mistake, walkthrough }]) => {
@@ -503,6 +512,105 @@ export const GOLDEN_SITUATIONS: readonly {
     name: 'Show me opened again, for free',
     occurs: ({ move, before, after }) => move.op === 'walkthrough' && after === before,
   },
+  // Check guesses when entered
+  {
+    name: 'Check guesses switched on, judging nothing already entered',
+    occurs: ({ move, before, after }) =>
+      move.op === 'checkGuessesOn' &&
+      after.checkGuesses &&
+      after.cells === before.cells &&
+      before.cells.some((cell, i) => cell.value !== 0 && cell.value !== answerOf(before, i)),
+  },
+  {
+    name: 'Check guesses switched off',
+    occurs: ({ move, before, after }) =>
+      move.op === 'checkGuessesOff' && before.checkGuesses && !after.checkGuesses,
+  },
+  {
+    name: 'a wrong digit placed while Check guesses is on, marked wrong',
+    occurs: (step) => {
+      const e = entered(step, 'place');
+      return (
+        !!e && step.before.checkGuesses && e.after.mark === 'wrong' && e.before.mark !== 'wrong'
+      );
+    },
+  },
+  {
+    name: 'the answer placed while Check guesses is on, unmarked',
+    occurs: (step) => {
+      const e = entered(step, 'place');
+      return (
+        !!e &&
+        step.before.checkGuesses &&
+        e.digit === answerOf(step.before, e.index) &&
+        e.after.mark === 'none'
+      );
+    },
+  },
+  {
+    name: 'an Undo or Redo bringing back a wrong digit entered before Check guesses came on, unmarked',
+    occurs: (step) =>
+      step.before.checkGuesses &&
+      (entryOf(step)?.cells.some(([index, previous]) => {
+        const after = step.after.cells[index];
+        return (
+          previous.mark === 'none' &&
+          after.value === previous.value &&
+          after.value !== step.before.cells[index].value &&
+          after.value !== 0 &&
+          after.value !== answerOf(step.after, index) &&
+          after.mark === 'none'
+        );
+      }) ??
+        false),
+  },
+  {
+    name: 'an Undo or Redo bringing back a digit marked by Check guesses while it is on, marked',
+    occurs: (step) =>
+      step.before.checkGuesses &&
+      (entryOf(step)?.cells.some(([index, previous]) => {
+        const after = step.after.cells[index];
+        return (
+          previous.mark === 'wrong' &&
+          after.mark === 'wrong' &&
+          after.value === previous.value &&
+          after.value !== step.before.cells[index].value
+        );
+      }) ??
+        false),
+  },
+  {
+    name: 'a value marked by Check guesses cleared by a candidate entry',
+    occurs: (step) => {
+      const e = entered(step, 'candidate');
+      return !!e && e.before.mark === 'wrong' && e.after.value === 0 && step.before.checkGuesses;
+    },
+  },
+  {
+    name: 'a wrong digit placed once Check guesses is off again, unmarked',
+    occurs: (step) => {
+      const e = entered(step, 'place');
+      return (
+        !!e &&
+        !step.before.checkGuesses &&
+        step.before.assists.checkGuesses === true &&
+        e.digit !== answerOf(step.before, e.index) &&
+        e.after.mark === 'none'
+      );
+    },
+  },
+  {
+    name: 'an Undo or Redo bringing back a digit marked by Check guesses once it is off',
+    occurs: (step) =>
+      !step.before.checkGuesses &&
+      (entryOf(step)?.cells.some(([index, previous]) => {
+        const after = step.after.cells[index];
+        return (
+          previous.mark === 'wrong' && after.mark === 'wrong' && after.value === previous.value
+        );
+      }) ??
+        false),
+  },
   // Reset
   {
     name: 'a Reset of a board in play',
@@ -581,6 +689,11 @@ const GOLDEN_GAMES: readonly { name: string; puzzle: Puzzle; play: () => Played 
     name: 'Expert, random play',
     puzzle: EXPERT_PUZZLES[0],
     play: () => playAtRandom(EXPERT_PUZZLES[0], 'golden/random'),
+  },
+  {
+    name: 'Easy, with Check guesses when entered switched on and off',
+    puzzle: EASY_PUZZLE,
+    play: () => checkGuessesTour(createRng('golden/check-guesses')),
   },
 ];
 

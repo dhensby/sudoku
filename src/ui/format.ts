@@ -72,8 +72,23 @@ export const TECHNIQUE_LABEL: Readonly<Record<TechniqueId, string>> = {
 
 /** Whether any help was taken. */
 export function hasAssists(assists: Assists): boolean {
-  return assists.autoCandidates || assists.hints > 0 || assists.checks > 0 || assists.reveals > 0;
+  return (
+    assists.autoCandidates ||
+    assists.checkGuesses === true ||
+    assists.hints > 0 ||
+    assists.checks > 0 ||
+    assists.reveals > 0
+  );
 }
+
+/**
+ * The words for "Check guesses when entered" having been on, wherever help is
+ * listed: "guesses checked as entered" in a list of help ("With guesses
+ * checked as entered, 2 hints"), "Checked as entered" on its own (a History
+ * chip, the head-to-head's row). The setting's own name stays NYT's.
+ */
+export const CHECK_GUESSES_WORDS = 'guesses checked as entered';
+export const CHECK_GUESSES_LABEL = 'Checked as entered';
 
 /** "1 hint", "3 hints": a number and its noun, plural unless it is one. */
 export function count(n: number, noun: string): string {
@@ -81,12 +96,14 @@ export function count(n: number, noun: string): string {
 }
 
 /**
- * The help a time came with, as a list — "auto candidates, 2 hints, 1 reveal"
- * — or null for a time earned unaided.
+ * The help a time came with, as a list — "auto candidates, guesses checked as
+ * entered, 2 hints, 1 reveal" — or null for a time earned unaided. The two
+ * kinds of help that stay on for a game come first, then the counts.
  */
 export function describeAssists(assists: Assists): string | null {
   const parts: string[] = [];
   if (assists.autoCandidates) parts.push('auto candidates');
+  if (assists.checkGuesses === true) parts.push(CHECK_GUESSES_WORDS);
   if (assists.hints > 0) parts.push(count(assists.hints, 'hint'));
   if (assists.checks > 0) parts.push(count(assists.checks, 'check'));
   if (assists.reveals > 0) parts.push(count(assists.reveals, 'reveal'));

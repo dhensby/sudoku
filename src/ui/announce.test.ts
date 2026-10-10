@@ -145,6 +145,19 @@ describe('describeChange', () => {
       expect(spoken(enter(4))).toBe('4 in row 1, column 3.');
     });
 
+    it('says a wrong number is incorrect, last, when Check guesses marks it as it goes in', () => {
+      const checked = reduce(createGame(PUZZLE), { type: 'setCheckGuesses', enabled: true });
+      const say = (digit: number, conflicts = true) =>
+        describeChange(checked, reduce(checked, enter(digit)), enter(digit), { conflicts });
+      expect(say(1)).toBe('1 in row 1, column 3. Incorrect.');
+      expect(say(5)).toBe(
+        '5 in row 1, column 3. Clashes with another 5 in its row and box. Incorrect.',
+      );
+      expect(say(5, false)).toBe('5 in row 1, column 3. Incorrect.');
+      // The answer is not marked, and not said to be right either.
+      expect(say(4)).toBe('4 in row 1, column 3.');
+    });
+
     it('names every kind of unit a placed digit clashes in, never by number', () => {
       // "Row 2, column 2" would sound like the cell's own position.
       expect(spoken(select(R2C2), enter(9))).toBe(

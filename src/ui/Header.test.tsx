@@ -41,6 +41,18 @@ describe('Header', () => {
     expect(screen.getByRole('button', { name: 'Pause' })).toHaveAccessibleDescription('1:05');
   });
 
+  it('sets the error counter it is given just before the timer, and says it has one', () => {
+    renderHeader({ errorCounter: <p className="error-counter">Mistakes 2</p> });
+    const counter = screen.getByText('Mistakes 2');
+    expect(counter.nextElementSibling).toHaveClass('header__timer');
+    expect(document.querySelector('header')).toHaveClass('header', 'header--counter');
+  });
+
+  it('has no counter, nor says so, without one', () => {
+    renderHeader({ daily: '2026-10-13' });
+    expect(document.querySelector('header')?.className).toBe('header header--daily');
+  });
+
   it('has a short tier name for a cramped header, which assistive technology skips', () => {
     // The stylesheet swaps it in when the header runs out of room; the full
     // name stays readable to a screen reader either way.

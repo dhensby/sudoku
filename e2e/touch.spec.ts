@@ -710,6 +710,66 @@ test.describe('a 320×568 phone', () => {
 });
 
 /*
+ * With "Show error counter" on: on a phone held upright the counter takes a
+ * line of its own above the controls, which the board makes room for — the
+ * game still fits with nothing to scroll; on its side it sits beside the
+ * timer, and the header still never scrolls sideways. A large phone on its
+ * side (896×414, 932×430) is wide enough for the desktop's row of seven
+ * buttons, but its header, held to the board, is not wide enough for them
+ * and the counter: they fold into the Menu, as on a smaller phone.
+ */
+for (const viewport of [
+  { width: 320, height: 568 },
+  { width: 375, height: 667 },
+  { width: 667, height: 375 },
+  { width: 844, height: 390 },
+  { width: 896, height: 414 },
+  { width: 932, height: 430 },
+]) {
+  test.describe(`a ${viewport.width}×${viewport.height} phone with the error counter on`, () => {
+    test.use({ viewport });
+
+    test.beforeEach(async ({ page }) => {
+      await page.addInitScript(() => {
+        localStorage.setItem(
+          'sudoku.prefs',
+          JSON.stringify({ settings: { showErrorCounter: true } }),
+        );
+      });
+    });
+
+    test('fits the whole game and the counter with nothing to scroll', async ({ page }) => {
+      await tapStart(page, PUZZLES.medium.givens);
+      const counter = page.locator('.error-counter:visible');
+      await expect(counter.locator('[aria-hidden="true"]')).toHaveText(/^Mistakes 0$/);
+      await expectWholeGameOnScreen(page);
+      await expectOnScreen(page, counter);
+      const isUpright = viewport.width < viewport.height;
+      await expect(
+        page.locator(isUpright ? '.error-counter--play' : '.error-counter--header'),
+      ).toBeVisible();
+      await expectOnScreen(page, page.getByRole('banner').getByRole('button', { name: 'Menu' }));
+    });
+
+    test('gives way in the header at 1:23:45, clipping neither the tier nor the page', async ({
+      page,
+    }) => {
+      await tapStart(page, PUZZLES.medium.givens);
+      await seedElapsed(page, (1 * 3600 + 23 * 60 + 45) * 1000);
+      await resumeButton(page).tap();
+      await waitForPlaying(page);
+      const banner = page.getByRole('banner');
+      await expect(banner.locator('.timer__time')).toHaveText(/^1:23:4\d$/);
+      const tier = banner.locator('.header__difficulty');
+      expect(await tier.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(0);
+      expect((await overflow(page)).x).toBe(0);
+      await expectOnScreen(page, page.locator('.error-counter:visible'));
+      await expectOnScreen(page, banner.getByRole('button', { name: 'Menu' }));
+    });
+  });
+}
+
+/*
  * A game past the hour, at the widest a header gets: Medium, the longest
  * tier name, and h:mm:ss on the clock. Something in the header gives way
  * (the wordmark goes first), never the page: nothing scrolls sideways and

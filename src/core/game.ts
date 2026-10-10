@@ -47,6 +47,14 @@ import type {
  * Every hint about a cell is remembered with the cell (see
  * `RememberedHints`): selecting the cell again shows it again, and asking
  * for it again costs nothing, until the cell no longer needs it.
+ *
+ * "Check guesses when entered" (`checkGuesses`) marks a wrong number wrong
+ * the moment it is typed, with the mark a Check gives, but no Check taken
+ * (see `markWrongGuesses`). It is a setting rather than a move, so it is
+ * never undone, and it never judges what was entered before it came on —
+ * not even brought back by Undo or Redo, which put a number back with the
+ * mark it had: judging those would make Undo then Redo a free Check of the
+ * whole board.
  */
 
 /** How a digit key is read: as a value to place, or as a candidate to toggle. */
@@ -123,6 +131,11 @@ export interface GameState {
   mode: InputMode;
   /** Whether auto-candidate mode is on: computed candidates are drawn instead of notes. */
   autoCandidates: boolean;
+  /**
+   * Whether "Check guesses when entered" is on: each wrong number is marked
+   * wrong as it is typed. Switched by `setCheckGuesses`, never by Undo.
+   */
+  checkGuesses: boolean;
   /** 'solved' once every cell holds its solution digit; the board is then frozen. */
   status: 'playing' | 'solved';
   /** Undoable changes, oldest first. */
@@ -164,6 +177,13 @@ export type GameAction =
   | { type: 'setMode'; mode: InputMode }
   | { type: 'toggleMode' }
   | { type: 'setAutoCandidates'; enabled: boolean }
+  /**
+   * Switch "Check guesses when entered". Switching it on records the help
+   * (sticky, like auto candidates); neither way is undoable, nor changes the
+   * board: it judges the numbers entered from now on, never those already
+   * there.
+   */
+  | { type: 'setCheckGuesses'; enabled: boolean }
   | { type: 'undo' }
   | { type: 'redo' }
   /**
@@ -213,6 +233,13 @@ const ALLOWED_WHEN_SOLVED: ReadonlySet<GameAction['type']> = new Set([
   'move',
   'setMode',
   'toggleMode',
+]);
+
+/** The changes that leave a hint on show: asking for it, Show me, and switching Check guesses. */
+const KEEPS_HINT: ReadonlySet<GameAction['type']> = new Set([
+  'hint',
+  'walkthrough',
+  'setCheckGuesses',
 ]);
 
 const MOVES: Readonly<Record<Direction, readonly [rows: number, cols: number]>> = {
@@ -511,6 +538,40 @@ function setAutoCandidates(state: GameState, enabled: boolean): GameState {
   };
 }
 
+function setCheckGuesses(state: GameState, enabled: boolean): GameState {
+  if (enabled === state.checkGuesses) return state;
+  // Switched off, the help it gave stays on the record, as all help does.
+  const assists: Assists =
+    enabled && state.assists.checkGuesses !== true
+      ? { ...state.assists, checkGuesses: true }
+      : state.assists;
+  return { ...state, checkGuesses: enabled, assists };
+}
+
+/**
+ * With "Check guesses when entered" on, the wrong number just typed (in an
+ * empty cell or over another number) marked wrong, as Check would mark it.
+ * Called for typing only: a number already standing is never judged, so
+ * switching the setting on reveals nothing, and nor does Undo or Redo, which
+ * bring a number back with the mark it had — marked if it was typed while
+ * the setting was on, not if it was typed before. A right number gets no
+ * mark, as NYT gives none. Not undoable, like any verdict on a value: the
+ * mark goes when the value does.
+ */
+function markWrongGuesses(before: GameState, after: GameState): GameState {
+  let cells: CellState[] | null = null;
+  for (let i = 0; i < 81; i++) {
+    const cell = after.cells[i];
+    if (cell.value === before.cells[i].value || cell.mark === 'wrong') continue;
+    if (cell.value === 0 || !canEdit(cell) || cell.value === solutionDigit(after.puzzle, i)) {
+      continue;
+    }
+    cells ??= after.cells.slice();
+    cells[i] = { ...cell, mark: 'wrong' };
+  }
+  return cells === null ? after : { ...after, cells };
+}
+
 /**
  * The edits that put an entry's cells back. Locked cells never change — not
  * even back: checking or revealing is help already taken, and undoing past it
@@ -700,6 +761,8 @@ function step(state: GameState, action: GameAction): GameState {
       return { ...state, mode: state.mode === 'normal' ? 'candidate' : 'normal' };
     case 'setAutoCandidates':
       return setAutoCandidates(state, action.enabled);
+    case 'setCheckGuesses':
+      return setCheckGuesses(state, action.enabled);
     case 'undo':
       return replay(state, 'undo');
     case 'redo':
@@ -730,6 +793,9 @@ export function createGame(puzzle: Puzzle, options: NewGameOptions = {}): GameSt
     selected: firstEmpty(cells),
     mode: 'normal',
     autoCandidates,
+    // Switched on as a move (see `setCheckGuesses`), so that a game's log
+    // says when it was on.
+    checkGuesses: false,
     // Always 'playing' for a real puzzle; derived rather than assumed so that a
     // degenerate all-givens grid agrees with what `deserialiseGame` would say.
     status: statusOf(cells, puzzle),
@@ -753,10 +819,14 @@ export function reduce(state: GameState, action: GameAction): GameState {
   if (state.status === 'solved' && !ALLOWED_WHEN_SOLVED.has(action.type)) return state;
   let next = step(state, action);
   if (next === state) return next;
-  if (next.cells !== state.cells) next = forgetSpentHints(next);
+  if (next.cells !== state.cells) {
+    if (next.checkGuesses && action.type === 'enter') next = markWrongGuesses(state, next);
+    next = forgetSpentHints(next);
+  }
   // A hint describes the board it was asked about, so any change retires
-  // it — bar opening "Show me", which leaves the board as it was.
-  if (next.hint === null || action.type === 'hint' || action.type === 'walkthrough') return next;
+  // it — bar opening "Show me" and switching Check guesses, which leave the
+  // board as it was.
+  if (next.hint === null || KEEPS_HINT.has(action.type)) return next;
   return { ...next, hint: null };
 }
 
@@ -843,10 +913,11 @@ export interface SerialisedCellHints {
  * when it saves the game again (see `saveGameBlob` and
  * `SERIALISED_GAME_FIELDS`), so a tab still on this version does not wipe
  * them. Keeping these readable includes `marks`: a newer version must not
- * write a mark code other than `.wcr` (this version rejects the whole save),
- * and may mark a wrong guess 'w' without a Check only when its assists carry
- * `checkGuesses: true` — otherwise this version takes the mark as a Check
- * (see `reconcileAssists`).
+ * write a mark code other than `.wcr` (this version rejects the whole save).
+ * "Check guesses when entered" marks a wrong number 'w' with no Check taken,
+ * which is why it does so only once its assists carry `checkGuesses: true`:
+ * a version from before the setting, which keeps that field as a newer
+ * version's, then reads the mark as no Check (see `reconcileAssists`).
  */
 export interface SerialisedGame {
   /** Format version; anything else is rejected on load. */
@@ -879,6 +950,12 @@ export interface SerialisedGame {
    * the game can read the other's saves.
    */
   cellHints?: SerialisedCellHints[];
+  /**
+   * Whether "Check guesses when entered" is on for the game. Written only
+   * when it is, so a save without it — every save from before the setting —
+   * loads with it off.
+   */
+  checkGuesses?: true;
 }
 
 /**
@@ -892,15 +969,8 @@ export const ASSIST_FIELDS = fieldsOf<Assists>({
   hints: true,
   checks: true,
   reveals: true,
+  checkGuesses: true,
 });
-
-/**
- * The name reserved for the help "Check guesses when entered", which a later
- * version records as a sticky `checkGuesses: true` on the assists. This
- * version reads it in one place only: while it was on, a digit marked wrong
- * says nothing about a Check having been taken (see `reconcileAssists`).
- */
-export const CHECK_GUESSES_ASSIST = 'checkGuesses';
 
 /**
  * The top-level fields of `SerialisedGame` this version knows. When the game
@@ -920,6 +990,7 @@ export const SERIALISED_GAME_FIELDS = fieldsOf<SerialisedGame>({
   status: true,
   assists: true,
   cellHints: true,
+  checkGuesses: true,
 });
 
 /** The game as plain, JSON-safe data. */
@@ -942,6 +1013,7 @@ export function serialiseGame(state: GameState): SerialisedGame {
       mistake: entry.mistake?.value ?? 0,
       walkthrough: entry.walkthrough,
     })),
+    ...(state.checkGuesses ? { checkGuesses: true as const } : {}),
   };
 }
 
@@ -1039,10 +1111,12 @@ function readCellHints(
 }
 
 /**
- * Stored assists, or null if they are not well-formed. The four this version
- * knows must be exactly right; any small field a newer version added — a new
- * kind of help — is kept alongside them (see `newerFields`), so that it is
- * neither a reason to reject the save nor lost when this version saves the
+ * Stored assists, or null if they are not well-formed. The four counts and
+ * flags every version has written must be exactly right; `checkGuesses` is
+ * kept only as `true` (saves from before it have none, and it is never
+ * written as anything else); and any small field a newer version added — a
+ * new kind of help — is kept alongside them (see `newerFields`), so that it
+ * is neither a reason to reject the save nor lost when this version saves the
  * game again. Help taken must never be lost, whoever counted it.
  */
 function readAssists(data: unknown): Assists | null {
@@ -1050,7 +1124,14 @@ function readAssists(data: unknown): Assists | null {
   const { autoCandidates, hints, checks, reveals } = data;
   if (typeof autoCandidates !== 'boolean' || !isCount(hints) || !isCount(checks)) return null;
   if (!isCount(reveals)) return null;
-  return { ...newerFields(data, ASSIST_FIELDS), autoCandidates, hints, checks, reveals };
+  return {
+    ...newerFields(data, ASSIST_FIELDS),
+    autoCandidates,
+    hints,
+    checks,
+    reveals,
+    ...(data.checkGuesses === true ? { checkGuesses: true as const } : {}),
+  };
 }
 
 /**
@@ -1060,15 +1141,16 @@ function readAssists(data: unknown): Assists | null {
  * hint, and every "Show me" opened, was counted once when it was first
  * shown; a cell checked correct means at least one check, and so does one
  * marked wrong unless a hint accounts for it (a hint marks the mistake it
- * points at the same way) or a newer version's "Check guesses when entered"
- * was on (it marks a wrong digit as it goes in, with no Check taken — see
- * `CHECK_GUESSES_ASSIST`); and auto mode on or any elimination (only ever
- * recorded in auto mode) means auto mode was used.
+ * points at the same way) or "Check guesses when entered" was on (it marks a
+ * wrong digit as it goes in, with no Check taken); Check guesses on now means
+ * it was used; and auto mode on or any elimination (only ever recorded in
+ * auto mode) means auto mode was used.
  */
 function reconcileAssists(
   assists: Assists,
   cells: readonly CellState[],
   autoCandidates: boolean,
+  checkGuesses: boolean,
   cellHints: ReadonlyMap<number, RememberedHints>,
 ): Assists {
   const reveals = cells.filter((cell) => cell.mark === 'revealed').length;
@@ -1077,8 +1159,7 @@ function reconcileAssists(
     remembered += Number(fill !== null) + Number(mistake !== null) + Number(walkthrough);
   }
   const hints = Math.max(assists.hints, remembered);
-  // Read off the stored object: `Assists` does not know the field.
-  const isGuessChecked = Reflect.get(assists, CHECK_GUESSES_ASSIST) === true;
+  const isGuessChecked = assists.checkGuesses === true || checkGuesses;
   const isMarkedWrong = cells.some((cell) => cell.mark === 'wrong');
   const isChecked =
     cells.some((cell) => cell.mark === 'correct') ||
@@ -1090,6 +1171,7 @@ function reconcileAssists(
     hints,
     checks: Math.max(assists.checks, isChecked ? 1 : 0),
     reveals: Math.max(assists.reveals, reveals),
+    ...(isGuessChecked ? { checkGuesses: true as const } : {}),
   };
 }
 
@@ -1115,7 +1197,8 @@ function readMark(code: string, value: number, answer: number): CellMark {
  * invented; a newer version's extra kinds of help are kept, see
  * `readAssists`). What can be derived or defaulted without changing the board is
  * coerced instead: an out-of-range `selected` becomes the first empty cell, a
- * non-boolean `autoCandidates` is off, `status` is re-derived from the values,
+ * non-boolean `autoCandidates` or `checkGuesses` is off, `status` is
+ * re-derived from the values,
  * marks a check could never have produced become 'none', notes on givens are
  * dropped, remembered hints that cannot be trusted are forgotten (see
  * `readCellHints`), and the assists are raised to cover any help the board
@@ -1144,6 +1227,7 @@ export function deserialiseGame(data: unknown): GameState | null {
   }
 
   const autoCandidates = data.autoCandidates === true;
+  const checkGuesses = data.checkGuesses === true;
   const cellHints = readCellHints(data.cellHints, cells, puzzle);
   return {
     puzzle,
@@ -1151,10 +1235,11 @@ export function deserialiseGame(data: unknown): GameState | null {
     selected: isCellIndex(data.selected) ? data.selected : firstEmpty(cells),
     mode: 'normal',
     autoCandidates,
+    checkGuesses,
     status: statusOf(cells, puzzle),
     undoStack: NO_ENTRIES,
     redoStack: NO_ENTRIES,
-    assists: reconcileAssists(assists, cells, autoCandidates, cellHints),
+    assists: reconcileAssists(assists, cells, autoCandidates, checkGuesses, cellHints),
     hint: null,
     cellHints,
   };
