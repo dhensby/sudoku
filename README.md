@@ -699,7 +699,9 @@ of the logs here were shed, none of the file's logs are taken.
   every dialog (Show me's and the daily calendar's included) and each guide entry — in both
   themes, and the board, the dialogs, the menus and the calendar in High contrast, both chosen in
   Settings on a dark device and from a dark system asking for more contrast, measuring its heavier
-  lines and its same-number ring kept off the digits — and allows no violations. Three projects:
+  lines and its same-number ring kept off the digits — and allows no violations. Three projects,
+  which CI runs side by side, one job each (a new one needs an entry in the `e2e` job's matrix in
+  [CI](.github/workflows/ci.yml) as well, or CI fails):
 
   | Project    | Device         | Engine   | Specs                                                 |
   | ---------- | -------------- | -------- | ----------------------------------------------------- |
