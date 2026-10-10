@@ -21,9 +21,19 @@ jobs:
     name: Lint, test & build
     if: github.event.action != 'edited' || github.event.changes.base != null
     # On the job, not the workflow: a run whose job is skipped (an edit to the
-    # title) then never cancels the run in progress.
+    # title) then never cancels the run in progress. A new run cancels the one
+    # in progress for the same pull request, but on main each commit gets a
+    # group of its own, so no run there cancels another. A re-run keeps the ref
+    # and commit it first ran for, so in one group for all of main, re-running
+    # an older commit's CI would cancel the latest commit's (two pushes close
+    # together could race the same way), and as Deploy publishes only a commit
+    # whose CI passed, and only while it is main's latest, the site would stay
+    # behind until that CI is re-run or another commit lands. Just not
+    # cancelling on main would not do: by default a run queued for a group
+    # replaces the one already waiting there. The cost is that a commit
+    # superseded on main is still checked to the end (Deploy skips it).
     concurrency:
-      group: ci-${{ github.ref }}
+      group: ci-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
       cancel-in-progress: true
     runs-on: ubuntu-latest
     steps:
