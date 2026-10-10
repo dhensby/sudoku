@@ -1,6 +1,19 @@
+import { createHash } from 'node:crypto';
 import { defineConfig, devices } from '@playwright/test';
 
-const PORT = 4173;
+// Each checkout serves its build on a port of its own, picked from where it
+// lives, so the suite can run in several git worktrees at once without one run
+// finding another's server. The range sits below every OS's ephemeral ports,
+// which other servers are handed when they ask for any free port.
+// PLAYWRIGHT_PORT chooses one instead, should two checkouts ever collide.
+function checkoutPort(): number {
+  const hash = createHash('sha256')
+    .update(import.meta.dirname)
+    .digest();
+  return 20_000 + (hash.readUInt32BE() % 10_000);
+}
+
+const PORT = Number(process.env.PLAYWRIGHT_PORT) || checkoutPort();
 const baseURL = `http://localhost:${PORT}`;
 
 export default defineConfig({
@@ -51,7 +64,10 @@ export default defineConfig({
   webServer: {
     command: `npm run build && npm run preview -- --port ${PORT} --strictPort`,
     url: baseURL,
-    reuseExistingServer: !process.env.CI,
+    // Never test whatever is already on the port: it may be serving an old
+    // build, and whoever started it can stop it mid-run. A server there is a
+    // clash, and fails the run before it starts.
+    reuseExistingServer: false,
     timeout: 120_000,
   },
 });
