@@ -240,8 +240,20 @@
 
 /* ---- Candidates ---- */
 
-/* A 3×3 mini-grid in a fixed layout: 1 top-left … 9 bottom-right, so a
-   candidate is always found in the same spot. */
+/*
+ * A 3×3 mini-grid in a fixed layout: 1 top-left … 9 bottom-right, so a
+ * candidate is always found in the same spot. Candidates are a player's
+ * working, read at a glance across the board, so they are set as large as
+ * three rows of them comfortably allow: 28% of the cell, and at least
+ * 11px on a phone. On the smallest boards (a short phone, or one on its
+ * side) that floor gives way to the cell, at 34% of it so three rows keep
+ * a gap between them, but not below 9px, the size they have always had
+ * there. A line is set 0.8 high, which still clears a digit (figures stand
+ * about 0.7 high), so at 9px the three rows fit inside a 24px cell, the
+ * smallest a phone gives, rather than spilling into the cell below. On a
+ * board smaller still (a 20px cell in a 480×320 window), the 9px gives way
+ * too, to 38% of the cell, which is as large as three rows fit.
+ */
 .cell__candidates,
 .cell__ghosts {
   position: absolute;
@@ -252,10 +264,23 @@
   place-items: center;
   padding: calc(var(--cell) * 0.04);
   font-family: var(--font);
-  font-size: max(calc(var(--cell) * 0.26), 9px);
+  font-size: max(
+    calc(var(--cell) * 0.28),
+    clamp(min(9px, calc(var(--cell) * 0.38)), calc(var(--cell) * 0.34), 11px)
+  );
   font-style: normal;
   font-weight: 500;
-  line-height: 1;
+  line-height: 0.8;
+}
+
+/* On a board under 400px a candidate is only 8–12px high, and strokes
+   that thin thin out further on screen, light on dark most of all: a
+   heavier weight keeps them solid. */
+@container board-column (max-width: 399.98px) {
+  .cell__candidates,
+  .cell__ghosts {
+    font-weight: 600;
+  }
 }
 
 .cell__candidates {

@@ -94,9 +94,15 @@ your browser.
   at least 7:1 contrast (WCAG AAA) on every cell they can sit on, and checked and revealed numbers
   and candidates at least 4.5:1; each highlight is a step of lightness as well as of hue — checked
   under simulated colour-blindness — and checked and revealed numbers carry a tick or an italic as
-  well as a colour. A night edition is drawn for the dark rather than
-  inverted (it follows your system, or pick Light or Dark in Settings), and the game stays
-  playable in Windows High Contrast.
+  well as a colour. The grid's structure is held to targets too: thin rules at least 3:1 against
+  every fill but the same number's, box lines at least 4.5:1 against every fill but the selected
+  block (whose ring is drawn in the box lines' own ink), and a given's screen kept apart from the
+  highlights beside and around it. Candidates are set large (28% of the cell, at least 11px on all
+  but the smallest boards, and 9px on a phone on its side), and heavier on a phone-sized board. A
+  night edition is drawn for the dark rather than inverted — box lines in the page's ink, bright
+  thin rules, and row, column and same-number fills strong enough to find at a glance (it follows
+  your system, or pick Light or Dark in Settings) — and the game stays playable in Windows High
+  Contrast.
 
 ## Tech stack
 

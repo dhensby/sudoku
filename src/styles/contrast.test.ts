@@ -21,12 +21,20 @@ import {
  * The targets:
  * - 7:1 (AAA) for given and player digits on every cell they can sit on;
  *   4.5:1 for checked and revealed digits, candidates and all text;
- * - 3:1 for what is not text but must be seen: the thin rules, the
- *   selection's fill and ring, conflict dots and wrong slashes, the edges of
- *   keys, switches and fields, and focus rings; 7:1 for the box lines;
+ * - 3:1 for what is not text but must be seen: the thin rules (on every
+ *   fill but the same number's), the selection's fill and ring, conflict
+ *   dots and wrong slashes, the edges of keys, switches and fields, and
+ *   focus rings; 7:1 for the box lines on paper, and 4.5:1 on every other
+ *   fill but the selected block's, whose ring is drawn in the box lines' own
+ *   ink;
  * - the steps between cell fills: selected 1.6:1 from same-number, same
  *   1.3:1 from peer, peer and given 1.25:1 from plain — steps of lightness
- *   that colour-blind players keep too (the simulated ladders, below).
+ *   that colour-blind players keep too (the simulated ladders, below) — and
+ *   two smaller steps that keep a given's screen where the highlights meet
+ *   it: 1.1:1 from a peer cell beside it, and 1.15:1 between a given and a
+ *   player's cell inside the same highlight. Those two are held in normal
+ *   vision only. They sit between the ladders rather than on one, and a
+ *   given carries its typeface and its ink as well as its screen.
  */
 
 const AAA = 7;
@@ -97,8 +105,25 @@ const PAIRS: Pair[] = [
   ['candidate on the selected cell', 'candidate-selected', 'hl-selected', TEXT],
 
   // ---- Lines ----
+  // The thin rules hold 3:1 on every fill but the same number's. There,
+  // in the dark, they cannot without the fill losing its step from the
+  // peer fill, or the player's digit its 7:1; in the light, a rule dark
+  // enough would crowd the box lines' ink. The line's width, and the ink
+  // box lines a few cells away, carry the grid there.
   ['thin rule against a plain cell', 'grid-thin', 'cell-bg', NON_TEXT],
+  ['thin rule against a given cell', 'grid-thin', 'cell-given-bg', NON_TEXT],
+  ['thin rule against a peer cell', 'grid-thin', 'hl-peer', NON_TEXT],
+  ['thin rule against a peer given cell', 'grid-thin', 'hl-peer-given', NON_TEXT],
   ['box line against a plain cell', 'grid-thick', 'cell-bg', AAA],
+  // The boxes must read whatever is highlighted inside them. The selected
+  // block is left out: its ring, in the box line's own ink, is what meets
+  // the line, and the ring is held to 3:1 against the block's neighbours.
+  ...ALL_FILLS.filter(([, fill]) => fill !== 'cell-bg').map(([name, fill]): Pair => [
+    `box line against a ${name} cell`,
+    'grid-thick',
+    fill,
+    TEXT,
+  ]),
   ['board frame against the page', 'grid-thick', 'bg', AAA],
 
   // ---- The ladders of cell fills ----
@@ -107,6 +132,11 @@ const PAIRS: Pair[] = [
   ['same-number against peer', 'hl-same', 'hl-peer', 1.3],
   ['peer against plain', 'hl-peer', 'cell-bg', 1.25],
   ['given against plain', 'cell-given-bg', 'cell-bg', 1.25],
+  ['given against peer', 'cell-given-bg', 'hl-peer', 1.1],
+  // Inside the selection's row, column or box, and among the same numbers,
+  // a given keeps its screen against the player's cells beside it.
+  ['peer given against peer', 'hl-peer-given', 'hl-peer', 1.15],
+  ['same-number given against same-number', 'hl-same-given', 'hl-same', 1.15],
   ['selected given against given', 'hl-selected-given', 'cell-given-bg', NON_TEXT],
   ['selected given against same-number given', 'hl-selected-given', 'hl-same-given', 1.6],
   ['same-number given against peer given', 'hl-same-given', 'hl-peer-given', 1.3],
