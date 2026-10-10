@@ -22,10 +22,11 @@ import {
   type DailyStatus,
 } from '../../storage/streaks';
 import { DailyMark } from '../DailyMark';
-import { STATUS_TEXT, describeDay, summariseDaily } from '../daily';
+import { KEY_TEXT, STATUS_TEXT, describeDay, summariseDaily, watchedDailies } from '../daily';
 import { DIFFICULTY_LABEL, formatLongDay, formatMonth } from '../format';
 import { ChevronLeftIcon, ChevronRightIcon } from '../icons';
 import { Dialog } from './Dialog';
+import { WATCHED_RECORD_TEXT } from '../watch';
 
 export interface DailyDialogProps {
   /**
@@ -132,7 +133,9 @@ function DayRow({
 }) {
   const { status, record } = summariseDaily(records, date, tier, ledger);
   const label = DIFFICULTY_LABEL[tier];
-  const time = record === null ? null : formatDuration(record.elapsedMs);
+  // A solve after watching a friend's has no time: it says so instead.
+  const isWatched = record?.status === 'solved' && record.watched === true;
+  const time = record === null || isWatched ? null : formatDuration(record.elapsedMs);
   const isSolved = status === 'solved-on-the-day' || status === 'solved-later';
   let action = 'Play';
   if (status === 'in-progress') action = 'Resume';
@@ -144,7 +147,7 @@ function DayRow({
       <p className="daily-day__text">
         <span className="daily-day__tier">{label}</span>
         <span className="daily-day__status">
-          {STATUS_TEXT[status]}
+          {isWatched ? WATCHED_RECORD_TEXT : STATUS_TEXT[status]}
           {time !== null && <> · {time}</>}
         </span>
       </p>
@@ -213,6 +216,7 @@ export function DailyDialog({
   const isRevealPending = useRef(false);
 
   const statuses = useMemo(() => dailyStatuses(records, ledger), [records, ledger]);
+  const watched = useMemo(() => watchedDailies(records, ledger), [records, ledger]);
   const streaks = useMemo(() => computeStreaks(records, today, ledger), [records, today, ledger]);
   const weeks = useMemo(() => monthGrid(month), [month]);
 
@@ -362,7 +366,9 @@ export function DailyDialog({
                         aria-current={isToday ? 'date' : undefined}
                         aria-disabled={playable ? undefined : true}
                         aria-label={
-                          playable ? describeDay(date, day) : `${formatLongDay(date)}: no daily`
+                          playable
+                            ? describeDay(date, day, watched.get(date))
+                            : `${formatLongDay(date)}: no daily`
                         }
                         data-autofocus={isChosen ? true : undefined}
                         // A day with no daily takes no focus from a press either,
@@ -440,10 +446,10 @@ export function DailyDialog({
             Each day&apos;s marks: Easy, Medium, Hard and Expert, left to right.
           </p>
           <ul className="daily-key__list">
-            {(Object.keys(STATUS_TEXT) as DailyStatus[]).map((status) => (
+            {(Object.keys(KEY_TEXT) as DailyStatus[]).map((status) => (
               <li key={status} className="daily-key__item">
                 <DailyMark status={status} className="daily-key__mark" />
-                {STATUS_TEXT[status]}
+                {KEY_TEXT[status]}
               </li>
             ))}
           </ul>

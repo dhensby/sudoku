@@ -1,6 +1,7 @@
 import type { Difficulty } from '../core';
 import type { GameRecord } from '../storage/history';
 import {
+  KEY_TEXT,
   STATUS_TEXT,
   dailyName,
   dailyPhrase,
@@ -8,6 +9,7 @@ import {
   statusesOn,
   streakNote,
   summariseDaily,
+  watchedDailies,
 } from './daily';
 import { formatDay, formatDayWithYear, formatLongDay, formatMonth, formatShortDay } from './format';
 
@@ -85,6 +87,13 @@ describe('naming a daily', () => {
       'In progress',
       'Not started',
     ]);
+    // The key's hatched mark is any solve that does not count.
+    expect(Object.values(KEY_TEXT)).toEqual([
+      'Solved on the day',
+      'Solved on another day, or after watching a solve',
+      'In progress',
+      'Not started',
+    ]);
   });
 });
 
@@ -105,6 +114,18 @@ describe('describeDay', () => {
       }),
     ).toBe(
       'Thursday 8 October: Easy and Hard not started, Medium and Expert solved on another day',
+    );
+  });
+
+  it('says why a solve after watching a solve did not count, telling such tiers together', () => {
+    expect(
+      describeDay(
+        '2026-10-13',
+        { easy: 'solved-later', medium: 'solved-later', hard: 'solved-later' },
+        new Set<Difficulty>(['easy', 'hard', 'expert']),
+      ),
+    ).toBe(
+      'Tuesday 13 October: Easy and Hard solved after watching a solve, Medium solved on another day, Expert not started',
     );
   });
 
@@ -174,12 +195,56 @@ describe('statusesOn and summariseDaily', () => {
   });
 });
 
+describe('watchedDailies', () => {
+  it('finds the dailies shown as solved after watching a solve, by date', () => {
+    const records = [
+      attempt('2026-10-12', 'easy', '2026-10-12', { watched: true }),
+      // Two watched solves of one daily: told once.
+      attempt('2026-10-12', 'easy', '2026-10-12', { watched: true }),
+      attempt('2026-10-12', 'hard', '2026-10-12', { watched: true }),
+      // Unfinished, or solved without watching: not one.
+      attempt('2026-10-12', 'medium', '2026-10-12', { status: 'playing', watched: true }),
+      attempt('2026-10-11', 'easy'),
+      // Not a daily at all.
+      { ...attempt('2026-10-12', 'expert', '2026-10-12', { watched: true }), daily: undefined },
+    ];
+    expect(watchedDailies(records)).toEqual(
+      new Map([['2026-10-12', new Set<Difficulty>(['easy', 'hard'])]]),
+    );
+  });
+
+  it('leaves out a daily whose day is shown by another solve', () => {
+    // Solved on the day as well: the day counts, whatever was watched later.
+    const counted = [
+      attempt('2026-10-12', 'easy'),
+      attempt('2026-10-12', 'easy', '2026-10-12', {
+        watched: true,
+        createdAt: at('2026-10-12', 13),
+      }),
+    ];
+    expect(watchedDailies(counted)).toEqual(new Map());
+    // Caught up on before the watched solve: shown as that.
+    const caughtUp = [
+      attempt('2026-10-10', 'easy', '2026-10-11'),
+      attempt('2026-10-10', 'easy', '2026-10-12', { watched: true }),
+    ];
+    expect(watchedDailies(caughtUp)).toEqual(new Map());
+  });
+});
+
 describe('streakNote', () => {
   const TODAY = '2026-10-13';
 
   it('says a daily begun after its day never counts', () => {
     const solve = attempt('2026-10-12', 'hard', TODAY);
     expect(streakNote(solve, [solve], TODAY)).toEqual({ kind: 'later' });
+  });
+
+  it('says a daily solved after watching a friend’s solve never counts, whatever its day', () => {
+    const solve = { ...attempt(TODAY, 'hard'), watched: true as const };
+    expect(streakNote(solve, [solve], TODAY)).toEqual({ kind: 'watched' });
+    const late = { ...attempt('2026-10-12', 'hard', TODAY), watched: true as const };
+    expect(streakNote(late, [late], TODAY)).toEqual({ kind: 'watched' });
   });
 
   it('says a first counted day starts a streak', () => {

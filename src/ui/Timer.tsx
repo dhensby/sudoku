@@ -12,6 +12,12 @@ export interface TimerProps {
   onPause: () => void;
   /** Resume a paused game, or start one waiting behind its Start button. */
   onResume: () => void;
+  /**
+   * Solved after watching a friend's solve of the puzzle (see
+   * `GameRecord.watched`): once solved it shows a dash, not a time, as the
+   * game recorded none.
+   */
+  isTimeless?: boolean;
 }
 
 /**
@@ -35,16 +41,31 @@ function TickingTime({ time }: { time: string }) {
  * "Resume", "Start") and described by the time, so a screen reader hears
  * both without the name changing every second. A mouse press leaves focus
  * where it was, so Space goes on switching the mode rather than pausing
- * again. Once solved it is just the final time.
+ * again. Once solved it is just the final time — or, for a solve after
+ * watching a friend's, a dash, which a screen reader hears as no time
+ * recorded: the clock ran while it was played, but the solve has no time.
  */
-export function Timer({ elapsedMs, phase, showTimer, onPause, onResume }: TimerProps) {
+export function Timer({
+  elapsedMs,
+  phase,
+  showTimer,
+  onPause,
+  onResume,
+  isTimeless = false,
+}: TimerProps) {
   const timeId = useId();
   const time = formatDuration(elapsedMs);
 
   if (phase === 'solved') {
     return (
       <span className="timer timer--solved">
-        {showTimer && (
+        {showTimer && isTimeless && (
+          <span className="timer__time">
+            <span className="visually-hidden">Solved, no time recorded</span>
+            <span aria-hidden="true">—</span>
+          </span>
+        )}
+        {showTimer && !isTimeless && (
           <span className="timer__time">
             <span className="visually-hidden">Solved in </span>
             {time}

@@ -99,6 +99,23 @@ describe('streaks in Europe/London', () => {
       expect(isStartedOnTheDay(attempt('2026-10-13', '2026-10-14 00:30'))).toBe(false);
     });
 
+    it('never count a daily solved after watching a friend’s solve of it, nor mark it on the day', () => {
+      const record = { ...onTheDay('2026-10-13'), watched: true as const };
+      expect(isStartedOnTheDay(record)).toBe(true);
+      expect(countsTowardsStreak(record)).toBe(false);
+      expect(dailyStatus([record], '2026-10-13', 'hard')).toBe('solved-later');
+      expect(dailyStatuses([record]).get('2026-10-13')).toEqual({ hard: 'solved-later' });
+      expect(isCounted([record], '2026-10-13', 'hard')).toBe(false);
+      expect(computeStreak([onTheDay('2026-10-12'), record], 'hard', '2026-10-13')).toEqual({
+        current: 1,
+        best: 1,
+      });
+      // Pruned, it goes into the ledger as a solve that did not count.
+      expect(addToLedger(EMPTY_LEDGER, [record]).get('2026-10-13')).toEqual({
+        hard: 'solved-later',
+      });
+    });
+
     it('need the attempt solved to count', () => {
       const record = attempt('2026-10-13', '2026-10-13 12:00', { status: 'playing' });
       expect(isStartedOnTheDay(record)).toBe(true);

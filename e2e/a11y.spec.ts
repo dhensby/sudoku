@@ -16,6 +16,8 @@ import {
   leaveOutAnAnswer,
   modeButton,
   openHeaderDialog,
+  placedSolve,
+  puzzleLink,
   seedHistory,
   selectCell,
   solveFromKeyboard,
@@ -185,6 +187,49 @@ async function watchASolve(page: Page, opener: 'Solved!' | 'History' = 'Solved!'
   await page.keyboard.press('End');
   await expect(caption).toHaveText(/— solved$/);
   await expectAccessible(page, 'Watch your solve, at the solve');
+}
+
+/**
+ * A friend's solve, from a link: the Ready card offering it, the warning
+ * before watching it, the solve played back, the card after it, and the
+ * Solved dialog with no time; then a solve of the player's own shared with
+ * the solve switched on. `before` runs once the link is open (to choose High
+ * contrast, say).
+ */
+async function friendsSolve(page: Page, before?: () => Promise<void>): Promise<void> {
+  await page.clock.install();
+  const { log, seconds } = placedSolve(NEARLY_DONE);
+  await page.goto(`${puzzleLink(NEARLY_DONE.givens, { seconds, name: 'Alice' })}&s=${log}`);
+  const watch = boardArea(page).getByRole('button', { name: "Watch Alice's solve" });
+  await expect(watch).toBeVisible();
+  await before?.();
+  await expectAccessible(page, "the Ready card with a friend's solve");
+
+  await watch.click();
+  await expect(dialog(page, "Watch Alice's solve?")).toBeVisible();
+  await expectAccessible(page, "the warning before watching a friend's solve");
+  await dialog(page, "Watch Alice's solve?").getByRole('button', { name: 'Watch anyway' }).click();
+  await expect(dialog(page, "Alice's solve")).toBeVisible();
+  await page.keyboard.press('End');
+  await expectAccessible(page, "a friend's solve played back");
+  await closeDialog(page);
+  await expect(boardArea(page)).toContainText('so no time will be recorded');
+  await expectAccessible(page, 'the Ready card after watching');
+
+  await startButton(page).click();
+  await waitForPlaying(page);
+  await solveFromKeyboard(page, NEARLY_DONE);
+  await expect(dialog(page, 'Solved!')).toContainText('no time recorded');
+  await expectAccessible(page, 'the Solved! dialog with no time, against a friend');
+  await closeDialog(page);
+
+  await startPuzzle(page, NEARLY_DONE_2);
+  await page.clock.fastForward('00:05');
+  await solveFromKeyboard(page, NEARLY_DONE_2);
+  await dialog(page, 'Solved!').getByRole('button', { name: 'Share your time' }).click();
+  const share = dialog(page, 'Share your time');
+  await share.getByRole('checkbox', { name: 'Include my solve' }).check();
+  await expectAccessible(page, 'the Share dialog with the solve included');
 }
 
 /** London noon on a date of October 2026, in epoch ms. */
@@ -455,6 +500,12 @@ for (const scheme of ['light', 'dark'] as const) {
       await solveWithAMistake(page);
       await watchASolve(page);
     });
+
+    test("a friend's solve: the Ready card, the warning, the playback, and no time", async ({
+      page,
+    }) => {
+      await friendsSolve(page);
+    });
   });
 }
 
@@ -584,6 +635,16 @@ for (const { way, isChosen, media } of HIGH_CONTRAST_WAYS) {
         await expectAccessible(page, `the ${title} dialog`);
         await closeDialog(page);
       }
+    });
+
+    test("a friend's solve: the Ready card, the warning, the playback, and no time", async ({
+      page,
+    }) => {
+      await page.emulateMedia(media);
+      await friendsSolve(page, async () => {
+        if (isChosen) await chooseHighContrast(page);
+        await expectHighContrast(page, isChosen);
+      });
     });
 
     test('watching a solve played back, from History', async ({ page }) => {

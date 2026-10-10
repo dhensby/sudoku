@@ -35,6 +35,17 @@ export const STATUS_TEXT: Readonly<Record<DailyStatus, string>> = {
   'not-started': 'Not started',
 };
 
+/**
+ * How each mark reads in the calendar's key, and Help's: as `STATUS_TEXT`,
+ * but the hatched mark is any solve that does not count towards a streak —
+ * one on another day, or one after watching a friend's solve of the daily
+ * (see `GameRecord.watched`), whichever day it was on.
+ */
+export const KEY_TEXT: Readonly<Record<DailyStatus, string>> = {
+  ...STATUS_TEXT,
+  'solved-later': 'Solved on another day, or after watching a solve',
+};
+
 /** The same, mid-sentence, as an accessible name has it: "Hard solved on the day". */
 const STATUS_WORDS: Readonly<Record<DailyStatus, string>> = {
   'solved-on-the-day': 'solved on the day',
@@ -42,6 +53,9 @@ const STATUS_WORDS: Readonly<Record<DailyStatus, string>> = {
   'in-progress': 'in progress',
   'not-started': 'not started',
 };
+
+/** A solve after watching a friend's solve of the daily, mid-sentence, as a day's name says it. */
+const WATCHED_WORDS = 'solved after watching a solve';
 
 /** The order a day's standings are told in: the order of the tiers. */
 const STATUS_ORDER: readonly DailyStatus[] = [
@@ -85,22 +99,51 @@ export function statusesOn(
  * A calendar day's accessible name: the date, then how each tier stands,
  * tiers in the same state told together — "Tuesday 13 October: Easy solved
  * on the day, Medium in progress, Hard and Expert not started". A tier with
- * no standing given has not been started.
+ * no standing given has not been started. A tier in `watched` (see
+ * `watchedDailies`), solved but not counted, says why: "Easy solved after
+ * watching a solve" — so the name is as true as the day panel's row.
  */
 export function describeDay(
   date: DateKey,
   statuses: Partial<Record<Difficulty, DailyStatus>>,
+  watched: ReadonlySet<Difficulty> = new Set(),
 ): string {
-  const parts = STATUS_ORDER.flatMap((status) => {
-    const tiers = DIFFICULTIES.filter((tier) => (statuses[tier] ?? 'not-started') === status);
-    return tiers.length === 0 ? [] : [{ status, first: DIFFICULTIES.indexOf(tiers[0]), tiers }];
-  })
+  const wordsOf = (tier: Difficulty): string => {
+    const status = statuses[tier] ?? 'not-started';
+    return status === 'solved-later' && watched.has(tier) ? WATCHED_WORDS : STATUS_WORDS[status];
+  };
+  const groups = [...STATUS_ORDER.map((status) => STATUS_WORDS[status]), WATCHED_WORDS];
+  const parts = groups
+    .flatMap((words) => {
+      const tiers = DIFFICULTIES.filter((tier) => wordsOf(tier) === words);
+      return tiers.length === 0 ? [] : [{ words, first: DIFFICULTIES.indexOf(tiers[0]), tiers }];
+    })
     .sort((a, b) => a.first - b.first)
-    .map(({ status, tiers }) => {
-      const names = joinList(tiers.map((tier) => DIFFICULTY_LABEL[tier]));
-      return `${names} ${STATUS_WORDS[status]}`;
-    });
+    .map(({ words, tiers }) => `${joinList(tiers.map((tier) => DIFFICULTY_LABEL[tier]))} ${words}`);
   return `${formatLongDay(date)}: ${parts.join(', ')}`;
+}
+
+/**
+ * The dailies whose day panel shows a solve after watching a friend's solve
+ * (see `GameRecord.watched`), by date: those whose standing is solved but not
+ * counted, and whose solve shown for it (`summariseDaily`) is a watched one.
+ * A day known only from the ledger, its records pruned, cannot say why it was
+ * not counted, and is told as solved on another day.
+ */
+export function watchedDailies(
+  records: readonly GameRecord[],
+  ledger: DailyLedger = EMPTY_LEDGER,
+): Map<DateKey, Set<Difficulty>> {
+  const byDate = new Map<DateKey, Set<Difficulty>>();
+  for (const record of records) {
+    const { daily, difficulty } = record;
+    if (daily === undefined || record.status !== 'solved' || record.watched !== true) continue;
+    if (byDate.get(daily)?.has(difficulty) === true) continue;
+    const summary = summariseDaily(records, daily, difficulty, ledger);
+    if (summary.status !== 'solved-later' || summary.record?.watched !== true) continue;
+    byDate.set(daily, (byDate.get(daily) ?? new Set<Difficulty>()).add(difficulty));
+  }
+  return byDate;
 }
 
 /** A daily as its day panel shows it: how it stands, and the attempt whose time goes with that. */
@@ -154,14 +197,17 @@ export function summariseDaily(
  *     (begun on its day, finished days later) — so no count of days fits;
  *   - `later`: begun after its day, so it never counts;
  *   - `early`: begun before its day had begun for the player (from a
- *     friend's link sent from a time zone ahead), so it never counts either.
+ *     friend's link sent from a time zone ahead), so it never counts either;
+ *   - `watched`: solved after watching a friend's solve of it (see
+ *     `GameRecord.watched`), so it never counts, whatever day it was begun.
  */
 export type StreakNote =
   | { kind: 'streak'; days: number }
   | { kind: 'started' }
   | { kind: 'counted' }
   | { kind: 'later' }
-  | { kind: 'early' };
+  | { kind: 'early' }
+  | { kind: 'watched' };
 
 /**
  * The streak note for `record`, a daily just solved (see `StreakNote`).
@@ -176,6 +222,7 @@ export function streakNote(
 ): StreakNote {
   const date = record.daily;
   if (date === undefined) return { kind: 'later' };
+  if (record.watched === true) return { kind: 'watched' };
   if (!countsTowardsStreak(record)) return { kind: isStartedEarly(record) ? 'early' : 'later' };
   const tier = record.difficulty;
   const { current } = computeStreak(records, tier, today, ledger);

@@ -23,6 +23,7 @@ import {
   PlaybackDialog,
   SettingsDialog,
   ShareDialog,
+  SpoilerDialog,
   StruckDialog,
   TechniquesDialog,
   WalkthroughDialog,
@@ -52,6 +53,11 @@ function boardContent(sudoku: Sudoku): BoardContent {
   const { phase, difficulty, game, record, elapsedMs, settings, isLoadFailed, actions } = sudoku;
   // The daily on show (or being dealt), for the cards' wording.
   const daily = sudoku.daily === null ? null : { date: sudoku.daily, today: sudoku.today.date };
+  // The friend's solve the game's link carried, which its cards offer.
+  const solve =
+    sudoku.friendSolve === null
+      ? null
+      : { name: sudoku.friendSolve.name, onWatch: actions.watchFriendSolve };
   // Loading is the only phase without a game, so past it there is always one.
   if (phase === 'loading' || game === null) {
     // Behind a dialog there is nothing to say: the dialog has the floor.
@@ -68,6 +74,8 @@ function boardContent(sudoku: Sudoku): BoardContent {
       challenge: record?.challenge ?? null,
       daily,
       onStart: actions.resume,
+      solve,
+      isWatched: record?.watched === true,
     };
   }
   if (phase !== 'paused') return { kind: 'board', game };
@@ -80,6 +88,7 @@ function boardContent(sudoku: Sudoku): BoardContent {
     showTimer: settings.showTimer,
     daily,
     onResume: actions.resume,
+    solve,
   };
 }
 
@@ -328,6 +337,7 @@ export function App({ options }: AppProps = {}) {
           elapsedMs={sudoku.elapsedMs}
           phase={phase}
           showTimer={settings.showTimer}
+          isTimeless={sudoku.record?.watched === true}
           today={sudoku.today}
           onPause={actions.pause}
           onResume={actions.resume}
@@ -414,6 +424,8 @@ export function App({ options }: AppProps = {}) {
             onShare={actions.shareResult}
             onWatch={sudoku.canWatchSolve ? actions.watchSolve : undefined}
             isBackFromWatch={dialog.isBackFromWatch}
+            onWatchFriend={sudoku.canWatchChallengeSolve ? actions.watchChallengeSolve : undefined}
+            isBackFromFriend={dialog.isBackFromFriend}
             onNewGame={() => handleNewGame(dialog.result.difficulty)}
             onClose={actions.closeDialog}
           />
@@ -424,6 +436,7 @@ export function App({ options }: AppProps = {}) {
             difficulty={dialog.target.difficulty}
             result={dialog.target.result}
             daily={dialog.target.daily}
+            solve={dialog.target.solve}
             playerName={sudoku.playerName}
             onPlayerNameChange={actions.setPlayerName}
             onClose={actions.closeDialog}
@@ -440,6 +453,8 @@ export function App({ options }: AppProps = {}) {
             onShare={actions.shareRecord}
             canWatch={actions.canWatchRecord}
             onWatch={actions.watchRecord}
+            canWatchChallenge={actions.canWatchRecordChallenge}
+            onWatchChallenge={actions.watchRecordChallenge}
             place={dialog.place}
             onDelete={actions.deleteRecord}
             onExport={actions.exportHistory}
@@ -510,6 +525,19 @@ export function App({ options }: AppProps = {}) {
             onPlayAgain={() => {
               requestBoardFocus();
               actions.playAgain();
+            }}
+            onWatch={sudoku.canWatchChallengeSolve ? actions.watchChallengeSolve : undefined}
+            isBackFromWatch={dialog.isBackFromWatch}
+            onClose={actions.closeDialog}
+          />
+        )}
+        {dialog?.kind === 'spoiler' && (
+          <SpoilerDialog
+            name={dialog.solve.challenge.name}
+            onWatch={actions.confirmWatch}
+            onPlay={() => {
+              requestBoardFocus();
+              actions.playFirst();
             }}
             onClose={actions.closeDialog}
           />

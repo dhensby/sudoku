@@ -15,10 +15,11 @@ import { DIFFICULTY_LABEL, describeMistakes } from '../format';
 import { Comparison } from './Comparison';
 import { Dialog } from './Dialog';
 import { assistsSentence, formatStat } from './text';
+import { WATCHED_SOLVE_TEXT } from '../watch';
 
 /** Whether the solve counted towards the streak, which its note shows with a solid mark. */
 function isCounting(note: StreakNote): boolean {
-  return note.kind !== 'later' && note.kind !== 'early';
+  return note.kind !== 'later' && note.kind !== 'early' && note.kind !== 'watched';
 }
 
 /** What the streak note says (see `StreakNote`), with the tier's name in it. */
@@ -34,6 +35,8 @@ function streakText(note: StreakNote, label: string): string {
       return "Played on a later day, so it doesn't count towards your streak";
     case 'early':
       return "Started before its day began here, so it doesn't count towards your streak";
+    case 'watched':
+      return "You watched a solve of it first, so it doesn't count towards your streak";
   }
 }
 
@@ -57,6 +60,12 @@ export interface CompletionDialogProps {
    * says why. Nor is it a time to race: sharing shares the puzzle alone.
    */
   isReplay?: boolean;
+  /**
+   * Solved after watching a friend's solve of the puzzle (see
+   * `GameRecord.watched`): there is no time — the dialog says so in its
+   * place, and why — so nothing to beat, to share or to race.
+   */
+  isWatched?: boolean;
   /** The tier's stats, this game included. */
   stats: DifficultyStats;
   /** The result this game was raced against, from the link it came from. */
@@ -78,6 +87,13 @@ export interface CompletionDialogProps {
    * back from the playback that button opened, so focus goes back to it.
    */
   isBackFromWatch?: boolean;
+  /**
+   * Watch the friend's solve the game was raced against, from the
+   * head-to-head; given only when their link carried one this build plays.
+   */
+  onWatchFriend?: () => void;
+  /** Focus opens on the friend's Watch: back from the playback it opened. */
+  isBackFromFriend?: boolean;
   onNewGame: () => void;
   onClose: () => void;
 }
@@ -93,7 +109,11 @@ export interface CompletionDialogProps {
  * streak — begun, run on, or not counted, for a day played after it was
  * over. Under the time, how clean the solve was: its mistakes, when known.
  * "Watch your solve" plays the game back, move by move, and brings the
- * dialog back as it closes.
+ * dialog back as it closes; the head-to-head offers the friend's solve the
+ * same way, when their link carried it.
+ *
+ * A solve after watching a friend's has no time: the dialog says so where
+ * the time would be, and why, and shares the puzzle alone.
  */
 export function CompletionDialog({
   difficulty,
@@ -102,12 +122,15 @@ export function CompletionDialog({
   mistakes = null,
   isNewBest,
   isReplay = false,
+  isWatched = false,
   stats,
   challenge,
   daily = null,
   onShare,
   onWatch,
   isBackFromWatch = false,
+  onWatchFriend,
+  isBackFromFriend = false,
   onNewGame,
   onClose,
 }: CompletionDialogProps) {
@@ -118,6 +141,9 @@ export function CompletionDialog({
   const label = DIFFICULTY_LABEL[difficulty];
   const help = assistsSentence(assists);
   const isWatchFocused = isBackFromWatch && onWatch !== undefined;
+  const isFriendFocused = isBackFromFriend && onWatchFriend !== undefined;
+  // Only a time can be raced: without one, Share shares the puzzle.
+  const isRaceable = !isReplay && !isWatched;
 
   return (
     <Dialog
@@ -133,10 +159,10 @@ export function CompletionDialog({
           <button
             type="button"
             className="button button--primary"
-            data-autofocus={isWatchFocused ? undefined : true}
+            data-autofocus={isWatchFocused || isFriendFocused ? undefined : true}
             onClick={onShare}
           >
-            {isReplay ? 'Share puzzle' : 'Share your time'}
+            {isRaceable ? 'Share your time' : 'Share puzzle'}
           </button>
           <button type="button" className="button" onClick={onNewGame}>
             New game
@@ -148,8 +174,12 @@ export function CompletionDialog({
         <p className="result__difficulty">
           {daily === null ? label : dailyName(daily.date, difficulty, daily.today)}
         </p>
-        <p className="result__time">{formatDuration(elapsedMs)}</p>
-        {isNewBest && !isReplay && <p className="result__badge">New best!</p>}
+        {isWatched ? (
+          <p className="result__note result__note--watched">{WATCHED_SOLVE_TEXT}.</p>
+        ) : (
+          <p className="result__time">{formatDuration(elapsedMs)}</p>
+        )}
+        {isNewBest && isRaceable && <p className="result__badge">New best!</p>}
         {mistakes !== null && <p className="result__mistakes">{describeMistakes(mistakes)}</p>}
         {daily !== null && (
           <p
@@ -162,7 +192,7 @@ export function CompletionDialog({
           </p>
         )}
         {help !== null && <p className="result__assists">{help}</p>}
-        {isReplay && (
+        {isReplay && !isWatched && (
           <p className="result__note">
             You&apos;d played this puzzle before, so this time doesn&apos;t count towards your best
             or average.
@@ -188,11 +218,13 @@ export function CompletionDialog({
 
       {challenge !== null && (
         <Comparison
-          mySeconds={toSeconds(elapsedMs)}
+          mySeconds={isWatched ? null : toSeconds(elapsedMs)}
           myAssists={assists}
           myMistakes={mistakes}
           challenge={challenge}
           verdictId={verdictId}
+          onWatch={onWatchFriend}
+          isWatchFocused={isFriendFocused}
         />
       )}
 

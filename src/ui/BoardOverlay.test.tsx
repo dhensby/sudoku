@@ -2,6 +2,8 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { BoardOverlay } from './BoardOverlay';
 
+const NONE_HELP = { autoCandidates: false, hints: 0, checks: 0, reveals: 0 };
+
 describe('BoardOverlay', () => {
   it('shows a spinner while a puzzle is generated', () => {
     render(<BoardOverlay kind="loading" difficulty="expert" />);
@@ -339,6 +341,99 @@ describe('BoardOverlay', () => {
         />,
       );
       expect(screen.getByText('Daily · 12 Oct · Medium · 2:31')).toBeInTheDocument();
+    });
+  });
+  describe("a friend's solve to watch", () => {
+    const challenge = { name: 'Dan', seconds: 323, assists: NONE_HELP };
+
+    it('is offered beside Start, which keeps focus, and hands the choice up', () => {
+      const onWatch = vi.fn();
+      render(
+        <BoardOverlay
+          kind="ready"
+          difficulty="hard"
+          isShared
+          challenge={challenge}
+          onStart={vi.fn()}
+          solve={{ name: 'Dan', onWatch }}
+        />,
+      );
+      expect(screen.getByRole('button', { name: 'Start' })).toHaveFocus();
+      const watch = screen.getByRole('button', { name: "Watch Dan's solve" });
+      // The name kept apart from the words around it.
+      expect(watch.querySelector('bdi')).toHaveTextContent('Dan');
+      fireEvent.click(watch);
+      expect(onWatch).toHaveBeenCalledTimes(1);
+    });
+
+    it('names a friend whose link gave no name as your friend', () => {
+      render(
+        <BoardOverlay
+          kind="ready"
+          difficulty="hard"
+          isShared
+          challenge={{ ...challenge, name: null }}
+          onStart={vi.fn()}
+          solve={{ name: null, onWatch: vi.fn() }}
+        />,
+      );
+      expect(screen.getByRole('button', { name: "Watch your friend's solve" })).toBeInTheDocument();
+    });
+
+    it('is offered beside Resume on the Paused card, to give up and watch', () => {
+      const onWatch = vi.fn();
+      render(
+        <BoardOverlay
+          kind="paused"
+          difficulty="hard"
+          elapsedMs={61_000}
+          showTimer
+          onResume={vi.fn()}
+          solve={{ name: 'Dan', onWatch }}
+        />,
+      );
+      expect(screen.getByRole('button', { name: 'Resume' })).toHaveFocus();
+      fireEvent.click(screen.getByRole('button', { name: "Watch Dan's solve" }));
+      expect(onWatch).toHaveBeenCalledTimes(1);
+    });
+
+    it('is not offered without one', () => {
+      render(
+        <BoardOverlay
+          kind="ready"
+          difficulty="hard"
+          isShared
+          challenge={challenge}
+          onStart={vi.fn()}
+        />,
+      );
+      expect(screen.getAllByRole('button')).toHaveLength(1);
+    });
+
+    it('once watched, has the card say no time will be recorded, before Start', () => {
+      render(
+        <BoardOverlay
+          kind="ready"
+          difficulty="hard"
+          isShared
+          challenge={challenge}
+          onStart={vi.fn()}
+          solve={{ name: 'Dan', onWatch: vi.fn() }}
+          isWatched
+        />,
+      );
+      expect(screen.queryByText('The timer starts when you do.')).toBeNull();
+      expect(
+        screen.getByText("You've watched a solve of this puzzle, so no time will be recorded."),
+      ).toBeInTheDocument();
+      // No race left to offer: the line stops at Dan's time.
+      expect(screen.queryByText(/Can you beat it/)).toBeNull();
+      expect(screen.getByRole('button', { name: 'Start' })).toHaveAccessibleDescription(
+        "Ready? Dan solved this Hard puzzle in 5:23. You've watched a solve of this puzzle, so no time will be recorded.",
+      );
+      expect(screen.getByRole('button', { name: "Watch Dan's solve" })).toHaveAccessibleDescription(
+        "You've watched a solve of this puzzle, so no time will be recorded.",
+      );
     });
   });
 });

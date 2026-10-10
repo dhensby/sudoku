@@ -12,3 +12,4 @@ export { TechniquesDialog, type TechniquesDialogProps } from './TechniquesDialog
 export { WalkthroughDialog, type WalkthroughDialogProps } from './WalkthroughDialog';
 export { StruckDialog, type StruckDialogProps } from './StruckDialog';
 export { PlaybackDialog, type PlaybackDialogProps, type PlaybackSource } from './PlaybackDialog';
+export { SpoilerDialog, type SpoilerDialogProps } from './SpoilerDialog';

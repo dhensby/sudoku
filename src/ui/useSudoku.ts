@@ -19,6 +19,7 @@ import {
   type Difficulty,
   type Digit,
   type Direction,
+  type GridString,
   type GameState,
   type Hint,
   type InputMode,
@@ -34,10 +35,14 @@ import {
   exportHistory,
   findAttempts,
   findDailyAttempts,
+  hasRecordedTime,
+  hasSolved,
+  hasWatched,
   importHistory,
   loadDailyLedger,
   loadHistory,
   markSeen,
+  markWatched,
   recordedMistakes,
   repairMistakeCounts,
   saveCurrentId,
@@ -98,7 +103,13 @@ import { useElapsed } from './useElapsed';
 import { useStableActions } from './useStableActions';
 import type { HistoryPlace } from './dialogs/HistoryDialog';
 import type { PlaybackSource } from './dialogs/PlaybackDialog';
-import { isWatchable, ownSolveSource } from './watch';
+import {
+  WATCHED_SOLVE_TEXT,
+  friendSolveSource,
+  isWatchable,
+  ownSolveSource,
+  type FriendSolve,
+} from './watch';
 
 export type { ChallengeOffer, PauseReason, Phase, ShareTarget } from './session';
 
@@ -136,7 +147,7 @@ export interface Announcement {
 
 /** Why the hint bar has something to say other than a hint. */
 export type NoticeKind =
-  'badLink' | 'boardFull' | 'generationFailed' | 'resumeFailed' | 'outOfDate';
+  'badLink' | 'boardFull' | 'generationFailed' | 'resumeFailed' | 'outOfDate' | 'solveTooNew';
 
 /** A message for the hint bar, dismissed by the player (or by the board no longer being full). */
 export interface Notice {
@@ -163,6 +174,11 @@ export interface CompletionResult {
   isNewBest: boolean;
   /** A puzzle the player had seen before: its time does not count towards the records. */
   isReplay: boolean;
+  /**
+   * Solved after watching a friend's solve of the puzzle (see
+   * `GameRecord.watched`): recorded without a time.
+   */
+  isWatched: boolean;
   /** The tier's stats, this game included. */
   stats: DifficultyStats;
   challenge: Challenge | null;
@@ -221,13 +237,27 @@ export interface PlaybackView {
   kind: 'playback';
   source: PlaybackSource;
   returnTo:
-    { kind: 'completion'; result: CompletionResult } | { kind: 'history'; place: HistoryPlace };
+    /** `isFriend`: the friend's solve was watched, so focus goes back to its Watch. */
+    | { kind: 'completion'; result: CompletionResult; isFriend?: boolean }
+    | { kind: 'history'; place: HistoryPlace }
+    /** The offer to play a solved puzzle again, from a link whose solve was watched. */
+    | { kind: 'challenge'; offer: ChallengeOffer }
+    /** The game on screen, behind its Ready or Paused card: no dialog. */
+    | { kind: 'game' };
 }
 
 /** The dialog on show — one at a time. */
 export type DialogState =
-  /** `isBackFromWatch`: back from watching the solve, so focus goes back to Watch. */
-  | { kind: 'completion'; result: CompletionResult; isBackFromWatch?: boolean }
+  /**
+   * `isBackFromWatch`: back from watching the solve, so focus goes back to
+   * Watch; `isBackFromFriend`, from watching the friend's, to its Watch.
+   */
+  | {
+      kind: 'completion';
+      result: CompletionResult;
+      isBackFromWatch?: boolean;
+      isBackFromFriend?: boolean;
+    }
   /** `returnTo` reopens History when the share was started from it. */
   | { kind: 'share'; target: ShareTarget; returnTo: 'history' | null }
   /** `place`: back from watching a game, the list as it was (see `HistoryPlace`). */
@@ -242,7 +272,13 @@ export type DialogState =
   | { kind: 'techniques'; initial: GuideId | null; returnTo?: WalkthroughView }
   | WalkthroughView
   | StruckView
-  | { kind: 'challenge'; offer: ChallengeOffer }
+  /** `isBackFromWatch`: back from watching the link's solve, so focus goes back to its Watch. */
+  | { kind: 'challenge'; offer: ChallengeOffer; isBackFromWatch?: boolean }
+  /**
+   * The warning before watching a friend's solve of a puzzle the player has
+   * not solved: doing so costs every attempt at it its time.
+   */
+  | { kind: 'spoiler'; solve: FriendSolve }
   | { kind: 'confirmReset' }
   /** The daily calendar and streaks. */
   | { kind: 'daily'; calendar: CalendarView }
@@ -338,6 +374,32 @@ export interface SudokuActions {
   watchRecord: (id: string, place: HistoryPlace) => void;
   /** From the Solved dialog: watch the game just solved played back. Changes nothing. */
   watchSolve: () => void;
+  /**
+   * From the Ready or Paused card: watch the friend's solve the game's link
+   * carried. Free once the puzzle has been solved (or its solve watched
+   * already); otherwise it asks first (the spoiler warning).
+   */
+  watchFriendSolve: () => void;
+  /**
+   * From the spoiler warning: watch anyway. The puzzle is remembered as
+   * watched, and every attempt at it, this one included, is recorded
+   * without a time (see `markWatched`).
+   */
+  confirmWatch: () => void;
+  /** From the spoiler warning: leave the friend's solve, and start (or resume) the game. */
+  playFirst: () => void;
+  /**
+   * From the Solved dialog's head-to-head, or the offer to play a solved
+   * puzzle again: watch the friend's solve — free, as the puzzle is solved.
+   */
+  watchChallengeSolve: () => void;
+  /**
+   * Whether a History row offers the friend's solve its game was raced
+   * against: a solved game whose challenge carried one this build plays.
+   */
+  canWatchRecordChallenge: (record: GameRecord) => boolean;
+  /** From History: watch the friend's solve a solved game was raced against — free. */
+  watchRecordChallenge: (id: string, place: HistoryPlace) => void;
   deleteRecord: (id: string) => void;
   exportHistory: () => string;
   importHistory: (json: string) => ImportResult;
@@ -419,6 +481,17 @@ export interface Sudoku {
    * `isWatchable`): the Solved dialog offers "Watch your solve".
    */
   canWatchSolve: boolean;
+  /**
+   * The friend whose solve the game on screen's link carried, while it is
+   * unsolved and the solve can be watched — the Ready and Paused cards offer
+   * "Watch Dan's solve" — or null. `name` is null for a link with none.
+   */
+  friendSolve: { name: string | null } | null;
+  /**
+   * The Solved dialog, or the offer to play a solved puzzle again, has a
+   * friend's solve to watch: its head-to-head offers it.
+   */
+  canWatchChallengeSolve: boolean;
   actions: SudokuActions;
 }
 
@@ -441,6 +514,7 @@ const NOTICE_TEXT: Readonly<Record<NoticeKind, string>> = {
   generationFailed: "Couldn't make a new puzzle. Please try again.",
   resumeFailed: "That game couldn't be reopened. Try Play again instead.",
   outOfDate: 'The game has been updated since this page was opened. Reload it to play this daily.',
+  solveTooNew: 'This solve needs a newer version of the game to watch.',
 };
 
 /** A bad link with a game already on screen gets no fresh puzzle, so it must not promise one. */
@@ -506,6 +580,57 @@ function hintOnShow(game: GameState, walkthrough: Walkthrough | null): Hint | nu
   const hint = shownHint(game);
   if (game.hint !== null || walkthrough === null || hint === null) return hint;
   return walkthroughHint(walkthrough);
+}
+
+/**
+ * The friend's solve a game's challenge carried (see `Challenge.log`), ready
+ * to watch — or null when it has none, or none this build plays back (see
+ * `isWatchable`, which remembers the answer, so asking at every render is
+ * cheap).
+ */
+function friendSolveOf(game: {
+  givens: GridString;
+  difficulty: Difficulty;
+  daily?: DateKey | null;
+  challenge: Challenge | null;
+}): FriendSolve | null {
+  const { givens, difficulty, daily = null, challenge } = game;
+  if (challenge?.log === undefined || !isWatchable(givens, challenge.log)) return null;
+  return { givens, difficulty, daily, challenge, log: challenge.log };
+}
+
+/**
+ * The friend's solve the dialog on show offers in its head-to-head — the
+ * Solved dialog's, for the game just solved, or the offer's to play a solved
+ * puzzle again, from its link — with the dialog to come back to as the
+ * player closes. Null for any other dialog, or one without.
+ */
+function dialogFriendSolve(
+  dialog: DialogState | null,
+  session: Session | null,
+): { solve: FriendSolve; returnTo: PlaybackView['returnTo'] } | null {
+  if (dialog?.kind === 'completion' && session !== null) {
+    const { result } = dialog;
+    const solve = friendSolveOf({
+      givens: session.record.givens,
+      difficulty: result.difficulty,
+      daily: result.daily?.date,
+      challenge: result.challenge,
+    });
+    return solve === null
+      ? null
+      : { solve, returnTo: { kind: 'completion', result, isFriend: true } };
+  }
+  if (dialog?.kind === 'challenge') {
+    const { offer } = dialog;
+    const solve = friendSolveOf({
+      ...offer.puzzle,
+      daily: offer.daily,
+      challenge: offer.challenge,
+    });
+    return solve === null ? null : { solve, returnTo: { kind: 'challenge', offer } };
+  }
+  return null;
 }
 
 /** A full board that is not the solution: the case the boardFull notice is for. */
@@ -575,6 +700,9 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
         id: 1,
       };
     }
+    // A link whose solve this version cannot play: said rather than left out
+    // without a word.
+    if (startup.isSolveTooNew) return { kind: 'solveTooNew', text: NOTICE_TEXT.solveTooNew, id: 1 };
     // A full board that will not finish says so again on a return visit; it
     // is spoken as the game resumes.
     if (startup.session !== null && isFullButWrong(startup.session.game)) {
@@ -621,6 +749,11 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
   );
   const canWatchSolve =
     session !== null && solvedEncoded !== null && isWatchable(session.record.givens, solvedEncoded);
+  // The friend's solve the game on screen's link carried, for its cards.
+  const cardSolve =
+    session === null || session.game.status === 'solved' ? null : friendSolveOf(session.record);
+  // And the one the Solved dialog's, or the offer's, head-to-head offers.
+  const dialogSolve = dialogFriendSolve(dialog, session);
   const effectiveMode: InputMode =
     game === null ? 'normal' : heldModifiers.size > 0 ? flip(game.mode) : game.mode;
 
@@ -705,6 +838,36 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     session?.record.id === id && session.moves !== null
       ? encodeMoveLog(session.moves)
       : loadEncodedMoveLog(storage, id);
+
+  /** Open the player on a friend's solve, coming back to `returnTo` as it closes. */
+  const showFriendSolve = (solve: FriendSolve, returnTo: PlaybackView['returnTo']): void => {
+    setDialog({
+      kind: 'playback',
+      source: friendSolveSource(solve, dateKeyOf(now())),
+      returnTo,
+    });
+  };
+
+  /**
+   * Watch a friend's solve of a puzzle not yet solved: remembered as watched,
+   * every attempt at it flagged (see `markWatched`) — the game on screen's
+   * too, which is saved so at once — and then played, back to the game as
+   * it closes.
+   */
+  const watchUnsolved = (solve: FriendSolve): void => {
+    markWatched(storage, solve.givens);
+    if (
+      session !== null &&
+      session.record.givens === solve.givens &&
+      session.game.status === 'playing' &&
+      session.record.watched !== true
+    ) {
+      const next: Session = { ...session, record: { ...session.record, watched: true } };
+      persist(next);
+      setSession(next);
+    }
+    showFriendSolve(solve, { kind: 'game' });
+  };
 
   const readHistory = (wall: number): HistoryView => ({
     records: loadHistory(storage),
@@ -875,6 +1038,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       now: t,
       autoCandidates: settings.startInAutoCandidate,
       checkGuesses: settings.checkGuesses,
+      isWatched: hasWatched(storage, puzzle.givens),
       start: 'running',
       daily,
     });
@@ -913,6 +1077,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       now: t,
       autoCandidates: settings.startInAutoCandidate,
       checkGuesses: settings.checkGuesses,
+      isWatched: hasWatched(storage, puzzle.givens),
       start,
       daily: date,
     });
@@ -954,12 +1119,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     // one on screen would look like a mistake.
     const before = computeStats(loadHistory(storage))[record.difficulty].bestMs;
     const today = dateKeyOf(t.wall);
-    const isNewBest =
-      !isReplay &&
-      board.assists.reveals === 0 &&
-      before !== null &&
-      toSeconds(ms) < toSeconds(before);
-    const next: Session = {
+    const stopped: Session = {
       ...solved,
       clock: { bankedMs: ms, runningSince: null },
       pause: null,
@@ -969,7 +1129,22 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     // The history as it now stands, the solve in it — even if the browser
     // refused to store it, as `upsertRecord` hands back the list it tried to
     // save — so the streak counts the solve either way.
-    const records = persist(next, t);
+    const records = persist(stopped, t);
+    // Watched, if the history says so as it takes the solve: it knows every
+    // puzzle whose solve was watched (see `upsertRecord`), however this game
+    // came to be on screen.
+    const isWatched =
+      record.watched === true ||
+      records.some((entry) => entry.id === record.id && entry.watched === true);
+    const next: Session = isWatched
+      ? { ...stopped, record: { ...stopped.record, watched: true } }
+      : stopped;
+    const isNewBest =
+      !isReplay &&
+      !isWatched &&
+      board.assists.reveals === 0 &&
+      before !== null &&
+      toSeconds(ms) < toSeconds(before);
     const solvedRecord = recordOf(next, t);
     setCompletionDue({
       difficulty: record.difficulty,
@@ -977,6 +1152,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       assists: board.assists,
       isNewBest,
       isReplay,
+      isWatched,
       stats: computeStats(records)[record.difficulty],
       challenge: record.challenge,
       daily:
@@ -990,7 +1166,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       mistakes: recordedMistakes(solvedRecord),
     });
     if (notice?.kind === 'boardFull') setNotice(null);
-    announce(`Solved in ${formatDuration(ms)}.`);
+    announce(isWatched ? `${WATCHED_SOLVE_TEXT}.` : `Solved in ${formatDuration(ms)}.`);
     return next;
   };
 
@@ -1084,8 +1260,9 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
   // message: a live region announces changes, not what it held when it
   // appeared.
   useEffect(() => {
-    if (!startup.isBadLink) return undefined;
-    const text = startup.session === null ? NOTICE_TEXT.badLink : BAD_LINK_KEPT;
+    if (!startup.isBadLink && !startup.isSolveTooNew) return undefined;
+    let text = NOTICE_TEXT.solveTooNew;
+    if (startup.isBadLink) text = startup.session === null ? NOTICE_TEXT.badLink : BAD_LINK_KEPT;
     const id = window.setTimeout(() => setAnnouncement(nextAnnouncement(text)));
     return () => window.clearTimeout(id);
   }, [startup]);
@@ -1115,6 +1292,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       now: t,
       autoCandidates: settings.startInAutoCandidate,
       checkGuesses: settings.checkGuesses,
+      isWatched: hasWatched(storage, puzzle.givens),
       start,
     });
     persist(next, t);
@@ -1435,7 +1613,9 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       const known = attempts.length === 0 ? null : puzzleOf(attempts[0]);
       if (known !== null && unfinishedAttempt(records, known.givens, t.wall) === null) {
         const solves = attempts.filter((attempt) => attempt.status === 'solved');
-        const previous = solves.find((attempt) => attempt.source !== 'replay') ?? solves[0];
+        const previous =
+          solves.find((attempt) => attempt.source !== 'replay' && hasRecordedTime(attempt)) ??
+          solves[0];
         if (previous !== undefined) {
           // Solved already: say so, and offer it again.
           pauseFor('dialog', t);
@@ -1534,13 +1714,26 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       }
       if (dialog?.kind === 'playback') {
         const { returnTo } = dialog;
-        if (returnTo.kind === 'history') setHistory(readHistory(now()));
-        setDialog(
-          returnTo.kind === 'history'
-            ? { kind: 'history', place: returnTo.place }
-            : { ...returnTo, isBackFromWatch: true },
-        );
-        return;
+        switch (returnTo.kind) {
+          case 'history':
+            setHistory(readHistory(now()));
+            setDialog({ kind: 'history', place: returnTo.place });
+            return;
+          case 'challenge':
+            setDialog({ ...returnTo, isBackFromWatch: true });
+            return;
+          case 'completion':
+            setDialog(
+              returnTo.isFriend === true
+                ? { kind: 'completion', result: returnTo.result, isBackFromFriend: true }
+                : { kind: 'completion', result: returnTo.result, isBackFromWatch: true },
+            );
+            return;
+          case 'game':
+            // Back to the card it was watched from, the game still waiting.
+            setDialog(null);
+            return;
+        }
       }
       setDialog(null);
       // The game on screen was deleted from History: its replacement is made
@@ -1599,7 +1792,11 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     shareRecord: (id) => {
       const record = history.records.find((entry) => entry.id === id);
       if (record === undefined) return;
-      setDialog({ kind: 'share', target: shareTargetOfRecord(record), returnTo: 'history' });
+      setDialog({
+        kind: 'share',
+        target: shareTargetOfRecord(record, watchedLogOf(id)),
+        returnTo: 'history',
+      });
     },
     canWatchRecord: (record) =>
       record.status === 'solved' && isWatchable(record.givens, watchedLogOf(record.id)),
@@ -1623,6 +1820,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
         difficulty: result.difficulty,
         daily: result.daily?.date,
         elapsedMs: result.elapsedMs,
+        watched: result.isWatched,
       };
       setDialog({
         kind: 'playback',
@@ -1630,6 +1828,44 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
         source: ownSolveSource(solved, solvedEncoded!, result.daily?.today ?? dateKeyOf(now())),
         returnTo: { kind: 'completion', result },
       });
+    },
+    watchFriendSolve: () => {
+      if (cardSolve === null) return;
+      const { givens } = cardSolve;
+      // Solved already: nothing left to give away.
+      if (hasSolved(loadHistory(storage), givens)) {
+        showFriendSolve(cardSolve, { kind: 'game' });
+        return;
+      }
+      // Watched already: the time is gone, so there is nothing to warn of —
+      // but this attempt is flagged all the same, should it have escaped.
+      if (session?.record.watched === true || hasWatched(storage, givens)) {
+        watchUnsolved(cardSolve);
+        return;
+      }
+      setDialog({ kind: 'spoiler', solve: cardSolve });
+    },
+    confirmWatch: () => {
+      if (dialog?.kind !== 'spoiler') return;
+      watchUnsolved(dialog.solve);
+    },
+    playFirst: () => {
+      setDialog(null);
+      actions.resume();
+    },
+    watchChallengeSolve: () => {
+      // Solved, both dialogs' puzzles, so free.
+      if (dialogSolve !== null) showFriendSolve(dialogSolve.solve, dialogSolve.returnTo);
+    },
+    canWatchRecordChallenge: (record) =>
+      record.status === 'solved' && friendSolveOf(record) !== null,
+    watchRecordChallenge: (id, place) => {
+      const record = history.records.find((entry) => entry.id === id);
+      const solve =
+        record === undefined || record.status !== 'solved' ? null : friendSolveOf(record);
+      if (solve === null) return;
+      // Solved, so free; the game behind stays paused, for History.
+      showFriendSolve(solve, { kind: 'history', place });
     },
     deleteRecord: (id) => {
       deleteRecord(storage, id);
@@ -1699,6 +1935,8 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     history,
     isCelebrating: session?.isCelebrating ?? false,
     canWatchSolve,
+    friendSolve: cardSolve === null ? null : { name: cardSolve.challenge.name },
+    canWatchChallengeSolve: dialogSolve !== null,
     actions,
   };
 }
