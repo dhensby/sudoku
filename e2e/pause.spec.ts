@@ -3,6 +3,7 @@ import {
   PUZZLES,
   boardArea,
   cell,
+  chooseMore,
   cells,
   emptyCells,
   gotoPuzzle,
@@ -47,13 +48,14 @@ async function playSome(page: Page): Promise<void> {
 
 /**
  * Every digit left on the page other than the ones that belong there with
- * the board hidden: the timer, the number pad's keys and the paused card's
- * time. Text and accessible names both count — a screen reader reads either.
+ * the board hidden: the timer, the number pad's keys, the paused card's time
+ * and the help taken ("2 hints"), which says nothing about the board. Text
+ * and accessible names both count — a screen reader reads either.
  */
 async function leakedDigits(page: Page): Promise<string[]> {
   return page.evaluate(() => {
     const copy = document.body.cloneNode(true) as HTMLElement;
-    const allowed = ['.timer', '.numpad__key', '.board-overlay__text'];
+    const allowed = ['.timer', '.numpad__key', '.board-overlay__text', '.help-taken'];
     for (const element of copy.querySelectorAll(allowed.join(', '))) element.remove();
     const labels = [...copy.querySelectorAll('[aria-label]')].map(
       (el) => el.getAttribute('aria-label') ?? '',
@@ -91,6 +93,22 @@ test.describe('pausing', () => {
     expect(await readBoard(page)).toBe(board);
     // The keyboard carries on from the board, not from the page.
     await expect(page.getByRole('gridcell', { selected: true })).toBeFocused();
+  });
+
+  test('keeps the help taken on show while paused, as it says nothing about the board', async ({
+    page,
+  }) => {
+    await startPuzzle(page, EASY);
+    await playSome(page);
+    await chooseMore(page, 'Hint');
+    const help = page.locator('.help-taken--header');
+    await expect(help.locator('.help-taken__full')).toHaveText('1 hint');
+
+    await timer(page).click();
+    await expectHidden(page);
+    await expect(help).toBeVisible();
+    await expect(help.locator('.help-taken__full')).toHaveText('1 hint');
+    expect(await leakedDigits(page)).toEqual([]);
   });
 
   test('P pauses and resumes, and is the only key that works while paused', async ({ page }) => {

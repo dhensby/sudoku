@@ -222,6 +222,15 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
               on the board is wrong, it points at that instead, as Hint would.
             </li>
             <li>Hints are recorded next to your time, as checks and reveals are.</li>
+            <li>
+              <strong>Show help taken</strong>, in Settings, is on until you turn it off: once you
+              take any help, it shows what you have taken so far, as History does — “Auto candidates
+              · 2 hints” — beside the timer (above the controls on a phone held upright), or just
+              the counts, or their total (“Help 3”), where there is no room for more. It ticks each
+              time help is counted, so you can see that asking again for a hint you already have was
+              free; Show me says what it cost as it opens; and Hint in the “…” menu says how many
+              you have used: “Hint (2 used)”. Turning it off only hides the count.
+            </li>
           </ul>
         </section>
 

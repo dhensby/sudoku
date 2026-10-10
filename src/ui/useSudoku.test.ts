@@ -718,7 +718,9 @@ describe('useSudoku', () => {
       expect(result.current.game?.hint).toEqual({ kind: 'mistake', index: wrong });
       expect(result.current.game?.selected).toBe(wrong);
       expect(result.current.game?.cells[wrong].mark).toBe('wrong');
-      expect(result.current.announcement?.text).toMatch(/incorrect\. Row 1, column 1\.$/);
+      expect(result.current.announcement?.text).toMatch(
+        /incorrect\. Row 1, column 1\. 2 hints used\.$/,
+      );
       expect(result.current.game?.assists.hints).toBe(2);
       // Pointed out once, it is no news the second time.
       act(() => result.current.actions.select(target));
@@ -732,6 +734,28 @@ describe('useSudoku', () => {
       act(() => result.current.actions.showMe());
       expect(result.current.dialog?.kind).toBe('walkthrough');
       expect(result.current.game?.assists.hints).toBe(3);
+    });
+
+    it('say what Show me cost as it opens, while help taken is shown, and nothing when it was free', async () => {
+      const { result } = await stuck();
+      act(() => result.current.actions.hint());
+      act(() => result.current.actions.showMe());
+      expect(result.current.dialog).toMatchObject({ kind: 'walkthrough', charge: '2 hints used.' });
+      act(() => result.current.actions.closeDialog());
+      act(() => result.current.actions.showMe());
+      expect(result.current.dialog).toMatchObject({ kind: 'walkthrough', charge: null });
+      expect(result.current.game?.assists.hints).toBe(2);
+    });
+
+    it('say nothing of what Show me cost with help taken hidden', async () => {
+      const storage = memoryStorage();
+      storage.setItem('sudoku.prefs', JSON.stringify({ settings: { showHelpTaken: false } }));
+      const { result } = await stuck({ storage });
+      act(() => result.current.actions.hint());
+      expect(result.current.announcement?.text).not.toMatch(/used/);
+      act(() => result.current.actions.showMe());
+      expect(result.current.dialog).toMatchObject({ kind: 'walkthrough', charge: null });
+      expect(result.current.game?.assists.hints).toBe(2);
     });
 
     it('go to the guide from a step and back to that step, the clock stopped throughout', async () => {
@@ -768,6 +792,67 @@ describe('useSudoku', () => {
       act(() => result.current.actions.showMe());
       expect(result.current.dialog).toBeNull();
       expect(result.current.game?.assists.hints).toBe(1);
+    });
+  });
+
+  describe('help taken', () => {
+    it('says the new count with a hint that charges it, and nothing more for one asked again', async () => {
+      const { result } = await started();
+      act(() => result.current.actions.hint());
+      const hinted = result.current.game!.selected;
+      expect(result.current.game?.assists.hints).toBe(1);
+      expect(result.current.announcement?.text).toMatch(/\. 1 hint used\.$/);
+
+      // Asked again from elsewhere: the same cell, free, and said without a count.
+      act(() => result.current.actions.select(EMPTIES.find((index) => index !== hinted)!));
+      act(() => result.current.actions.hint());
+      expect(result.current.game?.selected).toBe(hinted);
+      expect(result.current.game?.assists.hints).toBe(1);
+      expect(result.current.announcement?.text).not.toMatch(/used/);
+
+      // Its cell solved, the next hint is a new one: charged, and said.
+      enter(result, hinted, answerAt(hinted));
+      act(() => result.current.actions.hint());
+      expect(result.current.game?.selected).not.toBe(hinted);
+      expect(result.current.game?.assists.hints).toBe(2);
+      expect(result.current.announcement?.text).toMatch(/\. 2 hints used\.$/);
+    });
+
+    it('says what auto candidates, a check and a reveal cost, once each', async () => {
+      const { result } = await started();
+      act(() => result.current.actions.setAutoCandidates(true));
+      expect(result.current.announcement?.text).toBe('Auto candidates on. Counts as help.');
+      act(() => result.current.actions.setAutoCandidates(false));
+      act(() => result.current.actions.setAutoCandidates(true));
+      // On again, it cost nothing more.
+      expect(result.current.announcement?.text).toBe('Auto candidates on.');
+      enter(result, FIRST_EMPTY, answerAt(FIRST_EMPTY) === 9 ? 1 : 9);
+      act(() => result.current.actions.check('cell'));
+      const column = (FIRST_EMPTY % 9) + 1;
+      expect(result.current.announcement?.text).toBe(
+        `Row 1, column ${column} is incorrect. 1 check used.`,
+      );
+      act(() => result.current.actions.reveal());
+      expect(result.current.announcement?.text).toBe(
+        `Revealed ${answerAt(FIRST_EMPTY)} in row 1, column ${column}. 1 reveal used.`,
+      );
+      expect(result.current.game?.assists).toEqual({
+        autoCandidates: true,
+        hints: 0,
+        checks: 1,
+        reveals: 1,
+      });
+    });
+
+    it('says no count with help taken hidden, though the help is still recorded', async () => {
+      const storage = memoryStorage();
+      storage.setItem('sudoku.prefs', JSON.stringify({ settings: { showHelpTaken: false } }));
+      const { result } = await started({ storage });
+      act(() => result.current.actions.hint());
+      expect(result.current.game?.assists.hints).toBe(1);
+      expect(result.current.announcement?.text).not.toMatch(/used/);
+      act(() => result.current.actions.setAutoCandidates(true));
+      expect(result.current.announcement?.text).toBe('Auto candidates on.');
     });
   });
 
@@ -1246,6 +1331,61 @@ describe('useSudoku', () => {
       expect(loadHistory(storage)[0].assists.checkGuesses).toBeUndefined();
       const log = loadMoveLog(storage, result.current.record!.id)!;
       expect(log.moves.map((move) => move.op)).toEqual(['place']);
+    });
+
+    it('says it is help as Settings closes on a game already on show, as the help taken ticks', async () => {
+      const { result } = await started({ clock, source: fakeSource(near) });
+      expect(result.current.hasBoardShown).toBe(true);
+      act(() => result.current.actions.openDialog('settings'));
+      act(() => result.current.actions.updateSettings({ checkGuesses: true }));
+      act(() => result.current.actions.closeDialog());
+      expect(result.current.announcement?.text).toBe('Checked as entered. Counts as help.');
+      // Switched off and on again, the game already had it: nothing more to say.
+      const said = result.current.announcement;
+      act(() => result.current.actions.openDialog('settings'));
+      act(() => result.current.actions.updateSettings({ checkGuesses: false }));
+      act(() => result.current.actions.closeDialog());
+      act(() => result.current.actions.openDialog('settings'));
+      act(() => result.current.actions.updateSettings({ checkGuesses: true }));
+      act(() => result.current.actions.closeDialog());
+      expect(result.current.announcement).toBe(said);
+    });
+
+    it('says it is help with "Resumed." for a paused game that takes it up as play resumes', async () => {
+      const { result } = await started({ clock, source: fakeSource(near) });
+      act(() => result.current.actions.pause());
+      act(() => result.current.actions.openDialog('settings'));
+      act(() => result.current.actions.updateSettings({ checkGuesses: true }));
+      act(() => result.current.actions.closeDialog());
+      expect(result.current.phase).toBe('paused');
+      expect(result.current.announcement?.text).toBe('Paused.');
+      act(() => result.current.actions.resume());
+      expect(result.current.announcement?.text).toBe(
+        'Resumed. Checked as entered. Counts as help.',
+      );
+    });
+
+    it('says nothing of it for a game behind Start, which opens with it', async () => {
+      const storage = withSettings({ checkGuesses: true });
+      setVisibility('hidden');
+      const { result } = await started({ clock, storage, source: fakeSource(near) });
+      setVisibility('visible');
+      expect(result.current.hasBoardShown).toBe(false);
+      act(() => result.current.actions.resume());
+      expect(result.current.hasBoardShown).toBe(true);
+      expect(result.current.game?.assists.checkGuesses).toBe(true);
+      expect(result.current.announcement?.text).toBe('Started.');
+    });
+
+    it('says nothing of it with help taken hidden', async () => {
+      const storage = withSettings({ showHelpTaken: false });
+      const { result } = await started({ clock, storage, source: fakeSource(near) });
+      const said = result.current.announcement;
+      act(() => result.current.actions.openDialog('settings'));
+      act(() => result.current.actions.updateSettings({ checkGuesses: true }));
+      act(() => result.current.actions.closeDialog());
+      expect(result.current.game?.assists.checkGuesses).toBe(true);
+      expect(result.current.announcement).toBe(said);
     });
 
     it('takes it up from 0:00 for a game behind Start started with it still on', async () => {

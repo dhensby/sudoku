@@ -2,7 +2,10 @@ import {
   DIFFICULTY_LABEL,
   TECHNIQUE_LABEL,
   capitalise,
+  assistPartText,
+  assistParts,
   count,
+  plural,
   describeAssists,
   describeMistakes,
   describeResult,
@@ -79,6 +82,42 @@ describe('assists', () => {
   ])('describes %o as "%s"', (assists, text) => {
     expect(hasAssists(assists)).toBe(true);
     expect(describeAssists(assists)).toBe(text);
+  });
+});
+
+describe('assistParts', () => {
+  it('is empty for an unaided game', () => {
+    expect(assistParts(NONE)).toEqual([]);
+  });
+
+  it('names the switches whole and keeps each count apart from its noun, in History’s order', () => {
+    const parts = assistParts({
+      autoCandidates: true,
+      checkGuesses: true,
+      hints: 2,
+      checks: 1,
+      reveals: 3,
+    });
+    expect(parts).toEqual([
+      { count: null, words: 'Auto candidates' },
+      { count: null, words: 'Checked as entered' },
+      { count: 2, words: 'hints' },
+      { count: 1, words: 'check' },
+      { count: 3, words: 'reveals' },
+    ]);
+    expect(parts.map(assistPartText)).toEqual([
+      'Auto candidates',
+      'Checked as entered',
+      '2 hints',
+      '1 check',
+      '3 reveals',
+    ]);
+  });
+
+  it('makes a noun plural unless there is exactly one', () => {
+    expect(plural(1, 'hint')).toBe('hint');
+    expect(plural(0, 'hint')).toBe('hints');
+    expect(plural(2, 'reveal')).toBe('reveals');
   });
 });
 

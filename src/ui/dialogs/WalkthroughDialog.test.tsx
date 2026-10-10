@@ -48,6 +48,27 @@ describe('WalkthroughDialog', () => {
     );
   });
 
+  it('shows what opening it cost after its introduction, and says it with its description', () => {
+    render(
+      <WalkthroughDialog
+        walkthrough={stuck()}
+        charge="2 hints used."
+        onOpenGuide={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(dialog()).toHaveAccessibleDescription(`${WALKTHROUGH_INTRO} 2 hints used.`);
+    // On show, for a sighted player: the help taken is veiled behind the dialog.
+    expect(screen.getByText('2 hints used.')).toHaveClass('walkthrough__charge');
+    expect(screen.getByText('2 hints used.')).not.toHaveClass('visually-hidden');
+  });
+
+  it('says no cost when it was free', () => {
+    renderWalkthrough();
+    expect(document.querySelector('.walkthrough__charge')).toBeNull();
+    expect(dialog()).toHaveAccessibleDescription(WALKTHROUGH_INTRO);
+  });
+
   it('marks the line about the small numbers read once the reader moves on, and still describes the card', () => {
     renderWalkthrough();
     const intro = screen.getByText(WALKTHROUGH_INTRO);

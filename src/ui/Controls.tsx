@@ -17,6 +17,8 @@ export interface ControlsProps {
   canCheckCell: boolean;
   canCheckPuzzle: boolean;
   canRevealCell: boolean;
+  /** The hints used, for the "…" menu's Hint to say (see MoreMenu); 0 for none, or not shown. */
+  hintsUsed?: number;
   onSetMode: (mode: InputMode) => void;
   onDigit: (digit: Digit) => void;
   onErase: () => void;
@@ -52,6 +54,7 @@ export function Controls({
   canCheckCell,
   canCheckPuzzle,
   canRevealCell,
+  hintsUsed = 0,
   onSetMode,
   onDigit,
   onErase,
@@ -135,6 +138,7 @@ export function Controls({
         canCheckCell={canCheckCell}
         canCheckPuzzle={canCheckPuzzle}
         canRevealCell={canRevealCell}
+        hintsUsed={hintsUsed}
         onHint={onHint}
         onCheckCell={onCheckCell}
         onCheckPuzzle={onCheckPuzzle}

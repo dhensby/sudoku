@@ -41,11 +41,17 @@ describe('Header', () => {
     expect(screen.getByRole('button', { name: 'Pause' })).toHaveAccessibleDescription('1:05');
   });
 
-  it('sets the error counter it is given just before the timer, and says it has one', () => {
-    renderHeader({ errorCounter: <p className="error-counter">Mistakes 2</p> });
-    const counter = screen.getByText('Mistakes 2');
-    expect(counter.nextElementSibling).toHaveClass('header__timer');
-    expect(document.querySelector('header')).toHaveClass('header', 'header--counter');
+  it('sets the tally it is given just before the timer, and makes room once it shows', () => {
+    renderHeader({ tally: <p className="tally">Mistakes 2</p>, isTallyShown: true });
+    const tally = screen.getByText('Mistakes 2');
+    expect(tally.nextElementSibling).toHaveClass('header__timer');
+    expect(document.querySelector('header')).toHaveClass('header', 'header--tally');
+  });
+
+  it('keeps an empty tally on the page without making room for it', () => {
+    renderHeader({ tally: <div className="tally" />, isTallyShown: false });
+    expect(document.querySelector('.tally')?.nextElementSibling).toHaveClass('header__timer');
+    expect(document.querySelector('header')).not.toHaveClass('header--tally');
   });
 
   it('has no counter, nor says so, without one', () => {

@@ -22,6 +22,14 @@ export interface WalkthroughDialogProps {
   walkthrough: Walkthrough;
   /** The step to open at, from 0: where the reader was before looking in the guide. */
   initialStep?: number;
+  /**
+   * What opening it cost ("2 hints used."), shown after its introduction and
+   * so said with it as it opens: the game's status region is outside the
+   * dialog, hidden from a screen reader behind it, and the help taken beside
+   * the timer is under the dialog's veil until it closes (it ticks then).
+   * Null when it was free: opened again for a hint already counted.
+   */
+  charge?: string | null;
   /** Open the guide at a step's technique; `step` is where to come back to. */
   onOpenGuide: (entry: GuideId, step: number) => void;
   onClose: () => void;
@@ -75,6 +83,7 @@ function Page({ direction, title, onClick }: PageProps) {
 export function WalkthroughDialog({
   walkthrough,
   initialStep = 0,
+  charge = null,
   onOpenGuide,
   onClose,
 }: WalkthroughDialogProps) {
@@ -143,6 +152,12 @@ export function WalkthroughDialog({
             side can give its lines to the step (see dialogs.css). */}
         <p className="walkthrough__intro" id={introId} data-read={current > 0 || undefined}>
           {WALKTHROUGH_INTRO}
+          {charge !== null && (
+            <>
+              {' '}
+              <span className="walkthrough__charge">{charge}</span>
+            </>
+          )}
         </p>
         {/* Keyed, so each step arrives as new content rather than an edit of the last. */}
         <article key={current} className="walkthrough__step" aria-labelledby={headingId}>

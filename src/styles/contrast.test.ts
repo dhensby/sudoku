@@ -236,10 +236,14 @@ const PAIRS: Pair[] = [
     TEXT,
   ],
 
-  // The error counter: its label muted and its counts in ink, on the page
-  // beside the timer or above the controls.
+  // The tally: the error counter and help taken, their words muted and their
+  // counts in ink, on the page beside the timer or above the controls; help
+  // taken in the accent as it ticks.
   ['the error counter’s label on the page', 'text-muted', 'bg', TEXT],
   ['the error counter’s counts on the page', 'text', 'bg', TEXT],
+  ['help taken’s words on the page', 'text-muted', 'bg', TEXT],
+  ['help taken’s counts on the page', 'text', 'bg', TEXT],
+  ['help taken as it ticks', 'accent', 'bg', TEXT],
 
   // ---- Edges of controls, and focus rings ----
   ['key rule against the page', 'key-border', 'bg', NON_TEXT],
@@ -307,6 +311,7 @@ const PAIRS: Pair[] = [
   ]),
   ['the answer’s digit, under the caption', mixed('success', 0.85, 'text'), 'surface', TEXT],
   ['the answer’s rule against its box', 'success', 'surface', NON_TEXT],
+  ['what opening it cost, in ink after its muted introduction', 'text', 'surface-raised', TEXT],
 ];
 
 /*

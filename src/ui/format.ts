@@ -90,9 +90,52 @@ export function hasAssists(assists: Assists): boolean {
 export const CHECK_GUESSES_WORDS = 'guesses checked as entered';
 export const CHECK_GUESSES_LABEL = 'Checked as entered';
 
+/** "hint", "hints": a noun as it follows a number, plural unless it is one. */
+export function plural(n: number, noun: string): string {
+  return n === 1 ? noun : `${noun}s`;
+}
+
 /** "1 hint", "3 hints": a number and its noun, plural unless it is one. */
 export function count(n: number, noun: string): string {
-  return `${n} ${noun}${n === 1 ? '' : 's'}`;
+  return `${n} ${plural(n, noun)}`;
+}
+
+/**
+ * One kind of help a game took, as History's chips and the help taken beside
+ * the timer name it: a switch, named whole ("Auto candidates", "Checked as
+ * entered"), or a count and its noun ("2 hints" is 2 and "hints"), kept
+ * apart so the count can be set in ink as the error counter's are.
+ */
+export interface AssistPart {
+  /** The count, or null for a switch, which is either on or not. */
+  count: number | null;
+  /** The noun after the count ("hints"), or a switch's whole name. */
+  words: string;
+}
+
+/**
+ * The help a game took, kind by kind, in History's words and order: the two
+ * switches that stay on for a game, then the counts. Empty for an unaided
+ * game.
+ */
+export function assistParts(assists: Assists): AssistPart[] {
+  const parts: AssistPart[] = [];
+  if (assists.autoCandidates) parts.push({ count: null, words: 'Auto candidates' });
+  if (assists.checkGuesses === true) parts.push({ count: null, words: CHECK_GUESSES_LABEL });
+  const counted: readonly [number, string][] = [
+    [assists.hints, 'hint'],
+    [assists.checks, 'check'],
+    [assists.reveals, 'reveal'],
+  ];
+  for (const [n, noun] of counted) {
+    if (n > 0) parts.push({ count: n, words: plural(n, noun) });
+  }
+  return parts;
+}
+
+/** A part as it reads: "Auto candidates", "2 hints". */
+export function assistPartText(part: AssistPart): string {
+  return part.count === null ? part.words : `${part.count} ${part.words}`;
 }
 
 /**

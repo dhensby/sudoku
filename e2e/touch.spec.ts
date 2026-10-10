@@ -4,10 +4,12 @@ import {
   PUZZLES,
   cell,
   emptyCells,
+  expectHeaderWhole,
   getStuck,
   gotoPuzzle,
   grid,
   modeButton,
+  openTodaysDaily,
   padKey,
   resumeButton,
   solveFromKeyboard,
@@ -53,7 +55,10 @@ async function overflow(page: Page) {
 
 /**
  * Let entrance animations finish — a phone's dialog slides up from below the
- * screen as a sheet — so boxes are measured where they come to rest.
+ * screen as a sheet — so boxes are measured where they come to rest. One
+ * cancelled on the way has come to rest too: help taken's tick is cut short
+ * as its mark is taken off, or as a new tick plays afresh, and its
+ * `finished` then rejects rather than resolving.
  */
 async function settle(page: Page): Promise<void> {
   await page.evaluate(() =>
@@ -61,7 +66,7 @@ async function settle(page: Page): Promise<void> {
       document
         .getAnimations()
         .filter((animation) => animation.effect?.getTiming().iterations !== Infinity)
-        .map((animation) => animation.finished),
+        .map((animation) => animation.finished.catch(() => undefined)),
     ),
   );
 }
@@ -538,11 +543,63 @@ test.describe('touch', () => {
  * nothing to scroll either way, from a 320×568 iPhone SE up, and on a phone
  * turned on its side.
  */
+/*
+ * Help taken is on unless switched off, and costs a game played without
+ * help nothing: before any help, the board is as large as with the setting
+ * off, its cells as comfortable to hit.
+ */
+for (const viewport of [
+  { width: 360, height: 640 },
+  { width: 375, height: 667 },
+]) {
+  test.describe(`a ${viewport.width}×${viewport.height} phone before any help`, () => {
+    test.use({ viewport });
+
+    test('keeps the board as large as with help taken hidden', async ({ page }) => {
+      await tapStart(page);
+      const unaided = (await grid(page).boundingBox())!;
+      await expect(page.locator('.tally--play')).toBeHidden();
+      // The same game, reopened with the setting off.
+      await page.goto('/favicon.svg');
+      await page.evaluate(() => {
+        const prefs = JSON.parse(localStorage.getItem('sudoku.prefs') ?? '{}') as {
+          settings?: Record<string, unknown>;
+        };
+        prefs.settings = { ...prefs.settings, showHelpTaken: false };
+        localStorage.setItem('sudoku.prefs', JSON.stringify(prefs));
+      });
+      await page.goto('/');
+      await resumeButton(page).tap();
+      await waitForPlaying(page);
+      const hidden = (await grid(page).boundingBox())!;
+      expect(unaided.width).toBe(hidden.width);
+      expect(unaided.height).toBe(hidden.height);
+    });
+  });
+}
+
 test.describe('a 375×667 phone', () => {
   test.use({ viewport: { width: 375, height: 667 } });
 
   test('fits the whole game with nothing to scroll', async ({ page }) => {
     await tapStart(page);
+    await expectWholeGameOnScreen(page);
+  });
+
+  // Help taken is on unless switched off, but its line comes with the first
+  // help: the board gives up its height then, and the game still fits.
+  test('gives help taken its line above the controls once a hint is taken', async ({ page }) => {
+    await tapStart(page);
+    const before = (await grid(page).boundingBox())!;
+    await expect(page.locator('.tally--play')).toBeHidden();
+    await tapHint(page);
+    const help = page.locator('.help-taken--play');
+    await expect(help.locator('.help-taken__full')).toHaveText('1 hint');
+    await expect(help.locator('.help-taken__face')).not.toHaveClass(
+      /help-taken__face--(counts|total)/,
+    );
+    expect((await grid(page).boundingBox())!.width).toBeLessThan(before.width);
+    await expectOnScreen(page, help);
     await expectWholeGameOnScreen(page);
   });
 
@@ -587,6 +644,27 @@ test.describe('a 320×568 phone', () => {
   test('fits the whole game with nothing to scroll', async ({ page }) => {
     await tapStart(page);
     await expectWholeGameOnScreen(page);
+  });
+
+  /*
+   * Short of height, the board still gives help taken its line once help is
+   * taken, as on any phone held upright, and the game still fits; the "…"
+   * menu's Hint counts the hints too.
+   */
+  test('gives help taken its line once a hint is taken, and counts the hints on Hint', async ({
+    page,
+  }) => {
+    await tapStart(page);
+    await expect(page.locator('.tally--play')).toBeHidden();
+    await tapHint(page);
+    const help = page.locator('.help-taken--play');
+    await expect(help.locator('.help-taken__full')).toHaveText('1 hint');
+    await expectOnScreen(page, help);
+    await expectWholeGameOnScreen(page);
+    await page.getByRole('button', { name: 'More' }).tap();
+    await expect(
+      page.getByRole('menu', { name: 'More' }).getByRole('menuitem', { name: 'Hint (1 used)' }),
+    ).toBeVisible();
   });
 
   // Measured, not read from the stylesheet: the sheet's borders and padding
@@ -676,9 +754,11 @@ test.describe('a 320×568 phone', () => {
   });
 
   /*
-   * The board shrinks to fit the height here, and the hint bar with it, to
-   * 268px: a hidden single's hint is the longest a single gets, and with
-   * its question and Show me it would take a third line, which scrolls.
+   * The board shrinks to fit the height here, and the hint bar with it — to
+   * 268px, and once a hint is taken, narrower again, as help taken takes its
+   * line above the controls: a hidden single's hint is the longest a single
+   * gets, and with its question and Show me it could take a third line,
+   * which scrolls. Show me becomes its play mark, its words kept as its name.
    */
   test("keeps a hidden single's hint, its question and Show me to two lines, with nothing to scroll", async ({
     page,
@@ -696,8 +776,9 @@ test.describe('a 320×568 phone', () => {
     );
     const show = bar.getByRole('button', { name: /^Show me how to solve/ });
     const question = bar.getByRole('button', { name: "What's a hidden single?" });
-    // Show me keeps its words; the question its icon.
-    await expect(show).toHaveText('Show me');
+    // Help taken has its line, beside a bar still on two lines.
+    await expect(page.locator('.help-taken--play')).toBeVisible();
+    await expect(show).toHaveAccessibleName(/^Show me how to solve/);
     await expect(question).toBeVisible();
     const [height, min] = await bar.evaluate((el) => [
       el.getBoundingClientRect().height,
@@ -765,6 +846,174 @@ for (const viewport of [
       expect((await overflow(page)).x).toBe(0);
       await expectOnScreen(page, page.locator('.error-counter:visible'));
       await expectOnScreen(page, banner.getByRole('button', { name: 'Menu' }));
+    });
+  });
+}
+
+/*
+ * Help taken shares the error counter's strip: on a phone held upright the
+ * line above the controls, help taken at its start and the counter at its
+ * end, never overlapping; on its side, beside the timer, help taken over the
+ * counter. The counter at its widest a phone sees in play here — "Mistakes 1
+ * · 1 candidate" — and help taken with every kind ("Auto candidates · Checked
+ * as entered · 1 hint · 1 check · 1 reveal"), which outgrows its room on the
+ * narrowest phones and beside the timer: it gives way to the counts alone,
+ * then to their total, "Help 3", and whichever shows is whole, never cut
+ * short. The game still fits with nothing to scroll; and on a daily Medium
+ * at 1:23:45, with help at its widest, the header gives way without cutting
+ * its wordmark or its tier, or scrolling the page.
+ */
+const FULL_HELP = 'Auto candidates · Checked as entered · 1 hint · 1 check · 1 reveal';
+const HELP_WORDS = {
+  full: FULL_HELP,
+  counts: '1 hint · 1 check · 1 reveal',
+  total: 'Help 3',
+} as const;
+
+for (const viewport of [
+  { width: 320, height: 568 },
+  { width: 360, height: 640 },
+  { width: 375, height: 667 },
+  { width: 393, height: 852 },
+  { width: 568, height: 320 },
+  { width: 640, height: 360 },
+  { width: 667, height: 375 },
+  { width: 844, height: 390 },
+  { width: 896, height: 414 },
+  { width: 932, height: 430 },
+]) {
+  test.describe(`a ${viewport.width}×${viewport.height} phone with help taken and the error counter`, () => {
+    test.use({ viewport });
+
+    test.beforeEach(async ({ page }) => {
+      await page.addInitScript(() => {
+        localStorage.setItem(
+          'sudoku.prefs',
+          JSON.stringify({ settings: { showErrorCounter: true, checkGuesses: true } }),
+        );
+      });
+    });
+
+    const isUpright = viewport.width < viewport.height;
+    const visibleHelp = (page: Page) =>
+      page.locator(isUpright ? '.help-taken--play' : '.help-taken--header');
+    const counter = (page: Page) => page.locator('.error-counter:visible');
+
+    /** Choose an item from the "…" menu, by touch. */
+    async function tapMore(page: Page, item: string): Promise<void> {
+      await page.getByRole('button', { name: 'More' }).tap();
+      await page.getByRole('menu', { name: 'More' }).getByRole('menuitem', { name: item }).tap();
+    }
+
+    /**
+     * On the Medium link: auto candidates on, a cell's answer struck from its
+     * candidates (a candidate mistake, counted at once with Check guesses on)
+     * and a wrong number in another (a mistake); then a hint, which points at
+     * the mistake, a check of the puzzle and the cell revealed.
+     */
+    async function takeHelp(page: Page): Promise<void> {
+      const { givens, solution } = PUZZLES.medium;
+      const [struck, wrong] = emptyCells(givens);
+      await page.getByRole('switch', { name: 'Auto Candidate Mode' }).tap();
+      await cell(page, struck).tap();
+      await modeButton(page, 'Candidate').tap();
+      await padKey(page, Number(solution[struck])).tap();
+      await modeButton(page, 'Normal').tap();
+      await cell(page, wrong).tap();
+      await padKey(page, (Number(solution[wrong]) % 9) + 1).tap();
+      await expect(counter(page).locator('[aria-hidden="true"]')).toHaveText(
+        /^Mistakes 1 · 1 candidate$/,
+      );
+      await tapMore(page, 'Hint');
+      await tapMore(page, 'Check puzzle');
+      await tapMore(page, 'Reveal cell');
+      await expect(visibleHelp(page).locator('.help-taken__full')).toHaveText(FULL_HELP);
+    }
+
+    /**
+     * The full words where they fit, else the counts alone, else their total
+     * (as on the narrowest phone, upright or on its side, the full words
+     * never fit); whichever shows wholly inside the box, measured with a
+     * Range, and clear of the counter.
+     */
+    async function expectHelpWhole(page: Page): Promise<void> {
+      const help = visibleHelp(page);
+      const face = help.locator('.help-taken__face');
+      const className = (await face.getAttribute('class')) ?? '';
+      const form = /--total\b/.test(className)
+        ? 'total'
+        : /--counts\b/.test(className)
+          ? 'counts'
+          : 'full';
+      if (viewport.width === 320 || !isUpright) expect(form).not.toBe('full');
+      const words = help.locator(`.help-taken__${form}`);
+      await expect(words).toHaveText(HELP_WORDS[form]);
+      if (form === 'full') await expect(help).not.toHaveAttribute('title');
+      else await expect(help).toHaveAttribute('title', FULL_HELP);
+      const past = await words.evaluate((shown) => {
+        const box = shown.closest('.help-taken')!.getBoundingClientRect();
+        const range = document.createRange();
+        range.selectNodeContents(shown);
+        const text = range.getBoundingClientRect();
+        return { left: box.left - text.left, right: text.right - box.right };
+      });
+      expect(past.left, 'cut at the start').toBeLessThanOrEqual(0.01);
+      expect(past.right, 'cut at the end').toBeLessThanOrEqual(0.01);
+      await expectOnScreen(page, help);
+      await expectOnScreen(page, counter(page));
+      const [a, b] = [(await help.boundingBox())!, (await counter(page).boundingBox())!];
+      const overlaps =
+        a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+      expect(overlaps).toBe(false);
+    }
+
+    test('fits the whole game, help taken and the counter, with nothing to scroll', async ({
+      page,
+    }) => {
+      await tapStart(page, PUZZLES.medium.givens);
+      await takeHelp(page);
+      await expectHelpWhole(page);
+      await expectWholeGameOnScreen(page);
+      await expectOnScreen(page, page.getByRole('banner').getByRole('button', { name: 'Menu' }));
+    });
+
+    test('gives way in the header on a daily Medium at 1:23:45, cutting nothing short', async ({
+      page,
+    }) => {
+      test.setTimeout(90_000);
+      await page.clock.install({ time: new Date('2026-10-13T10:00:00+01:00') });
+      await page.goto('/');
+      await waitForPlaying(page);
+      await openTodaysDaily(page, 'Medium');
+      // Help at its widest beside the timer: the full words at the cap.
+      await page.getByRole('switch', { name: 'Auto Candidate Mode' }).tap();
+      await tapMore(page, 'Hint');
+      await tapMore(page, 'Reveal cell');
+      await expect(visibleHelp(page).locator('.help-taken__full')).toHaveText(
+        'Auto candidates · Checked as entered · 1 hint · 1 reveal',
+      );
+      await seedElapsed(page, (1 * 3600 + 23 * 60 + 45) * 1000);
+      // Paused, help taken still shows: it says nothing about the board.
+      await expect(visibleHelp(page)).toBeVisible();
+      const banner = page.getByRole('banner');
+      await expect(banner.locator('.header__difficulty')).toContainText('Daily puzzle for');
+      for (const state of ['paused', 'playing']) {
+        if (state === 'playing') {
+          await resumeButton(page).tap();
+          await waitForPlaying(page);
+        }
+        await expect(banner.locator('.timer__time')).toHaveText(/^1:23:4\d$/);
+        await expectHeaderWhole(page);
+        expect((await overflow(page)).x, state).toBe(0);
+        await expectOnScreen(page, visibleHelp(page));
+        for (const control of [
+          banner.getByRole('button', { name: /^(Pause|Resume)$/ }),
+          banner.getByRole('button', { name: 'New game' }),
+          banner.getByRole('button', { name: 'Menu' }),
+        ]) {
+          await expectOnScreen(page, control);
+        }
+      }
     });
   });
 }

@@ -86,6 +86,12 @@ describe('Controls', () => {
     expect(props.onCheckPuzzle).toHaveBeenCalledTimes(1);
   });
 
+  it('puts the hints used on the "…" menu’s Hint', () => {
+    renderControls({ hintsUsed: 3 });
+    fireEvent.click(screen.getByRole('button', { name: 'More' }));
+    expect(screen.getByRole('menuitem', { name: 'Hint (3 used)' })).toBeInTheDocument();
+  });
+
   it('disables Check puzzle when it has nothing to check', () => {
     renderControls({ canCheckPuzzle: false });
     fireEvent.click(screen.getByRole('button', { name: 'More' }));

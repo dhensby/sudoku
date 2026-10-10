@@ -2,6 +2,8 @@ import { expect, test, type Page } from '@playwright/test';
 import { generateDaily } from '../src/daily/generate';
 import {
   boardArea,
+  chooseMore,
+  expectHeaderWhole,
   grid,
   openHeaderDialog,
   openTodaysDaily,
@@ -187,5 +189,59 @@ for (const [kind, date, label] of [
     const history = page.getByRole('dialog', { name: 'History' });
     await expect(history).toContainText('Daily · 13 Oct');
     await expect(history).not.toContainText(label);
+  });
+}
+
+/*
+ * A desktop's header, held back by a short screen, beside the tally: a
+ * daily Medium ("Daily · Medium", the widest tier), help taken at its widest
+ * and, with the error counter or without, the clock at 24:10 and then past
+ * the hour. Something gives way — the wordmark first — but never by cutting
+ * the wordmark or the tier short, nor scrolling the page.
+ */
+for (const showErrorCounter of [false, true]) {
+  test.describe(`a 1280×740 desktop with help taken${showErrorCounter ? ' and the error counter' : ''}`, () => {
+    test.use({ viewport: { width: 1280, height: 740 } });
+
+    test('keeps the header whole on a daily Medium', async ({ page }) => {
+      test.setTimeout(90_000);
+      await page.addInitScript((counter) => {
+        localStorage.setItem(
+          'sudoku.prefs',
+          JSON.stringify({ settings: { showErrorCounter: counter, checkGuesses: true } }),
+        );
+      }, showErrorCounter);
+      await freezeClock(page);
+      await page.goto('/');
+      await waitForPlaying(page);
+      await openTodaysDaily(page, 'Medium');
+      await page.getByRole('switch', { name: 'Auto Candidate Mode' }).click();
+      await chooseMore(page, 'Hint');
+      await chooseMore(page, 'Reveal cell');
+      const help = page.locator('.help-taken--header');
+      await expect(help.locator('.help-taken__full')).toHaveText(
+        'Auto candidates · Checked as entered · 1 hint · 1 reveal',
+      );
+      const banner = page.getByRole('banner');
+      for (const [step, shown] of [
+        ['24:10', /^24:1\d$/],
+        ['01:00:00', /^1:24:1\d$/],
+      ] as const) {
+        await page.clock.fastForward(step);
+        await expect(banner.locator('.timer__time')).toHaveText(shown);
+        await expectHeaderWhole(page);
+        expect(
+          await page.evaluate(
+            () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+          ),
+        ).toBe(0);
+        await expect(help).toBeInViewport({ ratio: 1 });
+        for (const name of ['New game', 'Pause']) {
+          await expect(banner.getByRole('button', { name, exact: true })).toBeInViewport({
+            ratio: 1,
+          });
+        }
+      }
+    });
   });
 }

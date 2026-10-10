@@ -412,6 +412,28 @@ describe('App', () => {
       expect(showMe()).toBeInTheDocument();
     });
 
+    it('shows its charge in the walkthrough, and ticks it as the walkthrough closes', async () => {
+      await startStuck();
+      const face = () => document.querySelector('.help-taken--header .help-taken__face');
+      const hinted = face();
+      expect(hinted).toHaveTextContent('1 hint');
+      clickWithMouse(showMe());
+      expect(within(walkthrough()).getByText('2 hints used.')).toHaveClass('walkthrough__charge');
+      // Behind the dialog's veil it waits, unticked.
+      expect(face()).toBe(hinted);
+      fireEvent.click(within(walkthrough()).getByRole('button', { name: 'Close' }));
+      expect(face()).not.toBe(hinted);
+      expect(face()).toHaveClass('help-taken__face--tick');
+      expect(face()).toHaveTextContent('2 hints');
+
+      // Opened again for the same cell, it is free: no cost shown, no tick.
+      const charged = face();
+      clickWithMouse(showMe());
+      expect(walkthrough().querySelector('.walkthrough__charge')).toBeNull();
+      fireEvent.click(within(walkthrough()).getByRole('button', { name: 'Close' }));
+      expect(face()).toBe(charged);
+    });
+
     it('gives focus back to Show me when the keyboard opened it', async () => {
       await startStuck();
       showMe().focus();
@@ -533,20 +555,20 @@ describe('App', () => {
     it('shows no error counter until it is switched on', async () => {
       await startApp();
       expect(counters()).toEqual([]);
-      expect(document.querySelector('.app')).not.toHaveClass('app--counter');
+      expect(document.querySelector('.header')).not.toHaveClass('header--tally');
       expect(document.querySelectorAll('.app > [role="status"]')).toHaveLength(1);
     });
 
     it('shows the counter beside the timer and above the controls, for the stylesheet to pick', async () => {
       await startApp();
       switchOn('Show error counter');
-      expect(document.querySelector('.app')).toHaveClass('app--counter');
-      expect(document.querySelector('.header')).toHaveClass('header--counter');
+      expect(document.querySelector('.app')).toHaveClass('app--tally');
+      expect(document.querySelector('.header')).toHaveClass('header--tally');
       const [header, play] = counters();
       expect(header).toHaveClass('error-counter--header');
-      expect(header.closest('.header__inner')).not.toBeNull();
+      expect(header.closest('.tally--header')?.nextElementSibling).toHaveClass('header__timer');
       expect(play).toHaveClass('error-counter--play');
-      expect(play.nextElementSibling).toHaveClass('controls');
+      expect(play.closest('.tally--play')?.nextElementSibling).toHaveClass('controls');
       for (const counter of counters()) expect(counter).toHaveTextContent(/^Mistakes 0/);
     });
 
@@ -584,6 +606,96 @@ describe('App', () => {
       press('p');
       expect(counterRegion()).toBeEmptyDOMElement();
       for (const counter of counters()) expect(counter).toHaveTextContent(/^Mistakes 1/);
+    });
+  });
+
+  describe('help taken', () => {
+    const helpTaken = () => [...document.querySelectorAll('.help-taken')];
+    /** What each copy shows, the words not on show left out. */
+    const shown = () =>
+      helpTaken().map((chip) => chip.querySelector('.help-taken__full')!.textContent);
+
+    function openMore() {
+      fireEvent.click(screen.getByRole('button', { name: 'More' }));
+      return screen.getByRole('menu', { name: 'More' });
+    }
+
+    function takeHint() {
+      fireEvent.click(within(openMore()).getByRole('menuitem', { name: /^Hint/ }));
+    }
+
+    it('shows nothing until help is taken, and keeps no line for it on a phone till then', async () => {
+      await startApp();
+      expect(helpTaken()).toEqual([]);
+      // On the page, to tick as it first appears, but given no room.
+      expect(document.querySelector('.tally--play')).toBeEmptyDOMElement();
+      expect(document.querySelector('.app')).not.toHaveClass('app--tally');
+      expect(document.querySelector('.header')).not.toHaveClass('header--tally');
+      expect(document.querySelector('.tally--header')).toBeEmptyDOMElement();
+      takeHint();
+      expect(document.querySelector('.app')).toHaveClass('app--tally');
+      expect(document.querySelector('.header')).toHaveClass('header--tally');
+    });
+
+    it('shows a hint taken beside the timer and above the controls, says it once, and counts it on Hint', async () => {
+      await startApp();
+      takeHint();
+      expect(shown()).toEqual(['1 hint', '1 hint']);
+      const [header, play] = helpTaken();
+      expect(header).toHaveClass('help-taken--header');
+      expect(header.closest('.tally--header')?.nextElementSibling).toHaveClass('header__timer');
+      expect(play).toHaveClass('help-taken--play');
+      expect(document.querySelector('.header')).toHaveClass('header--tally');
+      expect(header).toHaveTextContent(/Help taken: 1 hint$/);
+      expect(liveRegion()).toHaveTextContent(/\. 1 hint used\.$/);
+      expect(within(openMore()).getByRole('menuitem', { name: 'Hint (1 used)' })).toBeVisible();
+    });
+
+    it('does not tick for Check guesses a shared game takes up as it starts', () => {
+      const storage = memoryStorage();
+      storage.setItem('sudoku.prefs', JSON.stringify({ settings: { checkGuesses: true } }));
+      renderApp({ storage, search: linkFor(nearlySolved([0, 1, 2]).givens) });
+      expect(helpTaken()).toEqual([]);
+      fireEvent.click(screen.getAllByRole('button', { name: 'Start' })[1]);
+      expect(shown()).toEqual(['Checked as entered', 'Checked as entered']);
+      expect(document.querySelector('.help-taken__face--tick')).toBeNull();
+    });
+
+    it('sits beside the error counter, help taken first', async () => {
+      await startApp();
+      fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+      fireEvent.click(screen.getByRole('checkbox', { name: 'Show error counter' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+      takeHint();
+      for (const tally of document.querySelectorAll('.tally')) {
+        expect([...tally.children].map((child) => child.classList[0])).toEqual([
+          'help-taken',
+          'error-counter',
+        ]);
+      }
+    });
+
+    it('stays on show while the game is paused: it says nothing about the board', async () => {
+      await startApp();
+      takeHint();
+      press('p');
+      expect(screen.queryByRole('grid')).not.toBeInTheDocument();
+      expect(shown()).toEqual(['1 hint', '1 hint']);
+    });
+
+    it('hides the help, the count on Hint and the count said, with Show help taken off', async () => {
+      await startApp();
+      takeHint();
+      fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+      fireEvent.click(screen.getByRole('checkbox', { name: 'Show help taken' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+      expect(helpTaken()).toEqual([]);
+      expect(document.querySelector('.app')).not.toHaveClass('app--tally');
+      expect(document.querySelector('.tally')).toBeNull();
+      expect(within(openMore()).getByRole('menuitem', { name: 'Hint' })).toBeVisible();
+      press('Escape');
+      fireEvent.click(screen.getByRole('switch', { name: 'Auto Candidate Mode' }));
+      expect(liveRegion()).toHaveTextContent(/^Auto candidates on\.$/);
     });
   });
 
