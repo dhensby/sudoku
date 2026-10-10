@@ -72,6 +72,32 @@ describe('ChallengeDialog', () => {
     expect(dialog()).toHaveTextContent('With 2 reveals.');
   });
 
+  it('says what mistakes the earlier solve made, counted at its solve', () => {
+    renderChallenge({
+      previous: { ...PREVIOUS, mistakes: { values: 1, candidates: 2, atMs: PREVIOUS.elapsedMs } },
+    });
+    expect(screen.getByText('1 mistake · 2 candidate mistakes.')).toBeInTheDocument();
+    expect(dialog()).toHaveAccessibleDescription(/1 mistake · 2 candidate mistakes\.$/);
+  });
+
+  it('says "No mistakes" only for a solve counted clean', () => {
+    renderChallenge({
+      previous: { ...PREVIOUS, mistakes: { values: 0, candidates: 0, atMs: PREVIOUS.elapsedMs } },
+    });
+    expect(screen.getByText('No mistakes.')).toBeInTheDocument();
+  });
+
+  it.each([
+    ['not recorded', PREVIOUS],
+    [
+      'counted before the solve, by a tab that then played on',
+      { ...PREVIOUS, mistakes: { values: 0, candidates: 0, atMs: 200_000 } },
+    ],
+  ])('says nothing of mistakes %s', (_, previous) => {
+    renderChallenge({ previous });
+    expect(screen.queryByText(/mistake/)).toBeNull();
+  });
+
   it('compares with the time the link carried', () => {
     renderChallenge({ challenge: { name: 'Dan', seconds: 323, assists: NONE } });
     expect(screen.getByRole('region', { name: 'Head to head' })).toHaveTextContent(

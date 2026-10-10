@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  MAX_MOVES,
   MOVES_VERSION,
   addDays,
   appendMove,
@@ -17,6 +18,8 @@ import {
   MAX_SAVED_GAMES,
   MAX_SEEN,
   computeStats,
+  recordedMistakes,
+  repairMistakeCounts,
   createGameId,
   deleteGameBlob,
   deleteRecord,
@@ -55,6 +58,9 @@ import {
   EASY_PUZZLE,
   EXPERT_PUZZLES,
   LOG_IN_A_LATER_FORMAT,
+  act,
+  startPlaying,
+  type Played,
   logFromAnotherBuild,
   solveByPlacing,
   solveWithAutoCandidates,
@@ -1280,18 +1286,18 @@ describe('fields a newer version added', () => {
    * goes. Whatever the newer version added must come through every rewrite.
    */
 
-  /** A record as a later version might write it: mistakes counted, and a new kind of help. */
+  /** A record as a later version might write it: medals won, and a new kind of help. */
   function newer(id: string, createdAt: number, overrides: Partial<GameRecord> = {}): GameRecord {
     const base = solved(id, createdAt, 60_000, overrides);
     return {
       ...base,
-      mistakes: { values: 2, candidates: 1 },
+      medals: { gold: 2, silver: 1 },
       assists: { ...base.assists, checkGuesses: true },
       challenge: {
         name: 'Dan',
         seconds: 323,
         assists: { ...NO_ASSISTS, checkGuesses: false },
-        mistakes: { values: 0, candidates: 0 },
+        medals: { gold: 0, silver: 0 },
       },
     } as GameRecord;
   }
@@ -1391,9 +1397,9 @@ describe('fields a newer version added', () => {
   it('let the page’s own value of a newer field win over the stored one', () => {
     const storage = memoryStorage();
     seed(storage, [newer('x', 1)]);
-    const page = { ...newer('x', 1), mistakes: { values: 5, candidates: 0 } } as GameRecord;
+    const page = { ...newer('x', 1), medals: { gold: 5, silver: 0 } } as GameRecord;
     expect(upsertRecord(storage, page)[0]).toMatchObject({
-      mistakes: { values: 5, candidates: 0 },
+      medals: { gold: 5, silver: 0 },
     });
   });
 
@@ -2427,6 +2433,265 @@ describe('move logs', () => {
       expect(savedGameIds(storage).size).toBe(50);
       expect(hasLog(storage, 'g0')).toBe(true);
       expect(hasLog(storage, 'g1')).toBe(false);
+    });
+  });
+});
+
+describe('mistakes', () => {
+  const COUNTED = { values: 2, candidates: 1 };
+
+  describe('as the history reads them', () => {
+    it('keeps a count stamped with the time it was counted at', () => {
+      const storage = memoryStorage();
+      const record = solved('x', 1, 60_000, { mistakes: { ...COUNTED, atMs: 60_000 } });
+      seed(storage, [record]);
+      expect(loadHistory(storage)).toEqual([record]);
+    });
+
+    it.each<[string, unknown]>([
+      ['null', null],
+      ['a number', 3],
+      ['a negative count', { values: -1, candidates: 0, atMs: 60_000 }],
+      ['a fraction', { values: 1.5, candidates: 0, atMs: 60_000 }],
+      ['a count in words', { values: '1', candidates: 0, atMs: 60_000 }],
+      ['no candidates', { values: 1, atMs: 60_000 }],
+      ['no stamp', { values: 1, candidates: 0 }],
+      ['a negative stamp', { values: 1, candidates: 0, atMs: -1 }],
+      ['a stamp that is not a number', { values: 1, candidates: 0, atMs: Number.NaN }],
+    ])(
+      'reads mistakes that are %s as not known — never as none — keeping the record',
+      (_, value) => {
+        const storage = memoryStorage();
+        seed(storage, [{ ...solved('x', 1), mistakes: value }]);
+        const [record] = loadHistory(storage);
+        expect(record.id).toBe('x');
+        expect(record).not.toHaveProperty('mistakes');
+        expect(recordedMistakes(record)).toBeNull();
+      },
+    );
+
+    it('keeps only the three fields a count has: anything more would be re-stamped unread', () => {
+      const storage = memoryStorage();
+      seed(storage, [
+        solved('x', 1, 60_000, { mistakes: { ...COUNTED, atMs: 60_000, forgiven: 3 } as never }),
+      ]);
+      expect(loadHistory(storage)[0].mistakes).toEqual({ ...COUNTED, atMs: 60_000 });
+    });
+
+    it('lets the page that saves a record decide whether its mistakes are known', () => {
+      const storage = memoryStorage();
+      upsertRecord(storage, solved('x', 1, 60_000, { mistakes: { ...COUNTED, atMs: 60_000 } }));
+      // A field this version knows is never carried over for a page that left it out.
+      const [saved] = upsertRecord(storage, playing('x', 1, { elapsedMs: 70_000 }));
+      expect(saved).not.toHaveProperty('mistakes');
+    });
+
+    it('come through an export and an import', () => {
+      const from = memoryStorage();
+      const record = solved('x', 1, 60_000, { mistakes: { ...COUNTED, atMs: 60_000 } });
+      upsertRecord(from, record);
+      const to = memoryStorage();
+      expect(importHistory(to, exportHistory(from, 5))).toEqual({ ok: true, added: 1, updated: 0 });
+      expect(loadHistory(to)).toEqual([record]);
+    });
+  });
+
+  it('never touch a best or an average time', () => {
+    const clean = solved('a', 1, 60_000, { mistakes: { values: 0, candidates: 0, atMs: 60_000 } });
+    const messy = solved('b', 2, 50_000, { mistakes: { values: 9, candidates: 4, atMs: 50_000 } });
+    expect(computeStats([clean, messy]).easy).toEqual({
+      played: 2,
+      solved: 2,
+      bestMs: 50_000,
+      averageMs: 55_000,
+    });
+  });
+
+  describe('recordedMistakes', () => {
+    it('gives a solved game’s count, stamped with its own time', () => {
+      expect(
+        recordedMistakes(solved('x', 1, 60_000, { mistakes: { ...COUNTED, atMs: 60_000 } })),
+      ).toEqual(COUNTED);
+    });
+
+    it('gives nothing for a game never counted', () => {
+      expect(recordedMistakes(solved('x', 1))).toBeNull();
+    });
+
+    it('gives nothing for an unfinished game: its count would work as a free Check', () => {
+      expect(
+        recordedMistakes(
+          playing('x', 1, { elapsedMs: 5000, mistakes: { ...COUNTED, atMs: 5000 } }),
+        ),
+      ).toBeNull();
+    });
+
+    it('gives nothing for a solve whose count was taken before it — not a final count', () => {
+      // A tab on a version from before mistakes kept the count from its last
+      // save as it played on to the solve.
+      expect(
+        recordedMistakes(solved('x', 1, 90_000, { mistakes: { ...COUNTED, atMs: 60_000 } })),
+      ).toBeNull();
+    });
+  });
+
+  describe('repairMistakeCounts', () => {
+    /** The Wikipedia puzzle's answers, in reading order, after `before`: a solve, a second a move. */
+    function solveInOrder(before: (played: Played) => Played = (played) => played): Played {
+      let played = before(startPlaying(EASY_PUZZLE));
+      for (let cell = 0; cell < 81; cell++) {
+        if (played.game.cells[cell].value === Number(EASY_PUZZLE.solution[cell])) continue;
+        const digit = Number(EASY_PUZZLE.solution[cell]) as Digit;
+        played = act(played, { type: 'enter', digit, index: cell, mode: 'normal' }, 1000);
+      }
+      expect(played.game.status).toBe('solved');
+      return played;
+    }
+
+    /** A solve with one wrong number in it: a 1 in cell 2, whose answer, 4, was not obvious. */
+    const withASlip = () =>
+      solveInOrder((played) =>
+        act(played, { type: 'enter', digit: 1, index: 2, mode: 'normal' }, 1000),
+      );
+
+    /** A solved record of a played game, as a version before mistakes would have kept it, and its log. */
+    function solvedBefore(
+      storage: StorageLike,
+      id: string,
+      played: Played,
+      extra = 50,
+    ): GameRecord {
+      const record = solved(id, 1, played.clockMs + extra);
+      storeMoveLog(storage, id, encodeMoveLog(played.log));
+      return record;
+    }
+
+    it('counts a solve’s mistakes from its log, once, stamped with its time', () => {
+      const storage = countingStorage();
+      const played = withASlip();
+      const record = solvedBefore(storage, 'x', played);
+      seed(storage, [record]);
+      repairMistakeCounts(storage);
+      const [repaired] = loadHistory(storage);
+      expect(repaired.mistakes).toEqual({ values: 1, candidates: 0, atMs: record.elapsedMs });
+      expect(recordedMistakes(repaired)).toEqual({ values: 1, candidates: 0 });
+      storage.sets.length = 0;
+      repairMistakeCounts(storage);
+      expect(storage.sets).toEqual([]);
+    });
+
+    it('counts a clean solve as clean', () => {
+      const storage = memoryStorage();
+      seed(storage, [solvedBefore(storage, 'x', solveInOrder())]);
+      repairMistakeCounts(storage);
+      expect(recordedMistakes(loadHistory(storage)[0])).toEqual({ values: 0, candidates: 0 });
+    });
+
+    it('counts a solve whose log holds an Undo with nothing to take back, as one from elsewhere may', () => {
+      // Play never logs one, but an imported log is only checked to read back:
+      // judging it must not fail as a visit starts.
+      const storage = memoryStorage();
+      const played = solveInOrder((start) => ({
+        ...start,
+        log: appendMove(start.log, { op: 'undo' }, 0),
+      }));
+      expect(played.log.moves[0].op).toBe('undo');
+      seed(storage, [solvedBefore(storage, 'x', played)]);
+      repairMistakeCounts(storage);
+      expect(recordedMistakes(loadHistory(storage)[0])).toEqual({ values: 0, candidates: 0 });
+    });
+
+    it('counts again a solve whose count was taken before it, never lowering it', () => {
+      const storage = memoryStorage();
+      const played = withASlip();
+      const record = solvedBefore(storage, 'x', played);
+      seed(storage, [
+        { ...record, mistakes: { values: 0, candidates: 3, atMs: record.elapsedMs - 20_000 } },
+      ]);
+      repairMistakeCounts(storage);
+      expect(loadHistory(storage)[0].mistakes).toEqual({
+        values: 1,
+        candidates: 3,
+        atMs: record.elapsedMs,
+      });
+    });
+
+    it('leaves alone a count already stamped with its solve', () => {
+      const storage = countingStorage();
+      const record = solvedBefore(storage, 'x', withASlip());
+      seed(storage, [
+        { ...record, mistakes: { values: 0, candidates: 0, atMs: record.elapsedMs } },
+      ]);
+      storage.sets.length = 0;
+      repairMistakeCounts(storage);
+      expect(storage.sets).toEqual([]);
+    });
+
+    it.each<[string, (storage: StorageLike) => GameRecord]>([
+      [
+        'an unfinished game',
+        (storage) => ({
+          ...solvedBefore(storage, 'x', withASlip()),
+          status: 'playing',
+          completedAt: null,
+        }),
+      ],
+      ['a solve with no log', () => solved('x', 1)],
+      [
+        'a solve whose log stops short of it',
+        (storage) => solvedBefore(storage, 'x', withASlip(), 5000),
+      ],
+      [
+        'a solve whose log does not replay to it',
+        (storage) => ({ ...solvedBefore(storage, 'x', withASlip()), givens: OTHER_PUZZLE }),
+      ],
+      [
+        'a solve whose givens no longer make a puzzle',
+        (storage) => ({ ...solvedBefore(storage, 'x', withASlip()), givens: firstGivens(20) }),
+      ],
+      [
+        'a solve whose log does not read back',
+        (storage) => {
+          const record = solvedBefore(storage, 'x', withASlip());
+          storeMoveLog(storage, 'x', 'AB_');
+          return record;
+        },
+      ],
+      [
+        'a solve whose log was cut off',
+        (storage) => {
+          let log = createMoveLog();
+          for (let i = 0; log.moves.length < MAX_MOVES; i++) {
+            log = appendMove(log, { op: 'candidate', cell: 2, digit: 1 }, i * 100);
+          }
+          log = appendMove(log, { op: 'candidate', cell: 2, digit: 1 }, MAX_MOVES * 100);
+          expect(log.truncated).toBe(true);
+          storeMoveLog(storage, 'x', encodeMoveLog(log));
+          return solved('x', 1, log.moves.at(-1)!.at);
+        },
+      ],
+    ])('leaves alone %s', (_, make) => {
+      const storage = memoryStorage();
+      const record = make(storage);
+      seed(storage, [record]);
+      repairMistakeCounts(storage);
+      expect(loadHistory(storage)[0]).not.toHaveProperty('mistakes');
+    });
+
+    it('leaves alone the game on screen, which the page counts itself', () => {
+      const storage = memoryStorage();
+      seed(storage, [solvedBefore(storage, 'x', withASlip())]);
+      saveCurrentId(storage, 'x');
+      repairMistakeCounts(storage);
+      expect(loadHistory(storage)[0]).not.toHaveProperty('mistakes');
+    });
+
+    it('reads nothing at all while no game has a log', () => {
+      const storage = countingStorage();
+      seed(storage, [solved('x', 1)]);
+      storage.sets.length = 0;
+      repairMistakeCounts(storage);
+      expect(storage.sets).toEqual([]);
     });
   });
 });

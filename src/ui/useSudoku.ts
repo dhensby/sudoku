@@ -20,6 +20,7 @@ import {
   type GameState,
   type Hint,
   type InputMode,
+  type MistakeTally,
   type Puzzle,
   type Walkthrough,
 } from '../core';
@@ -34,6 +35,8 @@ import {
   loadDailyLedger,
   loadHistory,
   markSeen,
+  recordedMistakes,
+  repairMistakeCounts,
   saveCurrentId,
   savedGameIds,
   sweepMoveLogs,
@@ -157,6 +160,11 @@ export interface CompletionResult {
   challenge: Challenge | null;
   /** The daily the game was, if it was one. */
   daily: DailyResult | null;
+  /**
+   * The mistakes the game made (see `src/core/mistakes.ts`), or null when
+   * they are not known: a game not recorded move by move from its start.
+   */
+  mistakes: MistakeTally | null;
 }
 
 /** What the daily calendar shows, read from storage as it opens. */
@@ -860,6 +868,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
               today,
               streak: streakNote(solvedRecord, records, today, loadDailyLedger(storage)),
             },
+      mistakes: recordedMistakes(solvedRecord),
     });
     if (notice?.kind === 'boardFull') setNotice(null);
     announce(`Solved in ${formatDuration(ms)}.`);
@@ -913,6 +922,8 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     // Logs that no longer go with a record — whose game a tab on an older
     // version, which knows nothing of logs, pruned, or finished without them.
     sweepMoveLogs(storage);
+    // And the mistakes of games solved before they were counted, from their logs.
+    repairMistakeCounts(storage);
     // A link's game takes the place of the one on screen, which goes the way
     // a New game would leave it.
     if (startup.left !== null && isGlimpse(startup.left)) discard(startup.left);

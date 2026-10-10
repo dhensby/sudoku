@@ -410,8 +410,8 @@ export function createMoveLog(options: NewGameOptions = {}): MoveLog {
  *
  * The one move logged that changes nothing is Show me opened again for a cell
  * already charged for it. It is free, so the reducer does nothing; but the
- * walkthrough is on show again, and help seen ends a slip's grace (PLAN,
- * "Mistakes"), so the log must hold it. It replays as the no-op it was.
+ * walkthrough is on show again, and help seen ends a slip's grace (see
+ * `mistakes.ts`), so the log must hold it. It replays as the no-op it was.
  *
  * The move carries what its replay needs from `previous`: the cell an entry or
  * erase defaulted to, the mode a digit defaulted to (as `place` or

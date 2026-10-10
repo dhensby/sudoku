@@ -17,10 +17,15 @@ import {
   ASSIST_FIELDS,
   SERIALISED_GAME_FIELDS,
   decodeMoveLog,
+  analyseMistakes,
+  checkGivens,
+  replayMoves,
+  tallyMistakes,
   type Assists,
   type DateKey,
   type Difficulty,
   type GridString,
+  type MistakeTally,
   type MoveLog,
   type RandomFn,
 } from '../core';
@@ -110,7 +115,8 @@ import {
  *
  * A field kept this way is a snapshot, never updated here however the game
  * goes on; a later version must be able to tell when one has gone stale (see
- * `newerFields` — a count of mistakes stamped with the time it was taken at).
+ * `newerFields`). The count of mistakes is such a field to versions before
+ * it, so it carries the time it was counted at (see `RecordedMistakes`).
  */
 
 /** Someone else's result that a shared link carried, to compare against. */
@@ -132,6 +138,26 @@ export interface Challenge {
  * unplayed daily is kept, to resume, rather than turned into a replay.
  */
 export type GameSource = 'generated' | 'daily' | 'shared' | 'replay';
+
+/**
+ * A game's mistakes as its record keeps them (see `src/core/mistakes.ts`):
+ * worked out from its move log each time the game is saved, never lowered,
+ * and frozen at the solve.
+ *
+ * `atMs` is the record's `elapsedMs` they were counted at. A version from
+ * before mistakes were counted keeps the field as it found it (see
+ * `newerFields`) while it plays on, so a solved record whose stamp is not its
+ * own time was solved by such a version after the count was taken: it reads
+ * as not recorded (see `recordedMistakes`), never as a final count that
+ * missed the mistakes made since.
+ *
+ * Its three fields are all it keeps: anything else a later version puts in
+ * the object would be a snapshot this version re-stamps without updating, so
+ * a later version adds a field of its own to the record instead.
+ */
+export interface RecordedMistakes extends MistakeTally {
+  atMs: number;
+}
 
 /** One game, played or in progress. */
 export interface GameRecord {
@@ -162,6 +188,13 @@ export interface GameRecord {
    * them count towards a streak is `streaks.ts`'s business.
    */
   daily?: DateKey;
+  /**
+   * The game's mistakes, stamped with the time they were counted at (see
+   * `RecordedMistakes`). Absent when they are not known — a game not
+   * recorded move by move (see `Session.moves`), or one played before
+   * mistakes were counted — which is never the same as none.
+   */
+  mistakes?: RecordedMistakes;
   /**
    * For a daily attempt, the player's own date when its clock first ran —
    * written down then, as the device's time zone had it, because the same
@@ -254,6 +287,7 @@ const RECORD_FIELDS = fieldsOf<GameRecord>({
   challenge: true,
   daily: true,
   startedOn: true,
+  mistakes: true,
 });
 
 /** The fields of a challenge this version knows. */
@@ -282,6 +316,24 @@ export function createGameId(now: number, rng: RandomFn = createRng()): string {
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
+}
+
+/** Whether a value is a whole, non-negative count. */
+function isCount(value: unknown): value is number {
+  return Number.isInteger(value) && (value as number) >= 0;
+}
+
+/**
+ * Stored mistakes, or null — not known — for anything malformed. Unlike the
+ * help counts (see `toCount`), a broken or missing count is never read as
+ * none: "No mistakes" is a claim, and one only the log can make.
+ */
+function normaliseMistakes(value: unknown): RecordedMistakes | null {
+  if (!isObject(value)) return null;
+  const { values, candidates, atMs } = value;
+  if (!isCount(values) || !isCount(candidates)) return null;
+  if (!isFiniteNumber(atMs) || atMs < 0) return null;
+  return { values, candidates, atMs };
 }
 
 /** A whole, non-negative count; anything else counts as none. */
@@ -382,8 +434,10 @@ function normaliseChallenge(value: unknown): Challenge | null {
  * that are merely odd are coerced: an unknown source reads as 'generated',
  * timestamps out of order are pulled level, missing assists count as none,
  * and a broken challenge or daily date is dropped on its own — the game is
- * still a game, just not one against a rival or on the calendar. Small
- * fields a newer version added are kept as they are (see `newerFields`).
+ * still a game, just not one against a rival or on the calendar. So are
+ * broken mistakes, which then read as not known (see `normaliseMistakes`).
+ * Small fields a newer version added are kept as they are (see
+ * `newerFields`).
  */
 function normaliseRecord(value: unknown): GameRecord | null {
   if (!isObject(value)) return null;
@@ -404,6 +458,7 @@ function normaliseRecord(value: unknown): GameRecord | null {
       : updatedAt;
   }
   const isDaily = isDailyDate(value.daily, createdAt);
+  const mistakes = normaliseMistakes(value.mistakes);
   return {
     ...newerFields(value, RECORD_FIELDS),
     id,
@@ -425,7 +480,21 @@ function normaliseRecord(value: unknown): GameRecord | null {
     ...(isDaily && isStartDate(value.startedOn, createdAt, updatedAt)
       ? { startedOn: value.startedOn }
       : {}),
+    ...(mistakes === null ? {} : { mistakes }),
   };
+}
+
+/**
+ * A solved game's mistakes, or null when they are not known: unfinished (an
+ * unfinished game's count is never shown — it would work as a free Check),
+ * never counted, or counted at a time other than the solve's (see
+ * `RecordedMistakes`).
+ */
+export function recordedMistakes(record: GameRecord): MistakeTally | null {
+  const { mistakes } = record;
+  if (record.status !== 'solved' || mistakes === undefined) return null;
+  if (mistakes.atMs !== record.elapsedMs) return null;
+  return { values: mistakes.values, candidates: mistakes.candidates };
 }
 
 /** One record per id, keeping the copy that changed last. */
@@ -1077,6 +1146,53 @@ export function sweepMoveLogs(storage: StorageLike): void {
 function endsAtSolve(record: GameRecord, log: MoveLog): boolean {
   const last = log.moves.at(-1);
   return last !== undefined && Math.abs(record.elapsedMs - last.at) < SOLVE_SLACK_MS;
+}
+
+/**
+ * Count the mistakes of solved games that have none recorded but whose log
+ * holds the whole game, once: a game solved by a version that kept logs but
+ * did not yet count mistakes, or one a tab on such a version took on and
+ * solved after the count was taken (its stamp no longer its time — see
+ * `RecordedMistakes`). Run once a visit, after `sweepMoveLogs`, so a log that
+ * stops short of the solve is gone; this asks more of the rest — that it
+ * decodes, was not cut off, and replays to the solved board.
+ *
+ * Never the current game's record, which the page on screen writes itself,
+ * from the log it has checked against the board. Counts are never lowered:
+ * a stale count is only replaced by one at least as high.
+ */
+export function repairMistakeCounts(storage: StorageLike): void {
+  const logged = new Set(readMoveLogIds(storage));
+  if (logged.size === 0) return;
+  const keep = protectedIds(storage);
+  let isRepaired = false;
+  const records = loadHistory(storage).map((record) => {
+    if (record.status !== 'solved' || recordedMistakes(record) !== null) return record;
+    if (!logged.has(record.id) || keep.has(record.id)) return record;
+    const tally = solvedLogMistakes(storage, record);
+    if (tally === null) return record;
+    isRepaired = true;
+    const stale = record.mistakes;
+    const mistakes: RecordedMistakes = {
+      values: Math.max(tally.values, stale?.values ?? 0),
+      candidates: Math.max(tally.candidates, stale?.candidates ?? 0),
+      atMs: record.elapsedMs,
+    };
+    return { ...record, mistakes };
+  });
+  if (isRepaired) saveRecords(storage, records, keep);
+}
+
+/** The mistakes in a solved record's log, if it holds the whole game (see `repairMistakeCounts`); else null. */
+function solvedLogMistakes(storage: StorageLike, record: GameRecord): MistakeTally | null {
+  const log = decodeMoveLog(loadEncodedMoveLog(storage, record.id));
+  if (log === null || log.truncated || !endsAtSolve(record, log)) return null;
+  const check = checkGivens(record.givens);
+  if (!check.ok) return null;
+  const puzzle = { givens: record.givens, solution: check.solution, difficulty: record.difficulty };
+  if (replayMoves(puzzle, log).status !== 'solved') return null;
+  // Solved, every window has settled by the last move.
+  return tallyMistakes(analyseMistakes(puzzle, log), Number.POSITIVE_INFINITY);
 }
 
 // ---------------------------------------------------------------------------

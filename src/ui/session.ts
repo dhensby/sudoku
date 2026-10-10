@@ -1,5 +1,6 @@
 import {
   STOPPED_CLOCK,
+  analyseMistakes,
   appendMove,
   checkGivens,
   createGame,
@@ -15,6 +16,7 @@ import {
   reduce,
   serialiseGame,
   startClock,
+  tallyMistakes,
   toSeconds,
   verifiedMoveCount,
   type Assists,
@@ -40,6 +42,7 @@ import {
   type Challenge,
   type GameRecord,
   type GameSource,
+  type RecordedMistakes,
 } from '../storage/history';
 import { loadMoveLog } from '../storage/moveLogs';
 import type { StorageLike } from '../storage/storage';
@@ -428,17 +431,53 @@ export function isGlimpse(session: Session): boolean {
 }
 
 /**
- * The session's record as it should be stored at `now`: status, time and help
- * taken brought up to date. The time is stored in whole milliseconds — the
- * monotonic clock reads in fractions of one, which nothing needs.
+ * The session's record as it should be stored at `now`: status, time, help
+ * taken and mistakes brought up to date (see `mistakesOf`). The time is
+ * stored in whole milliseconds — the monotonic clock reads in fractions of
+ * one, which nothing needs.
  */
 export function recordOf(session: Session, now: Moment): GameRecord {
-  return {
+  const elapsed = Math.floor(elapsedMs(session.clock, now.clock));
+  const mistakes = mistakesOf(session, elapsed);
+  const record: GameRecord = {
     ...session.record,
     status: session.game.status,
-    elapsedMs: Math.floor(elapsedMs(session.clock, now.clock)),
+    elapsedMs: elapsed,
     assists: { ...session.game.assists },
     updatedAt: Math.max(now.wall, session.record.createdAt),
+  };
+  if (mistakes === null) delete record.mistakes;
+  else record.mistakes = mistakes;
+  return record;
+}
+
+/**
+ * The game's mistakes at play time `elapsed`, stamped with it (see
+ * `RecordedMistakes`), or null when they are not known.
+ *
+ * Counted from the move log, so they are known only for a game recorded move
+ * by move (see `Session.moves`) — a count for any other would leave out
+ * whatever happened before or beyond its log. Never lower than the count the
+ * record came with, and frozen at the solve: a game reopened solved keeps the
+ * count it was solved with, whatever a later version would make of its log.
+ * Counted at every save, though only a solved game's count is ever shown; the
+ * analysis behind it is worked out once per log (see `analyseMistakes`).
+ */
+function mistakesOf(session: Session, elapsed: number): RecordedMistakes | null {
+  const { record, game, moves } = session;
+  const stored = record.mistakes;
+  const isFrozen =
+    record.status === 'solved' &&
+    stored !== undefined &&
+    stored.atMs === record.elapsedMs &&
+    elapsed === record.elapsedMs;
+  if (isFrozen) return stored;
+  if (moves === null) return null;
+  const tally = tallyMistakes(analyseMistakes(game.puzzle, moves), elapsed);
+  return {
+    values: Math.max(tally.values, stored?.values ?? 0),
+    candidates: Math.max(tally.candidates, stored?.candidates ?? 0),
+    atMs: elapsed,
   };
 }
 

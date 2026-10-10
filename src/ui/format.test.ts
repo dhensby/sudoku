@@ -4,6 +4,7 @@ import {
   capitalise,
   count,
   describeAssists,
+  describeMistakes,
   formatDate,
   hasAssists,
   joinList,
@@ -72,6 +73,20 @@ describe('assists', () => {
   ])('describes %o as "%s"', (assists, text) => {
     expect(hasAssists(assists)).toBe(true);
     expect(describeAssists(assists)).toBe(text);
+  });
+});
+
+describe('describeMistakes', () => {
+  it.each([
+    [{ values: 0, candidates: 0 }, 'No mistakes'],
+    [{ values: 1, candidates: 0 }, '1 mistake'],
+    [{ values: 4, candidates: 0 }, '4 mistakes'],
+    [{ values: 0, candidates: 1 }, '1 candidate mistake'],
+    [{ values: 0, candidates: 3 }, '3 candidate mistakes'],
+    [{ values: 1, candidates: 1 }, '1 mistake · 1 candidate mistake'],
+    [{ values: 2, candidates: 5 }, '2 mistakes · 5 candidate mistakes'],
+  ])('describes %o as "%s", wrong numbers and struck answers apart', (mistakes, text) => {
+    expect(describeMistakes(mistakes)).toBe(text);
   });
 });
 

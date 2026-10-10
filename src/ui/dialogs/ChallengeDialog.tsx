@@ -1,7 +1,7 @@
 import { useId, useState } from 'react';
 import { dateKeyOf, formatDuration, toSeconds, type DateKey, type Difficulty } from '../../core';
-import type { Challenge, GameRecord } from '../../storage/history';
-import { DIFFICULTY_LABEL, formatDate, formatDay } from '../format';
+import { recordedMistakes, type Challenge, type GameRecord } from '../../storage/history';
+import { DIFFICULTY_LABEL, describeMistakes, formatDate, formatDay } from '../format';
 import { Comparison } from './Comparison';
 import { Dialog } from './Dialog';
 import { assistsSentence } from './text';
@@ -35,8 +35,9 @@ function whenSolved(epochMs: number, now: number): string {
 
 /**
  * Opening a puzzle already solved — from a link, or a solved daily chosen
- * from New game: say so, compare with the link's time if it carried one, and
- * offer a fresh attempt. Closing keeps whatever game was on screen.
+ * from New game: say so, with the help and mistakes it took (the mistakes
+ * when known), compare with the link's time if it carried one, and offer a
+ * fresh attempt. Closing keeps whatever game was on screen.
  */
 export function ChallengeDialog({
   difficulty,
@@ -52,6 +53,7 @@ export function ChallengeDialog({
   const summaryId = `${ids}-summary`;
   const verdictId = `${ids}-verdict`;
   const help = assistsSentence(previous.assists);
+  const mistakes = recordedMistakes(previous);
   // A solved record always has completedAt; the fallback only guards a hand-edited one.
   const solvedAt = previous.completedAt ?? previous.updatedAt;
 
@@ -86,6 +88,7 @@ export function ChallengeDialog({
           in {formatDuration(previous.elapsedMs)} {whenSolved(solvedAt, now)}.
         </p>
         {help !== null && <p className="challenge__assists">{help}.</p>}
+        {mistakes !== null && <p className="challenge__mistakes">{describeMistakes(mistakes)}.</p>}
       </div>
       {challenge !== null && (
         <Comparison

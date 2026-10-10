@@ -226,6 +226,20 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
         </section>
 
         <section className="help__section">
+          <h3 className="help__heading">Mistakes</h3>
+          <p className="help__text">
+            Once you&apos;ve solved a puzzle, it tells you your mistakes: wrong numbers, and,
+            counted apart as candidate mistakes, a right number struck out of a cell&apos;s
+            candidates. Nothing shows while you play, and mistakes never change your time. A wrong
+            number is forgiven if the right number was obvious — the cell already held it, nothing
+            else fitted there, or it fitted nowhere else in its row, column or box — and you put it
+            right within 3 seconds, before changing anything else or taking any help. A struck
+            candidate is forgiven if you put it back within 3 seconds, before changing anything else
+            or taking any help.
+          </p>
+        </section>
+
+        <section className="help__section">
           <h3 className="help__heading">Difficulty</h3>
           <ul className="help__list">
             <li>
