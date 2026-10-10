@@ -14,6 +14,7 @@ export { reliance, type Reliance } from './patterns';
 // The longest chains the grader looks for, which the technique guide quotes.
 export { MAX_CHAIN_STRONG_LINKS, MAX_XY_CHAIN } from './techniques';
 export * from './game';
+export * from './moves';
 export * from './codec';
 export * from './clock';
 export * from './dates';

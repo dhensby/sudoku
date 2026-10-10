@@ -141,10 +141,10 @@ The design keeps a hard line between logic and presentation:
 - **`src/core/`** — a pure, framework-free engine: grid geometry, a bitmask solver, a human-style
   logical grader (with a worked example of every technique it knows), the puzzle generator, hints,
   walkthroughs (Show me: the steps one cell depends on, sliced from a solve, pruned of any it can
-  do without and checked step by step), share-link codec, clock arithmetic and the game reducer
-  (which remembers each cell's hints). No DOM, no React and no English;
-  `reduce(state, action)` is a pure function, randomness is passed in, and the whole directory is
-  held to 100% coverage.
+  do without and checked step by step), share-link codec, clock arithmetic, the game reducer
+  (which remembers each cell's hints) and the move log that replays it. No DOM, no React and no
+  English; `reduce(state, action)` is a pure function, randomness is passed in, and the whole
+  directory is held to 100% coverage.
 - **`src/storage/`** — a thin, injectable `localStorage` layer for preferences, the history and
   saved games, which validates everything it reads back and never lets a full or broken storage
   stop play.
@@ -182,6 +182,7 @@ npm run dev        # start the dev server (http://localhost:5173)
 | `npm run format:check`   | Check formatting without writing (this is what CI runs)  |
 | `npm run dailies:freeze` | Freeze the dailies dealt so far, before an engine change |
 | `npm run dailies:switch` | Hand later dailies to a new engine                       |
+| `npm run moves:golden`   | Record the golden move logs again, after a rules change  |
 
 ## How puzzles are made
 
@@ -328,6 +329,44 @@ git commit --fixup=<the engine change> -- src/daily/archive.json
   first day handed over has begun anywhere. If the PR waits longer, rebase and run the five lines
   again: the days the old engine went on dealing meanwhile must be frozen too.
 
+## The move log
+
+The engine can keep a game as a log of its moves, `src/core/moves.ts` — a record to replay the
+game from, step by step, with nothing but the puzzle. Nothing in the game records one yet.
+
+- **What is logged:** every move that changed the game, with its time on the play clock (which
+  stops while paused), rounded down to a tenth of a second so that a logged time is never later
+  than the clock: placing and pencilling a digit, erasing, hints (with their technique and unit),
+  Show me, Check, Reveal, auto candidates on and off, Undo, Redo and Reset. Show me opened again
+  for a cell already counted is logged too, though it changes nothing, because it is still help
+  seen. A move that acts on the selected cell carries the cell. Selecting, moving the selection,
+  the input mode, pauses and a hint with nothing to say are not logged.
+- **Replaying:** the moves go back through the same reducer, which is pure, so the replay rebuilds
+  the game exactly — the board, the help taken, the hints remembered, and the Undo and Redo
+  history too. `verifyMoveLog` checks a replay against a saved game.
+- **The format:** base64url only, so it can go in a link. A 3-character header (the format
+  version, the rules version and flags: whether the game began in auto candidate mode, whether the
+  log was cut off at 5,000 moves), then each move as a 2-character code (`op × 81 + cell`, the
+  moves without a cell above those; a hint adds 2 more, from a fixed table of techniques and
+  units) and the time since the previous move as a varint, then a 3-character check, so that a log
+  cut short or mistyped is refused rather than read as another game. That comes to 3–4 characters
+  a move: about 160–250 for a solve that only places digits, 190–370 with auto candidates, and
+  500–1,100 for one that pencils in every candidate. Decoding is strict: anything malformed, or
+  from a format or rules version the build does not know, is refused whole. `readMoveLogHeader`
+  tells those apart — a log from an older version, one that needs a newer build, or a broken one.
+- **The rules version:** a log is only replayed under the rules it was recorded by. A new kind of
+  move, hint or flag takes a code unused today, which older builds already refuse, so it needs no
+  new version. A change to what the reducer does with a move an existing log can hold does: it
+  must bump `MOVES_VERSION`, and logs recorded under the old rules then read as not recorded. The
+  golden logs in [`src/core/fixtures/moveLogs.json`](src/core/fixtures/moveLogs.json) — real games
+  and a scripted tour of the rules, each with the game it must end in and a hash of every step —
+  fail CI when the reducer replays one differently while the version stays put, with a message
+  that says what to do. Between them they must pass through every situation on a named checklist
+  of the reducer's rules (`GOLDEN_SITUATIONS` in `src/test/goldenMoveLogs.ts`), so a rule added to
+  the reducer needs a situation there and a step in the tour, or it is not guarded. Bump the
+  version, then run `npm run moves:golden` to record them again; it refuses to rewrite logs that
+  no longer replay as pinned under an unchanged version.
+
 ## Racing friends
 
 A share link carries the puzzle itself, so it opens the same puzzle for anyone, on any version of
@@ -404,7 +443,10 @@ puzzles seen and the dailies' record are merged with what is already there.
   pull request to the archive main has released, by a guard of its own
   (`src/daily/archive.guard.test.ts`, see [The daily archive](#the-daily-archive)), and date
   arithmetic and streaks are tested across the clocks changing in London and New York, and across
-  a change of time zone between starting a daily and looking at its streak.
+  a change of time zone between starting a daily and looking at its streak. The move log is
+  replayed after every move of random games — every action there is, with reloads in between —
+  and must rebuild the live game each time; its golden logs hold the reducer to its rules (see
+  [The move log](#the-move-log)).
   Coverage thresholds are enforced in CI, with the engine held to 100%.
 - **End-to-end** (`e2e/`, Playwright): full journeys against the built app — playing and solving,
   pausing and reloading, share links between two browsers, the history, the technique guide, a
