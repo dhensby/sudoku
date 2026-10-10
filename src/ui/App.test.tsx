@@ -735,8 +735,9 @@ describe('App', () => {
       await startApp({ source: fakeSource(PUZZLE, nearlySolved([0, 1, 2])) });
       clickWithMouse(screen.getByRole('button', { name: 'New game' }));
       clickWithMouse(screen.getByRole('menuitem', { name: 'Expert' }));
-      await screen.findByText('Expert');
-      await screen.findByRole('grid');
+      await settle();
+      expect(screen.getByText('Expert')).toBeInTheDocument();
+      expect(screen.getByRole('grid')).toBeInTheDocument();
       expect(selectedCell()).toHaveFocus();
     });
 
@@ -779,7 +780,8 @@ describe('App', () => {
       press(String(answerAt(0)));
       const dialog = await screen.findByRole('dialog', { name: 'Solved!' });
       fireEvent.click(within(dialog).getByRole('button', { name: 'New game' }));
-      await screen.findByRole('grid');
+      await settle();
+      expect(screen.getByRole('grid')).toBeInTheDocument();
       expect(selectedCell()).toHaveFocus();
     });
 
