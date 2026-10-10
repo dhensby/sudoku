@@ -717,6 +717,10 @@ Pages**, as long as it is still `main`'s latest. A commit whose CI passes only a
 landed (on a re-run, say) is not deployed, which keeps the site from rolling back but also means
 that if the latest commit fails CI, the site stays where it was until `main` is green again.
 
+Every commit pushed to `main` has its CI run to the end: neither a newer push nor a re-run of an
+older commit's CI cancels it, so the latest commit is always checked in full, and the site catches
+up with it once it passes. On a pull request, a newer push does cancel the run in progress.
+
 To set it up on a new repository, enable Pages once: in **Settings → Pages**, set **Source** to
 **GitHub Actions**.
 
