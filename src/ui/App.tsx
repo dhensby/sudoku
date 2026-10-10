@@ -37,9 +37,6 @@ export interface AppProps {
   options?: UseSudokuOptions;
 }
 
-/** Fields where keys are typing, not playing. */
-const TEXT_FIELD = 'input, textarea, select, [contenteditable]:not([contenteditable="false"])';
-
 /** Controls where Space means "press me", as it always has, rather than "switch mode". */
 const SPACE_CONTROL = 'button, a[href], [role="button"], [role="switch"], [role="menuitem"]';
 
@@ -161,11 +158,11 @@ export function App({ options }: AppProps = {}) {
   );
 
   const handleKeyDown = useEffectEvent((event: KeyboardEvent) => {
-    // Modal means modal. Something that has claimed the key already — an
-    // open menu moving between its items — keeps it.
+    // Modal means modal, and that covers typing: every field to type into is
+    // in a dialog. Something that has claimed the key already — an open menu
+    // moving between its items — keeps it.
     if (dialog !== null || event.defaultPrevented) return;
     const target = event.target instanceof Element ? event.target : null;
-    if (target?.closest(TEXT_FIELD)) return;
     // An open menu has the keyboard: a digit typed there must not change the
     // board behind it.
     if (target?.closest('[role="menu"]')) return;

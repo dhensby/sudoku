@@ -250,15 +250,6 @@ describe('App', () => {
     expect(cells()[FIRST_EMPTY]).toHaveAccessibleName('empty');
   });
 
-  it('leaves keys typed into a text field to the field', async () => {
-    await startApp({ source: fakeSource(nearlySolved([0])) });
-    press(String(answerAt(0)));
-    await screen.findByRole('dialog', { name: 'Solved!' });
-    fireEvent.click(screen.getByRole('button', { name: 'Share your time' }));
-    const name = screen.getByRole('textbox', { name: 'Your name (optional)' });
-    expect(press('p', {}, name)).toBe(true);
-  });
-
   it('keeps arrow keys inside an open menu', async () => {
     await startApp();
     fireEvent.click(screen.getByRole('button', { name: 'More' }));
