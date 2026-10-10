@@ -308,10 +308,14 @@ const PAIRS: Pair[] = [
   ...(['cell-bg', 'hl-same', 'hl-peer'] as const).flatMap((fill): Pair[] => [
     [`corner marks of the cell being solved on ${fill}`, 'text', fill, NON_TEXT],
     [`dashed strike of an earlier step's removal on ${fill}`, 'text-muted', fill, NON_TEXT],
+    [`level cross-out of what the player ruled out on ${fill}`, 'text-muted', fill, NON_TEXT],
   ]),
   ['the answer’s digit, under the caption', mixed('success', 0.85, 'text'), 'surface', TEXT],
   ['the answer’s rule against its box', 'success', 'surface', NON_TEXT],
   ['what opening it cost, in ink after its muted introduction', 'text', 'surface-raised', TEXT],
+  // Show me for a missing candidate: its advice in the answer's ruled box,
+  // and the missing digit crossed out level, as the player's own are.
+  ['a missing candidate’s advice, in the answer’s box', 'text', 'surface', TEXT],
 ];
 
 /*

@@ -350,6 +350,37 @@ const SCENARIOS: readonly Scenario[] = [
     expected: ONE,
   },
   {
+    name: 'a struck answer the wrong-marks hint points at inside the window: counted',
+    auto: true,
+    steps: [
+      [1000, pencil(HARD, answer(HARD))],
+      [
+        500,
+        (game) => {
+          const action = hintFor(game);
+          // The hint is about the struck answer itself, and says which cell.
+          expect(action).toEqual({ type: 'hint', hint: { kind: 'struck', index: HARD } });
+          return action;
+        },
+      ],
+      [500, pencil(HARD, answer(HARD))],
+    ],
+    expected: ONE_CANDIDATE,
+  },
+  {
+    name: 'a noted answer taken out and put back from the wrong-marks hint’s Show me: counted',
+    steps: [
+      [1000, pencil(HARD, answer(HARD))],
+      [1000, pencil(HARD, 1)],
+      [1000, pencil(HARD, answer(HARD))],
+      [500, hintFor],
+      [0, { type: 'walkthrough', index: HARD }],
+      // Put back as its page puts it back: an ordinary candidate entry.
+      [500, pencil(HARD, answer(HARD))],
+    ],
+    expected: ONE_CANDIDATE,
+  },
+  {
     name: 'a slip that fills the board counts at once: "something isn’t right" is news',
     puzzle: nearlySolved([NAKED, ELSEWHERE]),
     steps: [

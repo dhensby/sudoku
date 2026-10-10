@@ -76,9 +76,17 @@ export type Hint =
   /** A placed value disagrees with the solution. Pointed at before anything else. */
   | { kind: 'mistake'; index: number }
   /**
-   * A cell that can be filled right now from the placed digits alone. `unit` is
-   * the row, column or box the single lives in (null for a naked single, which
-   * is about the cell itself).
+   * An empty cell whose answer is missing from the candidates the player has
+   * — struck out in auto candidate mode, or left out of their notes — which
+   * nothing on the board yet rules out. Pointed at after a placed mistake and
+   * before anything else: every deduction from those candidates would be
+   * built on sand. It never says which digit is missing.
+   */
+  | { kind: 'struck'; index: number }
+  /**
+   * A cell that can be filled right now from the candidates the hint reasons
+   * from. `unit` is the row, column or box the single lives in (null for a
+   * naked single, which is about the cell itself).
    */
   | { kind: 'single'; index: number; technique: SingleTechniqueId; unit: Unit | null }
   /**

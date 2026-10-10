@@ -316,14 +316,19 @@ function describeDeduction(technique: TechniqueId | null): string {
 /**
  * The hint bar's message, which is also what is spoken: where to look and,
  * where the grader knows, which technique gets you there — "Hidden single:
- * there's only one place for a number in this box." It refers to "this
- * cell" and "this box" because the hint selects the cell, and it never names
- * the digit: a hint is a nudge, not an answer.
+ * there's only one place for a number in this box." — or that a candidate
+ * the cell needs is missing from it. It refers to "this cell" and "this box"
+ * because the hint selects the cell, and it never names the digit: a hint is
+ * a nudge, not an answer.
  */
 export function describeHint(hint: Hint): string {
   switch (hint.kind) {
     case 'mistake':
       return 'This number is incorrect.';
+    case 'struck':
+      // Gently: a candidate crossed out by eye is often right, just not yet
+      // provable — and which one stays unsaid, as a hint never names a digit.
+      return "This cell is missing a candidate that can't be ruled out yet.";
     case 'single':
       return describeSingle(hint.technique, hint.unit);
     case 'deduction':

@@ -44,10 +44,11 @@ import type { Digit, Hint, SingleTechniqueId, TechniqueId, Unit, Values } from '
  * chain of easier steps gets the board past that point.
  *
  * Every candidate is one the board it starts from has, less what earlier
- * steps of the walkthrough removed. That board is today always `createBoard`
- * of the placed digits — their naked candidates, never the player's own
- * notes; taking a board rather than the digits is what lets it one day be
- * the candidates the player sees.
+ * steps of the walkthrough removed. That board is the candidates the player
+ * has (see `hintBoardOf`), so a step they have taken already finds nothing
+ * left to do and is not shown, and a step can rest on a candidate they ruled
+ * out themselves. That is sound while every cell's answer is among them —
+ * which `explainCell` holds the board to when it is given the solution.
  */
 
 /** The steps that solve one cell. */
@@ -283,9 +284,10 @@ function prune(start: SolverBoard, steps: readonly SolveStep[]): TechniqueTrace[
  *
  * Null when there is none to show: the cell is not an empty cell of the
  * grid, the techniques stall before reaching it, or — when `solution` is
- * given — a placed digit disagrees with it (no sound walkthrough starts
- * from a mistake, and one built on it could end in the wrong digit). Pure;
- * `board` is left as it was.
+ * given — a placed digit disagrees with it, or an empty cell's answer is
+ * missing from its candidates (no sound walkthrough starts from a mistake,
+ * and one built on it could end in the wrong digit). Pure; `board` is left
+ * as it was.
  *
  * Fast enough to call on a click or a selection change: it is one partial
  * solve, like `findHint`'s.
@@ -296,8 +298,12 @@ export function explainCell(
   solution?: Values,
 ): Walkthrough | null {
   if (solution !== undefined) {
-    const { values } = board;
-    for (let i = 0; i < 81; i++) if (values[i] !== 0 && values[i] !== solution[i]) return null;
+    const { values, candidates } = board;
+    for (let i = 0; i < 81; i++) {
+      if (values[i] === 0 ? (candidates[i] & bit(solution[i])) === 0 : values[i] !== solution[i]) {
+        return null;
+      }
+    }
   }
   const solve = solveToCell(board, target);
   if (solve === null) return null;
@@ -311,7 +317,8 @@ export function explainCell(
 
 /**
  * The walkthrough for a hint's cell, if it has one: a single or a deduction
- * can be shown; a mistake, or "nothing to suggest", cannot. See `explainCell`.
+ * can be shown; a mistake, a missing candidate (whose Show me is a page of
+ * its own) or "nothing to suggest" cannot. See `explainCell`.
  */
 export function explainHint(board: SolverBoard, hint: Hint, solution?: Values): Walkthrough | null {
   return hint.kind === 'single' || hint.kind === 'deduction'

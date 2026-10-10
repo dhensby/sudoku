@@ -34,10 +34,15 @@ export function assistChips(assists: Assists): string[] {
 
 /**
  * The line "Show me" opens with: what the small numbers on its boards are —
- * the candidates the placed digits allow, less what its own earlier steps
- * strike out — which need not be the player's own notes. It says both, so a
- * candidate missing from a later step's board, with no digit to rule it
- * out, is accounted for.
+ * the player's own candidates, less what its earlier steps strike out — so
+ * that a candidate missing from a step's board, with no digit to rule it
+ * out, is accounted for. In Auto Candidate Mode those are the automatic
+ * ones less the player's strikes; otherwise their notes, where a cell with
+ * none counts as having every candidate, which a player taking notes on a
+ * few cells would otherwise find drawn where they wrote nothing.
  */
-export const WALKTHROUGH_INTRO =
-  'The small numbers are what the filled-in digits still allow, less what earlier steps rule out — not your own notes.';
+export function walkthroughIntro(autoCandidates: boolean): string {
+  return autoCandidates
+    ? "The small numbers are your own candidates, without any you've crossed out, less what earlier steps rule out."
+    : 'The small numbers are your own notes, less what earlier steps rule out. A cell where you have noted none counts as having every number the filled-in digits allow.';
+}

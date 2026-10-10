@@ -65,13 +65,15 @@ const HINT_AT = (cell: number) => 28 * 81 + cell;
 
 /*
  * The hint descriptors, written out from the format: a mistake 0, a deduction
- * with no technique 1, a named deduction by its own number, and a single
+ * with no technique 1, a named deduction by its own number, a missing
+ * candidate 21 (added later, in a code then unused), and a single
  * 64 + technique × 28 + unit, the unit 0 for none or 1 + kind × 9 + index.
  * Every number is part of the format, so these are literals: renumbering the
  * module's table, or swapping two of its entries, fails here.
  */
 const MISTAKE_DESCRIPTOR = 0;
 const UNNAMED_DESCRIPTOR = 1;
+const STRUCK_DESCRIPTOR = 21;
 const DEDUCTION_DESCRIPTORS: Readonly<Record<TechniqueId, number>> = {
   fullHouse: 2,
   hiddenSingleBox: 3,
@@ -105,6 +107,7 @@ const UNIT_KIND_CODES: Readonly<Record<UnitKind, number>> = { row: 0, column: 1,
 /** A hint's descriptor, from the literals above. */
 function descriptorOf(hint: LoggedHint): number {
   if (hint.kind === 'mistake') return MISTAKE_DESCRIPTOR;
+  if (hint.kind === 'struck') return STRUCK_DESCRIPTOR;
   if (hint.kind === 'deduction') {
     return hint.technique === null ? UNNAMED_DESCRIPTOR : DEDUCTION_DESCRIPTORS[hint.technique];
   }
@@ -165,6 +168,7 @@ function everyHint(index: number): LoggedHint[] {
   ]);
   return [
     { kind: 'mistake', index },
+    { kind: 'struck', index },
     { kind: 'deduction', index, technique: null },
     ...ALL_TECHNIQUES.map((technique) => ({ kind: 'deduction' as const, index, technique })),
     ...singles,
@@ -338,6 +342,28 @@ describe('moveFor', () => {
       hint: { kind: 'deduction', index: 3, technique: 'pointing' },
     });
     const shown = reduce(hinted, { type: 'walkthrough', index: 3 });
+    expect(reduce(shown, { type: 'walkthrough', index: 3 })).toBe(shown);
+    expect(moveFor(shown, { type: 'walkthrough', index: 3 })).toEqual({
+      op: 'walkthrough',
+      cell: 3,
+    });
+  });
+
+  it('logs Show me on a wrong-marks hint, and opened again for free', () => {
+    // Cell 3's answer, 6, struck out in auto candidate mode.
+    const struck = reduce(createGame(PUZZLE, { autoCandidates: true }), {
+      type: 'enter',
+      digit: 6,
+      index: 3,
+      mode: 'candidate',
+    });
+    const hinted = reduce(struck, { type: 'hint', hint: { kind: 'struck', index: 3 } });
+    expect(moveFor(hinted, { type: 'hint', hint: { kind: 'struck', index: 3 } })).toEqual({
+      op: 'hint',
+      hint: { kind: 'struck', index: 3 },
+    });
+    const shown = reduce(hinted, { type: 'walkthrough', index: 3 });
+    expect(shown.assists.hints).toBe(2);
     expect(reduce(shown, { type: 'walkthrough', index: 3 })).toBe(shown);
     expect(moveFor(shown, { type: 'walkthrough', index: 3 })).toEqual({
       op: 'walkthrough',
@@ -583,7 +609,8 @@ describe('encodeMoveLog and decodeMoveLog', () => {
       if (decodeMoveLog(withCheck(body)) !== null) accepted.push(descriptor);
     }
     const singles = Array.from({ length: 4 * 28 }, (_, i) => 64 + i);
-    expect(accepted).toEqual([...Array.from({ length: 21 }, (_, i) => i), ...singles]);
+    // A missing candidate's, 21, came after the others, in the first code free.
+    expect(accepted).toEqual([...Array.from({ length: 22 }, (_, i) => i), ...singles]);
   });
 
   it('decodes from the string alone, and replays with the givens alone', () => {
@@ -649,7 +676,7 @@ describe('encodeMoveLog and decodeMoveLog', () => {
     ['a move without its gap', header() + pair(BARE)],
     ['a hint without its descriptor', header() + pair(HINT_AT(0))],
     ['a hint with half a descriptor', header() + pair(HINT_AT(0)) + 'A'],
-    ['a hint with a descriptor not in the table', header() + pair(HINT_AT(0)) + pair(21) + 'A'],
+    ['a hint with a descriptor not in the table', header() + pair(HINT_AT(0)) + pair(22) + 'A'],
     ['a gap that runs out', header() + pair(BARE) + 'g'],
     ['a gap written with a needless char', header() + pair(BARE) + 'gA'],
     ['a gap of more than six chars', header() + pair(BARE) + 'gggggg' + 'B'],
@@ -927,8 +954,39 @@ describe('verifyMoveLog', () => {
           fill: { kind: 'single', index: 40, technique: 'nakedSingle', unit: null },
         }),
     ],
+    [
+      'a wrong-marks hint where there was none',
+      () =>
+        withHints(21, {
+          struck: { hint: { kind: 'struck', index: 21 }, walkthrough: false },
+        }),
+    ],
   ])('does not vouch for a game that differs in %s', (_, changed) => {
     expect(verifyMoveLog(PUZZLE, log, changed() as GameState)).toBe(false);
+  });
+});
+
+describe('verifyMoveLog, with a wrong-marks hint', () => {
+  // Cell 3's answer, 6, struck out in auto candidate mode, hinted, and Show me opened.
+  const { game, log } = playActions([
+    { type: 'setAutoCandidates', enabled: true },
+    pencil(3, 6),
+    { type: 'hint', hint: { kind: 'struck', index: 3 } },
+    { type: 'walkthrough', index: 3 },
+  ]);
+  const struck = game.cellHints.get(3)!.struck!;
+  const withStruck = (change: Partial<typeof struck>): GameState => ({
+    ...game,
+    cellHints: new Map([[3, { ...game.cellHints.get(3)!, struck: { ...struck, ...change } }]]),
+  });
+
+  it('vouches for the game the log rebuilds, as played and as reloaded', () => {
+    expect(verifyMoveLog(PUZZLE, log, game)).toBe(true);
+    expect(verifyMoveLog(PUZZLE, log, reload(game))).toBe(true);
+  });
+
+  it('does not vouch for a game that differs in whether its Show me was opened', () => {
+    expect(verifyMoveLog(PUZZLE, log, withStruck({ walkthrough: false }))).toBe(false);
   });
 });
 

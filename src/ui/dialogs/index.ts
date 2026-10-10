@@ -10,3 +10,4 @@ export { ConfirmDialog, type ConfirmDialogProps } from './ConfirmDialog';
 export { DailyDialog, type DailyDialogProps } from './DailyDialog';
 export { TechniquesDialog, type TechniquesDialogProps } from './TechniquesDialog';
 export { WalkthroughDialog, type WalkthroughDialogProps } from './WalkthroughDialog';
+export { StruckDialog, type StruckDialogProps } from './StruckDialog';

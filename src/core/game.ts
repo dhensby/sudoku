@@ -12,7 +12,7 @@ import {
 } from './grid';
 import { TECHNIQUE_ORDER } from './grader';
 import { fieldsOf, newerFields } from './newerFields';
-import { createBoard, type SolverBoard } from './techniques';
+import type { SolverBoard } from './techniques';
 import type {
   Assists,
   Difficulty,
@@ -48,6 +48,17 @@ import type {
  * Every hint about a cell is remembered with the cell (see
  * `RememberedHints`): selecting the cell again shows it again, and asking
  * for it again costs nothing, until the cell no longer needs it.
+ *
+ * Hint and Show me reason from the candidates the player has (see
+ * `hintBoardOf`): the automatic ones less their strikes, or their own notes,
+ * a cell with none counting as having every candidate. A cell whose answer
+ * is missing from those gets a hint of its own (`struck`), remembered while
+ * the player's marks on the cell stay as they were. Nothing the hint bar
+ * shows unasked may turn on candidates the solution has not been held to
+ * since they changed — that would say, for free, whether the answer is
+ * among them — so a remembered hint is put afresh from the candidates as
+ * they stood at the last fill hint (`checkedCandidates`, see
+ * `checkedBoardOf`), never from the player's latest.
  *
  * "Check guesses when entered" (`checkGuesses`) marks a wrong number wrong
  * the moment it is typed, with the mark a Check gives, but no Check taken
@@ -86,11 +97,22 @@ export type FillHint = Extract<Hint, { kind: 'single' | 'deduction' }>;
 /** A hint that a placed value is wrong. */
 export type MistakeHint = Extract<Hint, { kind: 'mistake' }>;
 
+/** A hint that an empty cell's answer is missing from the player's candidates. */
+export type StruckHint = Extract<Hint, { kind: 'struck' }>;
+
+/** A cell's remembered wrong-marks hint (see `RememberedHints.struck`). */
+export interface RememberedStruck {
+  hint: StruckHint;
+  /** Whether its "Show me" — which names the missing digit — has been opened, so that opening it again is free. */
+  walkthrough: boolean;
+}
+
 /**
  * What the game remembers of the hints one cell has had, so that selecting
  * the cell shows them again rather than the player having to ask — and be
  * counted — again. At most one is on show at a time: the mistake hint needs
- * a value in the cell, the fill hint an empty cell (see `rememberedHint`).
+ * a value in the cell, the wrong-marks and fill hints an empty cell, the
+ * wrong-marks hint first (see `rememberedHint`).
  */
 export interface RememberedHints {
   /**
@@ -110,6 +132,18 @@ export interface RememberedHints {
    * again is free. It goes with the fill hint.
    */
   walkthrough: boolean;
+  /**
+   * The newest wrong-marks hint for the cell — its answer missing from the
+   * player's candidates — and its Show me. On show while the cell is empty,
+   * before the fill hint. Kept, so that asking again is free, only while the
+   * player's marks on the cell — its notes and its struck-out automatic
+   * candidates — and the switch between the two stay as they were when it
+   * was given: forgotten at any change to them, whatever the change. Were it
+   * kept while the answer stayed missing, a free Hint after putting back one
+   * digit would say whether that digit was the answer — so each such probe
+   * is counted, as a new mistake hint is for each value tried in a cell.
+   */
+  struck: RememberedStruck | null;
 }
 
 export interface UndoEntry {
@@ -154,6 +188,16 @@ export interface GameState {
    * replaying moves is not asking again.
    */
   cellHints: ReadonlyMap<number, RememberedHints>;
+  /**
+   * Each cell's candidates (see `hintBoardOf`; 0 for a filled cell) when a
+   * fill hint was last given with every answer among them and every placed
+   * digit right — which the player learns from being given one, as Hint
+   * points at a wrong digit or a missing answer first. What the hint bar
+   * puts a remembered hint afresh from (see `checkedBoardOf`). Null until
+   * then, and after a Reset; Undo and Redo leave it, as they leave the
+   * remembered hints.
+   */
+  checkedCandidates: Uint16Array | null;
 }
 
 export interface NewGameOptions {
@@ -194,9 +238,10 @@ export type GameAction =
    */
   | { type: 'hint'; hint: Hint }
   /**
-   * Open "Show me" — the walkthrough — for a cell's fill hint. Counted as a
-   * hint the first time for that cell, and free after that. Ignored unless
-   * the cell has a fill hint on show (it is empty and has had one).
+   * Open "Show me" for a cell's hint: the walkthrough of its fill hint, or,
+   * while it has a wrong-marks hint, the page that names the missing digit.
+   * Counted as a hint the first time for that hint, and free after that.
+   * Ignored unless the cell is empty and has had one of them.
    */
   | { type: 'walkthrough'; index: number }
   | { type: 'check'; scope: 'cell' | 'puzzle' }
@@ -214,7 +259,12 @@ const NO_ENTRIES: readonly UndoEntry[] = [];
 const NO_CELL_HINTS: ReadonlyMap<number, RememberedHints> = new Map();
 
 /** A cell that has had no hint. Frozen, as `EMPTY_CELL` is. */
-const NO_HINTS = Object.freeze<RememberedHints>({ fill: null, mistake: null, walkthrough: false });
+const NO_HINTS = Object.freeze<RememberedHints>({
+  fill: null,
+  mistake: null,
+  walkthrough: false,
+  struck: null,
+});
 
 /**
  * The state of every untouched empty cell. Shared, and frozen so that a stray
@@ -331,6 +381,37 @@ function computedCandidates(cells: readonly CellState[], index: number): number 
   return ALL_DIGITS & ~seen;
 }
 
+/**
+ * The candidates the player has in an empty cell, given its `computed` ones:
+ * in auto candidate mode, the computed candidates less those struck out;
+ * otherwise the player's own notes, taken as the cell's whole list of
+ * candidates, less any a placed digit now rules out — and for a cell with no
+ * notes at all, every computed candidate: a cell not yet looked at is not a
+ * cell with nothing left. 0 for a filled cell.
+ */
+function playerCandidates(cell: CellState, computed: number, autoCandidates: boolean): number {
+  if (cell.value !== 0) return 0;
+  if (autoCandidates) return computed & ~cell.autoRemoved;
+  return cell.notes === 0 ? computed : cell.notes & computed;
+}
+
+/** One cell's share of `hintBoardOf`'s candidates. */
+function candidatesAt(cells: readonly CellState[], autoCandidates: boolean, index: number): number {
+  return playerCandidates(cells[index], computedCandidates(cells, index), autoCandidates);
+}
+
+/** Whether an empty cell's answer is missing from the player's candidates (see `playerCandidates`). */
+function isAnswerMissing(
+  cells: readonly CellState[],
+  autoCandidates: boolean,
+  index: number,
+  answer: number,
+): boolean {
+  return (
+    cells[index].value === 0 && (candidatesAt(cells, autoCandidates, index) & bit(answer)) === 0
+  );
+}
+
 function withAutoCandidates(assists: Assists): Assists {
   return assists.autoCandidates ? assists : { ...assists, autoCandidates: true };
 }
@@ -357,28 +438,67 @@ function setCellHints(
 
 /**
  * What is still worth remembering of a cell's hints now that it holds
- * `value`: the fill hint until the cell holds its solution digit, the
- * mistake hint while it holds the value it was about, and "Show me" with the
- * fill hint. The entry itself when nothing has gone; null when everything has.
+ * `value`, its answer missing from the player's candidates or not
+ * (`isMissing`, never for a filled cell): the fill hint until the cell holds
+ * its solution digit, the mistake hint while it holds the value it was
+ * about, "Show me" with the fill hint, and the wrong-marks hint, with its
+ * own Show me, while the answer is missing. The entry itself when nothing has
+ * gone; null when everything has.
  */
-function liveHints(entry: RememberedHints, value: number, answer: number): RememberedHints | null {
+function liveHints(
+  entry: RememberedHints,
+  value: number,
+  answer: number,
+  isMissing: boolean,
+): RememberedHints | null {
   const fill = value === answer ? null : entry.fill;
   const mistake = entry.mistake?.value === value ? entry.mistake : null;
-  if (fill === null && mistake === null) return null;
+  const struck = isMissing ? entry.struck : null;
+  if (fill === null && mistake === null && struck === null) return null;
   const walkthrough = entry.walkthrough && fill !== null;
   const isUnchanged =
-    fill === entry.fill && mistake === entry.mistake && walkthrough === entry.walkthrough;
-  return isUnchanged ? entry : { fill, mistake, walkthrough };
+    fill === entry.fill &&
+    mistake === entry.mistake &&
+    walkthrough === entry.walkthrough &&
+    struck === entry.struck;
+  return isUnchanged ? entry : { fill, mistake, walkthrough, struck };
 }
 
-/** Forget the remembered hints the cells no longer need (see `liveHints`), after their values change. */
-function forgetSpentHints(state: GameState): GameState {
+/**
+ * Forget the remembered hints the cells no longer need (see `liveHints`),
+ * after their values or marks change, or the candidates on show switch
+ * between the automatic ones and the notes — a wrong-marks hint at any
+ * change to its cell's marks, or that switch, whatever the change (see
+ * `RememberedHints.struck`), so that whether it goes says nothing of the
+ * answer.
+ */
+function forgetSpentHints(before: GameState, state: GameState): GameState {
+  const isSwitched = before.autoCandidates !== state.autoCandidates;
   let cellHints = state.cellHints;
   for (const [index, entry] of state.cellHints) {
-    const live = liveHints(entry, state.cells[index].value, solutionDigit(state.puzzle, index));
-    cellHints = setCellHints(cellHints, index, live);
+    const answer = solutionDigit(state.puzzle, index);
+    const cell = state.cells[index];
+    const was = before.cells[index];
+    const isAsMarked =
+      !isSwitched && cell.notes === was.notes && cell.autoRemoved === was.autoRemoved;
+    const isMissing =
+      isAsMarked && isAnswerMissing(state.cells, state.autoCandidates, index, answer);
+    cellHints = setCellHints(cellHints, index, liveHints(entry, cell.value, answer, isMissing));
   }
   return cellHints === state.cellHints ? state : { ...state, cellHints };
+}
+
+/**
+ * Whether the board, as the player has it, is one every hint and Show me is
+ * sound on: every placed digit right, and every empty cell's answer among
+ * its candidates (see `findHint`).
+ */
+function isSoundBoard(state: GameState): boolean {
+  return state.cells.every((cell, index) => {
+    const answer = solutionDigit(state.puzzle, index);
+    if (cell.value !== 0) return cell.value === answer;
+    return !isAnswerMissing(state.cells, state.autoCandidates, index, answer);
+  });
 }
 
 /**
@@ -636,20 +756,36 @@ function showHint(state: GameState, hint: Hint): GameState {
   const { index } = hint;
   const cell = state.cells[index];
   const entry = state.cellHints.get(index) ?? NO_HINTS;
+  const answer = solutionDigit(state.puzzle, index);
+  const isMissing = isAnswerMissing(state.cells, state.autoCandidates, index, answer);
   // A hint the cell has had already is shown again for free; only a new one
   // counts. A remembered mistake hint is always about the value the cell
-  // holds now (it is forgotten when that changes), so another is no news.
-  const isNew = hint.kind === 'mistake' ? entry.mistake === null : entry.fill === null;
+  // holds now (it is forgotten when that changes), so another is no news;
+  // nor is another wrong-marks hint while the answer is still missing.
+  const isNew =
+    hint.kind === 'mistake'
+      ? entry.mistake === null
+      : hint.kind === 'struck'
+        ? entry.struck === null
+        : entry.fill === null;
   let remembered = entry;
-  if (hint.kind !== 'mistake') remembered = { ...entry, fill: hint };
+  if (hint.kind === 'struck') {
+    if (entry.struck === null) remembered = { ...entry, struck: { hint, walkthrough: false } };
+  } else if (hint.kind !== 'mistake') remembered = { ...entry, fill: hint };
   else if (isMistake(state, index)) remembered = { ...entry, mistake: { hint, value: cell.value } };
-  const live = liveHints(remembered, cell.value, solutionDigit(state.puzzle, index));
+  const live = liveHints(remembered, cell.value, answer, isMissing);
+  // A fill hint is given only on a sound board (see `findHint`), so being
+  // given one tells the player their candidates hold every answer: the
+  // remembered hints may be put afresh from these ones, not from later.
+  const isFill = hint.kind === 'single' || hint.kind === 'deduction';
   const next: GameState = {
     ...state,
     hint,
     selected: index,
     cellHints: setCellHints(state.cellHints, index, live),
     assists: isNew ? withHint(state.assists) : state.assists,
+    checkedCandidates:
+      isFill && isSoundBoard(state) ? hintBoardOf(state).candidates : state.checkedCandidates,
   };
   // A mistake is marked as Check would mark it — NYT's slash — so the clue
   // outlives the hint bar, which goes with the next key press. Like a check's
@@ -662,10 +798,24 @@ function showHint(state: GameState, hint: Hint): GameState {
 
 function openWalkthrough(state: GameState, index: number): GameState {
   const entry = isCellIndex(index) ? state.cellHints.get(index) : undefined;
-  // "Show me" explains the fill hint on show, which needs an empty cell; it
-  // is counted once per cell.
-  if (entry === undefined || entry.fill === null || entry.walkthrough) return state;
-  if (state.cells[index].value !== 0) return state;
+  if (entry === undefined || state.cells[index].value !== 0) return state;
+  // While the answer is missing from the cell's candidates, "Show me" is the
+  // page that names it, counted once for as long as it stays missing.
+  const { struck } = entry;
+  if (struck !== null) {
+    if (struck.walkthrough) return state;
+    return {
+      ...state,
+      cellHints: setCellHints(state.cellHints, index, {
+        ...entry,
+        struck: { ...struck, walkthrough: true },
+      }),
+      assists: withHint(state.assists),
+    };
+  }
+  // Otherwise it explains the fill hint, which needs an empty cell; it is
+  // counted once per cell.
+  if (entry.fill === null || entry.walkthrough) return state;
   return {
     ...state,
     cellHints: setCellHints(state.cellHints, index, { ...entry, walkthrough: true }),
@@ -735,7 +885,8 @@ function reset(state: GameState): GameState {
     return state;
   }
   // Assists and the auto-candidate flag stay: help already taken stays on
-  // the record. The remembered hints go with the board they were about.
+  // the record. The remembered hints go with the board they were about, and
+  // so do the candidates they were put afresh from.
   return {
     ...state,
     cells: board,
@@ -743,6 +894,7 @@ function reset(state: GameState): GameState {
     undoStack: NO_ENTRIES,
     redoStack: NO_ENTRIES,
     cellHints: NO_CELL_HINTS,
+    checkedCandidates: null,
   };
 }
 
@@ -805,6 +957,7 @@ export function createGame(puzzle: Puzzle, options: NewGameOptions = {}): GameSt
     assists: { autoCandidates, hints: 0, checks: 0, reveals: 0 },
     hint: null,
     cellHints: NO_CELL_HINTS,
+    checkedCandidates: null,
   };
 }
 
@@ -820,9 +973,13 @@ export function reduce(state: GameState, action: GameAction): GameState {
   if (state.status === 'solved' && !ALLOWED_WHEN_SOLVED.has(action.type)) return state;
   let next = step(state, action);
   if (next === state) return next;
-  if (next.cells !== state.cells) {
-    if (next.checkGuesses && action.type === 'enter') next = markWrongGuesses(state, next);
-    next = forgetSpentHints(next);
+  if (next.cells !== state.cells && next.checkGuesses && action.type === 'enter') {
+    next = markWrongGuesses(state, next);
+  }
+  // The candidates a wrong-marks hint is about change with the cells, and
+  // with the switch between the automatic candidates and the notes.
+  if (next.cells !== state.cells || next.autoCandidates !== state.autoCandidates) {
+    next = forgetSpentHints(state, next);
   }
   // A hint describes the board it was asked about, so any change retires
   // it — bar opening "Show me" and switching Check guesses, which leave the
@@ -840,11 +997,44 @@ export function valuesOf(state: GameState): Uint8Array {
 
 /**
  * The board Hint and Show me reason from (see `findHint` and `explainCell`):
- * for now the placed digits and their naked candidates, never the player's
- * own notes or the candidates they struck out.
+ * the placed digits, and the candidates the player has — so that a step
+ * they have already taken is not the one a hint names again. In auto
+ * candidate mode, the computed candidates less the ones struck out (what the
+ * board draws); otherwise the player's own notes, taken as whole lists of
+ * candidates, less any a placed digit rules out, with a cell that has no
+ * notes counting as having every candidate the placed digits allow.
  */
 export function hintBoardOf(state: GameState): SolverBoard {
-  return createBoard(valuesOf(state));
+  const values = valuesOf(state);
+  const candidates = computeCandidates(values);
+  for (let i = 0; i < 81; i++) {
+    candidates[i] = playerCandidates(state.cells[i], candidates[i], state.autoCandidates);
+  }
+  return { values, candidates };
+}
+
+/**
+ * The board the hint bar puts a remembered hint afresh from, and decides
+ * whether to offer "Show me" by, without the solution: the placed digits,
+ * and the candidates the player had when the last fill hint was given (see
+ * `GameState.checkedCandidates`), less any a placed digit now rules out — or
+ * every candidate the placed digits allow, before there has been one.
+ *
+ * Never the player's latest candidates: a change to those since nobody
+ * checked them could take an answer out, and a bar that said something
+ * different for the answer than for any other digit — a single where there
+ * was a chain, Show me offered or not — would name it for free. Hint, which
+ * is free again for a cell that has had it, brings their latest in. A cell
+ * filled when they were taken counts as having every candidate.
+ */
+export function checkedBoardOf(state: GameState): SolverBoard {
+  const values = valuesOf(state);
+  const candidates = computeCandidates(values);
+  const checked = state.checkedCandidates;
+  if (checked !== null) {
+    for (let i = 0; i < 81; i++) if (checked[i] !== 0) candidates[i] &= checked[i];
+  }
+  return { values, candidates };
 }
 
 /** Candidates to draw per cell: auto mode → computeCandidates(values) & ~autoRemoved; manual → notes; 0 for filled cells. */
@@ -881,12 +1071,14 @@ export function isBoardFull(state: GameState): boolean {
 /**
  * The remembered hint on show for a cell, which the hint bar shows whenever
  * the cell is selected: its mistake hint while it holds the value that was
- * wrong, or its fill hint while it is empty. Null when it has neither.
+ * wrong; while it is empty, its wrong-marks hint if it has one, and
+ * otherwise its fill hint. Null when it has none of them.
  */
 export function rememberedHint(state: GameState, index: number): Hint | null {
   const entry = state.cellHints.get(index);
   if (entry === undefined) return null;
-  return state.cells[index].value === 0 ? entry.fill : (entry.mistake?.hint ?? null);
+  if (state.cells[index].value !== 0) return entry.mistake?.hint ?? null;
+  return entry.struck?.hint ?? entry.fill;
 }
 
 /**
@@ -912,6 +1104,12 @@ export interface SerialisedCellHints {
   mistake: number;
   /** Whether "Show me" has been opened for it. */
   walkthrough: boolean;
+  /**
+   * Its wrong-marks hint: whether its Show me has been opened. Written only
+   * when it has one, so a save without one is just as it was before there
+   * were any.
+   */
+  struck?: { walkthrough: boolean };
 }
 
 /**
@@ -966,6 +1164,13 @@ export interface SerialisedGame {
    * loads with it off.
    */
   checkGuesses?: true;
+  /**
+   * `GameState.checkedCandidates`: 81 masks. Written only when there are
+   * some; a save without them — every save from before there were any —
+   * loads with none, and the hint bar puts remembered hints afresh from the
+   * placed digits alone until the next fill hint.
+   */
+  checkedCandidates?: number[];
 }
 
 /**
@@ -1001,6 +1206,7 @@ export const SERIALISED_GAME_FIELDS = fieldsOf<SerialisedGame>({
   assists: true,
   cellHints: true,
   checkGuesses: true,
+  checkedCandidates: true,
 });
 
 /** The game as plain, JSON-safe data. */
@@ -1022,8 +1228,12 @@ export function serialiseGame(state: GameState): SerialisedGame {
       fill: entry.fill,
       mistake: entry.mistake?.value ?? 0,
       walkthrough: entry.walkthrough,
+      ...(entry.struck === null ? {} : { struck: { walkthrough: entry.struck.walkthrough } }),
     })),
     ...(state.checkGuesses ? { checkGuesses: true as const } : {}),
+    ...(state.checkedCandidates === null
+      ? {}
+      : { checkedCandidates: Array.from(state.checkedCandidates) }),
   };
 }
 
@@ -1089,16 +1299,43 @@ function readFillHint(data: unknown, index: number): FillHint | null {
 }
 
 /**
+ * A stored wrong-marks hint for cell `index`, rebuilt from its parts; null if
+ * there is none. Its Show me counts as opened only if stored as true.
+ */
+function readStruck(data: unknown, index: number): RememberedStruck | null {
+  if (!isRecord(data)) return null;
+  return { hint: { kind: 'struck', index }, walkthrough: data.walkthrough === true };
+}
+
+/**
+ * Stored `checkedCandidates`, as far as they can be trusted: 81 masks, each
+ * either 0 (a cell filled then) or holding its cell's answer — as every one
+ * did when it was taken. Null otherwise, which costs only the hint bar's
+ * putting remembered hints from the player's candidates until the next fill
+ * hint.
+ */
+function readCheckedCandidates(data: unknown, puzzle: Puzzle): Uint16Array | null {
+  if (!isMaskList(data)) return null;
+  const isSound = data.every(
+    (mask, i) => mask === 0 || (mask & bit(solutionDigit(puzzle, i))) !== 0,
+  );
+  return isSound ? Uint16Array.from(data) : null;
+}
+
+/**
  * The remembered hints, as far as they can be trusted. They decide nothing
  * about the board, so anything doubtful is dropped rather than the game
  * rejected — which costs only the chance to see that hint again for free.
  * A mistake hint is kept only for a cell that still holds that value, and it
- * wrong; and nothing is kept that the cell no longer needs (see `liveHints`).
+ * wrong; a wrong-marks hint only for a cell whose answer is still missing
+ * from its candidates; and nothing is kept that the cell no longer needs
+ * (see `liveHints`).
  */
 function readCellHints(
   data: unknown,
   cells: readonly CellState[],
   puzzle: Puzzle,
+  autoCandidates: boolean,
 ): ReadonlyMap<number, RememberedHints> {
   if (!Array.isArray(data)) return NO_CELL_HINTS;
   let cellHints = NO_CELL_HINTS;
@@ -1114,8 +1351,10 @@ function readCellHints(
       fill: readFillHint(item.fill, index),
       mistake: isMistaken ? { hint: { kind: 'mistake', index }, value: cell.value } : null,
       walkthrough: item.walkthrough === true,
+      struck: readStruck(item.struck, index),
     };
-    cellHints = setCellHints(cellHints, index, liveHints(entry, cell.value, answer));
+    const isMissing = isAnswerMissing(cells, autoCandidates, index, answer);
+    cellHints = setCellHints(cellHints, index, liveHints(entry, cell.value, answer, isMissing));
   }
   return cellHints;
 }
@@ -1148,8 +1387,8 @@ function readAssists(data: unknown): Assists | null {
  * Stored assists, raised to cover the help the board itself shows was taken —
  * help taken must never be lost, and a revealed game that loads as unassisted
  * could set a best time. Every revealed cell is a reveal; every remembered
- * hint, and every "Show me" opened, was counted once when it was first
- * shown; a cell checked correct means at least one check, and so does one
+ * hint, and every "Show me" opened (a wrong-marks hint's included), was
+ * counted once when it was first shown; a cell checked correct means at least one check, and so does one
  * marked wrong unless a hint accounts for it (a hint marks the mistake it
  * points at the same way) or "Check guesses when entered" was on (it marks a
  * wrong digit as it goes in, with no Check taken); Check guesses on now means
@@ -1165,8 +1404,9 @@ function reconcileAssists(
 ): Assists {
   const reveals = cells.filter((cell) => cell.mark === 'revealed').length;
   let remembered = 0;
-  for (const { fill, mistake, walkthrough } of cellHints.values()) {
+  for (const { fill, mistake, walkthrough, struck } of cellHints.values()) {
     remembered += Number(fill !== null) + Number(mistake !== null) + Number(walkthrough);
+    remembered += Number(struck !== null) + Number(struck?.walkthrough === true);
   }
   const hints = Math.max(assists.hints, remembered);
   const isGuessChecked = assists.checkGuesses === true || checkGuesses;
@@ -1238,7 +1478,7 @@ export function deserialiseGame(data: unknown): GameState | null {
 
   const autoCandidates = data.autoCandidates === true;
   const checkGuesses = data.checkGuesses === true;
-  const cellHints = readCellHints(data.cellHints, cells, puzzle);
+  const cellHints = readCellHints(data.cellHints, cells, puzzle, autoCandidates);
   return {
     puzzle,
     cells,
@@ -1252,5 +1492,6 @@ export function deserialiseGame(data: unknown): GameState | null {
     assists: reconcileAssists(assists, cells, autoCandidates, checkGuesses, cellHints),
     hint: null,
     cellHints,
+    checkedCandidates: readCheckedCandidates(data.checkedCandidates, puzzle),
   };
 }

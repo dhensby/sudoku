@@ -62,7 +62,8 @@ import type {
  *             guesses when entered" on and 2760 off (added after the
  *             others, with no new rules version: see below).
  *           A hint adds 2 chars: its kind, technique and unit, from the fixed
- *           table below (`describeHint`).
+ *           table below (`describeHint`). Show me (29) opens a cell's
+ *           wrong-marks hint's page while it has one, else its walkthrough.
  *           Then the time since the previous move (or the start), in 100 ms
  *           units, as a base-32 varint: 5 bits a char, least significant
  *           first, with the char's sixth bit set while more follow.
@@ -201,6 +202,13 @@ const MISTAKE_HINT = 0;
 
 /** A hint's descriptor: a deduction with no technique to name. */
 const UNNAMED_DEDUCTION = 1;
+
+/**
+ * A hint's descriptor: a cell's answer missing from the player's candidates.
+ * Added after the others, in a code no build before it reads, so it needed
+ * no new rules version.
+ */
+const STRUCK_HINT = 21;
 
 /** A deduction hint's descriptor, by the hardest technique it took. */
 const DEDUCTION_CODE: Readonly<Record<TechniqueId, number>> = {
@@ -343,6 +351,7 @@ function isDigit(digit: unknown): digit is Digit {
  */
 function describeHint(hint: LoggedHint): number | null {
   if (hint.kind === 'mistake') return MISTAKE_HINT;
+  if (hint.kind === 'struck') return STRUCK_HINT;
   if (hint.kind === 'deduction') {
     if (hint.technique === null) return UNNAMED_DEDUCTION;
     return DEDUCTION_CODES.get(hint.technique) ?? null;
@@ -363,6 +372,7 @@ function describeHint(hint: LoggedHint): number | null {
 function hintFor(descriptor: number, index: number): LoggedHint | null {
   if (descriptor === MISTAKE_HINT) return { kind: 'mistake', index };
   if (descriptor === UNNAMED_DEDUCTION) return { kind: 'deduction', index, technique: null };
+  if (descriptor === STRUCK_HINT) return { kind: 'struck', index };
   const deduction = DEDUCTIONS_BY_CODE.get(descriptor);
   if (deduction !== undefined) return { kind: 'deduction', index, technique: deduction };
   // Below the singles' base this is negative, and so is the technique code.
@@ -395,12 +405,15 @@ function loggedHint(hint: LoggedHint): LoggedHint {
 
 /**
  * Whether "Show me" for `index` opens — charged or not — as `openWalkthrough`
- * in the reducer decides: an empty cell with a fill hint remembered. (A solved
- * game, where the reducer allows no Show me, has no empty cell.)
+ * in the reducer decides: an empty cell with a fill hint or a wrong-marks
+ * hint remembered. (A solved game, where the reducer allows no Show me, has
+ * no empty cell.)
  */
 function opensWalkthrough(state: GameState, index: number): boolean {
   if (!isCellIndex(index) || state.cells[index].value !== 0) return false;
-  return (state.cellHints.get(index)?.fill ?? null) !== null;
+  // What an empty cell remembers is one or both of those: a mistake hint
+  // goes with the value it was about.
+  return state.cellHints.has(index);
 }
 
 /** An empty log for a game created with `options` (see `createGame`). */
@@ -813,12 +826,17 @@ function fillKey(hint: FillHint | null): string {
   return `${hint.kind}/${hint.index}/${hint.technique}/${unit}`;
 }
 
+function struckKey(struck: RememberedHints['struck']): string {
+  return struck === null ? '' : `struck/${struck.walkthrough}`;
+}
+
 function isSameHints(a: RememberedHints, b: RememberedHints | undefined): boolean {
   return (
     b !== undefined &&
     a.walkthrough === b.walkthrough &&
     (a.mistake?.value ?? 0) === (b.mistake?.value ?? 0) &&
-    fillKey(a.fill) === fillKey(b.fill)
+    fillKey(a.fill) === fillKey(b.fill) &&
+    struckKey(a.struck) === struckKey(b.struck)
   );
 }
 

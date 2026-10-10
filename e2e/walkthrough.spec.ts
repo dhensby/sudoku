@@ -1,10 +1,14 @@
 import { expect, test, type Page } from '@playwright/test';
-import { STUCK_ON_A_HIDDEN_PAIR } from '../src/test/logic-fixtures';
+import { STUCK_ON_AN_XY_CHAIN, STUCK_ON_A_HIDDEN_PAIR } from '../src/test/logic-fixtures';
 import {
   arrowTo,
+  cell,
   chooseMore,
+  ensureNormalMode,
   getStuck,
+  getStuckOnAnXyChain,
   grid,
+  modeButton,
   openHeaderDialog,
   readTimer,
   resumeButton,
@@ -50,8 +54,8 @@ const walkthrough = (page: Page) =>
   page.getByRole('dialog', { name: 'How to solve row 5, column 2' });
 const stepHeading = (page: Page) => walkthrough(page).getByRole('heading', { level: 3 });
 
-/** The help the game on screen has taken, as History lists it, is `help`. */
-async function expectHelpUsed(page: Page, help: string): Promise<void> {
+/** The help the game on screen has taken, as History lists it, is (or matches) `help`. */
+async function expectHelpUsed(page: Page, help: string | RegExp): Promise<void> {
   await openHeaderDialog(page, 'History');
   const history = page.getByRole('dialog', { name: 'History' });
   await expect(history.getByRole('list', { name: 'Help used' })).toHaveText(help);
@@ -219,4 +223,76 @@ test('a hinted cell’s hint is put afresh as the board moves on, agreeing with 
   await waitForPlaying(page);
   // Put afresh, not asked for again: the hint and Show me, once each.
   await expectHelpUsed(page, '2 hints');
+});
+
+test.describe('hints from your own candidates', () => {
+  // The report that asked for them (see `getStuckOnAnXyChain`), in Auto
+  // Candidate Mode: row 2, column 1, whose answer is 9.
+  const { target, strikes } = STUCK_ON_AN_XY_CHAIN;
+  const at = (row: number, col: number) => (row - 1) * 9 + col - 1;
+  const showMeFor = (page: Page) =>
+    page.getByRole('button', { name: 'Show me how to solve row 2, column 1' });
+  const stepsFor = (page: Page) =>
+    page.getByRole('dialog', { name: 'How to solve row 2, column 1' });
+
+  test('Show me moves on once the box/line reduction it starts with is taken', async ({ page }) => {
+    await getStuckOnAnXyChain(page);
+    await chooseMore(page, 'Hint');
+    expect(await selectedIndex(page)).toBe(target);
+    await showMeFor(page).click();
+    await expect(stepsFor(page).getByRole('heading', { level: 3 })).toHaveAccessibleName(
+      'Step 1 of 7: Box/line reduction',
+    );
+    await page.keyboard.press('Escape');
+    await waitForPlaying(page);
+
+    // Its first step taken: the 2s struck from row 8, column 9 and row 9, column 9.
+    await modeButton(page, 'Candidate').click();
+    await typeDigits(
+      page,
+      strikes.map(([row, col, digit]) => ({ index: at(row, col), digit })),
+    );
+    await ensureNormalMode(page);
+    await selectCell(page, target);
+    await showMeFor(page).click();
+    const heading = stepsFor(page).getByRole('heading', { level: 3 });
+    await expect(heading).toHaveAccessibleName('Step 1 of 6: Hidden triple');
+    // The chain rests on a 2 the player struck, and says so.
+    for (let step = 1; step < 5; step++) {
+      await stepsFor(page)
+        .getByRole('button', { name: /^Next:/ })
+        .click();
+    }
+    await expect(heading).toHaveAccessibleName('Step 5 of 6: XY-Chain');
+    await expect(stepsFor(page).getByRole('img')).toHaveAccessibleName(
+      /You'd already ruled out 2 from row 9, column 9\./,
+    );
+  });
+
+  test('a struck answer gets a hint of its own, and Show me names it and puts it back', async ({
+    page,
+  }) => {
+    await getStuckOnAnXyChain(page);
+    // The 9 struck out of row 2, column 1: its answer.
+    await modeButton(page, 'Candidate').click();
+    await typeDigits(page, [{ index: target, digit: 9 }]);
+    await ensureNormalMode(page);
+    await chooseMore(page, 'Hint');
+    await expect(hintBar(page)).toHaveText(
+      "This cell is missing a candidate that can't be ruled out yet. Show me",
+    );
+    expect(await selectedIndex(page)).toBe(target);
+
+    await page.getByRole('button', { name: "Show me what's missing in row 2, column 1" }).click();
+    const page9 = page.getByRole('dialog', { name: 'Why row 2, column 1 can still be 9' });
+    await expect(page9.getByRole('img')).toHaveAccessibleName(
+      "There's no 9 in row 2, in column 1 or in box 1, and no pattern among the candidates " +
+        'rules a 9 out of row 2, column 1.',
+    );
+    await page9.getByRole('button', { name: 'Put the 9 back' }).click();
+    await waitForPlaying(page);
+    await expect(cell(page, target)).toHaveAccessibleName(/^empty, candidates( \d)* 9$/);
+    // Asked for once, and Show me once: two hints, as History lists them.
+    await expectHelpUsed(page, /^Auto candidates.*2 hints$/);
+  });
 });

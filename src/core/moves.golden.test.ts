@@ -58,6 +58,7 @@ describe('the golden move logs', () => {
         'hint: deduction',
         'hint: mistake',
         'hint: single',
+        'hint: struck',
         'place',
         'place, clearing peers',
         'redo',

@@ -142,6 +142,26 @@
         "redo": 0
       },
       "trace": "75b3efc2"
+    },
+    {
+      "name": "Expert, hints from the player’s own candidates, and the wrong-marks hint",
+      "givens": "400150830000002000008640097000020000609000070073000480000000305310000900000400060",
+      "solution": "467159832935782146128643597841327659659814273273965481784296315316578924592431768",
+      "difficulty": "expert",
+      "log": "BBBkqB32BI0EjzCUFC5EjmBvHCsxBkoB2RDuHkFALPEcfj9ALeG2HjlASOZKEZTFjlASoBk2JcUQgHEXS4BcWYgJ7BXVEjlASFgOEjlASEYENcSJY6bZMLc_QjlASvBYVsBYvbjlASVg7IiHLjlBvEKR1BeaEjeAVdjeAVPYFKjeAVEkvPkvEeaEjdAVNdIIjdAVEpy0BohQjdAVGdIJpyFed0BjhAVFg_HGWEHoGKNeBZEFPEHyFJEEAPQEDnBGmFASdBkFFcFJSWEPFAdEDAGIG6BFmWKrEFpfJeIAoJB7FDOKB-EK4xBHGKF2vBA1lBIcXJunBErFCKKLCgBHQGA9kBHWJGGEIpvBJ7FCXEE6EGMELRSCbLBNEKHEjBv",
+      "end": {
+        "values": "467159832935782146128643597841327659659814273273965481784296315316578924592431768",
+        "marks": ".................................................................................",
+        "notes": "5:79",
+        "autoRemoved": "1:29 2:2 18:2 28:5 30:58 32:158 35:1 37:8 44:2 55:2 71:2 73:25 77:9 80:2",
+        "autoCandidates": false,
+        "status": "solved",
+        "assists": "auto:true hints:15 checks:0 reveals:0",
+        "cellHints": "",
+        "undo": 83,
+        "redo": 0
+      },
+      "trace": "95ca8a71"
     }
   ]
 }

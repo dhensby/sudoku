@@ -483,10 +483,53 @@ describe('TechniqueDiagram', () => {
       expect(screen.getByText('Removed in an earlier step')).toBeInTheDocument();
     });
 
+    it('crosses out level, as faintly, what the player had ruled out, and keys it as theirs', () => {
+      const yours = [
+        { index: 32, mask: bit(5) },
+        { index: 50, mask: bit(2) },
+      ];
+      const { layer } = drawStep(1, { yours });
+      const ghosts = layer('ruled-out')!;
+      const texts = [...ghosts.querySelectorAll('text')];
+      expect(texts.map(cellOf)).toEqual([32]);
+      expect(texts[0]).toHaveAttribute('data-mark', 'ruled-out');
+      const line = ghosts.querySelector('g[data-by="you"] line')!;
+      expect(line.getAttribute('y1')).toBe(line.getAttribute('y2'));
+      expect(screen.getByText('Ruled out by you')).toBeInTheDocument();
+      expect(screen.queryByText('Removed in an earlier step')).not.toBeInTheDocument();
+    });
+
+    it('draws and keys the player’s and the earlier steps’ apart when it draws both', () => {
+      const other = steps[1].values.findIndex((value, i) => value === 0 && i !== 32);
+      const { container, layer } = drawStep(1, {
+        ruledOut: [{ index: 32, mask: bit(5) }],
+        yours: [{ index: other, mask: bit(5) }],
+        yoursLabel: 'Not in your notes',
+      });
+      const ghosts = layer('ruled-out')!;
+      // An earlier step's is a slash, the player's level: two shapes.
+      const step = ghosts.querySelector('g[data-by="step"] line')!;
+      const theirs = ghosts.querySelector('g[data-by="you"] line')!;
+      expect(step.getAttribute('y1')).not.toBe(step.getAttribute('y2'));
+      expect(theirs.getAttribute('y1')).toBe(theirs.getAttribute('y2'));
+      expect(screen.getByText('Removed in an earlier step')).toBeInTheDocument();
+      expect(screen.getByText('Not in your notes')).toBeInTheDocument();
+      // And so are their swatches in the key.
+      const swatches = [...container.querySelectorAll('.technique-diagram__ruled-out-swatch')];
+      expect(swatches.map((swatch) => swatch.getAttribute('data-by'))).toEqual(['step', 'you']);
+    });
+
+    it('names the marked cell as it is asked to', () => {
+      drawStep(0, { targetLabel: 'The cell missing it' });
+      expect(screen.getByText('The cell missing it')).toBeInTheDocument();
+      expect(screen.queryByText('The cell being solved')).not.toBeInTheDocument();
+    });
+
     it('says nothing of earlier steps when none is drawn', () => {
       const { layer } = drawStep(1);
       expect(layer('ruled-out')!.childElementCount).toBe(0);
       expect(screen.queryByText('Removed in an earlier step')).not.toBeInTheDocument();
+      expect(screen.queryByText('Ruled out by you')).not.toBeInTheDocument();
     });
 
     it('frames the answer inside the corner marks when it is written in the cell being solved', () => {

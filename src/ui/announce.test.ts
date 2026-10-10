@@ -293,6 +293,9 @@ describe('describeChange', () => {
 
     it('have no cell to point at once the puzzle is complete', () => {
       expect(spoken({ type: 'hint', hint: { kind: 'none' } })).toBe('The puzzle is complete.');
+      expect(spoken({ type: 'hint', hint: { kind: 'struck', index: R1C3 } })).toBe(
+        "This cell is missing a candidate that can't be ruled out yet. Row 1, column 3.",
+      );
     });
   });
 
@@ -348,6 +351,8 @@ describe('describeChange', () => {
 describe('describeHint', () => {
   it.each<[Hint, string]>([
     [{ kind: 'mistake', index: 4 }, 'This number is incorrect.'],
+    // Kind, and no digit: which candidate is missing stays the player's to find.
+    [{ kind: 'struck', index: 4 }, "This cell is missing a candidate that can't be ruled out yet."],
     [
       { kind: 'single', index: 4, technique: 'fullHouse', unit: { kind: 'row', index: 3 } },
       'Full house: row 4 has one cell left.',

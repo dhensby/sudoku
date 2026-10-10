@@ -13,6 +13,7 @@ import {
   emptyCells,
   getStuck,
   gotoPuzzle,
+  leaveOutAnAnswer,
   modeButton,
   openHeaderDialog,
   seedHistory,
@@ -29,9 +30,10 @@ import {
  * Accessibility, checked by machine: axe-core runs its WCAG 2.2 A and AA
  * rules over the states a player meets — the board in play with every kind
  * of mark on it, the Ready and Paused cards, the "…" menu, every dialog (each
- * step of Show me among them) and each entry of the technique guide — in the
- * light theme and the dark (and the main ones in High contrast), and
- * each must come back with no violations at all, with no rule switched off.
+ * step of Show me, and the Show me of a missing candidate, among them) and
+ * each entry of the technique guide — in the light theme and the dark (and
+ * the main ones in High contrast), and each must come back with no
+ * violations at all, with no rule switched off.
  * Contrast is the rule that a palette change is likeliest to break:
  * contrast.test.ts holds the tokens to their targets pair by pair, and this
  * is the check that the rendered page, every colour composed, agrees.
@@ -262,6 +264,17 @@ for (const scheme of ['light', 'dark'] as const) {
         await expectAccessible(page, `step ${step} of Show me`);
         if (step < 3) await walkthrough.getByRole('button', { name: /^Next:/ }).click();
       }
+    });
+
+    test('a hint about a missing candidate, and the Show me that names it', async ({ page }) => {
+      await leaveOutAnAnswer(page);
+      await chooseMore(page, 'Hint');
+      const show = page.getByRole('button', { name: /^Show me what's missing in/ });
+      await expect(show).toBeVisible();
+      await expectAccessible(page, 'a hint about a missing candidate');
+      await show.click();
+      await expect(dialog(page, 'Why row 5, column 2 can still be 8')).toBeVisible();
+      await expectAccessible(page, 'the Show me of a missing candidate');
     });
 
     test('the Ready and Paused cards', async ({ page }) => {
@@ -579,6 +592,21 @@ test.describe('on a phone', () => {
         await expectAccessible(page, `step ${step} of Show me`);
         if (step < 3) await walkthrough.getByRole('button', { name: /^Next:/ }).click();
       }
+    });
+  }
+
+  for (const scheme of ['light', 'dark'] as const) {
+    test(`the Show me of a missing candidate as a bottom sheet, in the ${scheme} theme`, async ({
+      page,
+    }) => {
+      await page.emulateMedia({ colorScheme: scheme });
+      await leaveOutAnAnswer(page);
+      await expectScheme(page, scheme);
+      await chooseMore(page, 'Hint');
+      await expectAccessible(page, 'a hint about a missing candidate');
+      await page.getByRole('button', { name: /^Show me what's missing in/ }).click();
+      await expect(dialog(page, 'Why row 5, column 2 can still be 8')).toBeVisible();
+      await expectAccessible(page, 'the Show me of a missing candidate');
     });
   }
 

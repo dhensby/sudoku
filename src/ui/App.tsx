@@ -22,6 +22,7 @@ import {
   HistoryDialog,
   SettingsDialog,
   ShareDialog,
+  StruckDialog,
   TechniquesDialog,
   WalkthroughDialog,
 } from './dialogs';
@@ -284,7 +285,11 @@ export function App({ options }: AppProps = {}) {
   // A hint points at a cell; with the board hidden there is none to see.
   // Behind the guide and "Show me" it stays, under the scrim, so they can
   // give focus back to the button in it that opened them.
-  const isHintShown = isPlaying || dialog?.kind === 'techniques' || dialog?.kind === 'walkthrough';
+  const isHintShown =
+    isPlaying ||
+    dialog?.kind === 'techniques' ||
+    dialog?.kind === 'walkthrough' ||
+    dialog?.kind === 'struck';
   // A cell's remembered hint, shown again as the cell is selected again, is
   // not spoken: the cell's description carries it, read as focus arrives,
   // and only then — the status region would repeat it at every cell the
@@ -367,7 +372,7 @@ export function App({ options }: AppProps = {}) {
               <HintBar
                 hint={isHintShown ? sudoku.shownHint : null}
                 textId={hintTextId}
-                onShowMe={sudoku.walkthrough === null ? null : actions.showMe}
+                onShowMe={sudoku.isShowMeOffered ? actions.showMe : null}
                 notice={sudoku.notice}
                 onDismissNotice={actions.dismissNotice}
                 onOpenGuide={actions.openTechniques}
@@ -459,6 +464,18 @@ export function App({ options }: AppProps = {}) {
             initialStep={dialog.step}
             charge={dialog.charge ?? null}
             onOpenGuide={actions.openTechniques}
+            autoCandidates={sudoku.game?.autoCandidates}
+            onClose={actions.closeDialog}
+          />
+        )}
+        {dialog?.kind === 'struck' && (
+          <StruckDialog
+            index={dialog.index}
+            digit={dialog.digit}
+            board={dialog.board}
+            autoCandidates={dialog.autoCandidates}
+            charge={dialog.charge ?? null}
+            onPutBack={actions.putBack}
             onClose={actions.closeDialog}
           />
         )}

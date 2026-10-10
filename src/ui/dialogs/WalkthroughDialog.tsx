@@ -10,12 +10,13 @@ import {
   GUIDE,
   creditsFor,
   guideIdFor,
+  ruledOutByYou,
   techniqueQuestion,
   walkthroughCaption,
   type GuideId,
 } from '../techniqueGuide';
 import { Dialog } from './Dialog';
-import { WALKTHROUGH_INTRO } from './text';
+import { walkthroughIntro } from './text';
 
 export interface WalkthroughDialogProps {
   /** The steps that solve the cell, from the board as it stands. */
@@ -32,6 +33,12 @@ export interface WalkthroughDialogProps {
   charge?: string | null;
   /** Open the guide at a step's technique; `step` is where to come back to. */
   onOpenGuide: (entry: GuideId, step: number) => void;
+  /**
+   * Whether the player's candidates are the automatic ones less their
+   * strikes, or their notes: the opening line says which. Off by default,
+   * as a new game is.
+   */
+  autoCandidates?: boolean;
   onClose: () => void;
 }
 
@@ -70,7 +77,7 @@ function Page({ direction, title, onClick }: PageProps) {
 
 /**
  * "Show me": the steps that solve one cell, one at a time, each drawn on the
- * real board as it stands at that step — the cell being solved marked on
+ * player's own board — their candidates — as it stands at that step — the cell being solved marked on
  * every one — with the guide's caption for its technique, a way into the
  * guide's entry for it, and, on the last, the answer.
  *
@@ -85,6 +92,7 @@ export function WalkthroughDialog({
   initialStep = 0,
   charge = null,
   onOpenGuide,
+  autoCandidates = false,
   onClose,
 }: WalkthroughDialogProps) {
   const { steps, target, digit } = walkthrough;
@@ -104,6 +112,8 @@ export function WalkthroughDialog({
   };
 
   const trace = steps[current];
+  // The first step's board is the player's own candidates.
+  const yours = ruledOutByYou(trace, steps[0]);
   const { technique } = trace.step;
   const isLast = current === steps.length - 1;
   const position = describePosition(target);
@@ -151,7 +161,7 @@ export function WalkthroughDialog({
         {/* Marked once the reader has moved on from it, so a phone on its
             side can give its lines to the step (see dialogs.css). */}
         <p className="walkthrough__intro" id={introId} data-read={current > 0 || undefined}>
-          {WALKTHROUGH_INTRO}
+          {walkthroughIntro(autoCandidates)}
           {charge !== null && (
             <>
               {' '}
@@ -186,11 +196,12 @@ export function WalkthroughDialog({
           </header>
           <TechniqueDiagram
             trace={trace}
-            caption={walkthroughCaption(trace, steps.slice(0, current))}
+            caption={walkthroughCaption(trace, steps.slice(0, current), yours)}
             target={target}
             ruledOut={creditsFor(trace.step, steps.slice(0, current)).flatMap(
               (credit) => credit.eliminations,
             )}
+            yours={yours}
             conclusion={
               isLast && (
                 <p className="walkthrough__answer">

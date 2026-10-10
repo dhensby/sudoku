@@ -464,6 +464,35 @@ describe('App', () => {
     });
   });
 
+  it('points at a candidate missing from a cell’s notes, names it on Show me, and pencils it in', async () => {
+    await startApp();
+    // A note of 2 alone in row 1, column 3: its answer, 4, left out.
+    fireEvent.click(screen.getByRole('button', { name: 'Candidate' }));
+    fireEvent.click(screen.getByRole('button', { name: '2' }));
+    expect(cells()[FIRST_EMPTY]).toHaveAccessibleName('empty, candidates 2');
+    fireEvent.click(screen.getByRole('button', { name: 'More' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Hint' }));
+    expect(document.querySelector('.hint-bar')).toHaveTextContent(
+      "This cell is missing a candidate that can't be ruled out yet. Show me",
+    );
+    expect(selectedCell()).toBe(cells()[FIRST_EMPTY]);
+
+    clickWithMouse(
+      screen.getByRole('button', { name: "Show me what's missing in row 1, column 3" }),
+    );
+    const page = screen.getByRole('dialog', { name: 'Why row 1, column 3 can still be 4' });
+    expect(screen.queryByRole('grid')).not.toBeInTheDocument();
+    // The hint stays behind it.
+    expect(document.querySelector('.hint-bar')).not.toBeEmptyDOMElement();
+    fireEvent.click(within(page).getByRole('button', { name: 'Pencil in the 4' }));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(cells()[FIRST_EMPTY]).toHaveAccessibleName('empty, candidates 2 4');
+    expect(screen.getByRole('status')).toHaveTextContent('Candidate 4 added.');
+    // Its cell's candidates changed: the hint has gone with it.
+    expect(document.querySelector('.hint-bar')).toBeEmptyDOMElement();
+  });
+
   it('opens the guide from the header, and from Help in place of Help', async () => {
     await startApp();
     fireEvent.click(screen.getByRole('button', { name: 'Solving techniques' }));

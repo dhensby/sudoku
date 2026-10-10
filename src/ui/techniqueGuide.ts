@@ -7,6 +7,7 @@ import {
   ROW,
   TECHNIQUE_TIER,
   bit,
+  computeCandidates,
   digitsOf,
   isPeer,
   reliance,
@@ -37,7 +38,9 @@ import { DIFFICULTY_LABEL, TECHNIQUE_LABEL, capitalise, joinList, withArticle } 
  *
  * The same captions walk through "Show me" (see `walkthroughCaption`), where
  * a step can rest on candidates that earlier steps of the walkthrough ruled
- * out — which no placed digit explains, so the caption credits the step.
+ * out — which no placed digit explains, so the caption credits the step —
+ * or that the player had ruled out before it began: a walkthrough starts
+ * from the player's own candidates.
  */
 
 /** An entry in the guide. The two hidden singles share one, as they share a name. */
@@ -91,10 +94,15 @@ export interface GuideEntry {
  * A step walked through in words, from the trace it was drawn from. Given
  * `earlier` — the steps before it in a walkthrough — it credits them with
  * what it relies on having been ruled out ("Step 1 removed 5 from row 4,
- * column 6."). Without it, as in the guide, the placed digits explain every
- * candidate.
+ * column 6."), and given `yours`, the player with what they had ruled out
+ * themselves ("You'd already ruled out 2 from …"; see `ruledOutByYou`).
+ * Without them, as in the guide, the placed digits explain every candidate.
  */
-export type Caption = (trace: TechniqueTrace, earlier?: readonly TechniqueTrace[]) => string;
+export type Caption = (
+  trace: TechniqueTrace,
+  earlier?: readonly TechniqueTrace[],
+  yours?: readonly Elimination[],
+) => string;
 
 /** The entries in the order the guide lists them: easiest first, as the grader tries them. */
 export const GUIDE_ORDER: readonly GuideId[] = [
@@ -296,23 +304,50 @@ export function creditsFor(step: SolveStep, earlier: readonly TechniqueTrace[]):
 }
 
 /**
- * The earlier steps a step relies on (see `creditsFor`), a sentence each:
- * "Step 1 removed 5 from row 4, column 6." The diagram shows the candidate
- * gone; this says where it went.
+ * What a step of a walkthrough relies on having been ruled out (see
+ * `reliance`) that the player had ruled out themselves before it began:
+ * candidates missing from `first` — the walkthrough's first step, whose
+ * board is the player's own candidates — that no placed digit explains,
+ * then or at this step. (The steps only ever remove what that board has,
+ * so nothing here is theirs.) None in the guide, whose examples are not
+ * the player's.
  */
-function credits(step: SolveStep, earlier: readonly TechniqueTrace[]): string {
-  return creditsFor(step, earlier)
-    .map((credit) => `Step ${credit.step + 1} removed ${removals(credit.eliminations)}.`)
-    .join(' ');
+export function ruledOutByYou(trace: TechniqueTrace, first: TechniqueTrace): Elimination[] {
+  const computed = computeCandidates(trace.values);
+  const gone = new Uint16Array(81);
+  for (const { index, mask } of reliance(trace.step).absent) {
+    gone[index] |= mask & computed[index] & ~first.candidates[index];
+  }
+  return Array.from(gone, (mask, index) => ({ index, mask })).filter(({ mask }) => mask !== 0);
+}
+
+/**
+ * The earlier steps a step relies on (see `creditsFor`), a sentence each:
+ * "Step 1 removed 5 from row 4, column 6." — and what the player had ruled
+ * out themselves (see `ruledOutByYou`): "You'd already ruled out 2 from
+ * column 9, rows 8 and 9." The diagram shows the candidate gone; this says
+ * where it went.
+ */
+function credits(
+  step: SolveStep,
+  earlier: readonly TechniqueTrace[],
+  yours: readonly Elimination[],
+): string {
+  const sentences = creditsFor(step, earlier).map(
+    (credit) => `Step ${credit.step + 1} removed ${removals(credit.eliminations)}.`,
+  );
+  if (yours.length > 0) sentences.push(`You'd already ruled out ${removals(yours)}.`);
+  return sentences.join(' ');
 }
 
 /**
  * A caption for a step that removes candidates, led by the earlier steps it
- * relies on (see `credits`). The singles credit them in their own words.
+ * relies on and what the player had ruled out (see `credits`). The singles
+ * credit them in their own words.
  */
 function credited(caption: (trace: TechniqueTrace) => string): Caption {
-  return (trace, earlier = []) =>
-    [credits(trace.step, earlier), caption(trace)].filter((part) => part !== '').join(' ');
+  return (trace, earlier = [], yours = []) =>
+    [credits(trace.step, earlier, yours), caption(trace)].filter((part) => part !== '').join(' ');
 }
 
 // ---- Captions ---------------------------------------------------------------
@@ -367,9 +402,45 @@ function blockersOf(
   return { blockers: blockers.sort((a, b) => a - b), unseen };
 }
 
+/**
+ * Why no other empty cell of a hidden single's house can take its digit,
+ * when the player had ruled the digit out of some of them (`yours`) — the
+ * placed copies they see, the steps they lost it in, and the player, as
+ * there are any of each — or null when the player had ruled out none.
+ */
+function hiddenReasonWithYours(
+  name: string,
+  digit: number,
+  blockers: readonly number[],
+  copies: string,
+  unseen: readonly number[],
+  earlier: readonly TechniqueTrace[],
+  yours: readonly Elimination[],
+): string | null {
+  const mine = unseen.filter((i) => yours.some((e) => e.index === i && e.mask & bit(digit)));
+  if (mine.length === 0) return null;
+  const rest = unseen.filter((i) => !mine.includes(i));
+  const lostIn = stepsRemoving(earlier, rest, bit(digit));
+  // Some cell neither a copy, a step nor the player explains: said plainly.
+  if (rest.length > 0 && lostIn.length === 0) {
+    return `No other empty cell in ${name} can be ${aDigit(digit)},`;
+  }
+  const clauses = [
+    ...(blockers.length > 0 ? [`sees ${copies}`] : []),
+    ...(lostIn.length > 0 ? [`lost its ${digit} in ${stepsPhrase(lostIn)}`] : []),
+    `had its ${digit} ruled out by you`,
+  ];
+  if (clauses.length === 1) {
+    return `You'd already ruled out ${digit} from every other empty cell in ${name},`;
+  }
+  const either = `${clauses.slice(0, -1).join(', ')} or ${clauses.at(-1)}`;
+  return `Every other empty cell in ${name} either ${either},`;
+}
+
 function hiddenSingleCaption(
   { step, values, candidates }: TechniqueTrace,
   earlier?: readonly TechniqueTrace[],
+  yours: readonly Elimination[] = [],
 ): string {
   const unit = step.unit!;
   const { index, digit } = step.placement!;
@@ -381,8 +452,11 @@ function hiddenSingleCaption(
       : `${aDigit(digit)} — at ${blockers.map(describePosition).join(' or ')} —`;
   const lostIn = stepsRemoving(earlier ?? [], unseen, bit(digit));
   const lost = `lost its ${digit} in ${stepsPhrase(lostIn)},`;
+  const theirs = hiddenReasonWithYours(name, digit, blockers, copies, unseen, earlier ?? [], yours);
   let reason: string;
-  if (unseen.length === 0) {
+  if (theirs !== null) {
+    reason = theirs;
+  } else if (unseen.length === 0) {
     reason = `Every other empty cell in ${name} already sees ${copies}${blockers.length === 1 ? ',' : ''}`;
   } else if (lostIn.length === 0) {
     // No walkthrough to credit: said plainly.
@@ -408,6 +482,7 @@ function hiddenSingleCaption(
 function nakedSingleCaption(
   { step, values }: TechniqueTrace,
   earlier?: readonly TechniqueTrace[],
+  yours: readonly Elimination[] = [],
 ): string {
   const { index, digit } = step.placement!;
   const seen = new Set<number>();
@@ -430,7 +505,7 @@ function nakedSingleCaption(
   const position = capitalise(describePosition(index));
   const sees = `${groups.slice(0, -1).join('; ')}${groups.length > 1 ? '; and ' : ''}${groups.at(-1)}`;
   // What the cell sees is not everything it has lost when earlier steps of a
-  // walkthrough struck candidates from it: each says which.
+  // walkthrough struck candidates from it, or the player had: each says which.
   const missing = 0x1ff & ~bit(digit) & ~[...seen].reduce((mask, d) => mask | bit(d), 0);
   if (missing === 0) {
     return `${position} already sees every digit but ${digit}: ${sees}. So ${digit} is all it can be.`;
@@ -440,6 +515,8 @@ function nakedSingleCaption(
       before.eliminations.reduce((all, e) => (e.index === index ? all | e.mask : all), 0) & missing;
     return mask === 0 ? [] : [`Step ${k + 1} ruled out its ${digitList(mask)}.`];
   });
+  const mine = yours.reduce((all, e) => (e.index === index ? all | e.mask : all), 0) & missing;
+  if (mine !== 0) struck.push(`You'd already ruled out its ${digitList(mine)}.`);
   const lost =
     struck.length > 0 ? struck.join(' ') : `Earlier steps ruled out its ${digitList(missing)}.`;
   return [
@@ -1104,14 +1181,16 @@ function exampleTrace(technique: TechniqueId): TechniqueTrace {
 
 /**
  * One step of a "Show me" walkthrough in words: the guide's caption for its
- * technique, crediting the earlier steps (`earlier`, in order) with what it
- * relies on having been ruled out.
+ * technique, crediting the earlier steps (`earlier`, in order) — and the
+ * player, with `yours` (see `ruledOutByYou`) — with what it relies on
+ * having been ruled out.
  */
 export function walkthroughCaption(
   trace: TechniqueTrace,
   earlier: readonly TechniqueTrace[],
+  yours: readonly Elimination[] = [],
 ): string {
-  return GUIDE[guideIdFor(trace.step.technique)].caption(trace, earlier);
+  return GUIDE[guideIdFor(trace.step.technique)].caption(trace, earlier, yours);
 }
 
 /** An entry's worked examples, traced and captioned. */

@@ -2258,8 +2258,11 @@
 }
 
 /* What an earlier step of a walkthrough removed, and this one relies on:
-   struck through with a dashed line in the muted ink, lighter and thinner
-   than this step's own red strikes, which are its news. */
+   struck through with a dashed slash in the muted ink, lighter and thinner
+   than this step's own red strikes, which are its news. What the player
+   had ruled out themselves is as faint, but crossed out level with a solid
+   line, as by hand — a shape of its own, so the two read apart in any
+   colours. */
 .technique-diagram__candidate[data-mark='ruled-out'] {
   font-weight: 400;
 }
@@ -2268,6 +2271,11 @@
   stroke: var(--text-muted);
   stroke-width: 1.5;
   stroke-dasharray: 3 1.8;
+}
+
+.technique-diagram__ruled-out g[data-by='you'] line {
+  stroke-dasharray: none;
+  stroke-linecap: round;
 }
 
 /* The cell a walkthrough solves: inked corner marks, like a printer's crop
@@ -2389,6 +2397,11 @@
   stroke: var(--text-muted);
   stroke-width: 1.5;
   stroke-dasharray: 2.5 1.5;
+}
+
+.technique-diagram__ruled-out-swatch[data-by='you'] line {
+  stroke-dasharray: none;
+  stroke-linecap: round;
 }
 
 .technique-diagram__swatch--answer {
@@ -2633,6 +2646,13 @@
 
 .walkthrough__done {
   margin-left: auto;
+}
+
+/* "Show me" for a candidate missing from a cell: the advice under the
+   caption, in the answer's ruled box but at reading size — it is a sentence,
+   not a digit. */
+.struck__advice {
+  line-height: 1.45;
 }
 
 /* ---- "Show me" on a phone on its side ----

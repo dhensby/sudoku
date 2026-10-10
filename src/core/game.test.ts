@@ -1,4 +1,5 @@
 import {
+  checkedBoardOf,
   createGame,
   conflictsOf,
   deserialiseGame,
@@ -20,7 +21,8 @@ import {
   type SerialisedCellHints,
   type SerialisedGame,
 } from './game';
-import { computeCandidates, formatGrid, maskOf, parseGrid } from './grid';
+import { bit, computeCandidates, formatGrid, maskOf, parseGrid } from './grid';
+import { createBoard } from './techniques';
 import type { Assists, Difficulty, Digit, Hint, Puzzle } from './types';
 import { WIKIPEDIA_PUZZLE, WIKIPEDIA_SOLUTION } from '../test/grids';
 
@@ -937,6 +939,7 @@ describe('remembered hints', () => {
         fill: HINT,
         mistake: null,
         walkthrough: true,
+        struck: null,
       });
       expect(reduce(opened, SHOW_ME_40)).toBe(opened);
     });
@@ -963,6 +966,199 @@ describe('remembered hints', () => {
       const state = play(newGame(), ...setup);
       expect(reduce(state, { type: 'walkthrough', index })).toBe(state);
     });
+  });
+});
+
+describe('a wrong-marks hint', () => {
+  // Cell 3 (answer 6, candidates 2 6) in auto candidate mode, its 6 struck out.
+  const STRUCK_3: Hint = { kind: 'struck', index: 3 };
+  const showHint = (hint: Hint): GameAction => ({ type: 'hint', hint });
+  const SHOW_ME_3: GameAction = { type: 'walkthrough', index: 3 };
+  const struck = () => play(newGame(true), note(3, 6));
+  const hinted = () => play(struck(), showHint(STRUCK_3));
+
+  it('is counted, remembered and shown on its cell while its answer stays struck', () => {
+    const state = play(hinted(), select(40));
+    expect(state.assists.hints).toBe(1);
+    expect(shownHint(state)).toBeNull();
+    expect(rememberedHint(state, 3)).toBe(STRUCK_3);
+    expect(state.cellHints.get(3)?.struck).toEqual({ hint: STRUCK_3, walkthrough: false });
+  });
+
+  it('is free when asked for again while its cell’s marks stay as they were', () => {
+    // Changes elsewhere — a peer filled, which takes a candidate from the
+    // cell, among them — leave it be, map and all.
+    const state = hinted();
+    const elsewhere = play(state, note(40, 5), place(2, 2));
+    expect(elsewhere.cellHints.get(3)).toBe(state.cellHints.get(3));
+    const again = reduce(elsewhere, showHint(STRUCK_3));
+    expect(again.assists.hints).toBe(1);
+    expect(again.selected).toBe(3);
+  });
+
+  it('is forgotten at any change to its cell’s marks, so asking again counts', () => {
+    // Another candidate struck, or struck and put back: forgotten alike, the
+    // answer still missing — a free Hint after each would say whether the
+    // digit put back was the answer.
+    for (const changes of [[note(3, 2)], [note(3, 2), note(3, 2)]]) {
+      const state = play(hinted(), ...changes);
+      expect(rememberedHint(state, 3)).toBeNull();
+      expect(state.cellHints.has(3)).toBe(false);
+      const again = reduce(state, showHint(STRUCK_3));
+      expect(rememberedHint(again, 3)).toBe(STRUCK_3);
+      expect(again.assists.hints).toBe(2);
+    }
+  });
+
+  it('goes the same way whichever digit is put back, the answer or another', () => {
+    // Both of cell 3's candidates struck: putting back the 2 leaves the
+    // answer missing, putting back the 6 does not, and the game cannot tell.
+    const both = play(newGame(true), note(3, 6), note(3, 2), showHint(STRUCK_3));
+    const wrong = reduce(both, note(3, 2));
+    const right = reduce(both, note(3, 6));
+    expect(wrong.cellHints).toEqual(right.cellHints);
+    expect(wrong.assists).toEqual(right.assists);
+    expect(rememberedHint(wrong, 3)).toBe(rememberedHint(right, 3));
+  });
+
+  it('gives way to the fill hint once forgotten, which is still the cell’s', () => {
+    const state = play(newGame(true), showHint(DEDUCTION), note(3, 6), showHint(STRUCK_3));
+    expect(rememberedHint(state, 3)).toBe(STRUCK_3);
+    expect(rememberedHint(reduce(state, note(3, 2)), 3)).toBe(DEDUCTION);
+  });
+
+  it.each<[string, GameAction[]]>([
+    ['the answer is put back', [note(3, 6)]],
+    ['the strike is undone', [UNDO]],
+    ['the cell is filled, rightly or wrongly', [place(3, 2)]],
+    ['auto candidates are switched off', [AUTO_OFF]],
+  ])('is forgotten once %s, and asking again counts', (_name, changes) => {
+    const state = play(hinted(), ...changes);
+    expect(state.cellHints.has(3)).toBe(false);
+  });
+
+  it('is forgotten as auto candidates are switched, even with the answer missing either way', () => {
+    // Notes of just the 2, and the automatic 6 struck: missing in both.
+    const state = play(newGame(), note(3, 2), AUTO_ON, note(3, 6), showHint(STRUCK_3));
+    expect(rememberedHint(state, 3)).toBe(STRUCK_3);
+    const off = reduce(state, AUTO_OFF);
+    expect(off.cellHints.has(3)).toBe(false);
+    expect(reduce(off, showHint(STRUCK_3)).assists.hints).toBe(state.assists.hints + 1);
+  });
+
+  it('counts again once the answer is struck again, after it was put back', () => {
+    const state = play(hinted(), note(3, 6), note(3, 6), showHint(STRUCK_3));
+    expect(state.assists.hints).toBe(2);
+  });
+
+  it('is not remembered for a cell whose answer is a candidate: counted all the same', () => {
+    for (const index of [3, 40, 0]) {
+      const state = play(newGame(true), showHint({ kind: 'struck', index }));
+      expect(state.assists.hints).toBe(1);
+      expect(state.cellHints.size).toBe(0);
+    }
+  });
+
+  it('is about the notes, outside auto candidate mode', () => {
+    // Notes that leave out the answer; a cell with none has every candidate.
+    const state = play(newGame(), note(3, 2), showHint(STRUCK_3));
+    expect(rememberedHint(state, 3)).toBe(STRUCK_3);
+    expect(play(state, note(3, 6)).cellHints.has(3)).toBe(false);
+    expect(play(newGame(), showHint(STRUCK_3)).cellHints.size).toBe(0);
+  });
+
+  describe('its "Show me"', () => {
+    it('is counted once while the answer stays struck, the fill hint’s kept apart', () => {
+      const opened = play(
+        newGame(true),
+        showHint(DEDUCTION),
+        note(3, 6),
+        showHint(STRUCK_3),
+        SHOW_ME_3,
+      );
+      expect(opened.assists.hints).toBe(3);
+      expect(opened.cellHints.get(3)).toMatchObject({
+        walkthrough: false,
+        struck: { walkthrough: true },
+      });
+      expect(reduce(opened, SHOW_ME_3)).toBe(opened);
+      // Forgotten at a change to the cell's marks: Hint and Show me both
+      // counted again.
+      const again = play(opened, note(3, 2), showHint(STRUCK_3), SHOW_ME_3);
+      expect(again.assists.hints).toBe(5);
+      // Once the answer is back, Show me is the fill hint’s again, and counted.
+      expect(play(opened, note(3, 6), SHOW_ME_3).assists.hints).toBe(4);
+    });
+
+    it('is ignored for a filled cell', () => {
+      const state = play(hinted(), place(3, 2));
+      expect(reduce(state, SHOW_ME_3)).toBe(state);
+    });
+  });
+});
+
+describe('the candidates a remembered hint is put afresh from', () => {
+  const showHint = (hint: Hint): GameAction => ({ type: 'hint', hint });
+  const naked = (state: GameState) => createBoard(valuesOf(state));
+
+  it('are the placed digits’ alone, before any fill hint', () => {
+    const state = play(newGame(true), note(3, 2), showHint({ kind: 'struck', index: 3 }));
+    expect(state.checkedCandidates).toBeNull();
+    expect(checkedBoardOf(state)).toEqual(naked(state));
+  });
+
+  it('are the player’s own when a fill hint is given on a sound board', () => {
+    const state = play(newGame(true), note(3, 2), showHint(DEDUCTION));
+    expect(state.checkedCandidates).toEqual(hintBoardOf(state).candidates);
+    expect(checkedBoardOf(state)).toEqual(hintBoardOf(state));
+  });
+
+  it('stay as they were through later changes to the player’s candidates, whatever they are', () => {
+    // Striking cell 3's answer, or its other candidate, since: the board the
+    // bar reasons from is the same either way.
+    const given = play(newGame(true), showHint(DEDUCTION));
+    const answer = reduce(given, note(3, 6));
+    const other = reduce(given, note(3, 2));
+    expect(checkedBoardOf(answer)).toEqual(checkedBoardOf(other));
+    expect(checkedBoardOf(answer).candidates[3]).toBe(bit(2) | bit(6));
+    // Notes, in place of the automatic candidates, alike.
+    expect(checkedBoardOf(reduce(answer, AUTO_OFF))).toEqual(checkedBoardOf(given));
+  });
+
+  it('lose what a digit placed since rules out', () => {
+    // Cell 2 (candidates 1 2 4) loses its 2 as a 2 goes into cell 3, its peer.
+    const state = play(newGame(true), showHint(DEDUCTION), place(3, 2));
+    expect(checkedBoardOf(state).candidates[2]).toBe(bit(1) | bit(4));
+    expect(checkedBoardOf(state).values[3]).toBe(2);
+  });
+
+  it('count a cell filled then, and emptied since, as having every candidate', () => {
+    const state = play(newGame(true), place(40, 5), showHint(DEDUCTION), erase(40));
+    expect(state.checkedCandidates?.[40]).toBe(0);
+    expect(checkedBoardOf(state).candidates[40]).toBe(naked(state).candidates[40]);
+  });
+
+  it.each<[string, GameAction[]]>([
+    ['an answer is missing from its candidates', [note(3, 6)]],
+    ['a digit is wrong', [place(40, 1)]],
+  ])('are not taken from a fill hint given while %s', (_name, setup) => {
+    const before = play(newGame(true), showHint(DEDUCTION), ...setup);
+    const after = reduce(before, showHint(HINT));
+    expect(after.checkedCandidates).toBe(before.checkedCandidates);
+  });
+
+  it('are not taken from a mistake hint, or one off the grid', () => {
+    const given = play(newGame(), showHint(DEDUCTION));
+    const mistake = play(given, place(40, 1), showHint({ kind: 'mistake', index: 40 }));
+    expect(mistake.checkedCandidates).toBe(given.checkedCandidates);
+    const off = play(given, note(3, 2), showHint({ ...HINT, index: 81 }));
+    expect(off.checkedCandidates).toBe(given.checkedCandidates);
+  });
+
+  it('go with a Reset, and stay through Undo', () => {
+    const given = play(newGame(true), place(40, 5), showHint(DEDUCTION));
+    expect(reduce(given, UNDO).checkedCandidates).toBe(given.checkedCandidates);
+    expect(reduce(given, RESET).checkedCandidates).toBeNull();
   });
 });
 
@@ -1140,16 +1336,33 @@ describe('selectors', () => {
     expect(candidates[0]).toBe(0);
   });
 
-  it('gives Hint and Show me the placed digits and their naked candidates, not the notes or strikes', () => {
-    for (const state of [
-      play(newGame(), note(2, 1), place(40, 5)),
-      play(newGame(true), note(2, 1), place(40, 5)),
-    ]) {
-      const board = hintBoardOf(state);
-      expect(board.values).toEqual(valuesOf(state));
-      expect(board.candidates).toEqual(computeCandidates(valuesOf(state)));
-      expect(board.candidates[2]).toBe(maskOf([1, 2, 4]));
-    }
+  it('gives Hint and Show me what auto candidate mode draws: the computed candidates less the strikes', () => {
+    const state = play(newGame(true), note(2, 1), place(40, 5));
+    const board = hintBoardOf(state);
+    expect(board.values).toEqual(valuesOf(state));
+    expect(board.candidates).toEqual(visibleCandidates(state));
+    expect(board.candidates[2]).toBe(maskOf([2, 4]));
+  });
+
+  it('gives them the notes as whole lists, less what a placed digit rules out, and every candidate where there are none', () => {
+    // Cell 2 can be 1, 2 or 4; its note 9 is one a placed digit rules out.
+    const state = play(newGame(), note(2, 1), note(2, 9), place(40, 5));
+    const board = hintBoardOf(state);
+    const computed = computeCandidates(valuesOf(state));
+    expect(board.values).toEqual(valuesOf(state));
+    expect(board.candidates[2]).toBe(maskOf([1]));
+    expect(board.candidates[3]).toBe(computed[3]);
+    expect(board.candidates[40]).toBe(0);
+    expect(board.candidates[0]).toBe(0);
+    // The notes under a placed digit are not candidates of a filled cell.
+    expect(hintBoardOf(play(state, place(2, 4))).candidates[2]).toBe(0);
+  });
+
+  it('reads the notes again once auto candidates are off, and the strikes once they are back on', () => {
+    const noted = play(newGame(), note(2, 1));
+    const struck = play(noted, AUTO_ON, note(2, 4));
+    expect(hintBoardOf(struck).candidates[2]).toBe(maskOf([1, 2]));
+    expect(hintBoardOf(play(struck, AUTO_OFF)).candidates[2]).toBe(maskOf([1]));
   });
 
   it('flags both cells of a clash', () => {
@@ -1629,6 +1842,7 @@ describe('serialiseGame / deserialiseGame', () => {
         fill: DEDUCTION,
         mistake: null,
         walkthrough: false,
+        struck: null,
       });
     });
 
@@ -1665,6 +1879,7 @@ describe('serialiseGame / deserialiseGame', () => {
         fill: null,
         mistake: { hint: { kind: 'mistake', index: 3 }, value: 1 },
         walkthrough: false,
+        struck: null,
       });
     });
 
@@ -1678,6 +1893,115 @@ describe('serialiseGame / deserialiseGame', () => {
     it('keeps a hint count that already covers them', () => {
       const assists: Assists = { ...NO_ASSISTS, hints: 9 };
       expect(deserialiseGame({ ...saved, assists })?.assists).toEqual(assists);
+    });
+  });
+
+  describe('a remembered wrong-marks hint', () => {
+    // Cell 3's answer, 6, struck out in auto candidate mode, its hint asked
+    // for and its Show me opened; cell 2's answer, 4, struck and its hint
+    // asked for.
+    const STRUCK_3: Hint = { kind: 'struck', index: 3 };
+    const hinted = play(
+      newGame(true),
+      note(3, 6),
+      { type: 'hint', hint: STRUCK_3 },
+      { type: 'walkthrough', index: 3 },
+      note(2, 4),
+      { type: 'hint', hint: { kind: 'struck', index: 2 } },
+    );
+    const saved = serialiseGame(hinted);
+    const loadHints = (cellHints: unknown, base: SerialisedGame = saved) =>
+      deserialiseGame({ ...base, cellHints })!.cellHints;
+
+    it('is saved only where there is one, as plain data', () => {
+      expect(saved.cellHints).toEqual<SerialisedCellHints[]>([
+        {
+          index: 3,
+          fill: null,
+          mistake: 0,
+          walkthrough: false,
+          struck: { walkthrough: true },
+        },
+        {
+          index: 2,
+          fill: null,
+          mistake: 0,
+          walkthrough: false,
+          struck: { walkthrough: false },
+        },
+      ]);
+      expect(serialiseGame(newGame()).cellHints).toEqual([]);
+    });
+
+    it('round-trips through JSON', () => {
+      const restored = deserialiseGame(JSON.parse(JSON.stringify(saved)))!;
+      expect(restored.cellHints).toEqual(hinted.cellHints);
+      expect(rememberedHint(restored, 3)).toEqual(STRUCK_3);
+      expect(rememberedHint(restored, 2)).toEqual({ kind: 'struck', index: 2 });
+      // Opening Show me again, and asking again, are still free.
+      const again = play(
+        restored,
+        { type: 'walkthrough', index: 3 },
+        { type: 'hint', hint: STRUCK_3 },
+      );
+      expect(again.assists.hints).toBe(hinted.assists.hints);
+    });
+
+    it('raises the hints taken to cover it and its Show me', () => {
+      expect(deserialiseGame({ ...saved, assists: NO_ASSISTS })?.assists).toEqual({
+        ...NO_ASSISTS,
+        autoCandidates: true,
+        hints: 3,
+      });
+    });
+
+    it('takes anything but true as Show me not opened', () => {
+      const [at3] = saved.cellHints!;
+      const entry = loadHints([{ ...at3, struck: { walkthrough: 1 } }]).get(3);
+      expect(entry?.struck).toEqual({ hint: STRUCK_3, walkthrough: false });
+    });
+
+    it.each<[string, Partial<SerialisedGame>]>([
+      ['the answer is a candidate again', { autoRemoved: Array<number>(81).fill(0) }],
+      ['the cell is filled', { values: saved.values.slice(0, 3) + '2' + saved.values.slice(4) }],
+      ['auto candidates are off and the cell has no notes', { autoCandidates: false }],
+    ])('is forgotten when %s', (_name, change) => {
+      const [at3] = saved.cellHints!;
+      expect(loadHints([at3], { ...saved, ...change }).has(3)).toBe(false);
+    });
+
+    it('is forgotten when it is not an object', () => {
+      const [at3] = saved.cellHints!;
+      expect(loadHints([{ ...at3, struck: true }]).has(3)).toBe(false);
+    });
+  });
+
+  describe('the candidates of the last fill hint', () => {
+    const given = play(newGame(true), place(40, 5), note(3, 2), {
+      type: 'hint',
+      hint: DEDUCTION,
+    });
+    const saved = serialiseGame(given);
+    const load = (checkedCandidates: unknown) =>
+      deserialiseGame({ ...saved, checkedCandidates })!.checkedCandidates;
+
+    it('are saved as plain data, and only when there are some', () => {
+      expect(saved.checkedCandidates).toEqual(Array.from(given.checkedCandidates!));
+      expect(serialiseGame(newGame())).not.toHaveProperty('checkedCandidates');
+    });
+
+    it('round-trip through JSON', () => {
+      const restored = deserialiseGame(JSON.parse(JSON.stringify(saved)))!;
+      expect(restored.checkedCandidates).toEqual(given.checkedCandidates);
+      expect(checkedBoardOf(restored)).toEqual(checkedBoardOf(given));
+    });
+
+    it.each<[string, unknown]>([
+      ['missing', undefined],
+      ['not a list of 81 masks', saved.checkedCandidates!.slice(1)],
+      ['a mask without its cell’s answer', replaceAt(saved.checkedCandidates!, 3, bit(2))],
+    ])('load as none when %s', (_name, checkedCandidates) => {
+      expect(load(checkedCandidates)).toBeNull();
     });
   });
 
@@ -1792,7 +2116,8 @@ describe('serialiseGame / deserialiseGame', () => {
   it('lists every top-level field a save has as one this version knows', () => {
     // `saveGameBlob` carries over only fields not on this list, so one this
     // version writes but leaves off it could have a stale value brought back.
-    const everything = serialiseGame(play(rich, CHECK_GUESSES_ON));
+    const checked = { ...play(rich, CHECK_GUESSES_ON), checkedCandidates: new Uint16Array(81) };
+    const everything = serialiseGame(checked);
     expect(Object.keys(everything).sort()).toEqual([...SERIALISED_GAME_FIELDS].sort());
   });
 

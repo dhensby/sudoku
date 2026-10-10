@@ -27,12 +27,23 @@ export interface TechniqueDiagramProps {
    * reader never loses it — the step itself may be half a board away.
    */
   target?: number | null;
+  /** What the key calls the target: by default, "The cell being solved". */
+  targetLabel?: string;
   /**
    * Candidates earlier steps of a walkthrough removed that this step relies
    * on having gone: drawn faintly, struck through with a dashed line, so the
    * reader sees where the caption says they went.
    */
   ruledOut?: readonly Elimination[];
+  /**
+   * Candidates the player had ruled out themselves that this step relies
+   * on having gone (a walkthrough starts from their own candidates): drawn
+   * faintly too, but crossed out level, as by hand, rather than with
+   * `ruledOut`'s dashed slash — so the board itself shows which are whose.
+   */
+  yours?: readonly Elimination[];
+  /** What the key calls `yours`: by default, "Ruled out by you". */
+  yoursLabel?: string;
   /**
    * What the step comes to, said after the caption — a walkthrough's
    * answer. Beside the board with the caption, so a step that has one is no
@@ -73,12 +84,14 @@ export interface TechniqueDiagramProps {
  * - In a walkthrough, the cell being solved: inked corner marks, like a
  *   printer's crop marks, and its row and column numbers set in ink, so it
  *   can be found on every step. And the candidates earlier steps removed
- *   that this one relies on, faint and struck through with a dashed line —
- *   lighter than this step's own strikes, which are its news.
+ *   that this one relies on, faint and struck through with a dashed slash,
+ *   lighter than this step's own strikes, which are its news; those the
+ *   player had ruled out before it began, as faint, crossed out level with
+ *   a solid line.
  *
  * Rows and columns are numbered round the edge, as the captions count them.
- * Every mark differs in shape as well as colour — ring, disc, slash, frame,
- * bold ink, solid or dashed line — so the board still reads in forced
+ * Every mark differs in shape as well as colour — ring, disc, slash, level
+ * cross-out, frame, bold ink, solid or dashed line — so the board still reads in forced
  * colours, where the stylesheet swaps the shading for outlines of the houses
  * (and of a wing's pincers and an XY-Chain's or a W-Wing's two-candidate
  * cells; a wing's pivot keeps its frame).
@@ -432,12 +445,24 @@ function Swatch({ kind }: { kind: string }) {
   return <span className={`technique-diagram__swatch technique-diagram__swatch--${kind}`} />;
 }
 
-/** The dashed strike of a candidate an earlier step removed, in miniature, for the key. */
-function RuledOutSwatch() {
+/**
+ * The faint strike of a candidate already gone, in miniature, for the key:
+ * an earlier step's dashed slash, or the player's level cross-out.
+ */
+function RuledOutSwatch({ by }: { by: 'step' | 'you' }) {
   return (
-    <svg className="technique-diagram__ruled-out-swatch" viewBox="0 0 14 14" aria-hidden="true">
+    <svg
+      className="technique-diagram__ruled-out-swatch"
+      viewBox="0 0 14 14"
+      aria-hidden="true"
+      data-by={by}
+    >
       <rect x={0.5} y={0.5} width={13} height={13} rx={2} />
-      <line x1={3.5} y1={10.5} x2={10.5} y2={3.5} />
+      {by === 'step' ? (
+        <line x1={3.5} y1={10.5} x2={10.5} y2={3.5} />
+      ) : (
+        <line x1={3} y1={7} x2={11} y2={7} />
+      )}
     </svg>
   );
 }
@@ -462,7 +487,10 @@ export function TechniqueDiagram({
   caption,
   label = null,
   target = null,
+  targetLabel = 'The cell being solved',
   ruledOut = [],
+  yours = [],
+  yoursLabel = 'Ruled out by you',
   conclusion = null,
 }: TechniqueDiagramProps) {
   const captionId = useId();
@@ -484,8 +512,16 @@ export function TechniqueDiagram({
   const strongDigits = digitsOfLinks(true);
   const weakDigits = digitsOfLinks(false);
 
-  const gone = new Map<number, number>();
-  for (const { index, mask } of ruledOut) gone.set(index, (gone.get(index) ?? 0) | mask);
+  const masksOf = (list: readonly Elimination[]) => {
+    const masks = new Map<number, number>();
+    for (const { index, mask } of list) masks.set(index, (masks.get(index) ?? 0) | mask);
+    return masks;
+  };
+  const earlier = masksOf(ruledOut);
+  const theirs = masksOf(yours);
+  // Which of the two the key needs, by what is drawn.
+  let isEarlierDrawn = false;
+  let isTheirsDrawn = false;
 
   const notes: ReactNode[] = [];
   const rings: ReactNode[] = [];
@@ -495,12 +531,19 @@ export function TechniqueDiagram({
     if (values[index] !== 0 || marks.answer?.index === index) continue;
     const ringed = marks.pattern.get(index) ?? 0;
     const struck = marks.removed.get(index) ?? 0;
-    // Gone already, so never one of the cell's candidates.
-    for (const digit of digitsOf((gone.get(index) ?? 0) & shown)) {
+    // Gone already, so never one of the cell's candidates. The player's
+    // and the earlier steps' never overlap: a step removes only what the
+    // board it starts from still has.
+    const fromEarlier = (earlier.get(index) ?? 0) & shown;
+    const fromTheirs = (theirs.get(index) ?? 0) & shown;
+    isEarlierDrawn ||= fromEarlier !== 0;
+    isTheirsDrawn ||= fromTheirs !== 0;
+    for (const digit of digitsOf(fromEarlier | fromTheirs)) {
       const [x, y] = spot(index, digit, scale.pull);
       const d = scale.strike;
+      const isTheirs = (fromTheirs & bit(digit)) !== 0;
       ghosts.push(
-        <g key={`${index}-${digit}`}>
+        <g key={`${index}-${digit}`} data-by={isTheirs ? 'you' : 'step'}>
           <text
             x={x}
             y={y}
@@ -509,7 +552,11 @@ export function TechniqueDiagram({
           >
             {digit}
           </text>
-          <line x1={x - d} y1={y + d} x2={x + d} y2={y - d} />
+          {isTheirs ? (
+            <line x1={x - d} y1={y} x2={x + d} y2={y} />
+          ) : (
+            <line x1={x - d} y1={y + d} x2={x + d} y2={y - d} />
+          )}
         </g>,
       );
     }
@@ -708,7 +755,7 @@ export function TechniqueDiagram({
           {target !== null && (
             <li>
               <TargetSwatch />
-              The cell being solved
+              {targetLabel}
             </li>
           )}
           {marks.shaded.size > 0 && (
@@ -765,10 +812,16 @@ export function TechniqueDiagram({
               Removed
             </li>
           )}
-          {ghosts.length > 0 && (
+          {isEarlierDrawn && (
             <li>
-              <RuledOutSwatch />
+              <RuledOutSwatch by="step" />
               Removed in an earlier step
+            </li>
+          )}
+          {isTheirsDrawn && (
+            <li>
+              <RuledOutSwatch by="you" />
+              {yoursLabel}
             </li>
           )}
           {marks.answer !== null && (

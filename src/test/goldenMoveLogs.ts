@@ -1,10 +1,14 @@
 import {
   MOVES_VERSION,
+  createBoard,
   createRng,
   decodeMoveLog,
   digitsOf,
   encodeMoveLog,
+  findHint,
   formatGrid,
+  gridValues,
+  hintBoardOf,
   replayMoveSteps,
   replayMoves,
   seedFromString,
@@ -21,6 +25,7 @@ import {
   EASY_PUZZLE,
   EXPERT_PUZZLES,
   act,
+  candidateHintsTour,
   checkGuessesTour,
   playWithHelp,
   randomAction,
@@ -32,6 +37,7 @@ import {
   tourTheRules,
   type Played,
 } from './movePlayers';
+import { STUCK_ON_AN_XY_CHAIN } from './logic-fixtures';
 
 /*
  * The golden move logs, `src/core/fixtures/moveLogs.json`: real games, each
@@ -86,7 +92,11 @@ export interface PinnedState {
   checkGuesses?: true;
   status: string;
   assists: string;
-  /** Each cell's remembered hints, as `cell:fill:mistake value:walkthrough`. */
+  /**
+   * Each cell's remembered hints, as `cell:fill:mistake value:walkthrough`,
+   * and `:struck/Show me` after a cell with a wrong-marks hint — only
+   * then, so the logs pinned before there were any pin as they did.
+   */
   cellHints: string;
   undo: number;
   redo: number;
@@ -119,11 +129,12 @@ export function pinnedState(state: GameState): PinnedState {
     assists: `auto:${autoCandidates} hints:${hints} checks:${checks} reveals:${reveals}${checked}`,
     cellHints: [...state.cellHints]
       .sort(([a], [b]) => a - b)
-      .map(([index, { fill, mistake, walkthrough }]) => {
+      .map(([index, { fill, mistake, walkthrough, struck }]) => {
         const unit =
           fill?.kind === 'single' && fill.unit ? `${fill.unit.kind}${fill.unit.index}` : '';
         const filled = fill === null ? '-' : `${fill.kind}/${fill.technique}/${unit}`;
-        return `${index}:${filled}:${mistake?.value ?? 0}:${walkthrough}`;
+        const marks = struck === null ? '' : `:struck/${struck.walkthrough}`;
+        return `${index}:${filled}:${mistake?.value ?? 0}:${walkthrough}${marks}`;
       })
       .join(' '),
     undo: state.undoStack.length,
@@ -196,9 +207,10 @@ function entered(step: ReplayStep, op: 'place' | 'candidate') {
 }
 
 /** A hint step about a cell, with its remembered hints before and after. */
-function hinted(step: ReplayStep, kind: 'fill' | 'mistake') {
+function hinted(step: ReplayStep, kind: 'fill' | 'mistake' | 'struck') {
   if (step.move.op !== 'hint' || step.move.hint.index < 0) return null;
-  if ((step.move.hint.kind === 'mistake') !== (kind === 'mistake')) return null;
+  const { kind: hint } = step.move.hint;
+  if ((hint === 'single' || hint === 'deduction' ? 'fill' : hint) !== kind) return null;
   const { index } = step.move.hint;
   return {
     cell: step.before.cells[index],
@@ -506,11 +518,102 @@ export const GOLDEN_SITUATIONS: readonly {
   },
   {
     name: 'Show me, counted',
-    occurs: (step) => step.move.op === 'walkthrough' && hintsTaken(step) === 1,
+    occurs: (step) =>
+      step.move.op === 'walkthrough' &&
+      hintsTaken(step) === 1 &&
+      !step.before.cellHints.get(step.move.cell)?.struck,
   },
   {
     name: 'Show me opened again, for free',
-    occurs: ({ move, before, after }) => move.op === 'walkthrough' && after === before,
+    occurs: ({ move, before, after }) =>
+      move.op === 'walkthrough' && after === before && !before.cellHints.get(move.cell)?.struck,
+  },
+  // Hints from the player's own candidates, and the wrong-marks hint
+  {
+    name: 'a fill hint from the player’s candidates, where the placed digits alone give another',
+    occurs: ({ move, before }) => {
+      if (move.op !== 'hint' || (move.hint.kind !== 'single' && move.hint.kind !== 'deduction')) {
+        return false;
+      }
+      const solution = gridValues(before.puzzle.solution);
+      const asked = JSON.stringify(move.hint);
+      const placed = findHint(createBoard(valuesOf(before)), solution);
+      return (
+        JSON.stringify(findHint(hintBoardOf(before), solution)) === asked &&
+        JSON.stringify(placed) !== asked
+      );
+    },
+  },
+  {
+    name: 'a wrong-marks hint, counted and remembered',
+    occurs: (step) => {
+      const h = hinted(step, 'struck');
+      return !!h && hintsTaken(step) === 1 && !!h.is?.struck;
+    },
+  },
+  {
+    name: 'a wrong-marks hint seen again, for free',
+    occurs: (step) => !!hinted(step, 'struck') && hintsTaken(step) === 0,
+  },
+  {
+    name: 'a wrong-marks hint about a cell whose answer is a candidate: counted, not remembered',
+    occurs: (step) => {
+      const h = hinted(step, 'struck');
+      return !!h && hintsTaken(step) === 1 && !h.is?.struck;
+    },
+  },
+  {
+    name: 'a wrong-marks hint forgotten at a change to its cell’s marks, the answer still missing',
+    occurs: ({ before, after }) =>
+      after.autoCandidates === before.autoCandidates &&
+      [...before.cellHints].some(
+        ([index, entry]) =>
+          !!entry.struck &&
+          !after.cellHints.get(index)?.struck &&
+          after.cells[index].value === 0 &&
+          (hintBoardOf(after).candidates[index] & (1 << (answerOf(after, index) - 1))) === 0,
+      ),
+  },
+  {
+    name: 'a wrong-marks hint forgotten as its answer is put back',
+    occurs: (step) => {
+      const e = entered(step, 'candidate');
+      return (
+        !!e &&
+        e.digit === answerOf(step.before, e.index) &&
+        !!step.before.cellHints.get(e.index)?.struck &&
+        !step.after.cellHints.get(e.index)?.struck
+      );
+    },
+  },
+  {
+    name: 'a wrong-marks hint forgotten as auto candidates go off',
+    occurs: ({ move, before, after }) =>
+      move.op === 'autoOff' &&
+      [...before.cellHints].some(
+        ([index, entry]) => !!entry.struck && !after.cellHints.get(index)?.struck,
+      ),
+  },
+  {
+    name: 'a wrong-marks hint about notes that leave the answer out',
+    occurs: (step) => {
+      const h = hinted(step, 'struck');
+      return !!h && !step.before.autoCandidates && !!h.is?.struck;
+    },
+  },
+  {
+    name: 'Show me on a wrong-marks hint, counted',
+    occurs: (step) =>
+      step.move.op === 'walkthrough' &&
+      hintsTaken(step) === 1 &&
+      step.before.cellHints.get(step.move.cell)?.struck?.walkthrough === false,
+  },
+  {
+    name: 'Show me on a wrong-marks hint opened again, for free',
+    occurs: ({ move, before, after }) =>
+      move.op === 'walkthrough' &&
+      after === before &&
+      before.cellHints.get(move.cell)?.struck?.walkthrough === true,
   },
   // Check guesses when entered
   {
@@ -658,6 +761,13 @@ function playAtRandom(puzzle: Puzzle, seed: string): Played {
   return played;
 }
 
+/** The puzzle `candidateHintsTour` plays: the report that asked for hints from candidates. */
+const CANDIDATE_HINTS_PUZZLE: Puzzle = {
+  givens: STUCK_ON_AN_XY_CHAIN.givens,
+  solution: STUCK_ON_AN_XY_CHAIN.solution,
+  difficulty: 'expert',
+};
+
 /** The golden games: how each is played, from a fixed seed. */
 const GOLDEN_GAMES: readonly { name: string; puzzle: Puzzle; play: () => Played }[] = [
   {
@@ -694,6 +804,11 @@ const GOLDEN_GAMES: readonly { name: string; puzzle: Puzzle; play: () => Played 
     name: 'Easy, with Check guesses when entered switched on and off',
     puzzle: EASY_PUZZLE,
     play: () => checkGuessesTour(createRng('golden/check-guesses')),
+  },
+  {
+    name: 'Expert, hints from the player’s own candidates, and the wrong-marks hint',
+    puzzle: CANDIDATE_HINTS_PUZZLE,
+    play: () => candidateHintsTour(createRng('golden/candidate-hints')),
   },
 ];
 

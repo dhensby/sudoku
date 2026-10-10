@@ -67,14 +67,31 @@ your browser.
   times. Export your history to a file and import it on another browser.
 - **Help when you want it** — Hint points at a cell you can fill next and names the technique
   ("Hidden single: there's only one place for a number in this box"), without ever giving the
-  number away. A cell **remembers its hint**: select it again and the hint is back under the
-  board (and in the cell's description for a screen reader) — brought up to date if the board has
-  moved on, so a cell that needed a hidden pair and now needs only a single says so — and asking
-  again for the same cell isn't counted again. Still stuck? **Show me**, beside the hint, walks
+  number away. It reasons from **your own candidates** — in Auto Candidate Mode the automatic ones
+  less those you struck out, otherwise your notes, taken as whole lists (less any a placed number
+  rules out), a cell you haven't marked counting as having every candidate — so a step you have
+  taken is never the one it points you to again: strike what a box/line reduction removes, and
+  Show me moves on to the next step. Crossed out a candidate, or left one out of your notes, that
+  nothing rules out yet? Hint points at that cell first — "This cell is missing a candidate that
+  can't be ruled out yet." — without saying which; its Show me names the number, shows that
+  nothing on the board rules it out (none in its row, column or box, and no pattern among the
+  candidates), and offers to **put it back** (or pencil it in), as an ordinary move that Undo takes
+  back. Each counts as one hint; asking again is free until you change that cell's candidates, and
+  then counts again — as a hint about a wrong number does for each number tried — so putting back
+  the right number looks just like putting back any other. A cell **remembers its hint**: select
+  it again and the hint is back under the board (and in the cell's description for a screen
+  reader) — brought up to date for the numbers placed since, so a cell that needed a hidden pair
+  and now needs only a single says so — and asking again for the same cell isn't counted again.
+  What it says unasked, and whether it offers Show me, never turns on candidates you have changed
+  since Hint last pointed you to a cell to fill, which nothing has checked: that would tell the
+  right number from the wrong ones. Asking again brings them in. Still stuck? **Show me**, beside the hint, walks
   through the steps that solve that one cell — only the steps it depends on, however far across
   the board the solve wandered, and none it could do without — each drawn on your own board with
   the cell marked, a caption that says which earlier step removed what, and the answer at the end.
-  It counts as one more hint, once per cell. Whether it is on offer never gives away a wrong digit
+  Its first step's board is yours, so it skips what you have done already, and a caption credits
+  you with what you had ruled out ("You'd already ruled out its 5."), crossed out level on the
+  board where an earlier step's removal has a dashed slash. It counts as one more hint,
+  once per cell. Whether it is on offer never gives away a wrong digit or a missing candidate
   elsewhere: pressed with one on the board, it points at that instead, as Hint would. On a phone on
   its side, each step's board is sized to the screen with its caption beside it. Check cell, Check
   puzzle and Reveal cell are in the "…" menu, and **Check guesses when entered**, in Settings,
@@ -156,9 +173,9 @@ Bakken & Bæck) for everything else — both under the
 The design keeps a hard line between logic and presentation:
 
 - **`src/core/`** — a pure, framework-free engine: grid geometry, a bitmask solver, a human-style
-  logical grader (with a worked example of every technique it knows), the puzzle generator, hints,
-  walkthroughs (Show me: the steps one cell depends on, sliced from a solve, pruned of any it can
-  do without and checked step by step), share-link codec, clock arithmetic, the game reducer
+  logical grader (with a worked example of every technique it knows), the puzzle generator, hints
+  and walkthroughs from the player's own candidates (Show me: the steps one cell depends on, sliced
+  from a solve, pruned of any it can do without and checked step by step), share-link codec, clock arithmetic, the game reducer
   (which remembers each cell's hints) and the move log that replays it. No DOM, no React and no
   English; `reduce(state, action)` is a pure function, randomness is passed in, and the whole
   directory is held to 100% coverage.
@@ -379,7 +396,8 @@ What the logs show so far is a game's [mistakes](#mistakes); where they are kept
   log was cut off at 5,000 moves), then each move as a 2-character code (`op × 81 + cell`, the
   moves without a cell above those — Check guesses on and off among them, in the two codes kept
   for them when the format was made, so they came with no new rules version; a hint adds 2 more,
-  from a fixed table of techniques and units) and the time since the previous move as a varint, then a 3-character check, so that a log
+  from a fixed table of techniques and units, where a wrong-marks hint took a code then unused,
+  again with no new rules version) and the time since the previous move as a varint, then a 3-character check, so that a log
   cut short or mistyped is refused rather than read as another game. That comes to 3–4 characters
   a move: about 160–250 for a solve that only places digits, 190–370 with auto candidates, and
   500–1,100 for one that pencils in every candidate. Decoding is strict: anything malformed, or

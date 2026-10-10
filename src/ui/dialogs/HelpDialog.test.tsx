@@ -149,14 +149,25 @@ describe('HelpDialog', () => {
     const hints = screen.getByRole('heading', { name: 'Hints' }).closest('section')!;
     expect(within(hints).getByText(/without giving the number away/)).toBeInTheDocument();
     expect(within(hints).getByText(/A cell remembers its hint/)).toHaveTextContent(
-      'brought up to date if the board has moved on, and asking for it again costs nothing more',
+      'brought up to date if numbers have been placed since, and asking for it again costs nothing more — and brings in any candidates you have changed since.',
     );
     const showMe = within(hints).getByText(/walks through the steps that solve that cell/);
     expect(showMe).toHaveTextContent(
       'Opening it counts as one more hint, the first time for each cell.',
     );
     expect(showMe).toHaveTextContent(
-      'If a number on the board is wrong, it points at that instead, as Hint would.',
+      'If a number on the board is wrong, or a candidate missing, it points at that instead, as Hint would.',
+    );
+  });
+
+  it('says hints work from your own candidates, and point out one crossed out too soon', () => {
+    render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={vi.fn()} />);
+    const hints = screen.getByRole('heading', { name: 'Hints' }).closest('section')!;
+    expect(within(hints).getByText(/It works from your own candidates/)).toHaveTextContent(
+      'a step you have already taken is never the one it points you to again',
+    );
+    expect(within(hints).getByText(/left it out of your notes/)).toHaveTextContent(
+      'If you have crossed out a candidate, or left it out of your notes, when nothing rules it out yet, Hint points at its cell first, without saying which number it is; Show me then names it, shows why it can’t be ruled out yet, and offers to put it back. Each counts as a hint; asking again is free until you change that cell’s candidates.',
     );
   });
 
