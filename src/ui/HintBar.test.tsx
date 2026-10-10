@@ -57,6 +57,7 @@ describe('HintBar', () => {
 
   it.each<Hint>([
     { kind: 'mistake', index: 3 },
+    { kind: 'struck', index: 3 },
     { kind: 'deduction', index: 3, technique: null },
     { kind: 'none' },
   ])('asks nothing when the hint names no technique (%o)', (hint) => {
@@ -86,6 +87,19 @@ describe('HintBar', () => {
       'hint-bar__question',
       'hint-bar__show',
     ]);
+  });
+
+  it('offers "Show me" for a wrong-marks hint, named for what it shows, with no digit in sight', () => {
+    const onShowMe = vi.fn();
+    const { container } = renderBar({ hint: { kind: 'struck', index: 9 }, onShowMe });
+    expect(container).toHaveTextContent(
+      "This cell is missing a candidate that can't be ruled out yet. Show me",
+    );
+    const show = screen.getByRole('button', { name: "Show me what's missing in row 2, column 1" });
+    expect(show).toHaveTextContent(/^Show me$/);
+    fireEvent.click(show);
+    expect(onShowMe).toHaveBeenCalledTimes(1);
+    expect(screen.getAllByRole('button')).toHaveLength(1);
   });
 
   it('offers no "Show me" for a hint without a walkthrough', () => {

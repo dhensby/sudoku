@@ -1,6 +1,6 @@
 import { TECHNIQUE_ORDER, harderTechnique, nextStep } from './grader';
-import { POPCOUNT } from './grid';
-import { TECHNIQUES, cloneBoard, type SolverBoard } from './techniques';
+import { POPCOUNT, bit } from './grid';
+import { TECHNIQUES, cloneBoard, createBoard, type SolverBoard } from './techniques';
 import type { Hint, SingleTechniqueId, TechniqueId, Values } from './types';
 
 /*
@@ -20,29 +20,41 @@ const SINGLES: readonly SingleTechniqueId[] = [
 ];
 
 /**
- * What the Hint button should point at, given the board to reason from and
+ * What the Hint button should point at, given the board to reason from — the
+ * placed digits and the candidates the player has (see `hintBoardOf`) — and
  * the solution:
  *
  * 1. the first cell (reading order) whose value disagrees with the solution —
  *    every later deduction would be built on sand;
- * 2. nothing, if the board is full;
- * 3. a single the player can see on the board, in technique order;
- * 4. otherwise, the next cell a logical solve from the board fills, with the
- *    hardest technique it took to get there — or, when the techniques stall
- *    before filling anything, the first empty cell with the fewest of the
- *    board's candidates, with no technique to name.
+ * 2. the first empty cell whose answer is missing from its candidates,
+ *    without saying which digit — a deduction from those candidates could
+ *    lead anywhere, even to a single for the wrong digit;
+ * 3. nothing, if the board is full;
+ * 4. a single the player can see on the board, in technique order;
+ * 5. otherwise, the next cell a logical solve from the board fills, with the
+ *    hardest technique it took to get there — so a step the player has taken
+ *    already is not the one it leads with again;
+ * 6. should the techniques stall on the board before filling anything, the
+ *    hint the placed digits and their naked candidates alone give, as hints
+ *    were worked out before they read the player's candidates — and, should
+ *    they stall there too, the first empty cell with the fewest of those
+ *    candidates, with no technique to name.
  *
- * The board is today always `createBoard` of the placed digits — their naked
- * candidates, never the player's notes; taking a board rather than the digits
- * is what lets it one day be the candidates the player sees. Pure: the board
- * is left as it was.
+ * With every answer among the candidates, every technique is sound on them,
+ * so the hint never leads away from the solution. Pure: the board is left as
+ * it was.
  */
 export function findHint(board: SolverBoard, solution: Values): Hint {
-  const { values } = board;
+  const { values, candidates } = board;
   let isFull = true;
   for (let i = 0; i < 81; i++) {
     if (values[i] === 0) isFull = false;
     else if (values[i] !== solution[i]) return { kind: 'mistake', index: i };
+  }
+  for (let i = 0; i < 81; i++) {
+    if (values[i] === 0 && (candidates[i] & bit(solution[i])) === 0) {
+      return { kind: 'struck', index: i };
+    }
   }
   if (isFull) return { kind: 'none' };
 
@@ -56,8 +68,31 @@ export function findHint(board: SolverBoard, solution: Values): Hint {
 
   // No single in sight, so the first step of the grader's solve is an
   // elimination one. Solve as the grader would, from this board rather than
-  // from the digits alone, as far as the first placement.
-  const solve = cloneBoard(board);
+  // from the digits alone, as far as the first placement — and, should that
+  // stall, give the hint the digits alone give, unless that is this board.
+  const deduction = deductionFrom(board);
+  if (deduction !== null) return deduction;
+  if (!isPlacedBoard(board)) return findHint(createBoard(values), solution);
+
+  // Stalled before placing anything. Count the board's own candidates — what
+  // auto candidate mode shows — rather than what is left after the solve's
+  // eliminations: with no technique named to explain those, a cell picked by
+  // them can look less constrained than its neighbours, and the hint arbitrary.
+  let index = -1;
+  for (let i = 0; i < 81; i++) {
+    if (values[i] !== 0) continue;
+    if (index === -1 || POPCOUNT[candidates[i]] < POPCOUNT[candidates[index]]) index = i;
+  }
+  return { kind: 'deduction', index, technique: null };
+}
+
+/**
+ * The next cell a logical solve from `start` fills, with the hardest
+ * technique it took to get there; null if the techniques stall before
+ * filling anything. Pure.
+ */
+function deductionFrom(start: SolverBoard): Hint | null {
+  const solve = cloneBoard(start);
   let hardest: TechniqueId | null = null;
   for (let step = nextStep(solve, TECHNIQUE_ORDER); step; step = nextStep(solve, TECHNIQUE_ORDER)) {
     hardest = harderTechnique(hardest, step.technique);
@@ -65,16 +100,11 @@ export function findHint(board: SolverBoard, solution: Values): Hint {
       return { kind: 'deduction', index: step.placement.index, technique: hardest };
     }
   }
+  return null;
+}
 
-  // Stalled before placing anything. Count the board's own candidates — what
-  // auto-candidate mode shows — rather than what is left after the solve's
-  // eliminations: with no technique named to explain those, a cell picked by
-  // them can look less constrained than its neighbours, and the hint arbitrary.
-  const { candidates } = board;
-  let index = -1;
-  for (let i = 0; i < 81; i++) {
-    if (values[i] !== 0) continue;
-    if (index === -1 || POPCOUNT[candidates[i]] < POPCOUNT[candidates[index]]) index = i;
-  }
-  return { kind: 'deduction', index, technique: null };
+/** Whether a board's candidates are its placed digits' naked candidates, and nothing else. */
+function isPlacedBoard(board: SolverBoard): boolean {
+  const naked = createBoard(board.values).candidates;
+  return naked.every((mask, i) => mask === board.candidates[i]);
 }

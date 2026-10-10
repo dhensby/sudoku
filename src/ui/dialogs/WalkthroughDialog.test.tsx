@@ -1,8 +1,24 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
-import { createBoard, explainCell, findHint, explainHint, type Walkthrough } from '../../core';
-import { STUCK_ON_A_HIDDEN_PAIR, stuckOnAHiddenPair } from '../../test/logic-fixtures';
+import {
+  createBoard,
+  createGame,
+  explainCell,
+  explainHint,
+  findHint,
+  gridValues,
+  hintBoardOf,
+  reduce,
+  type Digit,
+  type GameAction,
+  type Walkthrough,
+} from '../../core';
+import {
+  STUCK_ON_AN_XY_CHAIN,
+  STUCK_ON_A_HIDDEN_PAIR,
+  stuckOnAHiddenPair,
+} from '../../test/logic-fixtures';
 import { walkthroughCaption } from '../techniqueGuide';
-import { WALKTHROUGH_INTRO } from './text';
+import { walkthroughIntro } from './text';
 import { WalkthroughDialog } from './WalkthroughDialog';
 
 /**
@@ -14,7 +30,11 @@ function stuck(): Walkthrough {
   return explainCell(createBoard(values), STUCK_ON_A_HIDDEN_PAIR.target, solution)!;
 }
 
-function renderWalkthrough(walkthrough: Walkthrough = stuck(), initialStep?: number) {
+function renderWalkthrough(
+  walkthrough: Walkthrough = stuck(),
+  initialStep?: number,
+  autoCandidates?: boolean,
+) {
   const onOpenGuide = vi.fn();
   const onClose = vi.fn();
   const view = render(
@@ -22,13 +42,15 @@ function renderWalkthrough(walkthrough: Walkthrough = stuck(), initialStep?: num
       walkthrough={walkthrough}
       initialStep={initialStep}
       onOpenGuide={onOpenGuide}
+      autoCandidates={autoCandidates}
       onClose={onClose}
     />,
   );
   return { ...view, walkthrough, onOpenGuide, onClose };
 }
 
-const dialog = () => screen.getByRole('dialog', { name: 'How to solve row 5, column 2' });
+const dialog = (position = 'row 5, column 2') =>
+  screen.getByRole('dialog', { name: `How to solve ${position}` });
 
 /** The step's heading: the one third-level heading. */
 const stepHeading = () => screen.getByRole('heading', { level: 3 });
@@ -40,11 +62,12 @@ const ANSWER = '.walkthrough__answer-label';
 const answer = () => screen.getByText('The answer', { selector: ANSWER });
 
 describe('WalkthroughDialog', () => {
-  it('names the cell it solves, and says what the small numbers are', () => {
+  it('names the cell it solves, and says what the small numbers are: the player’s notes', () => {
     renderWalkthrough();
-    expect(dialog()).toHaveAccessibleDescription(WALKTHROUGH_INTRO);
-    expect(WALKTHROUGH_INTRO).toMatch(
-      /filled-in digits.*less what earlier steps.*not your own notes/,
+    expect(dialog()).toHaveAccessibleDescription(walkthroughIntro(false));
+    // Their own notes, a cell with none counting as having every candidate.
+    expect(walkthroughIntro(false)).toMatch(
+      /your own notes, less what earlier steps rule out.*noted none.*every number/,
     );
   });
 
@@ -57,7 +80,7 @@ describe('WalkthroughDialog', () => {
         onClose={vi.fn()}
       />,
     );
-    expect(dialog()).toHaveAccessibleDescription(`${WALKTHROUGH_INTRO} 2 hints used.`);
+    expect(dialog()).toHaveAccessibleDescription(`${walkthroughIntro(false)} 2 hints used.`);
     // On show, for a sighted player: the help taken is veiled behind the dialog.
     expect(screen.getByText('2 hints used.')).toHaveClass('walkthrough__charge');
     expect(screen.getByText('2 hints used.')).not.toHaveClass('visually-hidden');
@@ -66,16 +89,49 @@ describe('WalkthroughDialog', () => {
   it('says no cost when it was free', () => {
     renderWalkthrough();
     expect(document.querySelector('.walkthrough__charge')).toBeNull();
-    expect(dialog()).toHaveAccessibleDescription(WALKTHROUGH_INTRO);
+    expect(dialog()).toHaveAccessibleDescription(walkthroughIntro(false));
+  });
+
+  it('says the small numbers are the automatic candidates less strikes, in that mode', () => {
+    renderWalkthrough(undefined, undefined, true);
+    expect(dialog()).toHaveAccessibleDescription(walkthroughIntro(true));
+    expect(walkthroughIntro(true)).toMatch(
+      /your own candidates, without any you've crossed out, less what earlier steps rule out/,
+    );
+  });
+
+  it('credits the player with what they had ruled out, in words and on the board', () => {
+    // The report that asked for it: the 2s struck from row 8, column 9 and
+    // row 9, column 9, which the walkthrough's XY-Chain relies on.
+    const { givens, solution, entries, strikes, target } = STUCK_ON_AN_XY_CHAIN;
+    const enter =
+      (mode: 'normal' | 'candidate') =>
+      ([row, col, digit]: readonly [number, number, number]): GameAction => ({
+        type: 'enter',
+        index: (row - 1) * 9 + col - 1,
+        digit: digit as Digit,
+        mode,
+      });
+    const game = [...entries.map(enter('normal')), ...strikes.map(enter('candidate'))].reduce(
+      reduce,
+      createGame({ givens, solution, difficulty: 'expert' }, { autoCandidates: true }),
+    );
+    const walkthrough = explainCell(hintBoardOf(game), target, gridValues(solution))!;
+    const chain = walkthrough.steps.findIndex(({ step }) => step.technique === 'xyChain');
+    renderWalkthrough(walkthrough, chain);
+    expect(within(dialog('row 2, column 1')).getByRole('img')).toHaveAccessibleName(
+      expect.stringContaining("You'd already ruled out 2 from row 9, column 9."),
+    );
+    expect(screen.getByText('Ruled out by you')).toBeInTheDocument();
   });
 
   it('marks the line about the small numbers read once the reader moves on, and still describes the card', () => {
     renderWalkthrough();
-    const intro = screen.getByText(WALKTHROUGH_INTRO);
+    const intro = screen.getByText(walkthroughIntro(false));
     expect(intro).not.toHaveAttribute('data-read');
     fireEvent.click(within(pager()).getByRole('button', { name: /^Next/ }));
     expect(intro).toHaveAttribute('data-read');
-    expect(dialog()).toHaveAccessibleDescription(WALKTHROUGH_INTRO);
+    expect(dialog()).toHaveAccessibleDescription(walkthroughIntro(false));
     fireEvent.click(within(pager()).getByRole('button', { name: /^Previous/ }));
     expect(intro).not.toHaveAttribute('data-read');
   });

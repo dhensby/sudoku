@@ -1,6 +1,7 @@
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react';
 import {
   STOPPED_CLOCK,
+  checkedBoardOf,
   dateKeyOf,
   elapsedMs,
   explainCell,
@@ -22,6 +23,7 @@ import {
   type InputMode,
   type MistakeTally,
   type Puzzle,
+  type SolverBoard,
   type Walkthrough,
 } from '../core';
 import { ArchiveUnavailableError, dailies as appDailies, type DailyStore } from '../daily/dailies';
@@ -189,6 +191,21 @@ export interface WalkthroughView {
   charge?: string | null;
 }
 
+/**
+ * "Show me" for a wrong-marks hint: the digit missing from a cell's
+ * candidates, named, on the board as the player had it when it opened.
+ */
+export interface StruckView {
+  kind: 'struck';
+  index: number;
+  digit: Digit;
+  board: SolverBoard;
+  /** Whether the candidates are the automatic ones, less strikes, or the player's notes. */
+  autoCandidates: boolean;
+  /** What opening it cost, as for the walkthrough (see `WalkthroughView.charge`). */
+  charge?: string | null;
+}
+
 /** The dialog on show — one at a time. */
 export type DialogState =
   | { kind: 'completion'; result: CompletionResult }
@@ -204,6 +221,7 @@ export type DialogState =
    */
   | { kind: 'techniques'; initial: GuideId | null; returnTo?: WalkthroughView }
   | WalkthroughView
+  | StruckView
   | { kind: 'challenge'; offer: ChallengeOffer }
   | { kind: 'confirmReset' }
   /** The daily calendar and streaks. */
@@ -236,12 +254,20 @@ export interface SudokuActions {
   redo: () => void;
   hint: () => void;
   /**
-   * Open "Show me" for the hint on show: the steps that solve its cell. The
-   * first time for a cell it counts as a hint; after that it is free. With
-   * a mistake on the board there is no sound walkthrough, so it points at
+   * Open "Show me" for the hint on show: the steps that solve its cell, or,
+   * for a wrong-marks hint, the page that names the digit missing from it.
+   * The first time for a hint it counts as a hint; after that it is free.
+   * With a mistake on the board — a wrong digit, or an answer missing from
+   * its cell's candidates — there is no sound walkthrough, so it points at
    * the mistake instead, just as Hint would (and counted as Hint counts it).
    */
   showMe: () => void;
+  /**
+   * From the wrong-marks hint's Show me: put the missing digit back among
+   * its cell's candidates, as an ordinary candidate entry (undoable, and
+   * logged as one), closing the page.
+   */
+  putBack: () => void;
   check: (scope: 'cell' | 'puzzle') => void;
   reveal: () => void;
   /** Ask before resetting (opens the confirmation). */
@@ -308,6 +334,12 @@ export interface Sudoku {
    * board, Show me points at the mistake instead, as Hint would.
    */
   walkthrough: Walkthrough | null;
+  /**
+   * Whether the hint on show offers "Show me": one with a walkthrough, or a
+   * wrong-marks hint, whose page names the missing digit. Worked out without
+   * the solution, so it gives nothing away.
+   */
+  isShowMeOffered: boolean;
   /** The record of the game on screen. */
   record: GameRecord | null;
   /**
@@ -408,15 +440,21 @@ function monotonicNow(): number {
  * The walkthrough for the hint the bar shows, if it has one: none for a
  * mistake, or for a solve that stalls before the cell (see `explainHint`).
  *
- * Read from the board as the player sees it, not held to the solution:
- * whether "Show me" is on offer must not say, for free, whether a digit
- * somewhere is wrong — that is what Check is for, and Check is counted. The
- * solution has its say when Show me is pressed (see `showMe`).
+ * Not held to the solution: whether "Show me" is on offer must not say, for
+ * free, whether a digit somewhere is wrong, or an answer missing from its
+ * cell's candidates — that is what Check and Hint are for, and they are
+ * counted. Nor read from the player's latest candidates, which nothing has
+ * held to the solution since they changed: a chain for every digit put
+ * back but the answer, a single for one lone note, would name it. So it is
+ * read from the placed digits and the candidates of the last fill hint
+ * (see `checkedBoardOf`) — the player's own, just after a Hint. The
+ * solution and the player's latest have their say when Show me is pressed
+ * (see `showMe`).
  */
 function walkthroughFor(game: GameState | null): Walkthrough | null {
   const hint = game === null ? null : shownHint(game);
   if (game === null || hint === null) return null;
-  return explainHint(hintBoardOf(game), hint);
+  return explainHint(checkedBoardOf(game), hint);
 }
 
 /**
@@ -1216,29 +1254,61 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     },
     showMe: () => {
       // Only from the hint bar, which offers it only while the board shows.
-      if (session === null || phase !== 'playing' || walkthrough === null) return;
-      const board = hintBoardOf(session.game);
-      const solution = gridValues(session.game.puzzle.solution);
+      if (session === null || phase !== 'playing') return;
+      const { game: current } = session;
+      const shown = hintOnShow(current, walkthrough);
+      const struck = shown?.kind === 'struck' ? shown.index : null;
+      if (walkthrough === null && struck === null) return;
+      const board = hintBoardOf(current);
+      const solution = gridValues(current.puzzle.solution);
+      const index = struck ?? walkthrough!.target;
       // Held to the solution only now. No sound walkthrough starts from a
-      // mistake, so with one on the board this does what Hint would: point
-      // at it, counted as Hint counts it.
-      const checked = explainCell(board, walkthrough.target, solution);
-      if (checked === null) {
+      // mistake — a wrong digit, or an answer missing from its candidates —
+      // and the page for a missing answer needs the digits right (the answer
+      // is still missing: its hint leaves the bar at any change to the
+      // cell's candidates); so otherwise this does what Hint would: point at
+      // the mistake, counted as Hint counts it.
+      let view: DialogState | null = null;
+      if (struck === null) {
+        const checked = explainCell(board, index, solution);
+        if (checked !== null) view = { kind: 'walkthrough', walkthrough: checked, step: 0 };
+      } else if (findHint(board, solution).kind !== 'mistake') {
+        const { autoCandidates } = current;
+        view = { kind: 'struck', index, digit: solution[index] as Digit, board, autoCandidates };
+      }
+      if (view === null) {
         run({ type: 'hint', hint: findHint(board, solution) });
         return;
       }
       const t = at();
-      // Counted as a hint the first time for the cell — the reducer keeps
-      // count — and logged every time, as help seen; then the clock stops
-      // silently, as for any dialog.
-      const charged = advance(session, { type: 'walkthrough', index: checked.target }, t.clock);
+      // Counted as a hint the first time for the cell's hint — the reducer
+      // keeps count — and logged every time, as help seen; then the clock
+      // stops silently, as for any dialog.
+      const charged = advance(session, { type: 'walkthrough', index }, t.clock);
       const next = pauseSession(charged, 'dialog', t.clock);
       persist(next, t);
       setSession(next);
       // The charge is said by the dialog, as it opens: the status region,
       // outside a modal dialog, is hidden from a screen reader behind it.
       const charge = withCharge(null, session.game, charged.game);
-      setDialog({ kind: 'walkthrough', walkthrough: checked, step: 0, charge });
+      setDialog({ ...view, charge });
+    },
+    putBack: () => {
+      if (dialog?.kind !== 'struck' || session === null) return;
+      const { index, digit } = dialog;
+      setDialog(null);
+      const t = at();
+      const resumed =
+        session.pause === 'dialog' ? resumeSession(session, t, settings.checkGuesses) : session;
+      // Still missing: the page stops the clock, and nothing changes the
+      // board while it is open, so this entry puts the digit back rather
+      // than striking it again.
+      const action = { type: 'enter', digit, index, mode: 'candidate' } as const;
+      const next = advance(resumed, action, t.clock);
+      setSession(next);
+      announce(
+        describeChange(resumed.game, next.game, action, { conflicts: settings.highlightConflicts }),
+      );
     },
     check: (scope) => run({ type: 'check', scope }),
     reveal: () => run({ type: 'reveal' }),
@@ -1511,6 +1581,8 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     game,
     shownHint: game === null ? null : hintOnShow(game, walkthrough),
     walkthrough,
+    isShowMeOffered:
+      walkthrough !== null || (game !== null && hintOnShow(game, walkthrough)?.kind === 'struck'),
     record: session?.record ?? null,
     hasBoardShown: session !== null && hasBoardShown(session),
     difficulty:

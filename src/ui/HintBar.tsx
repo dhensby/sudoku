@@ -16,9 +16,11 @@ export interface HintBarProps {
    */
   textId?: string;
   /**
-   * Open "Show me" for the hint's cell; null when there is no walkthrough to
-   * show (a mistake hint, or a solve that stalls before the cell). Never
-   * withheld for a wrong digit elsewhere, which would give it away.
+   * Open "Show me" for the hint's cell — its walkthrough, or for a
+   * wrong-marks hint the page naming the missing digit; null when there is
+   * nothing to show (a mistake hint, or a solve that stalls before the
+   * cell). Never withheld for a wrong digit or a missing candidate
+   * elsewhere, which would give it away.
    */
   onShowMe?: (() => void) | null;
   /** A message for the player, until they dismiss it. A hint takes the bar first. */
@@ -44,8 +46,9 @@ function namedTechnique(hint: Hint): TechniqueId | null {
  * words would push the bar to a third line, it is a question-mark icon that
  * keeps the words as its name (see layout.css). A hint with a walkthrough
  * then offers "Show me", named for the cell it solves ("Show me how to solve
- * row 5, column 2"); on the narrowest bars, the hint's own mark gives way
- * to it (see layout.css).
+ * row 5, column 2") — or, for a candidate missing from a cell, for what it
+ * shows ("Show me what's missing in row 2, column 1"); on the narrowest
+ * bars, the hint's own mark gives way to it (see layout.css).
  *
  * Not a live region: the hook already speaks every hint and notice through
  * the app's status region, and saying them twice would talk over the next.
@@ -91,7 +94,11 @@ export function HintBar({
                     <button
                       type="button"
                       className="hint-bar__show"
-                      aria-label={`Show me how to solve ${describePosition(showMe.index)}`}
+                      aria-label={
+                        hint.kind === 'struck'
+                          ? `Show me what's missing in ${describePosition(showMe.index)}`
+                          : `Show me how to solve ${describePosition(showMe.index)}`
+                      }
                       onClick={showMe.onClick}
                     >
                       <PlayIcon className="hint-bar__show-icon" />

@@ -10,7 +10,7 @@ import {
   type GridString,
   type Puzzle,
 } from '../src/core';
-import { STUCK_ON_A_HIDDEN_PAIR } from '../src/test/logic-fixtures';
+import { STUCK_ON_AN_XY_CHAIN, STUCK_ON_A_HIDDEN_PAIR } from '../src/test/logic-fixtures';
 
 /*
  * Shared fixtures and steps for the end-to-end suite.
@@ -449,4 +449,35 @@ export async function expectHeaderWhole(page: Page): Promise<void> {
   });
   expect(cut.title, 'the wordmark cut short').toBeLessThanOrEqual(0.01);
   expect(cut.tier, 'the tier cut short').toBeLessThanOrEqual(0.01);
+}
+
+/**
+ * Stuck as `getStuck` leaves the player, then a note of 1 alone pencilled
+ * into the cell their hint points at — row 5, column 2, whose answer is 8 —
+ * so that Hint points out the candidate it is missing. Back in Normal mode.
+ */
+export async function leaveOutAnAnswer(page: Page): Promise<void> {
+  await getStuck(page);
+  await modeButton(page, 'Candidate').click();
+  await typeDigits(page, [{ index: STUCK_ON_A_HIDDEN_PAIR.target, digit: 1 }]);
+  await ensureNormalMode(page);
+}
+
+/**
+ * The report that made hints read the player's own candidates: the Expert
+ * daily of 10 October 2026, opened from its link in Auto Candidate Mode,
+ * with the six cells its first hints point at filled. The next hint points
+ * at row 2, column 1 and names an XY-Chain, and its Show me starts with a
+ * box/line reduction that removes 2 from row 8, column 9 and row 9, column 9.
+ */
+export async function getStuckOnAnXyChain(page: Page): Promise<void> {
+  const { code, entries } = STUCK_ON_AN_XY_CHAIN;
+  await page.goto(`/?p=${code}`);
+  await startButton(page).click();
+  await waitForPlaying(page);
+  await page.getByRole('switch', { name: 'Auto Candidate Mode' }).click();
+  await typeDigits(
+    page,
+    entries.map(([row, col, digit]) => ({ index: (row - 1) * 9 + col - 1, digit })),
+  );
 }

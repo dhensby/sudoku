@@ -5,8 +5,11 @@ import { fileURLToPath } from 'node:url';
 import { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  computeCandidates,
   dateKeyOf,
+  digitsOf,
   reduce,
+  valuesOf,
   serialiseGame,
   verifyMoveLog,
   type Digit,
@@ -28,7 +31,7 @@ import {
 import { loadEncodedMoveLog, loadMoveLog, readMoveLogIds, storeMoveLog } from '../storage/moveLogs';
 import { loadPreferences, setLastDifficulty } from '../storage/prefs';
 import { memoryStorage, type StorageLike } from '../storage/storage';
-import { STUCK_ON_A_HIDDEN_PAIR } from '../test/logic-fixtures';
+import { STUCK_ON_AN_XY_CHAIN, STUCK_ON_A_HIDDEN_PAIR } from '../test/logic-fixtures';
 import type { PuzzleSource } from './puzzleSource';
 import {
   FIRST_EMPTY,
@@ -792,6 +795,250 @@ describe('useSudoku', () => {
       act(() => result.current.actions.showMe());
       expect(result.current.dialog).toBeNull();
       expect(result.current.game?.assists.hints).toBe(1);
+    });
+
+    describe('from the player’s own candidates', () => {
+      // Row 1, column 4 (cell 3): candidates 2 and 6, answer 6.
+      const CELL = 3;
+
+      /** A game in auto candidate mode with cell 3's answer struck out. */
+      async function struck(options: SetupOptions = {}) {
+        const view = await started(options);
+        act(() => view.result.current.actions.setAutoCandidates(true));
+        act(() => view.result.current.actions.toggleCandidate(CELL, 6));
+        return view;
+      }
+
+      it('point at a struck answer without naming it, counted once while it stays struck', async () => {
+        const { result } = await struck();
+        act(() => result.current.actions.hint());
+        expect(result.current.shownHint).toEqual({ kind: 'struck', index: CELL });
+        expect(result.current.game?.selected).toBe(CELL);
+        // With the count of help taken, as every charge is said (Show help taken is on).
+        expect(result.current.announcement?.text).toBe(
+          "This cell is missing a candidate that can't be ruled out yet. Row 1, column 4. 1 hint used.",
+        );
+        expect(result.current.game?.assists.hints).toBe(1);
+        // Show me is on offer, with no walkthrough: its page is of its own.
+        expect(result.current.walkthrough).toBeNull();
+        expect(result.current.isShowMeOffered).toBe(true);
+        act(() => result.current.actions.select(FIRST_EMPTY));
+        act(() => result.current.actions.hint());
+        expect(result.current.game?.assists.hints).toBe(1);
+      });
+
+      it('name the struck answer in Show me, counted once, and put it back as an ordinary move', async () => {
+        const { result } = await struck();
+        act(() => result.current.actions.hint());
+        const said = result.current.announcement;
+        act(() => result.current.actions.showMe());
+        expect(result.current.dialog).toMatchObject({ kind: 'struck', index: CELL, digit: 6 });
+        expect(result.current.pauseReason).toBe('dialog');
+        expect(result.current.announcement).toBe(said);
+        expect(result.current.game?.assists.hints).toBe(2);
+        act(() => result.current.actions.closeDialog());
+        expect(result.current.phase).toBe('playing');
+        act(() => result.current.actions.showMe());
+        expect(result.current.game?.assists.hints).toBe(2);
+
+        act(() => result.current.actions.putBack());
+        expect(result.current.dialog).toBeNull();
+        expect(result.current.phase).toBe('playing');
+        expect(result.current.game?.cells[CELL].autoRemoved).toBe(0);
+        expect(result.current.announcement?.text).toBe('Candidate 6 added.');
+        expect(result.current.game?.cellHints.has(CELL)).toBe(false);
+        expect(result.current.shownHint).toBeNull();
+        // An ordinary move: Undo strikes it again.
+        act(() => result.current.actions.undo());
+        expect(result.current.game?.cells[CELL].autoRemoved).toBe(1 << 5);
+        expect(result.current.game?.assists.hints).toBe(2);
+      });
+
+      it('put nothing back without the page open, and leave the board be while it is', async () => {
+        const { result } = await struck();
+        act(() => result.current.actions.putBack());
+        expect(result.current.game?.cells[CELL].autoRemoved).toBe(1 << 5);
+        act(() => result.current.actions.hint());
+        act(() => result.current.actions.showMe());
+        // The page stops the clock, and no move is taken while it is open, so
+        // its button is the only way the digit goes back before it closes.
+        act(() => result.current.actions.toggleCandidate(CELL, 6));
+        expect(result.current.game?.cells[CELL].autoRemoved).toBe(1 << 5);
+        act(() => result.current.actions.putBack());
+        expect(result.current.game?.cells[CELL].autoRemoved).toBe(0);
+      });
+
+      it('forget a struck hint at any change to its cell, saying nothing of which, and count it again', async () => {
+        const after = async (digit: number) => {
+          const { result, unmount } = await struck();
+          act(() => result.current.actions.toggleCandidate(CELL, 2));
+          act(() => result.current.actions.hint());
+          act(() => result.current.actions.toggleCandidate(CELL, digit as Digit));
+          act(() => result.current.actions.select(FIRST_EMPTY));
+          act(() => result.current.actions.select(CELL));
+          const seen = {
+            hint: result.current.shownHint,
+            isShowMeOffered: result.current.isShowMeOffered,
+            hints: result.current.game?.assists.hints,
+          };
+          // Asked again: counted again whenever it is still missing.
+          act(() => result.current.actions.hint());
+          const again = result.current.game?.assists.hints;
+          unmount();
+          return { seen, again };
+        };
+        // Both candidates struck, then the answer put back, or the other: the
+        // bar alike, and Hint again counted either way when it says anything.
+        const right = await after(6);
+        const wrong = await after(2);
+        expect(right.seen).toEqual({ hint: null, isShowMeOffered: false, hints: 1 });
+        expect(wrong.seen).toEqual(right.seen);
+        expect(wrong.again).toBe(2);
+        expect(right.again).toBe(2);
+      });
+
+      it('keep a struck hint, and what it cost, across a reload', async () => {
+        const storage = memoryStorage();
+        const first = await struck({ storage });
+        act(() => first.result.current.actions.hint());
+        act(() => first.result.current.actions.showMe());
+        act(() => first.result.current.actions.closeDialog());
+        act(() => {
+          window.dispatchEvent(new Event('pagehide'));
+        });
+        first.unmount();
+
+        const { result } = setup({ storage, source: fakeSource() });
+        act(() => result.current.actions.resume());
+        act(() => result.current.actions.select(CELL));
+        expect(result.current.shownHint).toEqual({ kind: 'struck', index: CELL });
+        act(() => result.current.actions.hint());
+        act(() => result.current.actions.showMe());
+        expect(result.current.game?.assists.hints).toBe(2);
+      });
+
+      it('never let a struck answer elsewhere change what Show me offers, until it is pressed', async () => {
+        // The stuck player's hint, in auto candidate mode, then a candidate
+        // struck from row 1, column 3, which the steps do not rest on (answer
+        // 6): its answer, or another. Nothing on show may tell the two apart
+        // — the boards Show me draws are the player's, and differ only by
+        // the candidate they struck.
+        const { target } = STUCK_ON_A_HIDDEN_PAIR;
+        const seen = async (strike: number) => {
+          const view = await stuck();
+          act(() => view.result.current.actions.setAutoCandidates(true));
+          act(() => view.result.current.actions.hint());
+          act(() => view.result.current.actions.toggleCandidate(rc(1, 3), strike as Digit));
+          act(() => view.result.current.actions.select(target));
+          return view;
+        };
+        const wrong = await seen(6);
+        const right = await seen(9);
+        const stepsOf = (view: typeof wrong) =>
+          view.result.current.walkthrough?.steps.map(({ step }) => step);
+        expect(wrong.result.current.shownHint).toEqual(right.result.current.shownHint);
+        expect(stepsOf(wrong)).toEqual(stepsOf(right));
+        expect(wrong.result.current.isShowMeOffered).toBe(true);
+        expect(right.result.current.isShowMeOffered).toBe(true);
+        expect(wrong.result.current.game?.assists.hints).toBe(1);
+
+        // Pressed, it does what Hint would: point at the cell, counted as Hint counts it.
+        act(() => wrong.result.current.actions.showMe());
+        expect(wrong.result.current.dialog).toBeNull();
+        expect(wrong.result.current.game?.hint).toEqual({ kind: 'struck', index: rc(1, 3) });
+        expect(wrong.result.current.game?.selected).toBe(rc(1, 3));
+        expect(wrong.result.current.game?.assists.hints).toBe(2);
+        act(() => right.result.current.actions.showMe());
+        expect(right.result.current.dialog?.kind).toBe('walkthrough');
+      });
+
+      it('point at a wrong digit first, when Show me is pressed on a struck answer', async () => {
+        const { result } = await struck();
+        act(() => result.current.actions.hint());
+        // A wrong 9 in the centre (answer 5).
+        enter(result, 40, 9);
+        act(() => result.current.actions.hint());
+        expect(result.current.shownHint).toEqual({ kind: 'mistake', index: 40 });
+        act(() => result.current.actions.select(CELL));
+        expect(result.current.shownHint).toEqual({ kind: 'struck', index: CELL });
+        act(() => result.current.actions.showMe());
+        expect(result.current.dialog).toBeNull();
+        expect(result.current.game?.hint).toEqual({ kind: 'mistake', index: 40 });
+      });
+
+      it.each([
+        ['struck out of the automatic candidates', true],
+        ['pencilled into the notes', false],
+      ])(
+        'show the same remembered hint, and offer Show me alike, whatever is %s in its cell',
+        async (_name, autoCandidates) => {
+          // The report's stuck cell, hinted; then each set of its candidates
+          // in turn, with the answer (9) and without. Nothing the bar shows
+          // unasked may tell them apart.
+          const { givens, solution, entries, target } = STUCK_ON_AN_XY_CHAIN;
+          const { result } = await started({
+            source: fakeSource({ givens, solution, difficulty: 'expert' }),
+          });
+          act(() => result.current.actions.setAutoCandidates(autoCandidates));
+          for (const [row, col, digit] of entries) enter(result, rc(row, col), digit);
+          act(() => result.current.actions.hint());
+          const hints = result.current.game!.assists.hints;
+          const digits = digitsOf(computeCandidates(valuesOf(result.current.game!))[target]);
+          expect(digits).toContain(9);
+          const bars = new Set<string>();
+          for (let subset = 0; subset < 1 << digits.length; subset++) {
+            const marked = digits.filter((_, i) => (subset & (1 << i)) !== 0);
+            const toggle = () => {
+              for (const digit of marked) {
+                act(() => result.current.actions.toggleCandidate(target, digit as Digit));
+              }
+            };
+            toggle();
+            act(() => result.current.actions.select(target));
+            const { shownHint, isShowMeOffered, walkthrough } = result.current;
+            bars.add(JSON.stringify({ shownHint, isShowMeOffered, steps: walkthrough?.steps }));
+            toggle();
+          }
+          expect(bars.size).toBe(1);
+          expect(result.current.game?.assists.hints).toBe(hints);
+        },
+      );
+
+      it('move Show me on as the player strikes what it starts with (the report)', async () => {
+        const { givens, solution, entries, strikes, target } = STUCK_ON_AN_XY_CHAIN;
+        const { result } = await started({
+          source: fakeSource({ givens, solution, difficulty: 'expert' }),
+        });
+        act(() => result.current.actions.setAutoCandidates(true));
+        for (const [row, col, digit] of entries) enter(result, rc(row, col), digit);
+        act(() => result.current.actions.hint());
+        expect(result.current.shownHint).toEqual({
+          kind: 'deduction',
+          index: target,
+          technique: 'xyChain',
+        });
+        const first = () => result.current.walkthrough?.steps[0].step.technique;
+        expect(first()).toBe('claiming');
+        for (const [row, col, digit] of strikes) {
+          act(() => result.current.actions.toggleCandidate(rc(row, col), digit as Digit));
+        }
+        // The bar holds to the candidates the hint was given from — the
+        // strikes since are unchecked — but Show me, pressed, starts from the
+        // player's: the step they have taken is gone.
+        act(() => result.current.actions.select(target));
+        expect(first()).toBe('claiming');
+        act(() => result.current.actions.showMe());
+        const opened = result.current.dialog;
+        expect(opened?.kind === 'walkthrough' && opened.walkthrough.steps[0].step.technique).toBe(
+          'hiddenTriple',
+        );
+        act(() => result.current.actions.closeDialog());
+        // Hint again, free for the cell, brings the bar up to date.
+        act(() => result.current.actions.hint());
+        expect(result.current.game?.selected).toBe(target);
+        expect(first()).toBe('hiddenTriple');
+        expect(result.current.game?.assists.hints).toBe(2);
+      });
     });
   });
 

@@ -3,12 +3,14 @@ import {
   PEERS,
   appendMove,
   computeCandidates,
+  createBoard,
   createGame,
   createMoveLog,
   digitsOf,
   findHint,
   formatGrid,
   gridValues,
+  explainCell,
   hintBoardOf,
   moveFor,
   parseGrid,
@@ -24,11 +26,12 @@ import {
   type Puzzle,
   type RandomFn,
   type SingleTechniqueId,
+  type SolverBoard,
   type TechniqueId,
   type UnitKind,
 } from '../core';
 import { WIKIPEDIA_PUZZLE, WIKIPEDIA_SOLUTION } from './grids';
-import { EXPERT_SAMPLE } from './logic-fixtures';
+import { EXPERT_SAMPLE, STUCK_ON_AN_XY_CHAIN } from './logic-fixtures';
 
 /*
  * Simulated players for the move log's tests, its golden logs and its size
@@ -114,9 +117,19 @@ function answerAt(puzzle: Puzzle, index: number): Digit {
   return (puzzle.solution.charCodeAt(index) - 48) as Digit;
 }
 
+/**
+ * The board the players below ask their hints of: the placed digits and
+ * their naked candidates, as hints read them when the golden games were
+ * recorded — so those games play as they did, move for move. (Hints have
+ * since read the player's own candidates: see `candidateHintsTour`.)
+ */
+function placedBoard(game: GameState): SolverBoard {
+  return createBoard(valuesOf(game));
+}
+
 /** The cell a person would fill next: where a hint would point (asked of the board, not the game). */
 function nextCell(game: GameState): number {
-  const hint = findHint(hintBoardOf(game), gridValues(game.puzzle.solution));
+  const hint = findHint(placedBoard(game), gridValues(game.puzzle.solution));
   // Every scripted player puts its slips right at once, so the hint is a
   // single or a deduction: the board is never full while the game is on.
   return (hint as Exclude<Hint, { kind: 'none' }>).index;
@@ -237,7 +250,7 @@ export function playWithHelp(puzzle: Puzzle, rng: RandomFn): Played {
   ];
   for (const step of steps) played = act(played, step(played.game), t());
   // A hint about the board as it stands, its walkthrough, and the placement.
-  const hint = findHint(hintBoardOf(played.game), solution);
+  const hint = findHint(placedBoard(played.game), solution);
   played = act(played, { type: 'hint', hint }, t());
   if (hint.kind === 'single' || hint.kind === 'deduction') {
     played = act(played, { type: 'walkthrough', index: hint.index }, t());
@@ -247,7 +260,7 @@ export function playWithHelp(puzzle: Puzzle, rng: RandomFn): Played {
     if (rng() < 0.1)
       played = act(
         played,
-        { type: 'hint', hint: findHint(hintBoardOf(played.game), solution) },
+        { type: 'hint', hint: findHint(placedBoard(played.game), solution) },
         t(),
       );
     // The last cell revealed, which completes the grid.
@@ -378,6 +391,89 @@ export function checkGuessesTour(rng: RandomFn): Played {
   return played;
 }
 
+/**
+ * A scripted game of hints from the player's own candidates, for the golden
+ * logs: the report that asked for them (`STUCK_ON_AN_XY_CHAIN`), in auto
+ * candidate mode — six hinted cells, then stuck at row 2, column 1, the 2s
+ * struck, the hint and Show me asked for, and the route followed step by
+ * step, a hint after each, until the cell is a hidden single. Then the
+ * wrong-marks hint: an answer struck out, hinted (counted), asked for again
+ * (free), forgotten at another strike and asked for again (counted again),
+ * its Show me opened twice (counted once), and put back (forgotten); one about a
+ * cell whose answer is a candidate (counted, not remembered); one forgotten
+ * as auto candidates go off, and counted again once they are back on; and
+ * one about the player's own notes. Then a solve.
+ */
+export function candidateHintsTour(rng: RandomFn): Played {
+  const { givens, solution, entries, target, strikes } = STUCK_ON_AN_XY_CHAIN;
+  const puzzle: Puzzle = { givens, solution, difficulty: 'expert' };
+  const answers = gridValues(solution);
+  const t = () => thinking(rng, 400, 6000);
+  let played = startPlaying(puzzle, true);
+  const run = (...actions: GameAction[]) => {
+    for (const action of actions) played = act(played, action, t());
+  };
+  const cell = (row: number, col: number) => (row - 1) * 9 + col - 1;
+  /** Hint, as the app asks for it: of the player's own candidates. */
+  const ask = () => run({ type: 'hint', hint: findHint(hintBoardOf(played.game), answers) });
+  const showMe = (index: number): GameAction => ({ type: 'walkthrough', index });
+  const autoCandidates = (enabled: boolean): GameAction => ({ type: 'setAutoCandidates', enabled });
+
+  // The six hinted cells, each hinted and filled.
+  for (const [row, col, digit] of entries) {
+    ask();
+    run(place(cell(row, col), digit));
+  }
+  // Stuck: the hint names an XY-Chain; the 2s Show me starts with struck; asked again, for free.
+  ask();
+  for (const [row, col, digit] of strikes) run(pencil(cell(row, col), digit));
+  ask();
+  run(showMe(target));
+  // The route followed a step at a time, a hint after each, to a hidden single.
+  for (;;) {
+    const { steps } = explainCell(hintBoardOf(played.game), target, answers)!;
+    if (steps.length === 1) break;
+    for (const { index, mask } of steps[0].step.eliminations) {
+      for (const digit of digitsOf(mask)) run(pencil(index, digit));
+    }
+    ask();
+  }
+  run(place(target, answers[target]));
+
+  // The first empty cell with three candidates or more: its answer, and another.
+  const candidates = () => computeCandidates(valuesOf(played.game));
+  const empties = () => played.game.cells.flatMap((c, i) => (c.value === 0 ? [i] : []));
+  const x = empties().find((i) => digitsOf(candidates()[i]).length >= 3)!;
+  const other = digitsOf(candidates()[x]).find((digit) => digit !== answers[x])!;
+  run(pencil(x, answers[x])); // the answer struck out
+  ask(); // pointed at, counted
+  ask(); // again, for free
+  run(pencil(x, other)); // forgotten at any change to the cell's marks
+  ask(); // so counted again
+  run(showMe(x), showMe(x)); // its Show me, counted once
+  run(pencil(x, answers[x])); // put back: forgotten
+  const y = empties().find((i) => i !== x)!;
+  run({ type: 'hint', hint: { kind: 'struck', index: y } }); // about an answer still there
+  run(pencil(y, answers[y])); // struck, pointed at, then forgotten as auto candidates go off
+  ask();
+  run(autoCandidates(false), autoCandidates(true));
+  ask(); // struck still, once they are back: counted again
+  run(pencil(y, answers[y]), autoCandidates(false));
+  // Notes that leave the answer out.
+  const z = empties().find((i) => i !== x && i !== y)!;
+  run(
+    pencil(
+      z,
+      digitsOf(candidates()[z]).find((digit) => digit !== answers[z])!,
+    ),
+  );
+  ask();
+  run(pencil(z, answers[z]));
+
+  for (const i of empties()) run(place(i, answers[i]));
+  return played;
+}
+
 // ---------------------------------------------------------------------------
 // The random player
 // ---------------------------------------------------------------------------
@@ -412,12 +508,21 @@ const DEDUCTIONS: readonly TechniqueId[] = [
 
 const UNIT_KINDS: readonly UnitKind[] = ['row', 'column', 'box'];
 
-/** Any hint the reducer could be handed, the one `findHint` would give now and then. */
-function randomHint(game: GameState, rng: RandomFn): Hint {
+/**
+ * Any hint the reducer could be handed, the one `findHint` would give now and
+ * then. Wrong-marks hints, and `findHint` asked of the player's own
+ * candidates, only `withStruck`, so that the games played before there were
+ * any (the golden random game's) play as they did.
+ */
+function randomHint(game: GameState, rng: RandomFn, withStruck: boolean): Hint {
   const roll = rng();
   // Off the grid now and then: counted, but about no cell.
   const index = rng() < 0.03 ? pick([-1, 81], rng) : Math.floor(rng() * 81);
-  if (roll < 0.1) return findHint(hintBoardOf(game), gridValues(game.puzzle.solution));
+  if (roll < 0.1) {
+    const board = withStruck ? hintBoardOf(game) : placedBoard(game);
+    return findHint(board, gridValues(game.puzzle.solution));
+  }
+  if (withStruck && roll < 0.12) return { kind: 'struck', index };
   if (roll < 0.15) return { kind: 'none' };
   if (roll < 0.35) return { kind: 'mistake', index };
   if (roll < 0.65) {
@@ -432,14 +537,16 @@ function randomHint(game: GameState, rng: RandomFn): Hint {
  * Any action at all, weighted towards what changes the board, and towards
  * the right digit with probability `accuracy` — so some games get solved.
  * Indexes and modes are left to the state now and then, as the UI leaves them.
- * Switching Check guesses is one of them only `withCheckGuesses`, so that the
- * games played before it existed (the golden random game's) play as they did.
+ * Switching Check guesses is one of them only `withCheckGuesses`, and
+ * wrong-marks hints only `withStruck` (see `randomHint`), so that the games
+ * played before they existed (the golden random game's) play as they did.
  */
 export function randomAction(
   game: GameState,
   rng: RandomFn,
   accuracy = 0.6,
   withCheckGuesses = false,
+  withStruck = withCheckGuesses,
 ): GameAction {
   const empty = game.cells.flatMap((cell, i) => (cell.value === 0 ? [i] : []));
   const cell = rng() < 0.8 && empty.length > 0 ? pick(empty, rng) : Math.floor(rng() * 81);
@@ -466,7 +573,7 @@ export function randomAction(
   if (roll < 65) return { type: 'setAutoCandidates', enabled: rng() < 0.5 };
   if (roll < 74) return { type: 'undo' };
   if (roll < 80) return { type: 'redo' };
-  if (roll < 87) return { type: 'hint', hint: randomHint(game, rng) };
+  if (roll < 87) return { type: 'hint', hint: randomHint(game, rng, withStruck) };
   if (roll < 91) {
     const hinted = [...game.cellHints.keys()];
     return {

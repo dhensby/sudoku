@@ -2,6 +2,7 @@ import {
   TECHNIQUE_ORDER,
   TECHNIQUE_TIER,
   bit,
+  computeCandidates,
   createBoard,
   explainCell,
   grade,
@@ -26,6 +27,7 @@ import {
   guideIdFor,
   guideTier,
   guideTiers,
+  ruledOutByYou,
   techniqueQuestion,
   walkthroughCaption,
 } from './techniqueGuide';
@@ -468,8 +470,11 @@ describe('captions in other shapes', () => {
 });
 
 /** Every step of a walkthrough in words, each crediting the steps before it. */
+/** A walkthrough's captions, crediting the player with what they had ruled out, as Show me does. */
 function captionsOf(steps: readonly TechniqueTrace[]): string[] {
-  return steps.map((trace, k) => walkthroughCaption(trace, steps.slice(0, k)));
+  return steps.map((trace, k) =>
+    walkthroughCaption(trace, steps.slice(0, k), ruledOutByYou(trace, steps[0])),
+  );
 }
 
 /** A cell by its row and column, counted from one as the captions count them. */
@@ -582,6 +587,78 @@ describe('walkthrough captions', () => {
     });
   });
 
+  describe('for a step that rests on a candidate the player had ruled out', () => {
+    // As above: box 1 holds 1–4 and 6–8, leaving row 1, columns 1 and 2
+    // open, and no 5 sees row 1, column 2.
+    const values = grid({ 2: 1, 9: 2, 10: 3, 11: 4, 18: 6, 19: 7, 20: 8 });
+    const single = madeUp(
+      {
+        technique: 'hiddenSingleBox',
+        placement: { index: 0, digit: 5 },
+        unit: { kind: 'box', index: 0 },
+        houses: [{ kind: 'box', index: 0 }],
+      },
+      values,
+    );
+    const yours = (index: number, mask: number) => [{ index, mask }];
+    const struck = (index: number, mask: number) =>
+      madeUp({ technique: 'pointing', eliminations: [{ index, mask }] });
+
+    it('finds what the player had ruled out, and not what a placed digit or a step explains', () => {
+      // The walkthrough's first board is the player's: row 1, column 2 has no 5.
+      const candidates = computeCandidates(values);
+      const first = madeUp({ technique: 'pointing' }, values, candidates);
+      first.candidates[1] &= ~bit(5);
+      expect(ruledOutByYou(single, first)).toEqual([{ index: 1, mask: bit(5) }]);
+      // Had the player kept it, there is nothing of theirs to credit.
+      expect(ruledOutByYou(single, madeUp({ technique: 'pointing' }, values, candidates))).toEqual(
+        [],
+      );
+    });
+
+    it('says the player had ruled the digit out of every other cell, for a hidden single', () => {
+      expect(walkthroughCaption(single, [], yours(1, bit(5)))).toBe(
+        "You'd already ruled out 5 from every other empty cell in box 1, so box 1's 5 can only " +
+          'go in row 1, column 1.',
+      );
+    });
+
+    it('names the copies, the steps and the player, as each accounts for a cell', () => {
+      // Rows 2, columns 1 and 2 opened up; a 5 in column 1 sees the first.
+      const opened = values.slice();
+      opened[9] = 0;
+      opened[10] = 0;
+      opened[63] = 5;
+      const trace = { ...single, values: opened };
+      expect(walkthroughCaption(trace, [struck(10, bit(5))], yours(1, bit(5)))).toBe(
+        'Every other empty cell in box 1 either sees the 5 at row 8, column 1, lost its 5 in ' +
+          "step 1 or had its 5 ruled out by you, so box 1's 5 can only go in row 1, column 1.",
+      );
+      // A cell nothing accounts for: said plainly.
+      expect(walkthroughCaption(trace, [], yours(1, bit(5)))).toBe(
+        "No other empty cell in box 1 can be a 5, so box 1's 5 can only go in row 1, column 1.",
+      );
+    });
+
+    it('says which digits the player had ruled out of a naked single', () => {
+      const row = grid({ 1: 1, 2: 2, 3: 3, 4: 4, 5: 7 });
+      const trace = madeUp({ technique: 'nakedSingle', placement: { index: 0, digit: 9 } }, row);
+      const theirs = [...yours(0, bit(8)), ...yours(40, bit(5))];
+      expect(walkthroughCaption(trace, [struck(0, maskOf([5, 6]))], theirs)).toBe(
+        'Row 1, column 1 sees 1, 2, 3, 4 and 7 in its row. Step 1 ruled out its 5 and 6. ' +
+          "You'd already ruled out its 8. So 9 is all it can be.",
+      );
+    });
+
+    it('credits the player after the earlier steps, for any other technique', () => {
+      const [example] = guideExamples('pointing');
+      const caption = walkthroughCaption(example.trace, [], yours(40, maskOf([2, 3])));
+      expect(caption).toBe(
+        `You'd already ruled out 2 and 3 from row 5, column 5. ${example.caption}`,
+      );
+    });
+  });
+
   it('leave no candidate unexplained and credit only earlier steps, over many walkthroughs', () => {
     // Every empty cell of Hard and Expert puzzles, from the givens and part
     // way through: a walkthrough can run to dozens of steps.
@@ -615,5 +692,39 @@ describe('walkthrough captions', () => {
     }
     expect(walkthroughs).toBeGreaterThan(500);
     expect(credited).toBeGreaterThan(50);
+  });
+
+  it('leave none unexplained from the player’s own candidates either, crediting them', () => {
+    // Part way through, with a few wrong candidates struck from every empty
+    // cell — every third one a cell's candidates hold — as a player marks up.
+    let theirs = 0;
+    for (const { givens, solution } of [
+      ...tierPuzzles('hard', 2, 700),
+      ...EXPERT_SAMPLE.slice(0, 2).map(solvedPuzzle),
+    ]) {
+      const values = givens.slice();
+      for (const { placement } of grade(givens)
+        .steps.filter((step) => step.placement !== null)
+        .slice(0, 12)) {
+        values[placement!.index] = placement!.digit;
+      }
+      const board = createBoard(values);
+      let k = 0;
+      for (let i = 0; i < 81; i++) {
+        for (let digit = 1; digit <= 9; digit++) {
+          if (digit === solution[i] || (board.candidates[i] & bit(digit)) === 0) continue;
+          if (k++ % 3 === 0) board.candidates[i] &= ~bit(digit);
+        }
+      }
+      for (let target = 0; target < 81; target++) {
+        const walkthrough = explainCell(board, target, solution);
+        if (walkthrough === null) continue;
+        for (const caption of captionsOf(walkthrough.steps)) {
+          expect(caption).not.toMatch(/No other empty cell|Earlier steps/);
+          if (caption.includes("You'd already ruled out")) theirs++;
+        }
+      }
+    }
+    expect(theirs).toBeGreaterThan(20);
   });
 });

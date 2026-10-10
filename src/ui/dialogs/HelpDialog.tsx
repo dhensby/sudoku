@@ -209,17 +209,29 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
           <ul className="help__list">
             <li>
               <strong>Hint</strong>, in the “…” menu, points at a cell you can fill next and names
-              the technique that gets you there, without giving the number away.
+              the technique that gets you there, without giving the number away. It works from your
+              own candidates — the automatic ones less those you crossed out, or your notes, with a
+              cell you haven’t marked counting as having every candidate — so a step you have
+              already taken is never the one it points you to again.
+            </li>
+            <li>
+              If you have crossed out a candidate, or left it out of your notes, when nothing rules
+              it out yet, Hint points at its cell first, without saying which number it is;{' '}
+              <strong>Show me</strong> then names it, shows why it can’t be ruled out yet, and
+              offers to put it back. Each counts as a hint; asking again is free until you change
+              that cell’s candidates.
             </li>
             <li>
               A cell remembers its hint: select it again and the hint is back, brought up to date if
-              the board has moved on, and asking for it again costs nothing more.
+              numbers have been placed since, and asking for it again costs nothing more — and
+              brings in any candidates you have changed since.
             </li>
             <li>
               Still stuck? <strong>Show me</strong>, beside the hint, walks through the steps that
               solve that cell, one at a time, each drawn on your own board, and ends with the
               answer. Opening it counts as one more hint, the first time for each cell. If a number
-              on the board is wrong, it points at that instead, as Hint would.
+              on the board is wrong, or a candidate missing, it points at that instead, as Hint
+              would.
             </li>
             <li>Hints are recorded next to your time, as checks and reveals are.</li>
             <li>

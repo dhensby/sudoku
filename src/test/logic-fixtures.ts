@@ -263,6 +263,38 @@ export const STUCK_ON_A_HIDDEN_PAIR = {
   target: 37,
 };
 
+/**
+ * The report that made hints read the player's own candidates: the Expert
+ * daily of 10 October 2026, six hinted cells in (`entries`, in the order the
+ * hints pointed at them), where Hint pointed at row 2, column 1 and named an
+ * XY-Chain — and Show me began with a box/line reduction: column 8's 2s all
+ * lie in box 9, so remove 2 from row 8, column 9 and row 9, column 9
+ * (`strikes`). Striking those 2s used to change nothing: hints read only the
+ * placed digits.
+ */
+export const STUCK_ON_AN_XY_CHAIN = {
+  code: '6IpMimQnEFCNjiIIdAYyFCGcEDZ',
+  date: '2026-10-10',
+  givens: '400150830000002000008640097000020000609000070073000480000000305310000900000400060',
+  solution: '467159832935782146128643597841327659659814273273965481784296315316578924592431768',
+  /** The six hinted cells, as filled: row and column (both from 1), and digit. */
+  entries: [
+    [9, 7, 7],
+    [3, 6, 3],
+    [2, 2, 3],
+    [9, 5, 3],
+    [5, 6, 4],
+    [4, 7, 6],
+  ] as const,
+  /** The cell the hint then points at: row 2, column 1, whose answer is 9. */
+  target: 9,
+  /** What the first step of its Show me removes: row and column (from 1), and digit. */
+  strikes: [
+    [8, 9, 2],
+    [9, 9, 2],
+  ] as const,
+};
+
 /** The board where the player got stuck (see `STUCK_ON_A_HIDDEN_PAIR`), and its solution. */
 export function stuckOnAHiddenPair(): SolvedPuzzle & { values: Uint8Array } {
   const { givens, solution, entries } = STUCK_ON_A_HIDDEN_PAIR;
