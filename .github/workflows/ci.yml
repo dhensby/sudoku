@@ -7,21 +7,24 @@ on:
   # (based on its branch) is reviewed long before it reaches main, and would
   # otherwise go unchecked until the one beneath it merges. The archive guard
   # compares with whatever branch the PR is based on. When the one beneath
-  # merges, GitHub retargets it to main — an edit, which isn't among the
-  # default triggers — so edits run too, but only one that changed the base
-  # (see the job's condition), not a new title or description.
+  # merges, GitHub retargets it to main, which is an edit and starts no run:
+  # it keeps the result it had against that branch, as any PR keeps one from
+  # an older main, and closing and reopening it checks it against main. Edits
+  # start no run because GitHub goes by a commit's newest run for the required
+  # check, and one for a new title, with nothing to check, would either report
+  # that check as skipped, which counts as passing even after a failure, or
+  # not report it at all, blocking the PR until the next push.
   pull_request:
-    types: [opened, synchronize, reopened, edited]
 
 permissions:
   contents: read
 
 jobs:
   verify:
+    # The check main's green-ci ruleset requires, so rename the two together.
     name: Lint, test & build
-    if: github.event.action != 'edited' || github.event.changes.base != null
-    # On the job, not the workflow: a run whose job is skipped (an edit to the
-    # title) then never cancels the run in progress.
+    # On the job, not the workflow: a newer run cancels only these checks,
+    # never a deployment already under way.
     concurrency:
       group: ci-${{ github.ref }}
       cancel-in-progress: true
