@@ -51,12 +51,17 @@ your browser.
   seconds while the clock runs, and a reload reopens your game paused, where you left off.
 - **Race your friends** — share a link to any puzzle. Once you have solved it, the link carries
   your time too: your friend sees "Dan solved this Hard puzzle in 5:23. Can you beat it?", starts
-  the clock when they are ready, and gets a head-to-head comparison at the end — plus a link of
-  their own to send back. Nothing is uploaded; everything travels in the link.
+  the clock when they are ready, and gets a head-to-head at the end: a table with a column for
+  each of you, the two times on one row and each kind of help either of you took (auto
+  candidates, hints, checks, reveals) on a row of its own, so it reads straight across — or
+  "Neither of you took any help." The faster time wins, whatever the help; the help is there so
+  the comparison is fair. Plus a link of their own to send back. Nothing is uploaded; everything
+  travels in the link.
 - **History and stats** — every game you play is kept: resume unfinished ones, play a solved
   puzzle again, share it, or delete it. A game you only glanced at — nothing entered, no help
   taken — is dropped when you move on to another, so browsing the levels doesn't clutter the list
-  or count as played. Per-difficulty stats show games played and solved, and best and average
+  or count as played. A game raced against a friend's link shows their time, and the help it came
+  with under it. Per-difficulty stats show games played and solved, and best and average
   times. Export your history to a file and import it on another browser.
 - **Help when you want it** — Hint points at a cell you can fill next and names the technique
   ("Hidden single: there's only one place for a number in this box"), without ever giving the
@@ -392,7 +397,9 @@ puzzles seen and the dailies' record are merged with what is already there.
   hint's Show me walkthrough, the daily puzzles on a fixed clock (today's Hard from New game to
   the end and its streak, yesterday's from the calendar kept but not counted, a friend's daily
   link recognised) and the phone layout from 320px wide up and on its side (the calendar's days
-  measured at 44px at 320px, New game and the calendar whole on a phone on its side). An accessibility pass
+  measured at 44px at 320px, the head-to-head's every row, hour-long times on one line and a
+  long right-to-left name kept inside its card, New game and the calendar whole on a phone on its
+  side). An accessibility pass
   (`a11y.spec.ts`) runs axe-core's WCAG 2.2 A and AA rules over the main states — the board with
   every kind of mark, the Ready and Paused cards, the menus, every dialog (Show me's and the daily
   calendar's included) and each guide entry — in both themes, and allows no violations. Three

@@ -526,62 +526,124 @@
 /* ---- Head to head ---- */
 .comparison {
   margin: 0 0 18px;
-  padding: 14px 16px;
+  padding: 10px 16px 14px;
   border: 1px solid var(--border);
   border-radius: calc(var(--radius) * 2);
   background: var(--surface);
 }
 
 /*
- * Two columns sharing three rows — who, time, help — through subgrid, so
- * the two times always share a baseline, whatever sits above or below
- * either of them.
+ * A column for each player and a row for each thing compared, so each
+ * reads straight across. The fixed layout shares the width out by the
+ * header row alone: a long name or an hour-long time can never widen its
+ * column and push the table past the card on a 320px phone. The row
+ * headings take a little more than a third, enough for "Auto candidates"
+ * on two lines; the players share the rest, enough for a winning h:mm:ss
+ * time on one (see .comparison__time).
  */
-.comparison__times {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  grid-template-rows: auto auto auto;
-  column-gap: 12px;
+.comparison__table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  line-height: 1.3;
 }
 
-.comparison__entry {
-  display: grid;
-  grid-row: span 3;
-  grid-template-rows: subgrid;
-  align-items: end;
-  min-width: 0;
-  text-align: center;
+.comparison__corner {
+  width: 34%;
+}
+
+.comparison__table th,
+.comparison__table td {
+  padding: 6px 4px;
+}
+
+/* A hairline between rows, as in the stats table, to lead the eye across. */
+.comparison__table tbody tr + tr > * {
+  border-top: 1px solid var(--border);
 }
 
 /* Names are free text from a link: up to 24 characters, perhaps with no
    space to break at. One line, cut short with an ellipsis if need be — a
    name broken mid-word leaves a letter or two stranded on a line of their
-   own. The verdict under the times names the challenger in full, and a
-   screen reader hears the whole name here too. */
+   own — and held inside its own column whichever way it runs. The verdict
+   under the table names the challenger in full, and a screen reader hears
+   the whole name here too. */
+.comparison__table .comparison__who {
+  padding-bottom: 2px;
+}
+
 .comparison__who {
   overflow: hidden;
   color: var(--text-muted);
   font-size: 0.8125rem;
-  line-height: 1.3;
+  font-weight: 600;
+  text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+/* The ellipsis goes on the name itself, which takes its own direction
+   (a <bdi>), so a right-to-left name loses its end, as any other does,
+   rather than its beginning. */
+.comparison__who bdi {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Flush with the card's own padding, like the verdict under the table. */
+.comparison__table .comparison__label {
+  padding-left: 0;
+}
+
+.comparison__label {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  font-weight: 400;
+  text-align: left;
+}
+
+/* Nothing a real game gives should break, but a link can claim a count or
+   a time no column holds: it breaks inside its column rather than spill
+   out of it. A long time breaks after its hours first (Comparison.tsx). */
+.comparison__value {
+  font-weight: 600;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
 .comparison__time {
-  font-size: 1.5rem;
-  font-weight: 700;
+  font-size: 1.25rem;
   line-height: 1.25;
 }
 
-.comparison__entry--winner .comparison__time {
-  color: color-mix(in srgb, var(--success) 80%, var(--text));
+/* Below 360px the players' columns are narrower than a winning hour-long
+   time at full size ("9:44:44" in the heavier winner's weight), so the
+   times step down, and up to 9:59:59 stays on one line on a 320px phone. */
+@media (max-width: 359.98px) {
+  .comparison__time {
+    font-size: 1.125rem;
+  }
 }
 
-/* Under its time; with no help to report, the third row is simply empty. */
-.comparison__assists {
-  align-self: start;
+/* The faster time: heavier, in the success ink, and ruled underneath like a
+   headline, so it stands out without its colour too. A dead heat marks
+   neither. */
+.comparison__time--winner {
+  color: color-mix(in srgb, var(--success) 80%, var(--text));
+  font-weight: 800;
+  text-decoration-line: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+}
+
+/* In place of the help rows when neither player took any, across both
+   players' columns. */
+.comparison__none {
   color: var(--text-muted);
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
+  text-align: center;
 }
 
 .comparison__verdict {
@@ -691,7 +753,12 @@
 
   .comparison {
     margin-bottom: 12px;
-    padding: 10px 14px;
+    padding: 8px 14px 10px;
+  }
+
+  .comparison__table th,
+  .comparison__table td {
+    padding-block: 4px;
   }
 
   .comparison__verdict {
@@ -919,6 +986,12 @@
   color: var(--text-muted);
   font-size: 0.875rem;
   overflow-wrap: anywhere;
+}
+
+/* The friend's help, under their time: quieter still, on a line of its own. */
+.history-item__challenge-help {
+  display: block;
+  font-size: 0.8125rem;
 }
 
 .history-item__actions {

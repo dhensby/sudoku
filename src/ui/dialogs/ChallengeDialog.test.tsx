@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { formatGrid, parseGrid } from '../../core';
 import type { GameRecord } from '../../storage/history';
 import { WIKIPEDIA_PUZZLE } from '../../test/grids';
@@ -78,6 +78,16 @@ describe('ChallengeDialog', () => {
       'You were 0:33 faster than Dan!',
     );
     expect(dialog()).toHaveAccessibleDescription(/You were 0:33 faster than Dan!/);
+  });
+
+  it("sets the earlier solve's help against the link's, row by row", () => {
+    renderChallenge({
+      previous: { ...PREVIOUS, assists: { ...NONE, reveals: 2 } },
+      challenge: { name: 'Dan', seconds: 323, assists: { ...NONE, checks: 1 } },
+    });
+    const versus = screen.getByRole('region', { name: 'Head to head' });
+    expect(within(versus).getByRole('row', { name: /^Checks/ })).toHaveTextContent('Checks01');
+    expect(within(versus).getByRole('row', { name: /^Reveals/ })).toHaveTextContent('Reveals20');
   });
 
   it('shows no comparison for a link without a time', () => {

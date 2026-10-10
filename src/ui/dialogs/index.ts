@@ -1,12 +1,6 @@
 export { Dialog, type DialogProps } from './Dialog';
-export {
-  CompletionDialog,
-  Comparison,
-  compareTimes,
-  type CompletionDialogProps,
-  type ComparisonProps,
-  type TimeComparison,
-} from './CompletionDialog';
+export { CompletionDialog, type CompletionDialogProps } from './CompletionDialog';
+export { Comparison, compareTimes, type ComparisonProps, type TimeComparison } from './Comparison';
 export { ShareDialog, type ShareDialogProps } from './ShareDialog';
 export { HistoryDialog, type HistoryDialogProps } from './HistoryDialog';
 export { SettingsDialog, type SettingsDialogProps } from './SettingsDialog';

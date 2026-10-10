@@ -47,7 +47,7 @@ const RECORDS: GameRecord[] = [
     completedAt: at(10, 18, 30),
     elapsedMs: 200_000,
     assists: { ...NONE, reveals: 1 },
-    challenge: { name: null, seconds: 400, assists: NONE },
+    challenge: { name: null, seconds: 400, assists: { ...NONE, autoCandidates: true, hints: 1 } },
   }),
 ];
 
@@ -125,6 +125,17 @@ describe('HistoryDialog', () => {
       expect(within(rows()[2]).queryByRole('list', { name: 'Help used' })).toBeNull();
       expect(rows()[4]).toHaveTextContent('1 reveal');
       expect(rows()[4]).toHaveTextContent('vs your friend 6:40');
+    });
+
+    it("adds the challenger's help to their time, and nothing for an unaided one", () => {
+      renderHistory();
+      // Under the time it qualifies, apart from the chips, which are this game's own help.
+      const help = within(rows()[4]).getByText('With auto candidates, 1 hint');
+      expect(help.closest('.history-item__challenge')).toHaveTextContent(
+        'vs your friend 6:40 With auto candidates, 1 hint',
+      );
+      expect(help.closest('ul')).toBeNull();
+      expect(within(rows()[1]).queryByText(/^With /)).toBeNull();
     });
 
     it('marks the game on screen as current', () => {

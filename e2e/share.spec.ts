@@ -225,11 +225,15 @@ test.describe('opening a link', () => {
 test.describe('racing a time', () => {
   test('beating the challenger says by how much', async ({ page }) => {
     await page.clock.install();
-    await startPuzzle(page, NEARLY_DONE, { challenge: { seconds: 600, name: 'Dan' } });
+    await startPuzzle(page, NEARLY_DONE, {
+      challenge: { seconds: 600, name: 'Dan', assists: 'h2' },
+    });
     await page.clock.fastForward('00:05');
     const dialog = await solveAndComplete(page);
     const versus = dialog.getByRole('region', { name: 'Head to head' });
     await expect(versus).toContainText('10:00');
+    // Help on one line per kind, the two players side by side; the verdict is on time alone.
+    await expect(versus.getByRole('row').filter({ hasText: 'Hints' })).toHaveText(/Hints\s*0\s*2/);
     await expect(versus).toContainText(/You were 9:5\d faster than Dan!/);
   });
 
@@ -239,9 +243,9 @@ test.describe('racing a time', () => {
     await page.clock.fastForward('00:40');
     const dialog = await solveAndComplete(page);
     // A link without a name races "your friend".
-    await expect(dialog.getByRole('region', { name: 'Head to head' })).toContainText(
-      /Your friend was 0:3\d faster\./,
-    );
+    const versus = dialog.getByRole('region', { name: 'Head to head' });
+    await expect(versus).toContainText(/Your friend was 0:3\d faster\./);
+    await expect(versus).toContainText('Neither of you took any help.');
   });
 });
 

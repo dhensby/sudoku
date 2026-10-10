@@ -10,7 +10,7 @@ import { DIFFICULTIES } from '../../storage/storage';
 import { DIFFICULTY_LABEL, count, formatDate, formatDay } from '../format';
 import { DownloadIcon, UploadIcon } from '../icons';
 import { Dialog } from './Dialog';
-import { assistChips, formatStat } from './text';
+import { assistChips, assistsSentence, formatStat } from './text';
 
 export interface HistoryDialogProps {
   /** Every record, newest first (as `loadHistory` returns them). */
@@ -130,6 +130,7 @@ const HistoryRow = memo(function HistoryRow({
   const context =
     day === null ? `${label} puzzle from ${date}` : `${label} daily for ${day}, from ${date}`;
   const chips = assistChips(assists);
+  const challengerHelp = challenge === null ? null : assistsSentence(challenge.assists);
 
   const cancel = () => {
     pendingFocus.current = 'delete';
@@ -171,6 +172,15 @@ const HistoryRow = memo(function HistoryRow({
           <p className="history-item__challenge">
             vs {challenge.name === null ? 'your friend' : <bdi>{challenge.name}</bdi>}{' '}
             {formatDuration(challenge.seconds * 1000)}
+            {/* The friend's help, on a quieter line of its own: it qualifies
+                their time, so it stays with it rather than among the chips,
+                which are this game's own help. */}
+            {challengerHelp !== null && (
+              <>
+                {' '}
+                <span className="history-item__challenge-help">{challengerHelp}</span>
+              </>
+            )}
           </p>
         )}
       </div>
