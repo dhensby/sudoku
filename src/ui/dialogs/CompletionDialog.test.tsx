@@ -90,6 +90,27 @@ describe('CompletionDialog', () => {
     expect(screen.getByText('With auto candidates, 2 hints')).toBeInTheDocument();
   });
 
+  it.each([
+    [{ values: 0, candidates: 0 }, 'No mistakes'],
+    [{ values: 1, candidates: 0 }, '1 mistake'],
+    [{ values: 3, candidates: 0 }, '3 mistakes'],
+    [{ values: 2, candidates: 1 }, '2 mistakes · 1 candidate mistake'],
+    [{ values: 0, candidates: 2 }, '2 candidate mistakes'],
+  ])('says how clean the solve was: %o reads "%s"', (mistakes, text) => {
+    renderCompletion({ mistakes });
+    expect(within(dialog()).getByText(text)).toHaveClass('result__mistakes');
+    // Read on the way in, with the time.
+    expect(dialog()).toHaveAccessibleDescription(new RegExp(`5:23\\s*${text}`));
+  });
+
+  it.each([
+    ['not known', { mistakes: null }],
+    ['not given', {}],
+  ])('says nothing of mistakes %s — never "No mistakes"', (_, overrides) => {
+    renderCompletion(overrides);
+    expect(within(dialog()).queryByText(/mistake/)).toBeNull();
+  });
+
   it("shows the tier's stats, with dashes where there is no time yet", () => {
     const { rerender, props } = renderCompletion();
     const stats = screen.getByRole('region', { name: 'Your Hard record' });

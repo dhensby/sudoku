@@ -736,6 +736,107 @@ describe('recordOf', () => {
   });
 });
 
+describe('mistakes on the record', () => {
+  /** A wrong 1 in the first empty cell, whose answer (4) is not obvious: it counts once its window closes. */
+  const slip = (session: Session): Session =>
+    advance(session, { type: 'enter', digit: 1, index: FIRST_EMPTY, mode: 'normal' }, NOW + 1000);
+
+  it('counts them from the move log as the game is saved, stamped with its time', () => {
+    const session = slip(running());
+    expect(FIRST_EMPTY).toBe(2);
+    expect(recordOf(session, at(NOW + 2000)).mistakes).toEqual({
+      values: 0,
+      candidates: 0,
+      atMs: 2000,
+    });
+    expect(recordOf(session, at(NOW + 4000)).mistakes).toEqual({
+      values: 1,
+      candidates: 0,
+      atMs: 4000,
+    });
+  });
+
+  it('saves them with the record', () => {
+    const storage = memoryStorage();
+    const session = slip(running());
+    saveSession(storage, session, at(NOW + 9000));
+    expect(loadHistory(storage)[0].mistakes).toEqual({ values: 1, candidates: 0, atMs: 9000 });
+  });
+
+  it('knows none for a game not recorded move by move — not even a count it had before', () => {
+    const session = slip(running());
+    const record = { ...session.record, mistakes: { values: 1, candidates: 0, atMs: 500 } };
+    expect(recordOf({ ...session, record, moves: null }, at(NOW + 9000))).not.toHaveProperty(
+      'mistakes',
+    );
+  });
+
+  it('never lowers the count the record came with', () => {
+    const session = running();
+    const record = { ...session.record, mistakes: { values: 3, candidates: 1, atMs: 500 } };
+    expect(recordOf({ ...session, record }, at(NOW + 9000)).mistakes).toEqual({
+      values: 3,
+      candidates: 1,
+      atMs: 9000,
+    });
+  });
+
+  describe('once solved', () => {
+    /** A game solved in 5 s with no mistake in its log, its record saying `mistakes`. */
+    function solvedWith(mistakes: GameRecord['mistakes'], moves?: MoveLog | null): Session {
+      const near = running(nearlySolved([0]));
+      const solved = advance(
+        near,
+        { type: 'enter', digit: answerAt(0) as Digit, index: 0, mode: 'normal' },
+        NOW + 5000,
+      );
+      return {
+        ...solved,
+        clock: { bankedMs: 5000, runningSince: null },
+        record: { ...solved.record, status: 'solved', elapsedMs: 5000, mistakes },
+        moves: moves === undefined ? solved.moves : moves,
+      };
+    }
+
+    it('keeps the count the game was solved with, whatever its log would say now', () => {
+      const frozen = { values: 2, candidates: 0, atMs: 5000 };
+      expect(recordOf(solvedWith(frozen), at(NOW + 60_000)).mistakes).toEqual(frozen);
+      expect(recordOf(solvedWith(frozen, null), at(NOW + 60_000)).mistakes).toEqual(frozen);
+    });
+
+    it('counts it afresh from the log when the count was taken before the solve', () => {
+      const stale = { values: 0, candidates: 0, atMs: 3000 };
+      expect(recordOf(solvedWith(stale), at(NOW + 60_000)).mistakes).toEqual({
+        values: 0,
+        candidates: 0,
+        atMs: 5000,
+      });
+      expect(recordOf(solvedWith(stale, null), at(NOW + 60_000))).not.toHaveProperty('mistakes');
+    });
+
+    it('counts it afresh when the clock reopened later than the record', () => {
+      // The log reached a later moment than the record saved beside it.
+      const session = solvedWith({ values: 2, candidates: 0, atMs: 5000 });
+      const later = { ...session, clock: { bankedMs: 5100, runningSince: null } };
+      expect(recordOf(later, at(NOW + 60_000)).mistakes).toEqual({
+        values: 2,
+        candidates: 0,
+        atMs: 5100,
+      });
+    });
+
+    it('comes back with the record when the game is reopened', () => {
+      const storage = memoryStorage();
+      const session = solvedWith(undefined);
+      // On screen, so its finished board is kept.
+      saveCurrentId(storage, session.record.id);
+      saveSession(storage, session, at(NOW + 6000));
+      const restored = restoreSession(storage, loadHistory(storage), session.record.id, NOW)!;
+      expect(restored.record.mistakes).toEqual({ values: 0, candidates: 0, atMs: 5000 });
+    });
+  });
+});
+
 describe('saveSession and restoreSession', () => {
   it('saves the board and the record together, and reopens them paused', () => {
     const storage = memoryStorage();
@@ -881,7 +982,7 @@ describe('saveSession and restoreSession', () => {
         JSON.stringify([
           {
             ...record,
-            mistakes: { values: 1, candidates: 0 },
+            medals: { gold: 1, silver: 0 },
             assists: { ...record.assists, checkGuesses: true },
           },
         ]),
@@ -905,7 +1006,7 @@ describe('saveSession and restoreSession', () => {
       playOn(storage, session.record.id);
       const [record] = loadHistory(storage);
       expect(record).toMatchObject({
-        mistakes: { values: 1, candidates: 0 },
+        medals: { gold: 1, silver: 0 },
         assists: { checkGuesses: true },
       });
       expect(loadGameBlob(storage, session.record.id)).toMatchObject({

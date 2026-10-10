@@ -397,6 +397,15 @@ describe('the dialogs', () => {
     expect(row).toMatch(/margin:\s*0 -4px/);
   });
 
+  it.each([
+    ['.result__mistakes', 'text'],
+    ['.challenge__mistakes', 'text-muted'],
+  ])('sets %s in --%s, a pair the contrast guard holds on every dialog', (selector, token) => {
+    // contrast.test.ts holds text and muted text at 4.5:1 on every surface;
+    // a colour of its own would be a pair it never checks.
+    expect(rule(DIALOGS, selector)).toMatch(new RegExp(`color:\\s*var\\(--${token}\\)`));
+  });
+
   it('puts every History row’s actions on a line of their own, however many it has', () => {
     expect(rule(DIALOGS, '.history-item')).toMatch(/flex-direction:\s*column/);
     expect(rule(DIALOGS, '.history-item__actions')).toMatch(/flex-wrap:\s*wrap/);

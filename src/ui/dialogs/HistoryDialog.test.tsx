@@ -138,6 +138,45 @@ describe('HistoryDialog', () => {
       expect(within(rows()[1]).queryByText(/^With /)).toBeNull();
     });
 
+    it('tells a solved game’s mistakes in its status line, not among the help', () => {
+      const solved = RECORDS[1];
+      renderHistory({
+        records: [{ ...solved, mistakes: { values: 2, candidates: 1, atMs: solved.elapsedMs } }],
+      });
+      const [row] = rows();
+      expect(row.querySelector('.history-item__status')).toHaveTextContent(
+        /^Solved in 5:23 · 2 mistakes · 1 candidate mistake$/,
+      );
+      expect(within(row).getByRole('list', { name: 'Help used' })).not.toHaveTextContent(/mistake/);
+    });
+
+    it('says a solve counted clean had no mistakes', () => {
+      const solved = RECORDS[1];
+      renderHistory({
+        records: [{ ...solved, mistakes: { values: 0, candidates: 0, atMs: solved.elapsedMs } }],
+      });
+      expect(rows()[0].querySelector('.history-item__status')).toHaveTextContent(
+        /^Solved in 5:23 · No mistakes$/,
+      );
+    });
+
+    it.each([
+      ['an unfinished game, whose count would work as a free Check', 'playing' as const, 130_000],
+      ['a solve whose count was taken before it was solved', 'solved' as const, 100_000],
+    ])('says nothing of the mistakes of %s', (_, status, atMs) => {
+      renderHistory({
+        records: [
+          record('x', { status, elapsedMs: 130_000, mistakes: { values: 1, candidates: 0, atMs } }),
+        ],
+      });
+      expect(rows()[0]).not.toHaveTextContent(/mistake/);
+    });
+
+    it('says nothing of mistakes a solve never recorded', () => {
+      renderHistory();
+      expect(rows()[1]).not.toHaveTextContent(/mistake/);
+    });
+
     it('marks the game on screen as current', () => {
       renderHistory();
       expect(within(rows()[0]).getByText('Current')).toBeInTheDocument();

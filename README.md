@@ -77,6 +77,13 @@ your browser.
   its side, each step's board is sized to the screen with its caption beside it. Check cell, Check
   puzzle and Reveal cell are in the "…" menu. Any help you take (auto candidates included) is
   recorded next to your time, so comparisons stay fair.
+- **Mistakes, counted honestly** — the Solved dialog says how clean the solve was: "No mistakes",
+  "1 mistake", or "2 mistakes · 1 candidate mistake", the wrong numbers you entered kept apart from
+  the right answers you struck out of your candidates. Nothing shows while you play, so the count
+  is no free Check, and mistakes never touch a time, a best or who wins a race. A slip of the finger
+  is forgiven: a wrong number where the answer was obvious, or a struck candidate, put right within
+  3 seconds, before changing anything else (see [Mistakes](#mistakes)). History shows a solved
+  game's count beside its time.
 - **A guide to the solving techniques** — every technique the grader knows, from a full house to
   the alternating chain: its other names, what it is, why it works, how to spot it, and a worked
   example from a real puzzle, drawn with the pattern ringed (and a chain's links traced), the
@@ -342,7 +349,8 @@ logging), or one past 5,000 moves keeps no log. The log is saved just before the
 never behind it: if the board's write is refused, or lost to a crash, the log reopens trimmed back
 to the moves that reach the board saved, which is the whole log of the game as saved. A log
 written by a newer version, which this one cannot read, is left alone for that version to judge.
-Nothing is shown from the logs yet; where they are kept is under [Your data](#your-data).
+What the logs show so far is a game's [mistakes](#mistakes); where they are kept is under
+[Your data](#your-data).
 
 - **What is logged:** every move that changed the game, with its time on the play clock (which
   stops while paused), rounded down to a tenth of a second so that a logged time is never later
@@ -376,6 +384,53 @@ Nothing is shown from the logs yet; where they are kept is under [Your data](#yo
   the reducer needs a situation there and a step in the tour, or it is not guarded. Bump the
   version, then run `npm run moves:golden` to record them again; it refuses to rewrite logs that
   no longer replay as pinned under an unchanged version.
+
+## Mistakes
+
+A game's mistakes are worked out from its [move log](#the-move-log) by `src/core/mistakes.ts`,
+judged against the puzzle's solution, so the count is the same live, saved and reopened. Two
+kinds, counted apart:
+
+- **A mistake** is a wrong digit coming to stand in a cell: placed, typed over another, or
+  brought back by Undo or Redo. Each cell and digit counts once a game.
+- **A candidate mistake** is striking a cell's answer out of its candidates: switching off your
+  own note of it, or striking it in Auto Candidate Mode — by a candidate-mode entry or a Redo of
+  one. Each cell counts once a game. A wrong note left in, never pencilling the answer at all, the
+  second Erase wiping the notes, "clear it from the peers' notes", auto candidates hidden by a
+  wrong number nearby, and Undo of a note added are not candidate mistakes.
+
+Each one — the same wrong digit or strike made again included — opens a **window** of its own, which
+settles at the first of: 3 seconds of play time (the log's time, so a pause neither uses it up nor
+stretches it); a change to another cell (what one move does beside its own cell, such as clearing
+peers' notes, is not; Undo or Redo acts on the cell of the change it takes back; switching auto
+candidates changes every cell); any help — Check, Hint, Show me (opened again for free included) or
+Reveal; Reset; and the board becoming full (the move that fills its last empty cell), since "The
+board is full, but something isn't right" is news a slip must not wait for. A board full already
+tells nothing new, so a slip made on it, while you hunt for what is wrong, has its window like any
+other. As it settles it **counts unless forgiven**. A wrong number is forgiven only if its cell's
+answer was **obvious** as it went in — the cell held its answer already (a solved cell overwritten
+by tapping the wrong square), or the answer was a single on the placed numbers (the only digit left
+for the cell, or the only place left for it in its row, column or box; never judged from notes) —
+**and** the cell held its answer again before the window settled. So a wrong number in a cell whose
+answer was not obvious counts however fast it is put right, and so does a clash undone to an empty
+cell before another is solved. A candidate mistake needs no obvious answer: it is forgiven if the
+answer is back (pencilled in again, the strike taken back, or placed) in time. Put right is for
+good: the same wrong digit typed in again afterwards is judged afresh in a window of its own, while
+one brought back before it was put right shares the earlier window, and is forgiven only if the
+answer was obvious both times it went in. Reset never forgives; the solve settles everything still
+open, as put right. A later version's "Check guesses when entered" will count every mistake at once,
+with nothing forgiven: the analysis takes it as an option already.
+
+Counts only go up. Each save writes the count so far onto the game's record as `mistakes:
+{ values, candidates, atMs }`, never lower than it was, and the solve freezes it: a game reopened
+solved keeps the count it was solved with. `atMs` is the record's time it was counted at. A tab
+still open on a version from before mistakes keeps the field as it found it while it plays on, so
+a solved record whose `atMs` is not its own `elapsedMs` reads as not recorded — never as a final
+count that missed what came after. Only solved games show a count (an unfinished game's would
+work as a free Check), and a game not recorded move by move from its start (see
+[The move log](#the-move-log)) shows none at all — never "No mistakes". A game solved by a version
+that kept logs but did not count mistakes is counted from its log once, as a visit starts, if the
+log holds the whole game.
 
 ## Racing friends
 
@@ -420,7 +475,8 @@ time is never offered as one to beat, either: sharing it shares the puzzle alone
 
 Everything is stored in your browser's `localStorage` under `sudoku.*` keys — preferences, the
 history (up to 1,000 games, a daily's with the date it is the daily of and the date you started
-it — the calendar and the streaks are worked out from it), what the dailies of games pruned from
+it — the calendar and the streaks are worked out from it — and each game's
+[mistakes](#mistakes), stamped with the time they were counted at), what the dailies of games pruned from
 the history said (a few bytes a day, kept for good, so neither a best streak nor the calendar
 forgets them), the saved state of unfinished games (up to 50), every game's move log, the
 puzzles you have seen (up to 2,000, so a puzzle stays seen after its game is deleted) and the
@@ -492,14 +548,19 @@ of the logs here were shed, none of the file's logs are taken.
   and must rebuild the live game each time; its golden logs hold the reducer to its rules (see
   [The move log](#the-move-log)). The game's own logs are checked move by move through the main
   hook on a play clock of the test's own, and a full history of them is held under a third of the
-  storage quota, shedding in the order [Your data](#your-data) gives.
+  storage quota, shedding in the order [Your data](#your-data) gives. Mistakes are held to every
+  rule by a table of scenarios at exact play times (`src/core/mistakes.test.ts`) — a slip put
+  right at 2.9 s and at 3.1 s, every way a window closes, Undo and Redo, candidates in both
+  layers, Check guesses on — and by random games, whose counts must never fall and must stay at
+  nothing for a game that never lets a wrong number stand.
   Coverage thresholds are enforced in CI, with the engine held to 100%.
 - **End-to-end** (`e2e/`, Playwright): full journeys against the built app — playing and solving,
   pausing and reloading, share links between two browsers, the history, the technique guide, a
   hint's Show me walkthrough, the daily puzzles on a fixed clock (today's Hard from New game to
   the end and its streak, yesterday's from the calendar kept but not counted, a friend's daily
-  link recognised) and the phone layout from 320px wide up and on its side (the calendar's days
-  measured at 44px at 320px, the head-to-head's every row, hour-long times on one line and a
+  link recognised), mistakes (an obvious slip put right at once, and a wrong number where the
+  answer was not obvious) and the phone layout from 320px wide up and on its side (the calendar's
+  days measured at 44px at 320px, the head-to-head's every row, hour-long times on one line and a
   long right-to-left name kept inside its card, New game and the calendar whole on a phone on its
   side). An accessibility pass
   (`a11y.spec.ts`) runs axe-core's WCAG 2.2 A and AA rules over the main states — the board with

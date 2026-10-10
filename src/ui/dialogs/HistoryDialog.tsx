@@ -2,12 +2,13 @@ import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from '
 import { dateKeyOf, formatDuration, type Difficulty } from '../../core';
 import {
   computeStats,
+  recordedMistakes,
   type DifficultyStats,
   type GameRecord,
   type ImportResult,
 } from '../../storage/history';
 import { DIFFICULTIES } from '../../storage/storage';
-import { DIFFICULTY_LABEL, count, formatDate, formatDay } from '../format';
+import { DIFFICULTY_LABEL, count, describeMistakes, formatDate, formatDay } from '../format';
 import { DownloadIcon, UploadIcon } from '../icons';
 import { Dialog } from './Dialog';
 import { assistChips, assistsSentence, formatStat } from './text';
@@ -131,6 +132,8 @@ const HistoryRow = memo(function HistoryRow({
     day === null ? `${label} puzzle from ${date}` : `${label} daily for ${day}, from ${date}`;
   const chips = assistChips(assists);
   const challengerHelp = challenge === null ? null : assistsSentence(challenge.assists);
+  // Solved games only: an unfinished game's count would work as a free Check.
+  const mistakes = recordedMistakes(record);
 
   const cancel = () => {
     pendingFocus.current = 'delete';
@@ -158,6 +161,7 @@ const HistoryRow = memo(function HistoryRow({
           {status === 'solved'
             ? `Solved in ${formatDuration(elapsedMs)}`
             : `In progress · ${formatDuration(elapsedMs)}`}
+          {mistakes !== null && ` · ${describeMistakes(mistakes)}`}
         </p>
         {chips.length > 0 && (
           <ul className="history-item__chips" aria-label="Help used">

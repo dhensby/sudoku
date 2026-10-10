@@ -21,6 +21,7 @@ import {
   loadCurrentId,
   loadGameBlob,
   loadHistory,
+  recordedMistakes,
   upsertRecord,
   type GameRecord,
 } from '../storage/history';
@@ -1042,6 +1043,116 @@ describe('useSudoku', () => {
       storeMoveLog(storage, 'gone-0000', 'AB_');
       const { result } = await started({ storage });
       expect(readMoveLogIds(storage)).toEqual([result.current.record!.id]);
+    });
+  });
+
+  describe('mistakes', () => {
+    /** A play clock of its own, moving with the fake timers (see 'the move log'). */
+    const clock = (): number => Date.now() - NOW + 7_000_000;
+    /** Two cells to finish; the first, a full house, is the obvious one to slip in. */
+    const near = nearlySolved([0, 1]);
+    const slipped = (answerAt(0) % 9) + 1;
+
+    /** The completion dialog's result, once it opens. */
+    function completed(result: Hook) {
+      advance(COMPLETION_DELAY_MS);
+      const { dialog } = result.current;
+      if (dialog?.kind !== 'completion') throw new Error('no completion dialog');
+      return dialog.result;
+    }
+
+    it('forgives an obvious slip put right 2.9 s later, and says so at the solve', async () => {
+      const { result, storage } = await started({ clock, source: fakeSource(near) });
+      advance(1000);
+      enter(result, 0, slipped);
+      advance(2900);
+      enter(result, 0, answerAt(0));
+      advance(1000);
+      enter(result, 1, answerAt(1));
+      expect(completed(result).mistakes).toEqual({ values: 0, candidates: 0 });
+      expect(loadHistory(storage)[0].mistakes).toEqual({ values: 0, candidates: 0, atMs: 4900 });
+    });
+
+    it('counts an obvious slip put right 3.1 s later', async () => {
+      const { result, storage } = await started({ clock, source: fakeSource(near) });
+      advance(1000);
+      enter(result, 0, slipped);
+      advance(3100);
+      enter(result, 0, answerAt(0));
+      advance(1000);
+      enter(result, 1, answerAt(1));
+      expect(completed(result).mistakes).toEqual({ values: 1, candidates: 0 });
+      expect(loadHistory(storage)[0].mistakes).toEqual({ values: 1, candidates: 0, atMs: 5100 });
+    });
+
+    it('stops the window while the game is paused: only play time uses it up', async () => {
+      const { result } = await started({ clock, source: fakeSource(near) });
+      advance(1000);
+      enter(result, 0, slipped);
+      advance(1000);
+      act(() => result.current.actions.pause());
+      advance(60_000);
+      act(() => result.current.actions.resume());
+      // A dialog stops the clock too.
+      act(() => result.current.actions.openDialog('help'));
+      advance(30_000);
+      act(() => result.current.actions.closeDialog());
+      advance(1900);
+      enter(result, 0, answerAt(0));
+      enter(result, 1, answerAt(1));
+      expect(completed(result).mistakes).toEqual({ values: 0, candidates: 0 });
+    });
+
+    it('shows nothing while the game is played, nor in History for an unfinished game', async () => {
+      const { result, storage } = await started({ clock, source: fakeSource(near) });
+      enter(result, 0, slipped);
+      advance(CLOCK_SAVE_MS);
+      // Counted on the record, which History never shows for a game not solved.
+      const [record] = loadHistory(storage);
+      expect(record.mistakes).toMatchObject({ values: 1 });
+      expect(recordedMistakes(record)).toBeNull();
+    });
+
+    it('knows no mistakes for a game not recorded move by move', async () => {
+      const storage = memoryStorage();
+      const first = await started({ clock, storage, source: fakeSource(near) });
+      const id = first.result.current.record!.id;
+      enter(first.result, 0, answerAt(0));
+      act(() => first.result.current.actions.pause());
+      first.unmount();
+      // As a game begun before logs were kept: a board, and no log.
+      storage.removeItem(`sudoku.moves.${id}`);
+
+      const second = setup({ clock, storage });
+      act(() => second.result.current.actions.resume());
+      enter(second.result, 1, answerAt(1));
+      expect(completed(second.result).mistakes).toBeNull();
+      expect(loadHistory(storage)[0]).not.toHaveProperty('mistakes');
+    });
+
+    it('counts, as a visit starts, the mistakes of a game solved before they were counted', async () => {
+      const storage = memoryStorage();
+      const first = await started({ clock, storage, source: fakeSource(near, PUZZLE) });
+      const id = first.result.current.record!.id;
+      advance(1000);
+      enter(first.result, 0, slipped);
+      advance(5000);
+      enter(first.result, 0, answerAt(0));
+      enter(first.result, 1, answerAt(1));
+      advance(COMPLETION_DELAY_MS);
+      act(() => first.result.current.actions.newGame('easy'));
+      await settle();
+      first.unmount();
+      // As a version that kept logs but did not count mistakes left the record.
+      const records = loadHistory(storage).map(({ mistakes: _, ...record }) => record);
+      storage.setItem('sudoku.history', JSON.stringify(records));
+      expect(loadHistory(storage).find((record) => record.id === id)).not.toHaveProperty(
+        'mistakes',
+      );
+
+      await started({ clock, storage });
+      const repaired = loadHistory(storage).find((record) => record.id === id)!;
+      expect(recordedMistakes(repaired)).toEqual({ values: 1, candidates: 0 });
     });
   });
 

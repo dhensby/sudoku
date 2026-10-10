@@ -1,9 +1,16 @@
 import { useId } from 'react';
-import { formatDuration, toSeconds, type Assists, type DateKey, type Difficulty } from '../../core';
+import {
+  formatDuration,
+  toSeconds,
+  type Assists,
+  type DateKey,
+  type Difficulty,
+  type MistakeTally,
+} from '../../core';
 import type { Challenge, DifficultyStats } from '../../storage/history';
 import { DailyMark } from '../DailyMark';
 import { dailyName, type StreakNote } from '../daily';
-import { DIFFICULTY_LABEL } from '../format';
+import { DIFFICULTY_LABEL, describeMistakes } from '../format';
 import { Comparison } from './Comparison';
 import { Dialog } from './Dialog';
 import { assistsSentence, formatStat } from './text';
@@ -35,6 +42,12 @@ export interface CompletionDialogProps {
   elapsedMs: number;
   /** The help taken during the game. */
   assists: Assists;
+  /**
+   * The wrong numbers and struck answers the game made (see
+   * `src/core/mistakes.ts`); null when they are not known, which shows
+   * nothing rather than a claim of none.
+   */
+  mistakes?: MistakeTally | null;
   /** Whether the time beat the tier's previous best (and had no reveals). */
   isNewBest: boolean;
   /**
@@ -67,12 +80,13 @@ export interface CompletionDialogProps {
  *
  * A daily is named ("Daily · 13 Oct · Hard") and followed by its tier's
  * streak — begun, run on, or not counted, for a day played after it was
- * over.
+ * over. Under the time, how clean the solve was: its mistakes, when known.
  */
 export function CompletionDialog({
   difficulty,
   elapsedMs,
   assists,
+  mistakes = null,
   isNewBest,
   isReplay = false,
   stats,
@@ -114,6 +128,7 @@ export function CompletionDialog({
         </p>
         <p className="result__time">{formatDuration(elapsedMs)}</p>
         {isNewBest && !isReplay && <p className="result__badge">New best!</p>}
+        {mistakes !== null && <p className="result__mistakes">{describeMistakes(mistakes)}</p>}
         {daily !== null && (
           <p
             className={

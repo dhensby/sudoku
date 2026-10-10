@@ -3,6 +3,7 @@ import {
   type Assists,
   type DateKey,
   type Difficulty,
+  type MistakeTally,
   type MonthKey,
   type TechniqueId,
 } from '../core';
@@ -90,6 +91,22 @@ export function describeAssists(assists: Assists): string | null {
   if (assists.checks > 0) parts.push(count(assists.checks, 'check'));
   if (assists.reveals > 0) parts.push(count(assists.reveals, 'reveal'));
   return parts.length === 0 ? null : parts.join(', ');
+}
+
+/**
+ * A solve's mistakes in a few words, the two kinds kept apart — "No
+ * mistakes", "1 mistake", "2 mistakes · 1 candidate mistake", "1 candidate
+ * mistake". A "mistake" is a wrong number entered; a "candidate mistake" is
+ * the answer struck out of a cell's candidates: the words the rest of the
+ * game uses for them, the head-to-head's rows included. Only a kind that
+ * happened is named, so a line naming one kind says there were none of the
+ * other; with neither, it says so.
+ */
+export function describeMistakes(mistakes: MistakeTally): string {
+  const parts: string[] = [];
+  if (mistakes.values > 0) parts.push(count(mistakes.values, 'mistake'));
+  if (mistakes.candidates > 0) parts.push(count(mistakes.candidates, 'candidate mistake'));
+  return parts.length === 0 ? 'No mistakes' : parts.join(' · ');
 }
 
 const TIME = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit' });

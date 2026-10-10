@@ -31,12 +31,12 @@
  * A field carried this way is a snapshot. This version never updates it,
  * however much it then changes the status, time, help or board beside it, so
  * a later version must not trust a field whose meaning depends on those
- * without a way to tell that it has gone stale. For example, a count of
- * mistakes on a record should be stamped with the `elapsedMs` it was worked
- * out at, and read as unknown when the stamp no longer matches. Otherwise an
- * old tab that plays on and solves the game would leave a count from before
- * the solve that reads as final, and a record would claim fewer mistakes than
- * were made.
+ * without a way to tell that it has gone stale. The count of mistakes on a
+ * record, for one, is stamped with the `elapsedMs` it was worked out at, and
+ * read as unknown when the stamp no longer matches (`RecordedMistakes`, in
+ * `src/storage/history.ts`). Otherwise an old tab that plays on and solves
+ * the game would leave a count from before the solve that reads as final,
+ * and a record would claim fewer mistakes than were made.
  */
 
 /** The most unknown fields kept on any one object. */

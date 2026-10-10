@@ -15,12 +15,30 @@ describe('HelpDialog', () => {
       'Entering numbers',
       'Auto candidates',
       'Hints',
+      'Mistakes',
       'Difficulty',
       'The clock',
       'Racing friends',
       'Controls',
       'Privacy',
     ]);
+  });
+
+  it('says what counts as a mistake, and which slip is forgiven', () => {
+    render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={vi.fn()} />);
+    const heading = screen.getByRole('heading', { name: 'Mistakes' });
+    const section = heading.closest('section')!;
+    expect(section).toHaveTextContent(/wrong numbers/);
+    expect(section).toHaveTextContent(/counted apart as candidate mistakes/);
+    expect(section).toHaveTextContent(/Nothing shows while you play/);
+    expect(section).toHaveTextContent(/never change your time/);
+    expect(section).toHaveTextContent(
+      /A wrong number is forgiven if the right number was obvious .* put it right within 3 seconds, before changing anything else/,
+    );
+    // A struck candidate needs no obvious answer: only putting back in time.
+    expect(section).toHaveTextContent(
+      /A struck candidate is forgiven if you put it back within 3 seconds, before changing anything else or taking any help\./,
+    );
   });
 
   it('gives the controls for keyboard and for mouse or touch', () => {

@@ -305,6 +305,8 @@ for (const scheme of ['light', 'dark'] as const) {
       await solveFromKeyboard(page, NEARLY_DONE);
       const solved = dialog(page, 'Solved!');
       await expect(solved).toBeVisible();
+      // Its mistakes line included.
+      await expect(solved.locator('.result__mistakes')).toHaveText('No mistakes');
       await expectAccessible(page, 'the Solved! dialog');
 
       await solved.getByRole('button', { name: 'Share your time' }).click();
@@ -316,6 +318,7 @@ for (const scheme of ['light', 'dark'] as const) {
 
       await gotoPuzzle(page, NEARLY_DONE.givens, { challenge: { seconds: 90, name: 'Dan' } });
       await expect(dialog(page, "You've solved this one")).toBeVisible();
+      await expect(dialog(page, "You've solved this one").getByText('No mistakes.')).toBeVisible();
       await expectAccessible(page, "the You've solved this one dialog");
       await closeDialog(page);
 
@@ -334,6 +337,7 @@ for (const scheme of ['light', 'dark'] as const) {
       await openHeaderDialog(page, 'History');
       const history = dialog(page, 'History');
       await expect(history.getByRole('list', { name: 'Games, newest first' })).toBeVisible();
+      await expect(history.getByText(/^Solved in \d+:\d\d · No mistakes$/).first()).toBeVisible();
       await expectAccessible(page, 'the History dialog with games');
       await history
         .getByRole('button', { name: /^Delete / })
