@@ -41,16 +41,49 @@ export interface CellProps {
   onSelect: (index: number) => void;
   onToggleCandidate: (index: number, digit: Digit) => void;
   registerRef: (index: number, element: HTMLButtonElement | null) => void;
+  /**
+   * A cell of a board that is only looked at — a solve played back — rather
+   * than played: a plain table cell, with no focus, no press and nothing to
+   * toggle (see Board's `isReadOnly`).
+   */
+  isReadOnly?: boolean;
+  /** The cell the move on show acted on, in a playback: outlined. */
+  isCurrent?: boolean;
 }
 
-function className({ value, given, mark, highlight, conflict }: CellProps): string {
+function className({ value, given, mark, highlight, conflict, isCurrent }: CellProps): string {
   const classes = ['cell'];
   if (given) classes.push('cell--given');
   else if (value !== 0) classes.push('cell--player');
   if (highlight !== 'none') classes.push(`cell--${highlight}`);
   if (mark !== 'none') classes.push(`cell--${mark}`);
   if (conflict) classes.push('cell--conflict');
+  if (isCurrent) classes.push('cell--current');
   return classes.join(' ');
+}
+
+/** What a cell draws: its digit, or its candidates in their 3×3 spots. */
+function cellContent(value: number, candidates: number, sameCandidate: number) {
+  return value !== 0 ? (
+    <span className="cell__value" aria-hidden="true">
+      {value}
+    </span>
+  ) : (
+    candidates !== 0 && (
+      <span className="cell__candidates" aria-hidden="true">
+        {DIGITS.map((digit) => (
+          <span
+            className={
+              digit === sameCandidate ? 'cell__candidate cell__candidate--same' : 'cell__candidate'
+            }
+            key={digit}
+          >
+            {hasDigit(candidates, digit) ? digit : ''}
+          </span>
+        ))}
+      </span>
+    )
+  );
 }
 
 /**
@@ -76,12 +109,39 @@ function CellComponent(props: CellProps) {
     onSelect,
     onToggleCandidate,
     registerRef,
+    isReadOnly = false,
   } = props;
   // How the press that led to the coming click began: only a mouse toggles a
   // candidate by its spot. A finger cannot see the ghosts before it lands,
   // and a key's click (Enter on a focused cell) has no spot at all.
   const pointerType = useRef<string | null>(null);
   const isSelected = highlight === 'selected';
+  const label = cellLabel({ value, given, candidates, conflict, mark });
+  const marks = (
+    <>
+      {/* A tick for a checked-correct digit, whose ink differs from the
+          player's own by hue alone. Decorative: the name says "correct". */}
+      {mark === 'correct' && <span className="cell__tick" aria-hidden="true" />}
+      {conflict && <span className="cell__conflict" />}
+    </>
+  );
+
+  if (isReadOnly) {
+    // Named for its state alone, as a playing cell is: the table says where.
+    return (
+      <div
+        role="cell"
+        className={className(props)}
+        aria-rowindex={ROW[index] + 1}
+        aria-colindex={COL[index] + 1}
+        aria-label={label}
+        data-index={index}
+      >
+        {cellContent(value, candidates, sameCandidate)}
+        {marks}
+      </div>
+    );
+  }
 
   const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
     const isMouse = pointerType.current === 'mouse';
@@ -109,7 +169,7 @@ function CellComponent(props: CellProps) {
       aria-rowindex={ROW[index] + 1}
       aria-colindex={COL[index] + 1}
       aria-selected={isSelected}
-      aria-label={cellLabel({ value, given, candidates, conflict, mark })}
+      aria-label={label}
       aria-describedby={describedBy}
       // Roving tabindex: Tab enters the grid at the selection and leaves it
       // in one step; the arrow keys move within it.
@@ -128,28 +188,7 @@ function CellComponent(props: CellProps) {
         if (!isSelected) onSelect(index);
       }}
     >
-      {value !== 0 ? (
-        <span className="cell__value" aria-hidden="true">
-          {value}
-        </span>
-      ) : (
-        candidates !== 0 && (
-          <span className="cell__candidates" aria-hidden="true">
-            {DIGITS.map((digit) => (
-              <span
-                className={
-                  digit === sameCandidate
-                    ? 'cell__candidate cell__candidate--same'
-                    : 'cell__candidate'
-                }
-                key={digit}
-              >
-                {hasDigit(candidates, digit) ? digit : ''}
-              </span>
-            ))}
-          </span>
-        )
-      )}
+      {cellContent(value, candidates, sameCandidate)}
       {ghosts !== 0 && (
         <span className="cell__ghosts" aria-hidden="true">
           {DIGITS.map((digit) =>
@@ -170,10 +209,7 @@ function CellComponent(props: CellProps) {
           )}
         </span>
       )}
-      {/* A tick for a checked-correct digit, whose ink differs from the
-          player's own by hue alone. Decorative: the name says "correct". */}
-      {mark === 'correct' && <span className="cell__tick" aria-hidden="true" />}
-      {conflict && <span className="cell__conflict" />}
+      {marks}
     </button>
   );
 }

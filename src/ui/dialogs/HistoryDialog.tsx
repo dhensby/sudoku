@@ -32,6 +32,20 @@ export interface HistoryDialogProps {
   onResume: (id: string) => void;
   onReplay: (id: string) => void;
   onShare: (id: string) => void;
+  /**
+   * Whether a row's game can be watched played back (a solved game with a
+   * log this version replays). Asked only of the rows built; keep it stable,
+   * as every row is memoised on it.
+   */
+  canWatch?: (record: GameRecord) => boolean;
+  /** Watch a row's solve, from the list as it is now (`place`), to come back to as it closes. */
+  onWatch?: (id: string, place: HistoryPlace) => void;
+  /**
+   * The list as it was when a game was watched from it: it opens the same —
+   * filtered, as long, and with focus on that row's Watch, scrolled to —
+   * rather than back at the top of every game.
+   */
+  place?: HistoryPlace | null;
   onDelete: (id: string) => void;
   /** Returns the export JSON; the dialog turns it into a download. */
   onExport: () => string;
@@ -40,6 +54,15 @@ export interface HistoryDialogProps {
 }
 
 type Filter = 'all' | Difficulty;
+
+/** Where the list was when a game was watched from it (see `HistoryDialogProps.place`). */
+export interface HistoryPlace {
+  readonly filter: Filter;
+  /** How many rows were built ("Show more" adds a page). */
+  readonly limit: number;
+  /** The row whose Watch was pressed: focus goes back to it. */
+  readonly id: string;
+}
 
 const FILTERS: readonly Filter[] = ['all', ...DIFFICULTIES];
 const FILTER_LABEL: Readonly<Record<Filter, string>> = { all: 'All', ...DIFFICULTY_LABEL };
@@ -58,6 +81,10 @@ const REVOKE_DELAY_MS = 10_000;
  * scrolls down to.
  */
 const PAGE_SIZE = 100;
+
+/** The defaults for a list with no playback: nothing to watch. */
+const NEVER = () => false;
+const IGNORE = () => {};
 
 /** `sudoku-history-2026-10-05.json`, dated in local time like everything else the player sees. */
 function exportFileName(now: number): string {
@@ -87,10 +114,15 @@ interface HistoryRowProps {
   isResumable: boolean;
   /** Solved, or unfinished with nothing saved to resume (see `canReplay`). */
   canReplay: boolean;
+  /** Solved, with a log that plays back. */
+  canWatch: boolean;
+  /** Its solve was just watched: focus goes back to its Watch as the list comes back. */
+  isWatched: boolean;
   isConfirming: boolean;
   onResume: (id: string) => void;
   onReplay: (id: string) => void;
   onShare: (id: string) => void;
+  onWatch: (id: string) => void;
   onRequestDelete: (id: string) => void;
   onCancelDelete: () => void;
   onConfirmDelete: (id: string) => void;
@@ -107,10 +139,13 @@ const HistoryRow = memo(function HistoryRow({
   isCurrent,
   isResumable,
   canReplay,
+  canWatch,
+  isWatched,
   isConfirming,
   onResume,
   onReplay,
   onShare,
+  onWatch,
   onRequestDelete,
   onCancelDelete,
   onConfirmDelete,
@@ -248,6 +283,17 @@ const HistoryRow = memo(function HistoryRow({
               Play again
             </button>
           )}
+          {canWatch && (
+            <button
+              type="button"
+              className="button button--small"
+              aria-label={`Watch your solve, ${context}`}
+              data-autofocus={isWatched || undefined}
+              onClick={() => onWatch(id)}
+            >
+              Watch
+            </button>
+          )}
           <button
             type="button"
             className="button button--small"
@@ -342,7 +388,7 @@ function AllStats({ stats }: { stats: Record<Difficulty, DifficultyStats> }) {
 
 /**
  * Every game played, finished or not: stats per tier, and a list to resume,
- * replay, share or delete from — each row's actions on a line of their own
+ * replay, watch (a solve played back), share or delete from — each row's actions on a line of their own
  * under what it says, so the list reads the same whichever a row offers.
  * Export and import keep the history safe from a browser that clears site
  * data (Safari does after a week away).
@@ -355,19 +401,22 @@ export function HistoryDialog({
   onResume,
   onReplay,
   onShare,
+  canWatch = NEVER,
+  onWatch = IGNORE,
+  place = null,
   onDelete,
   onExport,
   onImport,
   onClose,
 }: HistoryDialogProps) {
   const ids = useId();
-  const [filter, setFilter] = useState<Filter>('all');
+  const [filter, setFilter] = useState<Filter>(place?.filter ?? 'all');
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [status, setStatus] = useState<Status | null>(null);
   const tabRefs = useRef<Partial<Record<Filter, HTMLButtonElement | null>>>({});
   const importButtonRef = useRef<HTMLButtonElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const [limit, setLimit] = useState(PAGE_SIZE);
+  const [limit, setLimit] = useState(place?.limit ?? PAGE_SIZE);
   const listRef = useRef<HTMLOListElement>(null);
   // The row to focus once "Show more" has rendered it.
   const focusRow = useRef<number | null>(null);
@@ -414,6 +463,11 @@ export function HistoryDialog({
     tabRefs.current[FILTERS[next]]?.focus();
   };
 
+  // Kept as stable as the list it is watched from: every row is memoised on it.
+  const watch = useCallback(
+    (id: string) => onWatch(id, { filter, limit, id }),
+    [onWatch, filter, limit],
+  );
   const requestDelete = useCallback((id: string) => setConfirmingId(id), []);
   const cancelDelete = useCallback(() => setConfirmingId(null), []);
   const confirmDelete = useCallback(
@@ -561,10 +615,13 @@ export function HistoryDialog({
                       record.id === currentId,
                       resumableIds.has(record.id),
                     )}
+                    canWatch={canWatch(record)}
+                    isWatched={record.id === place?.id}
                     isConfirming={record.id === confirmingId}
                     onResume={onResume}
                     onReplay={onReplay}
                     onShare={onShare}
+                    onWatch={watch}
                     onRequestDelete={requestDelete}
                     onCancelDelete={cancelDelete}
                     onConfirmDelete={confirmDelete}

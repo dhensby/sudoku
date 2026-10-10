@@ -1,7 +1,13 @@
 import {
   DAILY_EPOCH,
+  appendMove,
+  createGame,
+  createMoveLog,
   daysBetween,
   encodeGivens,
+  encodeMoveLog,
+  moveFor,
+  reduce,
   formatGrid,
   gridValues,
   isDateKey,
@@ -10,6 +16,8 @@ import {
   rate,
   type DateKey,
   type Difficulty,
+  type Digit,
+  type GameAction,
   type GridString,
   type Puzzle,
 } from '../core';
@@ -50,6 +58,55 @@ export function nearlySolved(blanks: readonly number[], solution: GridString = P
   for (const index of blanks) cells[index] = '0';
   const givens = cells.join('');
   return { givens, solution, difficulty: rate(gridValues(givens)) } satisfies Puzzle;
+}
+
+/** A solved game's puzzle and move log, encoded as storage and links keep it. */
+export interface SolveFixture {
+  puzzle: Puzzle;
+  /** The log, as `encodeMoveLog` writes it. */
+  encoded: string;
+}
+
+/**
+ * A short solve to play back: `nearlySolved([0, 40, 80])` (each blank a full
+ * house), with a wrong 6 in row 1, column 1 left 4 s before it is put right
+ * (a mistake that counts), a hint about row 5, column 5, and the rest placed
+ * — five moves, the last at 0:09.
+ */
+export function shortSolve(): SolveFixture {
+  const puzzle = nearlySolved([0, 40, 80]);
+  const place = (index: number, digit: number): GameAction => ({
+    type: 'enter',
+    digit: digit as Digit,
+    index,
+    mode: 'normal',
+  });
+  const steps: readonly (readonly [atMs: number, action: GameAction])[] = [
+    [1000, place(0, 6)],
+    [5000, place(0, answerAt(0))],
+    [
+      6000,
+      {
+        type: 'hint',
+        hint: {
+          kind: 'single',
+          index: 40,
+          technique: 'fullHouse',
+          unit: { kind: 'row', index: 4 },
+        },
+      },
+    ],
+    [7000, place(40, answerAt(40))],
+    [9000, place(80, answerAt(80))],
+  ];
+  let game = createGame(puzzle);
+  let log = createMoveLog();
+  for (const [atMs, action] of steps) {
+    const next = reduce(game, action);
+    log = appendMove(log, moveFor(game, action, next)!, atMs);
+    game = next;
+  }
+  return { puzzle, encoded: encodeMoveLog(log) };
 }
 
 /** A query string for a share link to `givens`, with optional result parameters. */

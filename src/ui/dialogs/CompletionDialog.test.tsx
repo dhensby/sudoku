@@ -258,4 +258,28 @@ describe('CompletionDialog', () => {
       expect(within(dialog()).queryByText(/streak/)).not.toBeInTheDocument();
     });
   });
+
+  it('offers to watch the solve played back only when it can be', () => {
+    const { rerender, props } = renderCompletion();
+    expect(screen.queryByRole('button', { name: 'Watch your solve' })).toBeNull();
+    const onWatch = vi.fn();
+    rerender(<CompletionDialog {...props} onWatch={onWatch} />);
+    const watch = screen.getByRole('button', { name: 'Watch your solve' });
+    fireEvent.click(watch);
+    expect(onWatch).toHaveBeenCalledTimes(1);
+    // Under the result, not among the footer's next steps, nor in the summary read on the way in.
+    expect(watch.closest('.dialog__footer')).toBeNull();
+    expect(dialog()).not.toHaveAccessibleDescription(/Watch/);
+    expect(screen.getByRole('button', { name: 'Share your time' })).toHaveFocus();
+  });
+
+  it('puts focus back on Watch your solve as it comes back from watching', () => {
+    renderCompletion({ onWatch: vi.fn(), isBackFromWatch: true });
+    expect(screen.getByRole('button', { name: 'Watch your solve' })).toHaveFocus();
+  });
+
+  it('opens on Share when back from watching a solve it can no longer offer', () => {
+    renderCompletion({ isBackFromWatch: true });
+    expect(screen.getByRole('button', { name: 'Share your time' })).toHaveFocus();
+  });
 });

@@ -648,4 +648,61 @@ describe('HistoryDialog', () => {
       expect(screen.queryByText(/^Daily ·/)).not.toBeInTheDocument();
     });
   });
+
+  describe('watching a solve', () => {
+    it('offers Watch on the rows it is told can be watched, and nowhere by default', () => {
+      const { unmount } = renderHistory();
+      expect(screen.queryByRole('button', { name: /^Watch/ })).toBeNull();
+      unmount();
+      const canWatch = vi.fn((entry: GameRecord) => entry.id === 'won');
+      const onWatch = vi.fn();
+      renderHistory({ canWatch, onWatch });
+      const watches = screen.getAllByRole('button', { name: /^Watch/ });
+      expect(watches).toHaveLength(1);
+      expect(watches[0]).toHaveAccessibleName('Watch your solve, Hard puzzle from Today 14:05');
+      expect(within(rows()[1]).getByRole('button', { name: /^Watch/ })).toBe(watches[0]);
+      fireEvent.click(watches[0]);
+      // With the list as it is, to come back to.
+      expect(onWatch).toHaveBeenCalledWith('won', { filter: 'all', limit: 100, id: 'won' });
+    });
+
+    it('says how the list stood when a row was watched: its filter and how much was shown', () => {
+      const many = Array.from({ length: 150 }, (_, i) =>
+        record(`g${i}`, { status: 'solved', completedAt: NOW }),
+      );
+      const onWatch = vi.fn();
+      renderHistory({ records: many, currentId: null, canWatch: () => true, onWatch });
+      fireEvent.click(screen.getByRole('tab', { name: 'Hard' }));
+      fireEvent.click(screen.getByRole('button', { name: /^Show more/ }));
+      fireEvent.click(within(rows()[120]).getByRole('button', { name: /^Watch/ }));
+      expect(onWatch).toHaveBeenCalledWith('g120', { filter: 'hard', limit: 200, id: 'g120' });
+    });
+
+    it('comes back as it stood, focus on the Watch of the row watched', () => {
+      const many = Array.from({ length: 150 }, (_, i) =>
+        record(`g${i}`, { status: 'solved', completedAt: NOW }),
+      );
+      renderHistory({
+        records: many,
+        currentId: null,
+        canWatch: () => true,
+        place: { filter: 'hard', limit: 200, id: 'g120' },
+      });
+      expect(screen.getByRole('tab', { name: 'Hard' })).toHaveAttribute('aria-selected', 'true');
+      expect(rows()).toHaveLength(150);
+      expect(within(rows()[120]).getByRole('button', { name: /^Watch/ })).toHaveFocus();
+    });
+
+    it('asks only about the rows it builds: a page at a time, not the whole history', () => {
+      const many = Array.from({ length: 150 }, (_, i) =>
+        record(`g${i}`, { status: 'solved', completedAt: NOW }),
+      );
+      const canWatch = vi.fn((_: GameRecord) => false);
+      renderHistory({ records: many, currentId: null, canWatch });
+      const asked = new Set(canWatch.mock.calls.map(([entry]) => entry.id));
+      expect(asked.size).toBe(100);
+      fireEvent.click(screen.getByRole('button', { name: /^Show more/ }));
+      expect(new Set(canWatch.mock.calls.map(([entry]) => entry.id)).size).toBe(150);
+    });
+  });
 });

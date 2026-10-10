@@ -12,6 +12,7 @@ import {
   openTodaysDaily,
   padKey,
   resumeButton,
+  settle,
   solveFromKeyboard,
   startButton,
   stubClipboard,
@@ -51,24 +52,6 @@ async function overflow(page: Page) {
       y: root.scrollHeight - root.clientHeight,
     };
   });
-}
-
-/**
- * Let entrance animations finish — a phone's dialog slides up from below the
- * screen as a sheet — so boxes are measured where they come to rest. One
- * cancelled on the way has come to rest too: help taken's tick is cut short
- * as its mark is taken off, or as a new tick plays afresh, and its
- * `finished` then rejects rather than resolving.
- */
-async function settle(page: Page): Promise<void> {
-  await page.evaluate(() =>
-    Promise.all(
-      document
-        .getAnimations()
-        .filter((animation) => animation.effect?.getTiming().iterations !== Infinity)
-        .map((animation) => animation.finished.catch(() => undefined)),
-    ),
-  );
 }
 
 /** Whether `target` lies wholly inside the viewport, once it has come to rest. */

@@ -19,6 +19,7 @@ import {
   seedHistory,
   selectCell,
   solveFromKeyboard,
+  solveWithAMistake,
   startButton,
   startPuzzle,
   timer,
@@ -157,6 +158,33 @@ const dialog = (page: Page, name: string) => page.getByRole('dialog', { name });
 async function closeDialog(page: Page): Promise<void> {
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).toHaveCount(0);
+}
+
+/**
+ * "Watch your solve" on a solve with a counted mistake, from its Solved
+ * dialog, checked at the start, on the mistake, and at the solve.
+ */
+async function watchASolve(page: Page, opener: 'Solved!' | 'History' = 'Solved!'): Promise<void> {
+  if (opener === 'Solved!') {
+    await dialog(page, 'Solved!').getByRole('button', { name: 'Watch your solve' }).click();
+  } else {
+    await openHeaderDialog(page, 'History');
+    await dialog(page, 'History')
+      .getByRole('button', { name: /^Watch your solve, / })
+      .first()
+      .click();
+  }
+  const playback = dialog(page, 'Your solve');
+  const caption = playback.locator('.playback__caption');
+  await expect(caption).toHaveText('Before the first move');
+  await expectAccessible(page, 'Watch your solve, at the start');
+  await page.keyboard.press('ArrowRight');
+  await expect(caption).toHaveText(/— a mistake$/);
+  await expect(playback.locator('.cell--current')).toHaveCount(1);
+  await expectAccessible(page, 'Watch your solve, on its mistake');
+  await page.keyboard.press('End');
+  await expect(caption).toHaveText(/— solved$/);
+  await expectAccessible(page, 'Watch your solve, at the solve');
 }
 
 /** London noon on a date of October 2026, in epoch ms. */
@@ -422,6 +450,11 @@ for (const scheme of ['light', 'dark'] as const) {
       await expect(history.getByRole('button', { name: /^Confirm delete/ })).toBeVisible();
       await expectAccessible(page, 'a History row asking to confirm a delete');
     });
+
+    test('watching a solve played back, its mistake marked', async ({ page }) => {
+      await solveWithAMistake(page);
+      await watchASolve(page);
+    });
   });
 }
 
@@ -551,6 +584,15 @@ for (const { way, isChosen, media } of HIGH_CONTRAST_WAYS) {
         await expectAccessible(page, `the ${title} dialog`);
         await closeDialog(page);
       }
+    });
+
+    test('watching a solve played back, from History', async ({ page }) => {
+      await page.emulateMedia(media);
+      await solveWithAMistake(page);
+      await closeDialog(page);
+      if (isChosen) await chooseHighContrast(page);
+      await expectHighContrast(page, isChosen);
+      await watchASolve(page, 'History');
     });
 
     test('the daily calendar, its marks and a day chosen', async ({ page }) => {
@@ -718,6 +760,33 @@ test.describe('on a phone', () => {
       await sheet.getByRole('combobox', { name: 'Technique' }).selectOption({ label: 'X-Wing' });
       await expect(sheet.getByRole('heading', { level: 3 })).toHaveText('X-Wing');
       await expectAccessible(page, 'the guide as a bottom sheet');
+    });
+  }
+
+  for (const scheme of ['light', 'dark'] as const) {
+    test(`watching a solve as a bottom sheet, and on its side, in the ${scheme} theme`, async ({
+      page,
+    }) => {
+      await page.emulateMedia({ colorScheme: scheme });
+      await solveWithAMistake(page);
+      await expectScheme(page, scheme);
+      await watchASolve(page);
+      // Upright, then on its side: the player fits the screen, nothing to scroll.
+      const upright = page.viewportSize()!;
+      for (const size of [upright, { width: upright.height, height: upright.width }]) {
+        await page.setViewportSize(size);
+        const body = page.locator('.dialog--playback .dialog__body');
+        await expect
+          .poll(() => body.evaluate((el) => el.scrollHeight - el.clientHeight))
+          .toBeLessThanOrEqual(1);
+        await expect(
+          dialog(page, 'Your solve').getByRole('button', { name: 'To the solve' }),
+        ).toBeInViewport();
+        await expectAccessible(
+          page,
+          `Watch your solve, ${size === upright ? 'upright' : 'on its side'}`,
+        );
+      }
     });
   }
 });

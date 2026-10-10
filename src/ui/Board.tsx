@@ -45,6 +45,16 @@ export interface BoardProps {
    * which the hint bar shows again whenever the cell is selected (see App).
    */
   describedBy?: string;
+  /**
+   * A board to look at, not to play: a solve played back. It is drawn as the
+   * game's own board is — digits, candidates, marks and conflicts — but as a
+   * table of plain cells rather than a grid of buttons: nothing on it takes
+   * focus or a press, no cell is selected, and no highlight follows a
+   * selection. `onSelect` and `onToggleCandidate` are never called.
+   */
+  isReadOnly?: boolean;
+  /** On a read-only board, the cell to outline: the one the move on show acted on. */
+  current?: number | null;
 }
 
 const LINES = [0, 1, 2, 3, 4, 5, 6, 7, 8];
@@ -68,6 +78,8 @@ export function Board({
   onToggleCandidate,
   takeFocusRequest,
   describedBy,
+  isReadOnly = false,
+  current = null,
 }: BoardProps) {
   const gridRef = useRef<HTMLDivElement>(null);
   const cellRefs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -105,6 +117,8 @@ export function Board({
       ? selectedValue
       : 0;
   const highlightOf = (index: number): Highlight => {
+    // A board played back has no selection: the replay's own is no one's.
+    if (isReadOnly) return 'none';
     if (index === selected) return 'selected';
     if (
       settings.highlightIdentical &&
@@ -121,15 +135,18 @@ export function Board({
 
   const classes = ['board'];
   if (isCelebrating) classes.push('board--solved');
+  if (isReadOnly) classes.push('board--read-only');
 
   return (
     <div
       className={classes.join(' ')}
-      role="grid"
+      // A table when it is only to be looked at: a grid is a widget, which
+      // promises cells to move between and act on.
+      role={isReadOnly ? 'table' : 'grid'}
       aria-label="Sudoku board"
       aria-rowcount={9}
       aria-colcount={9}
-      aria-readonly={game.status === 'solved' || undefined}
+      aria-readonly={(!isReadOnly && game.status === 'solved') || undefined}
       ref={gridRef}
     >
       {LINES.map((row) => (
@@ -145,11 +162,15 @@ export function Board({
                 given={cell.given}
                 mark={cell.mark}
                 candidates={candidates[index]}
-                sameCandidate={sameCandidateOf(index)}
+                sameCandidate={isReadOnly ? 0 : sameCandidateOf(index)}
                 highlight={highlightOf(index)}
                 conflict={settings.highlightConflicts && conflicts[index]}
                 ghosts={
-                  isPlaying && index === selected && cell.value === 0 && isEditable(game, index)
+                  !isReadOnly &&
+                  isPlaying &&
+                  index === selected &&
+                  cell.value === 0 &&
+                  isEditable(game, index)
                     ? (computed?.[index] ?? ALL_DIGITS)
                     : 0
                 }
@@ -157,6 +178,8 @@ export function Board({
                 onSelect={onSelect}
                 onToggleCandidate={onToggleCandidate}
                 registerRef={registerRef}
+                isReadOnly={isReadOnly}
+                isCurrent={isReadOnly && index === current}
               />
             );
           })}

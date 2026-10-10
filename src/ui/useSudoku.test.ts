@@ -3249,4 +3249,165 @@ describe('useSudoku', () => {
       expect(result.current.record?.source).toBe('replay');
     });
   });
+
+  describe('watching a solve', () => {
+    /** A play clock of its own, moving with the fake timers (see 'the move log'). */
+    const clock = (): number => Date.now() - NOW + 7_000_000;
+    const near = nearlySolved([0, 1]);
+
+    /** Storage that keeps a list of every key written or removed, to show that watching writes nothing. */
+    function recording() {
+      const inner = memoryStorage();
+      const writes: string[] = [];
+      const storage: StorageLike = {
+        getItem: (key) => inner.getItem(key),
+        setItem: (key, value) => {
+          writes.push(key);
+          inner.setItem(key, value);
+        },
+        removeItem: (key) => {
+          writes.push(key);
+          inner.removeItem(key);
+        },
+      };
+      return { storage, writes };
+    }
+
+    /** A game of `near` solved at 0:12, with its Solved dialog open. */
+    async function solved(options: SetupOptions = {}) {
+      const view = await started({ clock, source: fakeSource(near, PUZZLE), ...options });
+      advance(5000);
+      enter(view.result, 0, answerAt(0));
+      advance(7000);
+      enter(view.result, 1, answerAt(1));
+      advance(COMPLETION_DELAY_MS);
+      expect(view.result.current.dialog?.kind).toBe('completion');
+      return { ...view, id: view.result.current.record!.id };
+    }
+
+    it('offers the game just solved, recorded move by move, from the Solved dialog', async () => {
+      const { storage, writes } = recording();
+      const { result, id } = await solved({ storage });
+      expect(result.current.canWatchSolve).toBe(true);
+      const completion = result.current.dialog;
+      const before = writes.length;
+
+      act(() => result.current.actions.watchSolve());
+      expect(result.current.dialog).toEqual({
+        kind: 'playback',
+        source: {
+          givens: near.givens,
+          difficulty: near.difficulty,
+          log: loadEncodedMoveLog(storage, id),
+          title: 'Your solve',
+          subtitle: 'Easy · 0:12',
+        },
+        returnTo: completion,
+      });
+      // Back to the Solved dialog as it was, focus back on Watch, having
+      // changed nothing.
+      act(() => result.current.actions.closeDialog());
+      expect(result.current.dialog).toEqual({ ...completion, isBackFromWatch: true });
+      advance(CLOCK_SAVE_MS * 2);
+      expect(writes).toHaveLength(before);
+    });
+
+    it('offers nothing to watch while the game is still being played', async () => {
+      const { result } = await started({ clock, source: fakeSource(near) });
+      enter(result, 0, answerAt(0));
+      expect(result.current.canWatchSolve).toBe(false);
+      act(() => result.current.actions.watchSolve());
+      expect(result.current.dialog).toBeNull();
+    });
+
+    it('offers nothing to watch for a game not recorded move by move', async () => {
+      const storage = memoryStorage();
+      const first = await started({ clock, storage, source: fakeSource(near) });
+      const id = first.result.current.record!.id;
+      enter(first.result, 0, answerAt(0));
+      act(() => first.result.current.actions.pause());
+      first.unmount();
+      // As a game begun before logs were kept: a board, and no log.
+      storage.removeItem(`sudoku.moves.${id}`);
+
+      const second = setup({ clock, storage });
+      act(() => second.result.current.actions.resume());
+      enter(second.result, 1, answerAt(1));
+      advance(COMPLETION_DELAY_MS);
+      expect(second.result.current.canWatchSolve).toBe(false);
+      act(() => second.result.current.actions.watchSolve());
+      expect(second.result.current.dialog?.kind).toBe('completion');
+      act(() => second.result.current.actions.openDialog('history'));
+      const [record] = second.result.current.history.records;
+      expect(second.result.current.actions.canWatchRecord(record)).toBe(false);
+    });
+
+    it('watches a solved game from History, and comes back to the list, still paused', async () => {
+      const { storage, writes } = recording();
+      const { result, id } = await solved({ storage });
+      act(() => result.current.actions.closeDialog());
+      act(() => result.current.actions.newGame('easy'));
+      await settle();
+      enter(result, FIRST_EMPTY, answerAt(FIRST_EMPTY));
+      act(() => result.current.actions.openDialog('history'));
+      const before = writes.length;
+      const [current, older] = result.current.history.records;
+      expect(older.id).toBe(id);
+      expect(result.current.actions.canWatchRecord(older)).toBe(true);
+      // Not the game being played: it is not solved.
+      expect(result.current.actions.canWatchRecord(current)).toBe(false);
+
+      const place = { filter: 'easy', limit: 200, id } as const;
+      act(() => result.current.actions.watchRecord(id, place));
+      expect(result.current.dialog).toMatchObject({
+        kind: 'playback',
+        source: { givens: near.givens, log: loadEncodedMoveLog(storage, id) },
+        returnTo: { kind: 'history', place },
+      });
+      expect(result.current.pauseReason).toBe('dialog');
+      // Back to the list as it was: filtered, as long, at the row watched.
+      act(() => result.current.actions.closeDialog());
+      expect(result.current.dialog).toEqual({ kind: 'history', place });
+      expect(result.current.pauseReason).toBe('dialog');
+      advance(CLOCK_SAVE_MS * 2);
+      expect(writes).toHaveLength(before);
+    });
+
+    it('watches the game on screen from History by its own log', async () => {
+      const { result, id } = await solved();
+      act(() => result.current.actions.closeDialog());
+      act(() => result.current.actions.openDialog('history'));
+      const [record] = result.current.history.records;
+      expect(record.id).toBe(id);
+      expect(result.current.actions.canWatchRecord(record)).toBe(true);
+      act(() => result.current.actions.watchRecord(id, { filter: 'all', limit: 100, id }));
+      expect(result.current.dialog?.kind).toBe('playback');
+    });
+
+    it('names a daily as the Solved dialog does', async () => {
+      const today = dateKeyOf(NOW);
+      const dailies = fakeDailies({ puzzles: { [`${today}/easy`]: near } });
+      const view = await started({ clock, dailies, source: fakeSource(PUZZLE) });
+      act(() => view.result.current.actions.openDaily(today, 'easy'));
+      await settle();
+      enter(view.result, 0, answerAt(0));
+      enter(view.result, 1, answerAt(1));
+      advance(COMPLETION_DELAY_MS);
+      act(() => view.result.current.actions.watchSolve());
+      expect(view.result.current.dialog).toMatchObject({
+        kind: 'playback',
+        source: { subtitle: expect.stringMatching(/^Daily · .+ · Easy · 0:00$/) },
+      });
+    });
+
+    it('does nothing for a game it cannot find, or one that cannot be watched', async () => {
+      const { result } = await solved();
+      act(() => result.current.actions.closeDialog());
+      act(() => result.current.actions.openDialog('history'));
+      act(() =>
+        result.current.actions.watchRecord('nope-0000', { filter: 'all', limit: 100, id: 'x' }),
+      );
+      expect(result.current.dialog).toEqual({ kind: 'history' });
+    });
+  });
 });

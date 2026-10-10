@@ -195,4 +195,58 @@ describe('Cell', () => {
     // means the memo held.
     expect(vi.mocked(props.registerRef).mock.calls.length).toBe(calls);
   });
+
+  describe('read-only', () => {
+    function renderReadOnly(overrides: Partial<CellProps> = {}) {
+      const props: CellProps = {
+        index: 40,
+        value: 0,
+        given: false,
+        mark: 'none',
+        candidates: 0,
+        highlight: 'none',
+        conflict: false,
+        ghosts: 0,
+        onSelect: vi.fn(),
+        onToggleCandidate: vi.fn(),
+        registerRef: vi.fn(),
+        isReadOnly: true,
+        ...overrides,
+      };
+      render(
+        <div role="table">
+          <div role="row">
+            <Cell {...props} />
+          </div>
+        </div>,
+      );
+      return { props, cell: screen.getByRole('cell') };
+    }
+
+    it('is a plain cell, named by its state and placed in the table', () => {
+      const { cell, props } = renderReadOnly({ value: 7, mark: 'correct' });
+      expect(cell.tagName).toBe('DIV');
+      expect(cell).toHaveAccessibleName('7, correct');
+      expect(cell).toHaveAttribute('aria-rowindex', '5');
+      expect(cell).toHaveAttribute('aria-colindex', '5');
+      expect(cell).not.toHaveAttribute('tabindex');
+      expect(cell.querySelector('.cell__tick')).not.toBeNull();
+      fireEvent.click(cell);
+      fireEvent.focus(cell);
+      expect(props.onSelect).not.toHaveBeenCalled();
+      expect(props.registerRef).not.toHaveBeenCalled();
+    });
+
+    it('draws its candidates and its conflict dot, out of hearing', () => {
+      const { cell } = renderReadOnly({ candidates: 0b1010, conflict: true });
+      expect(cell).toHaveAccessibleName('empty, candidates 2 4, conflict');
+      expect(cell.querySelector('.cell__candidates')).toHaveAttribute('aria-hidden', 'true');
+      expect(cell.querySelector('.cell__conflict')).not.toBeNull();
+    });
+
+    it('carries the outline of the move on show', () => {
+      const { cell } = renderReadOnly({ isCurrent: true, given: true, value: 3 });
+      expect(cell).toHaveClass('cell', 'cell--given', 'cell--current');
+    });
+  });
 });

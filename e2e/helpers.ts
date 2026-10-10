@@ -481,3 +481,47 @@ export async function getStuckOnAnXyChain(page: Page): Promise<void> {
     entries.map(([row, col, digit]) => ({ index: (row - 1) * 9 + col - 1, digit })),
   );
 }
+
+/**
+ * Solve `puzzle` (by default `NEARLY_DONE`, every blank a full house) on
+ * Playwright's clock, with one mistake that counts: a wrong number in its
+ * first blank, left 4 s of play before it is put right — past the 3 s a slip
+ * has. Installs the clock itself, so call it before the page is opened. The
+ * Solved dialog is up when it returns. Returns the cell and the wrong digit.
+ */
+export async function solveWithAMistake(
+  page: Page,
+  puzzle: Puzzle = NEARLY_DONE,
+): Promise<{ index: number; wrong: number }> {
+  await page.clock.install();
+  await startPuzzle(page, puzzle);
+  await ensureNormalMode(page);
+  const [index] = emptyCells(puzzle.givens);
+  const wrong = (Number(puzzle.solution[index]) % 9) + 1;
+  await page.clock.fastForward('00:02');
+  await typeDigits(page, [{ index, digit: wrong }]);
+  await page.clock.fastForward('00:04');
+  await solveFromKeyboard(page, puzzle);
+  await expect(
+    page.getByRole('dialog', { name: 'Solved!' }).locator('.result__mistakes'),
+  ).toHaveText('1 mistake');
+  return { index, wrong };
+}
+
+/**
+ * Let entrance animations finish — a phone's dialog slides up from below the
+ * screen as a sheet — so boxes are measured where they come to rest. One
+ * cancelled on the way has come to rest too: help taken's tick is cut short
+ * as its mark is taken off, or as a new tick plays afresh, and its
+ * `finished` then rejects rather than resolving.
+ */
+export async function settle(page: Page): Promise<void> {
+  await page.evaluate(() =>
+    Promise.all(
+      document
+        .getAnimations()
+        .filter((animation) => animation.effect?.getTiming().iterations !== Infinity)
+        .map((animation) => animation.finished.catch(() => undefined)),
+    ),
+  );
+}

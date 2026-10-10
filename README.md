@@ -60,7 +60,7 @@ your browser.
   comparison is fair. Plus a link of their own to send back. Nothing is uploaded; everything
   travels in the link.
 - **History and stats** — every game you play is kept: resume unfinished ones, play a solved
-  puzzle again, share it, or delete it. A game you only glanced at — nothing entered, no help
+  puzzle again, [watch your solve](#watch-your-solve) of it, share it, or delete it. A game you only glanced at — nothing entered, no help
   taken — is dropped when you move on to another, so browsing the levels doesn't clutter the list
   or count as played. A game raced against a friend's link shows their time, and the help and
   mistakes it came with under it. Per-difficulty stats show games played and solved, and best and average
@@ -108,6 +108,12 @@ your browser.
   "Mistakes 2 · 1 candidate", beside the timer (above the controls on a phone) — which shows each
   mistake only once it counts, so it is no free Check, and is not help. With **Check guesses when
   entered** on as well, a mistake counts, and shows, the moment it goes in.
+- **Watch your solve** — the Solved dialog, and a solved game's row in History, play the solve
+  back move by move on a board of its own: every number, note, hint, check and undo, the cell it
+  went in outlined and a caption saying what it was ("5 in row 3, column 4 — a mistake"), with
+  play and pause, a step either way, a scrubber marked with your mistakes, the slips you put right
+  in time and the help you took, and speeds up to 8×. Watching changes nothing (see
+  [Watch your solve](#watch-your-solve)).
 - **A guide to the solving techniques** — every technique the grader knows, from a full house to
   the alternating chain: its other names, what it is, why it works, how to spot it, and a worked
   example from a real puzzle, drawn with the pattern ringed (and a chain's links traced), the
@@ -175,8 +181,9 @@ The design keeps a hard line between logic and presentation:
 - **`src/core/`** — a pure, framework-free engine: grid geometry, a bitmask solver, a human-style
   logical grader (with a worked example of every technique it knows), the puzzle generator, hints
   and walkthroughs from the player's own candidates (Show me: the steps one cell depends on, sliced
-  from a solve, pruned of any it can do without and checked step by step), share-link codec, clock arithmetic, the game reducer
-  (which remembers each cell's hints) and the move log that replays it. No DOM, no React and no
+  from a solve, pruned of any it can do without and checked step by step), share-link codec, clock
+  arithmetic, the game reducer (which remembers each cell's hints), the move log that replays it,
+  and playback (a solve shown again move by move, from its log). No DOM, no React and no
   English; `reduce(state, action)` is a pure function, randomness is passed in, and the whole
   directory is held to 100% coverage.
 - **`src/storage/`** — a thin, injectable `localStorage` layer for preferences, the history and
@@ -376,8 +383,8 @@ logging), or one past 5,000 moves keeps no log. The log is saved just before the
 never behind it: if the board's write is refused, or lost to a crash, the log reopens trimmed back
 to the moves that reach the board saved, which is the whole log of the game as saved. A log
 written by a newer version, which this one cannot read, is left alone for that version to judge.
-What the logs show so far is a game's [mistakes](#mistakes); where they are kept is under
-[Your data](#your-data).
+What the logs show is a game's [mistakes](#mistakes), and the solve itself, played back (see
+[Watch your solve](#watch-your-solve)); where they are kept is under [Your data](#your-data).
 
 - **What is logged:** every move that changed the game, with its time on the play clock (which
   stops while paused), rounded down to a tenth of a second so that a logged time is never later
@@ -549,6 +556,62 @@ turning it off hides the count, the count on Hint and the count said with a move
   about the board — not which cells, nor whether a number is right — and, like the timer's
   digits, it is a record of the game rather than of its cells.
 
+## Watch your solve
+
+A solved game can be watched again, move by move: **Watch your solve** in the Solved dialog, and
+**Watch** on a solved game's row in History, open a player (`PlaybackDialog`) over the game,
+which stays paused behind it, as it does for any dialog. Watching changes nothing — no record,
+count or time moves, and nothing is written — and closing it goes back to the dialog it was
+opened from as it was (History still filtered, as long, and at the game), focus back on its
+Watch.
+
+- **What it shows:** the board as it stood after the move on show — numbers, your own notes or
+  the auto candidates, checked, wrong and revealed marks, conflicts — drawn by the game's own
+  board in a read-only mode (a table of plain cells: nothing to select or press), the move's
+  cell outlined in the accent, and a caption: "5 in row 3, column 4", "Struck 3 in row 3,
+  column 4", "Erased row 3, column 4", "Undo", "Hint: X-Wing", "Hint: Hidden single in box 2",
+  "Show me for row 5, column 5", "Checked the puzzle", "Revealed row 3, column 4", "Auto
+  candidates on", "Check guesses off", "Reset"; a candidate entered over a number says what it
+  cleared ("Cleared 6, struck 5 in row 3, column 4"). A move that made a mistake that counted says so
+  ("— a mistake", "— a candidate mistake"), as does a slip forgiven ("— a slip, put right in
+  time"), and the solving move ("— solved").
+- **The controls:** Play and Pause (Watch again at the solve), a move back or forward, to the
+  start or the solve, speeds of 1×, 2×, 4× and 8×, and a scrubber — a native range, which a
+  screen reader hears as "Move 42 of 310, 4:12". Marks along it show each mistake that counted
+  (solid, above the track), each slip forgiven (open, above) and each move of help — a hint, Show
+  me, a check or a reveal (a small square, below) — with a key to those present. The keys work
+  anywhere in the dialog — <kbd>Space</kbd> plays and pauses, <kbd>←</kbd> and <kbd>→</kbd> step,
+  <kbd>Home</kbd> and <kbd>End</kbd> jump — except where a control has a use of its own for one
+  (Space presses a button, the arrows move the scrubber or the speeds); the game's own keys stand
+  down while any dialog is open, and a held Space counts once. A move taken by hand has its
+  caption spoken; a playback running by itself speaks only where it stops — the move on show when
+  paused, the solve when it gets there — and with less motion asked for it still steps, with
+  nothing animated.
+- **Time:** each move comes after the pause the player took before it, divided by the speed, but
+  a long think is shortened to 1.5 s (at 1×), and moves made within a tenth of a second of each
+  other are spread 0.15 s apart so each shows. The time beside the board is the real play time
+  at the move on show, against the solve's.
+- **What it is played from:** the puzzle's givens and the encoded move log, nothing else — the
+  solution is worked out from the givens, and neither the record nor the saved board (which a
+  finished game loses once off screen) is read — so a solve that came from somewhere else plays
+  the same way. `src/core/playback.ts` prepares it: it replays the log through the reducer once,
+  keeping the game after every move, works out each move's cell, what a candidate move did to its
+  digit (pencilled or struck, and any number it cleared — read from the game before and after
+  it, as `analyseMistakes` judges a struck answer), and its mistakes (`analyseMistakes`), and
+  places the scrubber's marks; the
+  timing and the cursor (`steer`: play, pause, step, seek, speed) are pure functions of it, and
+  `usePlayback` only waits out each pause on the browser's timers. The captions are the UI's
+  (`src/ui/playbackText.ts`), as the engine speaks no English.
+- **What can be watched:** a solved game whose log decodes under this build's format and rules
+  version and replays to the solve at its last move (`isPlayable`, asked only of the History rows
+  built, and remembered) — play logs nothing after a solve, so a log that goes on past one is
+  taken as damaged. A game not recorded move by move — begun before logs were kept, or one whose log
+  stopped (see [The move log](#the-move-log)) — offers nothing; a log recorded under an older
+  rules version is swept as a visit starts, so History says nothing of it either. Given a log it
+  cannot play back, the player says why in the board's place: recorded by an older version, by a
+  newer one (reload to update), damaged, or stopping short of the solve — `readMoveLogHeader`
+  tells them apart.
+
 ## Racing friends
 
 A share link carries the puzzle itself, so it opens the same puzzle for anyone, on any version of
@@ -637,7 +700,8 @@ more than one such chunk beyond what the write needed is ever lost; and only onc
 game's log is gone, the saved boards of all but the 10 most recently played unfinished games, and
 finished games beyond the newest 300, with their logs. The game on screen, and the logs of
 unfinished games, are never shed. Finished games' logs go first because nothing needs them to
-carry on playing. In a test with a full history and the storage filled to the brim, one chunk
+carry on playing (a game whose log is shed keeps its record and its count of mistakes, but can no
+longer be watched). In a test with a full history and the storage filled to the brim, one chunk
 (130 logs) makes room for the whole of a pencil-every-candidate game played after it; with the
 quota cut by another 300,000 characters, 754 of the 950 finished games' logs go and every record
 and board stays. If a log cannot be written even then, its game's old log is deleted rather than
@@ -689,6 +753,10 @@ of the logs here were shed, none of the file's logs are taken.
   up as it starts, and for Show me's, only as its walkthrough closes; through the main hook, a hint
   asked for again costs and says nothing more, while the next new one says "2 hints used.", and
   Check guesses switched on mid-game says it is help.
+  Playback is held to every kind of move a log holds — the cell each outlines, its caption, its
+  mistakes and the scrubber's marks — to its timing at every speed, long pauses shortened and
+  bursts spread, to stepping, seeking and its ends, and to refusing, with the reason, a log from
+  an older or a newer build or a broken one; watching is checked to write nothing.
   Share links are held to the versions before them: a copy of the assists decoder every earlier
   version shipped must read a new link's help unchanged, skipping its mistakes, and an old link
   must read as mistakes not recorded, never 0.
@@ -700,8 +768,11 @@ of the logs here were shed, none of the file's logs are taken.
   the end and its streak, yesterday's from the calendar kept but not counted, a friend's daily
   link recognised), mistakes (an obvious slip put right at once, a wrong number where the answer
   was not obvious, Check guesses marking and counting one at once with "guesses checked as
-  entered" beside the time, and the error counter waiting out a slip's 3 seconds of play) and the
-  phone layout from 320px wide up and on its side (the calendar's
+  entered" beside the time, and the error counter waiting out a slip's 3 seconds of play),
+  watching a solve with a mistake played back from the Solved dialog and from History (stepped,
+  scrubbed and played at 8× on Playwright's clock, its mistake marked and captioned, focus back on
+  Watch as it closes, and fitting a 320px phone and a phone on its side) and the phone layout from
+  320px wide up and on its side (the calendar's
   days measured at 44px at 320px, the head-to-head's every row, hour-long times on one line and a
   long right-to-left name kept inside its card, New game and the calendar whole on a phone on its
   side, and the error counter's line with help taken beside it, upright and on its side, a large
@@ -714,7 +785,7 @@ of the logs here were shed, none of the file's logs are taken.
   hidden board leaves beside the timer's. An accessibility pass (`a11y.spec.ts`) runs axe-core's WCAG 2.2 A and AA rules over the main states — the board with
   every kind of mark, the error counter and help taken in both their places, the Ready and Paused
   cards, the menus (the "…" menu's "Hint (1 used)" among them),
-  every dialog (Show me's and the daily calendar's included) and each guide entry — in both
+  every dialog (Show me's, the daily calendar's and a solve played back included) and each guide entry — in both
   themes, and the board, the dialogs, the menus and the calendar in High contrast, both chosen in
   Settings on a dark device and from a dark system asking for more contrast, measuring its heavier
   lines and its same-number ring kept off the digits — and allows no violations. Three projects:
@@ -756,3 +827,4 @@ no change is needed — the base is derived from the repository name at build ti
 | Daily calendar and streaks     | Arrow keys, Home/End, Page Up/Page Down in the month                                     | The calendar in the header, or +     |
 | History, share, settings, help | —                                                                                        | The header (on a phone, the ☰ menu) |
 | Solving techniques             | —                                                                                        | The header, or a hint's question     |
+| Watch your solve               | <kbd>Space</kbd>, <kbd>←</kbd>/<kbd>→</kbd>, <kbd>Home</kbd>/<kbd>End</kbd>              | Watch your solve, or History's Watch |

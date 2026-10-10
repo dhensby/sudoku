@@ -251,4 +251,60 @@ describe('Board', () => {
     expect(screen.getByRole('grid')).toHaveAttribute('aria-readonly', 'true');
     expect(screen.getByRole('grid')).toHaveClass('board--solved');
   });
+
+  describe('read-only, as a solve played back', () => {
+    // A wrong 5 beside the given 5 in row 1, a note at cell 3 and a check.
+    const game = play(
+      { type: 'enter', digit: 5, index: 2 },
+      { type: 'enter', digit: 4, index: 3, mode: 'candidate' },
+      { type: 'select', index: 2 },
+      { type: 'check', scope: 'cell' },
+    );
+
+    it('is a table of plain cells, with nothing to press, focus or select', () => {
+      const { props } = renderBoard({ game, isReadOnly: true, current: 2 });
+      expect(screen.queryByRole('grid')).toBeNull();
+      const table = screen.getByRole('table', { name: 'Sudoku board' });
+      expect(table).not.toHaveAttribute('aria-readonly');
+      expect(table).toHaveClass('board--read-only');
+      expect(within(table).getAllByRole('row')).toHaveLength(9);
+      const cells = within(table).getAllByRole('cell');
+      expect(cells).toHaveLength(81);
+      expect(within(table).queryAllByRole('button')).toHaveLength(0);
+      expect(table.querySelector('[tabindex]')).toBeNull();
+      expect(cells[40]).toHaveAttribute('aria-rowindex', '5');
+      expect(cells[40]).toHaveAttribute('aria-colindex', '5');
+      fireEvent.click(cells[5]);
+      expect(props.onSelect).not.toHaveBeenCalled();
+    });
+
+    it('draws what the game had — values, notes, marks and conflicts — named as in play', () => {
+      renderBoard({ game, isReadOnly: true, current: 2 });
+      const cells = screen.getAllByRole('cell');
+      expect(cells[0]).toHaveAccessibleName('5, given, conflict');
+      expect(cells[2]).toHaveAccessibleName('5, conflict, incorrect');
+      expect(cells[2]).toHaveClass('cell--wrong');
+      expect(cells[3]).toHaveAccessibleName('empty, candidates 4');
+    });
+
+    it('outlines the cell the move on show acted on, and highlights nothing else', () => {
+      renderBoard({ game, isReadOnly: true, current: 3 });
+      const cells = screen.getAllByRole('cell');
+      expect(cells[3]).toHaveClass('cell--current');
+      expect(document.querySelectorAll('.cell--current')).toHaveLength(1);
+      expect(
+        document.querySelectorAll('.cell--selected, .cell--peer, .cell--same, .cell__ghosts'),
+      ).toHaveLength(0);
+    });
+
+    it('outlines nothing for a move about no one cell', () => {
+      renderBoard({ game, isReadOnly: true });
+      expect(document.querySelectorAll('.cell--current')).toHaveLength(0);
+    });
+
+    it('never outlines a cell of a board in play', () => {
+      renderBoard({ game, current: 3 });
+      expect(document.querySelectorAll('.cell--current')).toHaveLength(0);
+    });
+  });
 });

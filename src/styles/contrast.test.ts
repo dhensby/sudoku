@@ -316,6 +316,31 @@ const PAIRS: Pair[] = [
   // Show me for a missing candidate: its advice in the answer's ruled box,
   // and the missing digit crossed out level, as the player's own are.
   ['a missing candidate’s advice, in the answer’s box', 'text', 'surface', TEXT],
+
+  // ---- Watch your solve: a playback ----
+  // The move on show's cell is ringed in the accent, on whatever fill it has
+  // (a played-back board has only plain and given cells, but the ring is
+  // held on every fill, should a highlight ever come to it).
+  ...ALL_FILLS.map(([name, fill]): Pair => [
+    `the move on show’s ring on a ${name} cell`,
+    'accent',
+    fill,
+    NON_TEXT,
+  ]),
+  ['the move’s caption on a dialog', 'text', 'surface-raised', TEXT],
+  ['the play time on a dialog', 'text-muted', 'surface-raised', TEXT],
+  ['the scrubber’s track against a dialog', 'key-border', 'surface-raised', NON_TEXT],
+  ['the scrubber’s thumb against a dialog', 'accent', 'surface-raised', NON_TEXT],
+  [
+    'a mistake’s mark, and a slip’s open one, against a dialog',
+    'danger',
+    'surface-raised',
+    NON_TEXT,
+  ],
+  ['help’s mark against a dialog', 'accent', 'surface-raised', NON_TEXT],
+  ['the key to the marks on a dialog', 'text-muted', 'surface-raised', TEXT],
+  ['a speed not chosen, on its strip', 'text-muted', 'surface', TEXT],
+  ['the chosen speed (page on ink)', 'bg', 'text', TEXT],
 ];
 
 /*

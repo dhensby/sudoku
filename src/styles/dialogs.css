@@ -504,6 +504,13 @@
   line-height: 1.4;
 }
 
+/* "Watch your solve": a look back, under the result rather than among the
+   footer's next steps. */
+.result__watch {
+  margin: -6px 0 18px;
+  text-align: center;
+}
+
 /* A daily's streak, under its time: in ink, led by the calendar's solid
    mark when the solve counts; a quiet aside, like the replay's note, when
    it was played after its day. */
@@ -2426,6 +2433,426 @@
 }
 
 /* ==========================================================================
+   "Watch your solve": a playback
+
+   The board as it stood after the move on show, its cell ringed, with the
+   move's caption, the scrubber and the controls under it — beside it on a
+   phone on its side, where the height is the board's. The board is the
+   game's own (Board's read-only mode), drawn from a size of its own here,
+   with the same geometry layout.css works out for the game's: each line
+   and cell is derived from --board-size where it is declared, so the sums
+   are made again under the new size rather than inherited from .app.
+   ========================================================================== */
+
+.dialog--playback {
+  max-width: 460px;
+}
+
+.playback__subtitle {
+  margin: 0 0 10px;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.playback {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.playback__board {
+  /* As large as the card allows, by its width and by the height the rest of
+     the dialog leaves (some 420px of header, caption and controls). */
+  --board-size: clamp(200px, min(calc(100vw - 74px), calc(100dvh - 420px)), 400px);
+  --frame: calc(clamp(3px, 3px + (var(--board-size) - 399.98px) * 1000, 4px) + var(--line-boost));
+  --thick: calc(clamp(2px, 2px + (var(--board-size) - 399.98px) * 1000, 3px) + var(--line-boost));
+  --thin: 1px;
+  --lines: calc(2 * var(--frame) + 2 * var(--thick) + 6 * var(--thin));
+  --cell: calc((var(--board-size) - var(--lines)) / 9);
+  --board-outer: calc(9 * var(--cell) + var(--lines));
+
+  /* Sized outright: the board area inside measures its width for its
+     container queries, so it cannot take its width from the board. */
+  align-self: center;
+  width: var(--board-outer);
+}
+
+@supports (width: round(down, 10.5px, 1px)) {
+  .playback__board {
+    --cell: round(down, calc((var(--board-size) - var(--lines)) / 9), 1px);
+  }
+}
+
+.playback__panel {
+  container: playback-panel / inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* Two lines kept for it, so a longer caption never moves the controls. */
+.playback__caption {
+  min-height: calc(2 * 1.35em);
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+/* ---- The scrubber, with its marks ---- */
+
+/* The marks sit along the track where the thumb's centre would be at their
+   move: from half a thumb in at the start to half a thumb in at the end. */
+.playback__scrubber {
+  --thumb: 20px;
+
+  position: relative;
+  height: 36px;
+}
+
+.playback__ticks {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* A mistake, solid, and a slip put right, open, stand above the track; help
+   sits below it, a small square: told apart by place and shape, as well as
+   by red and the accent. */
+.playback__tick {
+  position: absolute;
+  left: calc(var(--thumb) / 2 + (100% - var(--thumb)) * var(--at));
+  width: 4px;
+  transform: translateX(-50%);
+}
+
+.playback__tick--mistake,
+.playback__tick--slip {
+  top: 3px;
+  height: 11px;
+}
+
+.playback__tick--mistake {
+  background: var(--danger);
+}
+
+.playback__tick--slip {
+  width: 6px;
+  border: 1.5px solid var(--danger);
+  background: var(--surface-raised);
+}
+
+.playback__tick--help {
+  bottom: 5px;
+  width: 6px;
+  height: 6px;
+  background: var(--accent);
+}
+
+/* The native range, restyled: a ruled track and a solid accent thumb, edged
+   in the card's colour so it stands off the marks it passes over. */
+.playback__range {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.playback__range::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--key-border);
+}
+
+.playback__range::-moz-range-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--key-border);
+}
+
+.playback__range::-webkit-slider-thumb {
+  width: var(--thumb);
+  height: var(--thumb);
+  margin-top: calc(2px - var(--thumb) / 2);
+  border: 2px solid var(--surface-raised);
+  border-radius: 50%;
+  background: var(--accent);
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.playback__range::-moz-range-thumb {
+  box-sizing: border-box;
+  width: var(--thumb);
+  height: var(--thumb);
+  border: 2px solid var(--surface-raised);
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.playback__range:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* The key to the marks: each drawn as on the track, beside its name. */
+.playback__key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+  margin: -2px 0 0;
+  padding: 0;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  list-style: none;
+}
+
+.playback__key-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.playback__key .playback__tick {
+  position: static;
+  transform: none;
+}
+
+/* ---- The time, the speed and the transport ---- */
+
+.playback__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* Figures of one width, so the time does not jitter as it runs. */
+.playback__time {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* The speeds as one segmented control, like Settings' themes. */
+.playback__speeds {
+  display: flex;
+  gap: 2px;
+  margin: 0;
+  padding: 3px;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.playback__speed {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 38px;
+  min-height: 32px;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.playback__speed input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.playback__speed:has(input:checked) {
+  background: var(--text);
+  color: var(--bg);
+}
+
+.playback__speed:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.playback__transport {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+}
+
+.playback__button {
+  min-width: 44px;
+  padding: 0 10px;
+}
+
+.playback__button .icon {
+  margin: 0;
+}
+
+/* Unavailable at an end of the playback, as a disabled button looks (see
+   PlaybackDialog for why it is not disabled), and as still under the
+   pointer and the press. */
+.playback__button[aria-disabled='true'],
+.playback__button[aria-disabled='true']:hover,
+.playback__button[aria-disabled='true']:active {
+  background: var(--button-bg);
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Wide enough for "Watch again", so the row keeps still as it changes. */
+.playback__play {
+  min-width: 132px;
+}
+
+.playback__play .icon {
+  margin-left: -4px;
+}
+
+/* A panel too narrow for "Watch again" beside four buttons (a small phone,
+   or one on its side) makes Play an icon, still named in words. */
+@container playback-panel (max-width: 339.98px) {
+  .playback__play {
+    flex: 1 1 auto;
+    min-width: 64px;
+  }
+
+  .playback__play .icon {
+    margin: 0;
+  }
+
+  .playback__play-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+
+.playback__refusal {
+  margin: 0;
+  color: var(--text);
+}
+
+/* ---- On a phone: the sheet's full width, the controls packed tighter ----
+   The board takes what the sheet leaves: its 48px of scrim, the header, the
+   caption's two lines and the controls at their finger-sized heights come
+   to some 390px. On a short phone (an iPhone SE) the line naming the solve
+   is left to the screen reader — the title says whose it is, and the Solved
+   dialog or History row it came from said the rest — so the board keeps as
+   much as it can. */
+@media (max-width: 499px) {
+  .dialog--playback .dialog__body {
+    padding-right: 16px;
+    padding-left: 16px;
+  }
+
+  .playback__board {
+    --board-size: clamp(
+      160px,
+      min(
+        calc(100vw - 32px),
+        calc(100dvh - 400px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))
+      ),
+      400px
+    );
+  }
+
+  .playback,
+  .playback__panel {
+    gap: 6px;
+  }
+}
+
+@media (max-width: 499px) and (max-height: 620px) {
+  .playback__subtitle {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .playback__board {
+    --board-size: clamp(
+      160px,
+      min(
+        calc(100vw - 32px),
+        calc(100dvh - 366px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))
+      ),
+      400px
+    );
+  }
+}
+
+/* ---- A phone on its side: the board beside the controls ----
+   The body becomes the grid, with the player's two halves placed in it, the
+   board down the left at the height the card leaves (its header and the
+   body's padding take some 104px). The line naming the solve is left to a
+   screen reader, as on a short phone, and the caption keeps one line rather
+   than two: the panel is wide enough for most on one. */
+@media (max-height: 500px) and (min-width: 500px) {
+  .dialog--playback {
+    max-width: 760px;
+  }
+
+  .dialog--playback .dialog__body {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+    column-gap: 16px;
+    padding: 6px 16px 12px;
+  }
+
+  .playback {
+    display: contents;
+  }
+
+  .playback__subtitle {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .playback__board {
+    --board-size: clamp(160px, calc(100dvh - 104px), 400px);
+  }
+
+  .playback__panel {
+    gap: 6px;
+  }
+
+  .playback__caption {
+    min-height: 1.35em;
+  }
+}
+
+/* ==========================================================================
    "Show me": a walkthrough
 
    One step at a time, each drawn on the player's own board. Wide enough on
@@ -2772,6 +3199,16 @@
     width: 44px;
     height: 44px;
   }
+
+  .playback__scrubber {
+    --thumb: 24px;
+
+    height: 44px;
+  }
+
+  .playback__speed {
+    min-height: 40px;
+  }
 }
 
 /* ------------------------------------------------------------------------
@@ -2972,6 +3409,40 @@
   .calendar__day:focus-visible,
   .settings__switch:focus-visible,
   .settings__theme-option:has(input:focus-visible) {
+    outline-color: Highlight;
+  }
+
+  /* The marks are fills, which forced colours would drop: drawn in the
+     system's colours outright — mistakes and help in the text colour, a
+     slip open on the page — told apart by place and shape alone. */
+  .playback__ticks,
+  .playback__key .playback__tick {
+    forced-color-adjust: none;
+  }
+
+  .playback__tick--mistake,
+  .playback__tick--help {
+    background: CanvasText;
+  }
+
+  .playback__tick--slip {
+    border-color: CanvasText;
+    background: Canvas;
+  }
+
+  .playback__speed {
+    border: 1px solid ButtonText;
+  }
+
+  .playback__speed:has(input:checked) {
+    forced-color-adjust: none;
+    border-color: Highlight;
+    background: Highlight;
+    color: HighlightText;
+  }
+
+  .playback__range:focus-visible,
+  .playback__speed:has(input:focus-visible) {
     outline-color: Highlight;
   }
 }

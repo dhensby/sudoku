@@ -9,6 +9,7 @@ import {
 } from '../../core';
 import type { Challenge, DifficultyStats } from '../../storage/history';
 import { DailyMark } from '../DailyMark';
+import { PlayIcon } from '../icons';
 import { dailyName, type StreakNote } from '../daily';
 import { DIFFICULTY_LABEL, describeMistakes } from '../format';
 import { Comparison } from './Comparison';
@@ -67,6 +68,16 @@ export interface CompletionDialogProps {
   daily?: { date: DateKey; today: DateKey; streak: StreakNote } | null;
   /** Share the time — or, after a replay, the puzzle alone. */
   onShare: () => void;
+  /**
+   * Watch the solve played back; given only when it can be (the game was
+   * recorded move by move, by this version's rules — see `isWatchable`).
+   */
+  onWatch?: () => void;
+  /**
+   * Focus opens on "Watch your solve" rather than on Share: the dialog is
+   * back from the playback that button opened, so focus goes back to it.
+   */
+  isBackFromWatch?: boolean;
   onNewGame: () => void;
   onClose: () => void;
 }
@@ -81,6 +92,8 @@ export interface CompletionDialogProps {
  * A daily is named ("Daily · 13 Oct · Hard") and followed by its tier's
  * streak — begun, run on, or not counted, for a day played after it was
  * over. Under the time, how clean the solve was: its mistakes, when known.
+ * "Watch your solve" plays the game back, move by move, and brings the
+ * dialog back as it closes.
  */
 export function CompletionDialog({
   difficulty,
@@ -93,6 +106,8 @@ export function CompletionDialog({
   challenge,
   daily = null,
   onShare,
+  onWatch,
+  isBackFromWatch = false,
   onNewGame,
   onClose,
 }: CompletionDialogProps) {
@@ -102,18 +117,25 @@ export function CompletionDialog({
   const statsId = `${ids}-stats`;
   const label = DIFFICULTY_LABEL[difficulty];
   const help = assistsSentence(assists);
+  const isWatchFocused = isBackFromWatch && onWatch !== undefined;
 
   return (
     <Dialog
       title="Solved!"
       onClose={onClose}
       className="dialog--completion"
-      // Focus opens on the Share button, past all of this; the summary and the
+      // Focus opens on the Share button (or, back from watching, on Watch your
+      // solve), past all of this; the summary and the
       // verdict are what the dialog is for, so they are read on the way in.
       describedBy={challenge === null ? summaryId : `${summaryId} ${verdictId}`}
       footer={
         <>
-          <button type="button" className="button button--primary" data-autofocus onClick={onShare}>
+          <button
+            type="button"
+            className="button button--primary"
+            data-autofocus={isWatchFocused ? undefined : true}
+            onClick={onShare}
+          >
             {isReplay ? 'Share puzzle' : 'Share your time'}
           </button>
           <button type="button" className="button" onClick={onNewGame}>
@@ -147,6 +169,22 @@ export function CompletionDialog({
           </p>
         )}
       </div>
+
+      {/* Out of the summary the dialog is described by, and out of the
+          footer, which keeps to what to do next: a look back at the solve. */}
+      {onWatch !== undefined && (
+        <p className="result__watch">
+          <button
+            type="button"
+            className="button button--small"
+            data-autofocus={isWatchFocused || undefined}
+            onClick={onWatch}
+          >
+            <PlayIcon />
+            Watch your solve
+          </button>
+        </p>
+      )}
 
       {challenge !== null && (
         <Comparison
