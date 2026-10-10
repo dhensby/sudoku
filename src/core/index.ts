@@ -11,8 +11,9 @@ export * from './walkthrough';
 // credit the earlier steps that ruled it out. The rest of patterns.ts is the
 // engine's own business.
 export { reliance, type Reliance } from './patterns';
-// The longest chains the grader looks for, which the technique guide quotes.
-export { MAX_CHAIN_STRONG_LINKS, MAX_XY_CHAIN } from './techniques';
+// The longest chains the grader looks for, which the technique guide quotes;
+// and the board a hint or a walkthrough starts from.
+export { MAX_CHAIN_STRONG_LINKS, MAX_XY_CHAIN, createBoard, type SolverBoard } from './techniques';
 export * from './game';
 export * from './moves';
 export * from './codec';

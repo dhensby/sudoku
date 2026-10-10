@@ -8,10 +8,10 @@ import {
   findHint,
   formatDuration,
   gridValues,
+  hintBoardOf,
   isBoardFull,
   shownHint,
   toSeconds,
-  valuesOf,
   walkthroughHint,
   type DateKey,
   type Difficulty,
@@ -416,7 +416,7 @@ function monotonicNow(): number {
 function walkthroughFor(game: GameState | null): Walkthrough | null {
   const hint = game === null ? null : shownHint(game);
   if (game === null || hint === null) return null;
-  return explainHint(valuesOf(game), hint);
+  return explainHint(hintBoardOf(game), hint);
 }
 
 /**
@@ -1212,19 +1212,19 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     hint: () => {
       if (game === null || phase !== 'playing') return;
       // Found here, not in the reducer, which only records it.
-      run({ type: 'hint', hint: findHint(valuesOf(game), gridValues(game.puzzle.solution)) });
+      run({ type: 'hint', hint: findHint(hintBoardOf(game), gridValues(game.puzzle.solution)) });
     },
     showMe: () => {
       // Only from the hint bar, which offers it only while the board shows.
       if (session === null || phase !== 'playing' || walkthrough === null) return;
-      const values = valuesOf(session.game);
+      const board = hintBoardOf(session.game);
       const solution = gridValues(session.game.puzzle.solution);
       // Held to the solution only now. No sound walkthrough starts from a
       // mistake, so with one on the board this does what Hint would: point
       // at it, counted as Hint counts it.
-      const checked = explainCell(values, walkthrough.target, solution);
+      const checked = explainCell(board, walkthrough.target, solution);
       if (checked === null) {
-        run({ type: 'hint', hint: findHint(values, solution) });
+        run({ type: 'hint', hint: findHint(board, solution) });
         return;
       }
       const t = at();

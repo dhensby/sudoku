@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createGame, reduce, type GameAction, type GameState } from './game';
+import { createGame, hintBoardOf, reduce, type GameAction, type GameState } from './game';
 import { bit, gridValues } from './grid';
 import { findHint } from './hint';
 import {
@@ -77,10 +77,7 @@ const HIDDEN_HINT: GameAction = {
 const SHOW_ME: GameAction = { type: 'walkthrough', index: HIDDEN };
 const hintFor = (game: GameState): GameAction => ({
   type: 'hint',
-  hint: findHint(
-    game.cells.map((cell) => cell.value),
-    gridValues(game.puzzle.solution),
-  ),
+  hint: findHint(hintBoardOf(game), gridValues(game.puzzle.solution)),
 });
 
 /** A step: wait `gapMs` of play, then act — or work the action out from the game as it stands. */

@@ -9,9 +9,9 @@ import {
   encodeMoveLog,
   findHint,
   gridValues,
+  hintBoardOf,
   reduce,
   serialiseGame,
-  valuesOf,
   type Digit,
   type MoveLog,
   type Puzzle,
@@ -506,7 +506,7 @@ describe('the move log', () => {
 
     it('logs Show me opened again for a cell already counted, which changes nothing', () => {
       const session = running();
-      const hint = findHint(valuesOf(session.game), gridValues(PUZZLE.solution));
+      const hint = findHint(hintBoardOf(session.game), gridValues(PUZZLE.solution));
       const hinted = advance(session, { type: 'hint', hint }, NOW + 1000);
       const index = (hint as { index: number }).index;
       const once = advance(hinted, { type: 'walkthrough', index }, NOW + 2000);

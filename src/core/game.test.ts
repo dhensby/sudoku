@@ -3,6 +3,7 @@ import {
   conflictsOf,
   deserialiseGame,
   digitCounts,
+  hintBoardOf,
   isBoardFull,
   isEditable,
   reduce,
@@ -1137,6 +1138,18 @@ describe('selectors', () => {
     expect(candidates[3]).toBe(computed[3]);
     expect(candidates[40]).toBe(0);
     expect(candidates[0]).toBe(0);
+  });
+
+  it('gives Hint and Show me the placed digits and their naked candidates, not the notes or strikes', () => {
+    for (const state of [
+      play(newGame(), note(2, 1), place(40, 5)),
+      play(newGame(true), note(2, 1), place(40, 5)),
+    ]) {
+      const board = hintBoardOf(state);
+      expect(board.values).toEqual(valuesOf(state));
+      expect(board.candidates).toEqual(computeCandidates(valuesOf(state)));
+      expect(board.candidates[2]).toBe(maskOf([1, 2, 4]));
+    }
   });
 
   it('flags both cells of a clash', () => {

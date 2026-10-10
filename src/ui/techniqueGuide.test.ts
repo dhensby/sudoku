@@ -2,6 +2,7 @@ import {
   TECHNIQUE_ORDER,
   TECHNIQUE_TIER,
   bit,
+  createBoard,
   explainCell,
   grade,
   maskOf,
@@ -477,7 +478,7 @@ const rc = (row: number, col: number) => (row - 1) * 9 + col - 1;
 describe('walkthrough captions', () => {
   it('walk through the hidden pair a player was stuck on, each step crediting what it rests on', () => {
     const { values, solution } = stuckOnAHiddenPair();
-    const { steps } = explainCell(values, STUCK_ON_A_HIDDEN_PAIR.target, solution)!;
+    const { steps } = explainCell(createBoard(values), STUCK_ON_A_HIDDEN_PAIR.target, solution)!;
     expect(captionsOf(steps)).toEqual([
       'In column 6, the 1 and 7 can only go in rows 4 and 6. Those two cells must hold the 1 ' +
         'and 7, one each, so nothing else fits in them: remove 5 from row 4, column 6; and 2 ' +
@@ -490,7 +491,7 @@ describe('walkthrough captions', () => {
 
   it('credit an earlier step only with what a later one relies on', () => {
     const { values, solution } = stuckOnAHiddenPair();
-    const { steps } = explainCell(values, STUCK_ON_A_HIDDEN_PAIR.target, solution)!;
+    const { steps } = explainCell(createBoard(values), STUCK_ON_A_HIDDEN_PAIR.target, solution)!;
     const [pair, pointing, single] = steps;
     expect(creditsFor(pair.step, [])).toEqual([]);
     // The hidden pair also struck 2 and 8 from row 6, column 6, which the
@@ -598,7 +599,7 @@ describe('walkthrough captions', () => {
           values[placement!.index] = placement!.digit;
         }
         for (let target = 0; target < 81; target++) {
-          const walkthrough = explainCell(values, target, solution);
+          const walkthrough = explainCell(createBoard(values), target, solution);
           if (walkthrough === null) continue;
           walkthroughs++;
           captionsOf(walkthrough.steps).forEach((caption, k) => {

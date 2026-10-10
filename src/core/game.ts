@@ -12,6 +12,7 @@ import {
 } from './grid';
 import { TECHNIQUE_ORDER } from './grader';
 import { fieldsOf, newerFields } from './newerFields';
+import { createBoard, type SolverBoard } from './techniques';
 import type {
   Assists,
   Difficulty,
@@ -835,6 +836,15 @@ export function valuesOf(state: GameState): Uint8Array {
   const values = new Uint8Array(81);
   for (let i = 0; i < 81; i++) values[i] = state.cells[i].value;
   return values;
+}
+
+/**
+ * The board Hint and Show me reason from (see `findHint` and `explainCell`):
+ * for now the placed digits and their naked candidates, never the player's
+ * own notes or the candidates they struck out.
+ */
+export function hintBoardOf(state: GameState): SolverBoard {
+  return createBoard(valuesOf(state));
 }
 
 /** Candidates to draw per cell: auto mode → computeCandidates(values) & ~autoRemoved; manual → notes; 0 for filled cells. */
