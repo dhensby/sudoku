@@ -1,5 +1,5 @@
 import { formatDuration, type Assists } from '../../core';
-import { CHECK_GUESSES_LABEL, count, describeAssists } from '../format';
+import { assistPartText, assistParts, describeAssists } from '../format';
 
 /*
  * Small pieces of English the dialogs share. The general vocabulary (tier
@@ -25,16 +25,11 @@ export function formatStat(ms: number | null): string {
  * The help a game took as short chips for a list row: "Auto candidates",
  * "Checked as entered", "2 hints", "1 check", "1 reveal" — the words the rest
  * of the game uses for them, so a chip never needs decoding. Empty for an
- * unaided game.
+ * unaided game. The help taken beside the timer reads the same, from the
+ * same parts.
  */
 export function assistChips(assists: Assists): string[] {
-  const chips: string[] = [];
-  if (assists.autoCandidates) chips.push('Auto candidates');
-  if (assists.checkGuesses === true) chips.push(CHECK_GUESSES_LABEL);
-  if (assists.hints > 0) chips.push(count(assists.hints, 'hint'));
-  if (assists.checks > 0) chips.push(count(assists.checks, 'check'));
-  if (assists.reveals > 0) chips.push(count(assists.reveals, 'reveal'));
-  return chips;
+  return assistParts(assists).map(assistPartText);
 }
 
 /**

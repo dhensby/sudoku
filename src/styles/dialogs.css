@@ -2440,6 +2440,14 @@
   line-height: 1.45;
 }
 
+/* What opening it cost ("2 hints used."), set in ink after the muted
+   introduction, so a player sees the charge as it is made: the help taken
+   beside the timer is veiled by the dialog until it closes. */
+.walkthrough__charge {
+  color: var(--text);
+  font-weight: 600;
+}
+
 .walkthrough__step {
   container: worked-example / inline-size;
   min-width: 0;

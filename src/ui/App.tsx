@@ -11,6 +11,8 @@ import { Board } from './Board';
 import { BoardOverlay, type BoardOverlayContent } from './BoardOverlay';
 import { Controls } from './Controls';
 import { ErrorCounter, MistakeAnnouncer } from './ErrorCounter';
+import { hasAssists } from './format';
+import { HelpTaken } from './HelpTaken';
 import {
   ChallengeDialog,
   CompletionDialog,
@@ -245,8 +247,37 @@ export function App({ options }: AppProps = {}) {
   // The error counter shows only with the board: a hidden board hides it too.
   const isCounting = settings.showErrorCounter;
   const isCountShown = phase === 'playing' || phase === 'solved';
-  const errorCounter = (placement: 'header' | 'play') => (
-    <ErrorCounter mistakes={sudoku.mistakesSoFar} isShown={isCountShown} placement={placement} />
+  // Help taken shows whatever the phase: it says nothing about the board.
+  const isHelpOn = settings.showHelpTaken;
+  const assists = game?.assists ?? null;
+  const gameId = sudoku.record?.id ?? null;
+  // The tally — help taken and the error counter — on one strip: beside the
+  // timer, or on a line of its own above a phone's controls. On the page
+  // while either is on, so help taken can tick as it first appears; the
+  // header makes room for it, and a phone gives it its line, only once it
+  // has something to show — so a game played without help keeps its board
+  // and its wordmark whole.
+  const hasTally = isHelpOn || isCounting;
+  const isTallyShown = isCounting || (isHelpOn && assists !== null && hasAssists(assists));
+  const tally = (placement: 'header' | 'play') => (
+    <div className={`tally tally--${placement}`}>
+      {isHelpOn && (
+        <HelpTaken
+          assists={assists}
+          gameId={gameId}
+          isStarted={sudoku.hasBoardShown}
+          isCovered={dialog !== null}
+          placement={placement}
+        />
+      )}
+      {isCounting && (
+        <ErrorCounter
+          mistakes={sudoku.mistakesSoFar}
+          isShown={isCountShown}
+          placement={placement}
+        />
+      )}
+    </div>
   );
   const counts = game === null ? EMPTY_COUNTS : digitCounts(game);
   const selectedCell = game === null ? null : game.cells[game.selected];
@@ -269,9 +300,9 @@ export function App({ options }: AppProps = {}) {
 
   return (
     <FocusHomeContext value={focusHome}>
-      {/* With the counter on, a phone held upright gives it a line above the
-        controls, which the layout counts in (layout.css). */}
-      <div className={isCounting ? 'app app--counter' : 'app'}>
+      {/* With the tally showing, a phone held upright gives it a line above
+        the controls, which the layout counts in (layout.css). */}
+      <div className={isTallyShown ? 'app app--tally' : 'app'}>
         {/* The board's changes, spoken. The inner element is keyed so the same
           words twice still re-announce: a live region only speaks when its
           contents actually change. */}
@@ -283,7 +314,7 @@ export function App({ options }: AppProps = {}) {
         {isCounting && (
           <MistakeAnnouncer
             mistakes={sudoku.mistakesSoFar}
-            gameId={sudoku.record?.id ?? null}
+            gameId={gameId}
             isShown={isCountShown}
           />
         )}
@@ -301,7 +332,8 @@ export function App({ options }: AppProps = {}) {
           onOpenDaily={(difficulty) => handleOpenDaily(sudoku.today.date, difficulty)}
           onRefreshToday={actions.refreshToday}
           onOpenDialog={actions.openDialog}
-          errorCounter={isCounting ? errorCounter('header') : undefined}
+          tally={hasTally ? tally('header') : undefined}
+          isTallyShown={isTallyShown}
         />
 
         <main className="main">
@@ -345,7 +377,7 @@ export function App({ options }: AppProps = {}) {
               />
             </div>
 
-            {isCounting && errorCounter('play')}
+            {hasTally && tally('play')}
 
             <Controls
               mode={sudoku.effectiveMode}
@@ -357,6 +389,7 @@ export function App({ options }: AppProps = {}) {
               canCheckCell={canRevealCell && selectedCell !== null && selectedCell.value !== 0}
               canCheckPuzzle={canCheckPuzzle}
               canRevealCell={canRevealCell}
+              hintsUsed={isHelpOn ? (assists?.hints ?? 0) : 0}
               onSetMode={actions.setMode}
               onDigit={actions.enterDigit}
               onErase={actions.erase}
@@ -394,7 +427,7 @@ export function App({ options }: AppProps = {}) {
         {dialog?.kind === 'history' && (
           <HistoryDialog
             records={sudoku.history.records}
-            currentId={sudoku.record?.id ?? null}
+            currentId={gameId}
             resumableIds={sudoku.history.resumableIds}
             now={sudoku.history.now}
             onResume={actions.resumeRecord}
@@ -427,6 +460,7 @@ export function App({ options }: AppProps = {}) {
           <WalkthroughDialog
             walkthrough={dialog.walkthrough}
             initialStep={dialog.step}
+            charge={dialog.charge ?? null}
             onOpenGuide={actions.openTechniques}
             onClose={actions.closeDialog}
           />

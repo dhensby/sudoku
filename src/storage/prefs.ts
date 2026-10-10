@@ -33,6 +33,13 @@ export type ThemePreference = 'system' | 'light' | 'dark' | 'contrast';
 export interface Settings {
   /** Show the running time. Timing carries on regardless. */
   showTimer: boolean;
+  /**
+   * "Show help taken": the help the game has taken so far, beside the timer
+   * (above the controls on a phone), and the hints used on the "…" menu's
+   * Hint. Only a display: help is recorded next to the time either way. On
+   * by default, as it says nothing about the board.
+   */
+  showHelpTaken: boolean;
   /** Tint the selected cell's row and column. */
   highlightRowColumn: boolean;
   /** Tint the selected cell's box. */
@@ -104,6 +111,7 @@ const PREFERENCE_FIELDS = fieldsOf<Preferences>({
 /** The on/off settings, which all normalise the same way. */
 const SWITCHES = [
   'showTimer',
+  'showHelpTaken',
   'highlightRowColumn',
   'highlightBox',
   'highlightIdentical',
@@ -117,6 +125,7 @@ const SWITCHES = [
 /** Every field of the settings this version knows. */
 const SETTING_FIELDS = fieldsOf<Settings>({
   showTimer: true,
+  showHelpTaken: true,
   highlightRowColumn: true,
   highlightBox: true,
   highlightIdentical: true,
@@ -131,6 +140,7 @@ const SETTING_FIELDS = fieldsOf<Settings>({
 /** The settings a first visit starts with. */
 export const DEFAULT_SETTINGS: Settings = {
   showTimer: true,
+  showHelpTaken: true,
   highlightRowColumn: true,
   highlightBox: true,
   highlightIdentical: true,

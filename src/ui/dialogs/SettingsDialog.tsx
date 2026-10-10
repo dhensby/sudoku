@@ -25,6 +25,11 @@ const SWITCH_TEXT: Readonly<Record<SwitchKey, { label: string; description: stri
     label: 'Show timer',
     description: 'Hiding it only hides the digits: your time is still kept.',
   },
+  showHelpTaken: {
+    label: 'Show help taken',
+    description:
+      'Shows the help you have taken so far as you play, and the hints used on the “…” menu’s Hint. Hiding it only hides the count: your help is still recorded next to your time.',
+  },
   highlightRowColumn: {
     label: 'Highlight row and column',
     description: "Tint the selected cell's row and column.",
@@ -64,7 +69,7 @@ const SWITCH_TEXT: Readonly<Record<SwitchKey, { label: string; description: stri
 
 /** The switches, grouped as a player looks for them (a test checks none is left out). */
 const GROUPS: readonly { title: string; keys: readonly SwitchKey[] }[] = [
-  { title: 'Timer', keys: ['showTimer'] },
+  { title: 'Timer and help', keys: ['showTimer', 'showHelpTaken'] },
   {
     title: 'Highlighting',
     keys: ['highlightRowColumn', 'highlightBox', 'highlightIdentical', 'highlightConflicts'],

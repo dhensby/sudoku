@@ -11,6 +11,7 @@ import { WIKIPEDIA_PUZZLE, WIKIPEDIA_SOLUTION } from '../test/grids';
 import {
   cellLabel,
   describeCell,
+  describeCharge,
   describeChange,
   describeHint,
   describePosition,
@@ -408,5 +409,33 @@ describe('describeHint', () => {
     [{ kind: 'none' }, 'The puzzle is complete.'],
   ])('describes %o', (hint, text) => {
     expect(describeHint(hint)).toBe(text);
+  });
+});
+
+describe('describeCharge', () => {
+  const NONE = { autoCandidates: false, hints: 0, checks: 0, reveals: 0 };
+
+  it.each([
+    [{ ...NONE, hints: 1 }, { ...NONE, hints: 2 }, '2 hints used.'],
+    [NONE, { ...NONE, hints: 1 }, '1 hint used.'],
+    [NONE, { ...NONE, checks: 1 }, '1 check used.'],
+    [{ ...NONE, checks: 1 }, { ...NONE, checks: 3 }, '3 checks used.'],
+    [NONE, { ...NONE, reveals: 1 }, '1 reveal used.'],
+    [{ ...NONE, reveals: 1 }, { ...NONE, reveals: 2 }, '2 reveals used.'],
+    [NONE, { ...NONE, autoCandidates: true }, 'Counts as help.'],
+    [NONE, { ...NONE, checkGuesses: true as const }, 'Checked as entered. Counts as help.'],
+  ])('says the new count of what a move charged: %o to %o', (before, after, text) => {
+    expect(describeCharge(before, after)).toBe(text);
+  });
+
+  it('says nothing for a move that charged nothing', () => {
+    const some = { autoCandidates: true, hints: 2, checks: 1, reveals: 1 };
+    expect(describeCharge(some, { ...some })).toBeNull();
+    // Auto candidates on again, already counted.
+    expect(describeCharge(some, some)).toBeNull();
+    // Check guesses: on again, or the game's record of it gone, charges nothing.
+    const checked = { ...some, checkGuesses: true as const };
+    expect(describeCharge(checked, { ...checked })).toBeNull();
+    expect(describeCharge(checked, some)).toBeNull();
   });
 });

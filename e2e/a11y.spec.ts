@@ -219,7 +219,31 @@ for (const scheme of ['light', 'dark'] as const) {
       await expect(page.locator('.error-counter--header [aria-hidden="true"]')).toHaveText(
         /^Mistakes 1$/,
       );
+      // Check guesses is help, and help taken says so over the counter.
+      await expect(page.locator('.help-taken--header .help-taken__full')).toHaveText(
+        'Checked as entered',
+      );
       await expectAccessible(page, 'the board with the error counter beside the timer');
+    });
+
+    test('help taken beside the timer, as it ticks, and the hints used on Hint', async ({
+      page,
+    }) => {
+      await startPuzzle(page, EASY);
+      await page.getByRole('switch', { name: 'Auto Candidate Mode' }).click();
+      await chooseMore(page, 'Hint');
+      const help = page.locator('.help-taken--header');
+      await expect(help).toBeVisible();
+      await expect(help.locator('.help-taken__full')).toHaveText('Auto candidates · 1 hint');
+      await expect(help.getByText('Help taken: auto candidates, 1 hint')).toBeAttached();
+      await expectAccessible(page, 'help taken beside the timer');
+
+      await page.getByRole('button', { name: 'More' }).click();
+      await expect(
+        page.getByRole('menu', { name: 'More' }).getByRole('menuitem', { name: 'Hint (1 used)' }),
+      ).toBeVisible();
+      await expectAccessible(page, 'the "…" menu with the hints used');
+      await page.keyboard.press('Escape');
     });
 
     test('a hint with Show me, and every step of its walkthrough', async ({ page }) => {
@@ -653,7 +677,13 @@ test.describe('on a phone', () => {
       await expect(page.locator('.error-counter--play [aria-hidden="true"]')).toHaveText(
         /^Mistakes 2$/,
       );
-      await expectAccessible(page, 'the error counter above the controls');
+      // And the help taken at the start of its line: two checks and a
+      // reveal, and Check guesses.
+      await expect(page.locator('.help-taken--play')).toBeVisible();
+      await expect(page.locator('.help-taken--play .visually-hidden')).toHaveText(
+        'Help taken: guesses checked as entered, 2 checks, 1 reveal',
+      );
+      await expectAccessible(page, 'the error counter and help taken above the controls');
 
       await openHeaderDialog(page, 'Solving techniques');
       const sheet = dialog(page, 'Solving techniques');

@@ -56,7 +56,7 @@ import {
 } from '../storage/prefs';
 import { DIFFICULTIES, browserStorage, type StorageLike } from '../storage/storage';
 import type { DailyLedger } from '../storage/streaks';
-import { describeChange, type DescribedAction } from './announce';
+import { describeCharge, describeChange, type DescribedAction } from './announce';
 import { capitalise, DIFFICULTY_LABEL } from './format';
 import { dailyPhrase, statusesOn, streakNote, type StreakNote } from './daily';
 import type { TodayDailies } from './DifficultyMenu';
@@ -182,6 +182,11 @@ export interface WalkthroughView {
   kind: 'walkthrough';
   walkthrough: Walkthrough;
   step: number;
+  /**
+   * What opening it cost, said as it opens ("2 hints used."), while "Show
+   * help taken" is on; null when it was free, or once back from the guide.
+   */
+  charge?: string | null;
 }
 
 /** The dialog on show — one at a time. */
@@ -305,6 +310,13 @@ export interface Sudoku {
   walkthrough: Walkthrough | null;
   /** The record of the game on screen. */
   record: GameRecord | null;
+  /**
+   * Whether the game on screen has had its board on show (see
+   * `hasBoardShown`): false behind its Start button, or made behind a
+   * dialog not yet closed. Help taken up before then is help the game opens
+   * with, not a charge.
+   */
+  hasBoardShown: boolean;
   /** The tier on show: the one being generated, else the game's. */
   difficulty: Difficulty;
   /** The date of the daily on show (or being dealt), if it is one. */
@@ -889,6 +901,27 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
   };
 
   /**
+   * What a move said, with what it cost after it while "Show help taken" is
+   * on — "… Row 3, column 5. 2 hints used." — so a screen reader hears the
+   * new count once, with the charge, as the help taken ticks on screen.
+   */
+  const withCharge = (said: string | null, previous: GameState, next: GameState) => {
+    const charge = settings.showHelpTaken ? describeCharge(previous.assists, next.assists) : null;
+    if (charge === null) return said;
+    return said === null ? charge : `${said} ${charge}`;
+  };
+
+  /**
+   * What a game coming back into play took up as it did — "Check guesses
+   * when entered", switched on in Settings — after `said` ("Resumed."), or
+   * null when it took up nothing. Only for a game already on show: one
+   * starting for the first time opens with the setting, as it would had it
+   * started at once, and nothing ticks for it.
+   */
+  const takenUp = (previous: Session, next: Session, said: string | null = null) =>
+    hasBoardShown(previous) ? withCharge(said, previous.game, next.game) : null;
+
+  /**
    * Run a game action. The solve is handled here, in the handler for the
    * move that caused it, rather than in an effect watching the status: an
    * effect would only see it a render later, and the time must be taken from
@@ -907,7 +940,11 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       return;
     }
 
-    const said = describeChange(previous, next, action, { conflicts: settings.highlightConflicts });
+    const said = withCharge(
+      describeChange(previous, next, action, { conflicts: settings.highlightConflicts }),
+      previous,
+      next,
+    );
     // NYT says nothing when a full board is wrong, which leaves a player
     // staring at a "finished" puzzle that never ends. Spoken with the move,
     // as one message: a second would replace the first before it was read.
@@ -1198,7 +1235,10 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       const next = pauseSession(charged, 'dialog', t.clock);
       persist(next, t);
       setSession(next);
-      setDialog({ kind: 'walkthrough', walkthrough: checked, step: 0 });
+      // The charge is said by the dialog, as it opens: the status region,
+      // outside a modal dialog, is hidden from a screen reader behind it.
+      const charge = withCharge(null, session.game, charged.game);
+      setDialog({ kind: 'walkthrough', walkthrough: checked, step: 0, charge });
     },
     check: (scope) => run({ type: 'check', scope }),
     reveal: () => run({ type: 'reveal' }),
@@ -1236,7 +1276,8 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       // Its board is on show from this moment, perhaps for the first time.
       noteSeen(next);
       setSession(next);
-      announceArrival(next, phase === 'ready' ? 'Started.' : 'Resumed.');
+      const said = phase === 'ready' ? 'Started.' : 'Resumed.';
+      announceArrival(next, takenUp(session, next, said) ?? said);
     },
 
     newGame: (difficulty) => {
@@ -1343,7 +1384,12 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       // for any dialog, and nothing is recorded.
       pauseFor('dialog');
       if (dialog?.kind === 'walkthrough') {
-        const returnTo = { ...dialog, step: step ?? dialog.step };
+        // Back from the guide, without what opening it cost: that was said.
+        const returnTo: WalkthroughView = {
+          kind: 'walkthrough',
+          walkthrough: dialog.walkthrough,
+          step: step ?? dialog.step,
+        };
         setDialog({ kind: 'techniques', initial, returnTo });
         return;
       }
@@ -1376,6 +1422,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       // record starts now.
       if (!session.isSeen) persist(next, t);
       setSession(next);
+      announce(takenUp(session, next));
     },
     shareResult: () => {
       if (session === null) return;
@@ -1465,6 +1512,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     shownHint: game === null ? null : hintOnShow(game, walkthrough),
     walkthrough,
     record: session?.record ?? null,
+    hasBoardShown: session !== null && hasBoardShown(session),
     difficulty:
       generating?.difficulty ?? session?.record.difficulty ?? vacancy ?? prefs.lastDifficulty,
     daily: generating === null ? (session?.record.daily ?? null) : (generating.daily ?? null),

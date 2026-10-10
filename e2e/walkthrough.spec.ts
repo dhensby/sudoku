@@ -69,6 +69,9 @@ test('Show me walks a stuck player through the cell their hint points at', async
   await expect(walkthrough(page)).toBeVisible();
   // A dialog like the others: the board is out of the page while it is open.
   await expect(grid(page)).toHaveCount(0);
+  // What it cost, on show and in its description, as the help taken is veiled.
+  await expect(walkthrough(page).locator('.walkthrough__charge')).toHaveText('2 hints used.');
+  await expect(walkthrough(page)).toHaveAccessibleDescription(/ 2 hints used\.$/);
 
   const titles = ['Hidden pair', 'Pointing pair or triple', 'Naked single'];
   for (const [k, caption] of CAPTIONS.entries()) {
@@ -117,6 +120,8 @@ test('a hinted cell shows its hint again whenever it is selected, at no further 
   await chooseMore(page, 'Hint');
   expect(await selectedIndex(page)).toBe(target);
   await showMe(page).click();
+  await expect(walkthrough(page)).toBeVisible();
+  await expect(walkthrough(page).locator('.walkthrough__charge')).toHaveCount(0);
   await page.keyboard.press('Escape');
   await waitForPlaying(page);
   await expectHelpUsed(page, '2 hints');

@@ -10,6 +10,11 @@ export interface MoreMenuProps {
   canCheckPuzzle: boolean;
   /** The selected cell can still be revealed (not a given, not already locked). */
   canRevealCell: boolean;
+  /**
+   * The hints this game has taken, to say on Hint ("Hint (2 used)") while
+   * "Show help taken" is on; 0 says nothing, as before any is taken.
+   */
+  hintsUsed?: number;
   onHint: () => void;
   onCheckCell: () => void;
   onCheckPuzzle: () => void;
@@ -28,6 +33,7 @@ export function MoreMenu({
   canCheckCell,
   canCheckPuzzle,
   canRevealCell,
+  hintsUsed = 0,
   onHint,
   onCheckCell,
   onCheckPuzzle,
@@ -42,7 +48,14 @@ export function MoreMenu({
       buttonClassName="more-button"
       disabled={isDisabled}
       items={[
-        { key: 'hint', label: 'Hint', icon: <HintIcon />, onSelect: onHint },
+        {
+          key: 'hint',
+          // In its name as well as on show, so a screen reader hears what
+          // has been used before pressing it.
+          label: hintsUsed > 0 ? `Hint (${hintsUsed} used)` : 'Hint',
+          icon: <HintIcon />,
+          onSelect: onHint,
+        },
         {
           key: 'check-cell',
           label: 'Check cell',

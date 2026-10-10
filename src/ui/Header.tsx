@@ -35,11 +35,18 @@ export interface HeaderProps {
   onRefreshToday?: () => void;
   onOpenDialog: (kind: HeaderDialog) => void;
   /**
-   * The error counter, while "Show error counter" is on, to sit beside the
-   * timer where the header has room for it (the stylesheet decides where,
-   * and makes the wordmark give way for it first).
+   * The tally — help taken and the error counter, while either is on — to
+   * sit beside the timer where the header has room for it (the stylesheet
+   * decides where). Kept on the page while it is on, even with nothing to
+   * show yet, so help taken can tick as it first appears.
    */
-  errorCounter?: ReactNode;
+  tally?: ReactNode;
+  /**
+   * Whether the tally has something to show: the header then makes room
+   * for it, the wordmark giving way first. Not before, so a game played
+   * unaided keeps the wordmark where it fits.
+   */
+  isTallyShown?: boolean;
 }
 
 /** The icon buttons beside New game, in the order they appear. */
@@ -90,9 +97,10 @@ export function Header({
   onOpenDaily,
   onRefreshToday,
   onOpenDialog,
-  errorCounter,
+  tally,
+  isTallyShown = false,
 }: HeaderProps) {
-  const className = ['header', daily !== null && 'header--daily', errorCounter && 'header--counter']
+  const className = ['header', daily !== null && 'header--daily', isTallyShown && 'header--tally']
     .filter(Boolean)
     .join(' ');
   return (
@@ -116,7 +124,7 @@ export function Header({
             {SHORT_LABEL[difficulty]}
           </span>
         </p>
-        {errorCounter}
+        {tally}
         <div className="header__timer">
           <Timer
             elapsedMs={elapsedMs}

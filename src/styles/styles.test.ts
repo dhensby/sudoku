@@ -354,29 +354,97 @@ describe('the layout', () => {
   });
 });
 
-describe('the error counter', () => {
+describe('the tally: help taken and the error counter', () => {
   it('counts its line above a phone’s controls into the column, only while it is on', () => {
     const app = rule(LAYOUT, '.app');
-    expect(app).toMatch(/--counter-height:\s*0px/);
-    expect(app).toMatch(/--counter-gap:\s*0px/);
-    expect(app).toMatch(/--chrome:[^;]*var\(--counter-height\)\s*\+\s*var\(--counter-gap\)/);
-    const on = rule(LAYOUT, '.app--counter');
-    expect(on).toMatch(/--counter-height:\s*18px/);
-    expect(on).toMatch(/--counter-gap:\s*var\(--play-gap\)/);
+    expect(app).toMatch(/--tally-height:\s*0px/);
+    expect(app).toMatch(/--tally-gap:\s*0px/);
+    expect(app).toMatch(/--chrome:[^;]*var\(--tally-height\)\s*\+\s*var\(--tally-gap\)/);
+    const on = rule(LAYOUT, '.app--tally');
+    expect(on).toMatch(/--tally-height:\s*18px/);
+    expect(on).toMatch(/--tally-gap:\s*var\(--play-gap\)/);
     // A line of exactly that height, however it is filled.
-    expect(rule(LAYOUT, '.error-counter--play')).toMatch(/height:\s*var\(--counter-height\)/);
+    expect(rule(LAYOUT, '.tally--play')).toMatch(/height:\s*var\(--tally-height\)/);
+  });
+
+  it('takes the line out of the column until it is counted in, so it adds no gap of its own', () => {
+    expect(rule(LAYOUT, '.app:not(.app--tally) .tally--play')).toMatch(/display:\s*none/);
+    // The controls give up their foot-of-the-screen margin to it only while it shows.
+    expect(LAYOUT).toMatch(/\.app--tally \.play > \.tally--play \+ \.controls \{\s*margin-top: 0;/);
+    // And a short phone gives it its line as any other does.
+    expect(LAYOUT).not.toMatch(/\.app--counter/);
   });
 
   it('sits beside the timer where the header has room, and above the controls where it has not', () => {
-    expect(rule(LAYOUT, '.error-counter--header')).toMatch(/display:\s*none/);
+    expect(rule(LAYOUT, '.tally--header')).toMatch(/display:\s*none/);
     expect(LAYOUT).toMatch(
-      /@media \(min-width: 850px\), \(orientation: landscape\) and \(max-height: 500px\) \{\s*\.error-counter--header \{\s*display: block;\s*\}[^@]*\.error-counter--play \{\s*display: none;/,
+      /@media \(min-width: 850px\), \(orientation: landscape\) and \(max-height: 500px\) \{\s*\.tally--header \{\s*display: flex;\s*\}\s*\.tally--header:empty \{\s*display: none;\s*\}[^@]*\.tally--play \{\s*display: none;/,
     );
   });
 
-  it('moves the timer off the end of the header only where the counter takes its place', () => {
-    // Everywhere else, the counter is not shown, and the timer stays at the end.
-    const beside = [...LAYOUT.matchAll(/\.error-counter--header \+ \.header__timer/g)];
+  it('stacks help taken over the counter beside the timer, and sets them apart on a phone’s line', () => {
+    const header = rule(LAYOUT, '.tally--header');
+    expect(header).toMatch(/flex-direction:\s*column/);
+    expect(header).toMatch(/align-items:\s*flex-end/);
+    expect(rule(LAYOUT, '.tally--play .error-counter')).toMatch(/margin-left:\s*auto/);
+    // Help taken gives way on the line; the counter never does.
+    expect(rule(LAYOUT, '.help-taken')).toMatch(/min-width:\s*0/);
+    expect(rule(LAYOUT, '.tally--play .error-counter')).toMatch(/flex:\s*none/);
+  });
+
+  it('holds help taken in the header to the counter’s widest, so the header’s breakpoints hold for both', () => {
+    // 173.5px and 186.8px, measured: no wider, in the header's ems.
+    expect(rule(LAYOUT, '.help-taken--header')).toMatch(/max-width:\s*10\.8rem/);
+    expect(LAYOUT).toMatch(
+      /@media \(min-width: 850px\) \{\s*\.help-taken--header \{\s*max-width: 11\.6rem;/,
+    );
+  });
+
+  it('lays the three wordings of help taken in one cell, sized by the full words', () => {
+    for (const form of ['full', 'counts', 'total']) {
+      expect(rule(LAYOUT, `.help-taken__${form}`)).toMatch(/grid-area:\s*1 \/ 1/);
+    }
+    expect(rule(LAYOUT, '.help-taken__face')).toMatch(
+      /grid-template-columns:\s*minmax\(0, max-content\)/,
+    );
+    // Measured at their own widths, whatever the box's.
+    expect(rule(LAYOUT, '.help-taken__full')).toMatch(/width:\s*max-content/);
+    expect(rule(LAYOUT, '.help-taken__counts')).toMatch(/width:\s*max-content/);
+    // One on show at a time.
+    expect(rule(LAYOUT, '.help-taken__counts')).toMatch(/visibility:\s*hidden/);
+    expect(rule(LAYOUT, '.help-taken__total')).toMatch(/visibility:\s*hidden/);
+    for (const form of ['counts', 'total']) {
+      expect(rule(LAYOUT, `.help-taken__face--${form} .help-taken__full`)).toMatch(
+        /visibility:\s*hidden/,
+      );
+      expect(rule(LAYOUT, `.help-taken__face--${form} .help-taken__${form}`)).toMatch(
+        /visibility:\s*visible/,
+      );
+    }
+    // Only the last, for a switch alone, can ever be cut short.
+    expect(rule(LAYOUT, '.help-taken__total')).toMatch(/text-overflow:\s*ellipsis/);
+    expect(rule(LAYOUT, '.help-taken__counts')).not.toMatch(/ellipsis/);
+  });
+
+  it('ticks underlined in the accent, fading back, or under reduced motion held still', () => {
+    const tick = rule(LAYOUT, '.help-taken__face--tick');
+    expect(tick).toMatch(/text-decoration:\s*underline/);
+    expect(tick).toMatch(/animation:\s*help-taken-tick 1200ms/);
+    // Nothing grows or moves, so nothing is drawn over what is beside it.
+    const keyframes = LAYOUT.slice(LAYOUT.indexOf('@keyframes help-taken-tick'));
+    expect(keyframes.slice(0, keyframes.indexOf('\n}'))).not.toMatch(/transform|scale/);
+    expect(LAYOUT).toMatch(
+      /@media \(prefers-reduced-motion: reduce\) \{\s*\.help-taken__face--tick,\s*\.help-taken__face--tick \.help-taken__count \{\s*color: var\(--accent\);/,
+    );
+    // And the global rule stops the pop itself.
+    expect(INDEX).toMatch(
+      /prefers-reduced-motion: reduce[^}]*animation-duration: 0\.01ms !important/,
+    );
+  });
+
+  it('moves the timer off the end of the header only where the tally takes its place', () => {
+    // Everywhere else, the tally is not shown, and the timer stays at the end.
+    const beside = [...LAYOUT.matchAll(/\.tally--header:not\(:empty\) \+ \.header__timer/g)];
     expect(beside).toHaveLength(1);
     const media = LAYOUT.lastIndexOf('@media', beside[0].index);
     expect(LAYOUT.slice(media, beside[0].index)).toMatch(
@@ -386,10 +454,23 @@ describe('the error counter', () => {
 
   it('makes the wordmark give way for it sooner where it shares the header', () => {
     expect(LAYOUT).toMatch(
-      /@container header \(max-width: calc\(432px \+ 26em\)\) \{\s*\.header--counter \.header__title/,
+      /@container header \(max-width: calc\(432px \+ 26em\)\) \{\s*\.header--tally \.header__title/,
     );
     expect(LAYOUT).toMatch(
-      /@container header \(max-width: calc\(173px \+ 23\.6em\)\) \{\s*\.header--counter \.header__title/,
+      /@container header \(max-width: calc\(173px \+ 23\.6em\)\) \{\s*\.header--tally \.header__title/,
+    );
+  });
+
+  it('makes the wordmark give way for a daily’s "Daily ·" sooner still, as without it', () => {
+    // 3.3em more, as `.header--daily .header__title` takes over the plain row.
+    expect(LAYOUT).toMatch(
+      /@container header \(max-width: calc\(165px \+ 15\.4em\)\) \{\s*\.header--daily \.header__title/,
+    );
+    expect(LAYOUT).toMatch(
+      /@container header \(max-width: calc\(173px \+ 26\.9em\)\) \{\s*\.header--tally\.header--daily \.header__title \{[^}]*clip-path: inset\(50%\);/,
+    );
+    expect(LAYOUT).toMatch(
+      /@container header \(max-width: calc\(432px \+ 29\.3em\)\) \{\s*\.header--tally\.header--daily \.header__title \{[^}]*clip-path: inset\(50%\);/,
     );
   });
 
@@ -402,14 +483,14 @@ describe('the error counter', () => {
     const block = LAYOUT.slice(LAYOUT.lastIndexOf('@media', fold));
     // "Daily ·" first, then the tier, each only while the seven buttons show.
     expect(block).toMatch(
-      /@container header \(min-width: calc\(419px \+ 18\.4em\)\) and \(max-width: calc\(419px \+ 23\.4em\)\) \{\s*\.header--counter\.header--daily \.header__daily \{\s*display: none;/,
+      /@container header \(min-width: calc\(419px \+ 18\.4em\)\) and \(max-width: calc\(419px \+ 23\.4em\)\) \{\s*\.header--tally\.header--daily \.header__daily \{\s*display: none;/,
     );
     expect(block).toMatch(
-      /@container header \(min-width: calc\(419px \+ 18\.4em\)\) and \(max-width: calc\(419px \+ 20\.1em\)\) \{\s*\.header--counter \.header__tier \{[^}]*clip-path: inset\(50%\);[^}]*\}\s*\.header--counter \.header__tier-short \{\s*display: inline;/,
+      /@container header \(min-width: calc\(419px \+ 18\.4em\)\) and \(max-width: calc\(419px \+ 20\.1em\)\) \{\s*\.header--tally \.header__tier \{[^}]*clip-path: inset\(50%\);[^}]*\}\s*\.header--tally \.header__tier-short \{\s*display: inline;/,
     );
     // Then the five less-used actions fold into the Menu, as on a phone.
     expect(block).toMatch(
-      /@container header \(max-width: calc\(419px \+ 18\.4em\)\) \{\s*\.header--counter \.header__actions \.header__wide \{\s*display: none;\s*\}\s*\.header--counter \.header__actions \.header__narrow \{\s*display: inline-flex;/,
+      /@container header \(max-width: calc\(419px \+ 18\.4em\)\) \{\s*\.header--tally \.header__actions \.header__wide \{\s*display: none;\s*\}\s*\.header--tally \.header__actions \.header__narrow \{\s*display: inline-flex;/,
     );
   });
 });

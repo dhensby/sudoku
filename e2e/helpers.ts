@@ -408,3 +408,45 @@ export async function getStuck(page: Page): Promise<void> {
     entries.map(([row, col, digit]) => ({ index: (row - 1) * 9 + col - 1, digit })),
   );
 }
+
+/**
+ * Whether the header's wordmark and tier are whole: each either out of view
+ * (the stylesheet hides it to a 1px box when there is no room for it) or with
+ * every word of it inside its own box. Measured with a Range, to the
+ * sub-pixel: an over-full row can shrink the tier a fraction of a pixel short
+ * of its words, drawing an ellipsis that `scrollWidth`, a whole number, does
+ * not show.
+ */
+export async function expectHeaderWhole(page: Page): Promise<void> {
+  const cut = await page.getByRole('banner').evaluate((header) => {
+    /** How far `parts`' words reach past `right`, those on show only. */
+    const past = (parts: Element[], right: number) =>
+      Math.max(
+        0,
+        ...parts
+          .filter((part) => {
+            const box = part.getBoundingClientRect();
+            return part.getClientRects().length > 0 && box.width > 1 && box.height > 1;
+          })
+          .map((part) => {
+            const range = document.createRange();
+            range.selectNodeContents(part);
+            return range.getBoundingClientRect().right - right;
+          }),
+      );
+    const title = header.querySelector('.header__title')!;
+    const tier = header.querySelector('.header__difficulty')!;
+    const style = getComputedStyle(tier);
+    const box = tier.getBoundingClientRect();
+    const inside = box.right - parseFloat(style.paddingRight) - parseFloat(style.borderRightWidth);
+    return {
+      title: past([title], title.getBoundingClientRect().right),
+      tier: past(
+        [...tier.querySelectorAll('.header__daily, .header__tier, .header__tier-short')],
+        inside,
+      ),
+    };
+  });
+  expect(cut.title, 'the wordmark cut short').toBeLessThanOrEqual(0.01);
+  expect(cut.tier, 'the tier cut short').toBeLessThanOrEqual(0.01);
+}

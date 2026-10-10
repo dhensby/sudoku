@@ -24,9 +24,10 @@ function storageWith(value: unknown): ReturnType<typeof memoryStorage> {
 }
 
 describe('defaults', () => {
-  it('match the spec: every aid on; auto candidates, peer-note clearing, Check guesses and the error counter off', () => {
+  it('match the spec: every aid on and help taken shown; auto candidates, peer-note clearing, Check guesses and the error counter off', () => {
     expect(DEFAULT_SETTINGS).toEqual({
       showTimer: true,
+      showHelpTaken: true,
       highlightRowColumn: true,
       highlightBox: true,
       highlightIdentical: true,
@@ -83,6 +84,7 @@ describe('loadPreferences', () => {
     const stored = {
       settings: {
         showTimer: false,
+        showHelpTaken: false,
         highlightRowColumn: false,
         highlightBox: false,
         highlightIdentical: false,
@@ -103,6 +105,7 @@ describe('loadPreferences', () => {
     const storage = storageWith({
       settings: {
         showTimer: 'no',
+        showHelpTaken: 0,
         highlightBox: false,
         clearPeerNotes: 1,
         checkGuesses: 'yes',
@@ -129,6 +132,21 @@ describe('loadPreferences', () => {
     const prefs = loadPreferences(storageWith({ settings, playerName: 'Dan' }));
     expect(prefs.settings).toEqual(DEFAULT_SETTINGS);
     expect(prefs.playerName).toBe('Dan');
+  });
+
+  it('keeps Show help taken on for a player whose preferences were saved before it existed', () => {
+    const storage = storageWith({ settings: { showTimer: false, showErrorCounter: true } });
+    expect(loadPreferences(storage).settings).toMatchObject({
+      showTimer: false,
+      showHelpTaken: true,
+      showErrorCounter: true,
+    });
+  });
+
+  it('saves Show help taken off like any other switch', () => {
+    const storage = memoryStorage();
+    expect(updateSettings(storage, { showHelpTaken: false }).settings.showHelpTaken).toBe(false);
+    expect(loadPreferences(storage).settings.showHelpTaken).toBe(false);
   });
 
   it('saves the two Mistakes settings like any other switch', () => {

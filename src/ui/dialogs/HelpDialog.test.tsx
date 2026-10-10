@@ -160,6 +160,21 @@ describe('HelpDialog', () => {
     );
   });
 
+  it('describes the help taken shown as you play, and the count on Hint', () => {
+    render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={vi.fn()} />);
+    const hints = screen.getByRole('heading', { name: 'Hints' }).closest('section')!;
+    const shown = within(hints)
+      .getByText(/Show help taken/)
+      .closest('li')!;
+    expect(shown).toHaveTextContent(
+      /Show help taken, in Settings, is on until you turn it off: once you take any help, it shows what you have taken so far, as History does — “Auto candidates · 2 hints” — beside the timer \(above the controls on a phone held upright\), or just the counts, or their total \(“Help 3”\), where there is no room for more\./,
+    );
+    expect(shown).toHaveTextContent(
+      /It ticks each time help is counted, so you can see that asking again for a hint you already have was free; Show me says what it cost as it opens;/,
+    );
+    expect(shown).toHaveTextContent(/“Hint \(2 used\)”\. Turning it off only hides the count\./);
+  });
+
   it('leads from Difficulty to the guide to the solving techniques', () => {
     const onBrowseTechniques = vi.fn();
     render(<HelpDialog onBrowseTechniques={onBrowseTechniques} onClose={vi.fn()} />);

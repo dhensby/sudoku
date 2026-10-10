@@ -79,7 +79,8 @@ your browser.
   its side, each step's board is sized to the screen with its caption beside it. Check cell, Check
   puzzle and Reveal cell are in the "…" menu, and **Check guesses when entered**, in Settings,
   marks a wrong number the moment it goes in, as NYT's does. Any help you take (auto candidates
-  and checked guesses included) is recorded next to your time, so comparisons stay fair.
+  and checked guesses included) is recorded next to your time, so comparisons stay fair — and
+  shown as you play: see [Help taken](#help-taken).
 - **Mistakes, counted honestly** — the Solved dialog says how clean the solve was: "No mistakes",
   "1 mistake", or "2 mistakes · 1 candidate mistake", the wrong numbers you entered kept apart from
   the right answers you struck out of your candidates. Mistakes never touch a time, a best or who
@@ -104,10 +105,11 @@ your browser.
 - **At home on a phone** — the whole game fits a 320×568 screen, or a phone turned on its side,
   without scrolling, and on a taller phone the controls sit at the foot of the screen, under your
   thumb; the daily calendar, History, Share, Settings, the technique guide and Help fold into a ☰
-  menu so the header stays one row (the error counter, when it is on, takes a line of its own
-  above the controls, and the board gives up that line's height; on a phone on its side it sits
-  beside the timer, and a large phone's row of seven buttons folds into the ☰ menu to make room
-  for it); touch targets are at least 44px; and the game can be added to your home screen.
+  menu so the header stays one row (help taken, once you take any, and the error counter, when it
+  is on, share a line of their own above the controls, and the board gives up that line's height;
+  on a phone on its side they sit beside the timer, one over the other, and a large phone's row of
+  seven buttons folds into the ☰ menu to make room for them);
+  touch targets are at least 44px; and the game can be added to your home screen.
 - **Broadsheet, a theme drawn for clarity** — the puzzle page of a morning paper: warm newsprint,
   ink-black box lines, one ultramarine spot colour, the selected cell printed as a solid block,
   givens typeset in a slab and your own numbers in a grotesque. Givens and your own numbers hold
@@ -480,6 +482,55 @@ head-to-head shows a dash, which a screen reader reads as "not recorded". The "M
 whenever either count is known, a clean 0 included; "Candidate mistakes" only once either of you made
 one.
 
+## Help taken
+
+**Show help taken**, in Settings beside Show timer and on unless turned off, shows the help the
+game has taken so far as it is played, once there is any, in History's words — "Auto candidates ·
+Checked as entered · 2 hints · 1 check · 1 reveal" — so a player sees each Hint, Show me, Check and
+Reveal counted as it happens, and sees that asking again for a hint already given was free. The
+"…" menu's Hint says how many have been used, "Hint (2 used)", in its name as well as on show. It
+is only a display: help is recorded next to the time (`assists`) whether it shows or not, and
+turning it off hides the count, the count on Hint and the count said with a move.
+
+- **Where.** Beside the timer on a desktop and on a phone on its side, over the error counter
+  when that is on; on a phone held upright, on the line above the controls, at its start, with
+  the error counter at its end. The two are one strip (`.tally` in `layout.css`), designed
+  together: in the header, help taken is held to the error counter's widest line (measured at
+  173.5px on a phone on its side and 186.8px on a desktop), so the header's breakpoints, which make
+  room for the counter, hold for both — a daily's wordmark giving way 3.3em sooner for its
+  "Daily ·", as without them; on a phone's line, help taken gives way and the counter never does.
+  The header makes room, and a phone gives the line, only once there is something to show: a game
+  played without help keeps its wordmark and its whole board, and on a phone held upright the
+  board gives up the line's height as the first help is taken (with a hint, as the hint bar fills).
+  Every phone held upright, the shortest included, has the line: at 320×568 a hint's bar still
+  keeps to its two lines beside it.
+- **Shortened where it must be, never cut.** The full words where they fit — measured, not
+  guessed: the box is as wide as the full words, up to the room it has (`HelpTaken.tsx`) — then
+  the counts alone, "2 hints · 1 check": what the "…" menu charges and what a player watches,
+  while the two switches show for themselves (the Auto Candidate switch, a checked guess's slash);
+  and where even those do not fit, their total, "Help 3", set as the counter's "Mistakes 2" is
+  and short enough to stay whole beside the widest counter on the narrowest phone. A count is
+  never cut short; only "Help taken", the total's wording for a game whose only help is a switch,
+  could ever end in an ellipsis. Hovering shows the full words, and a screen reader is always given
+  the full list ("Help taken: auto candidates, 2 hints").
+- **It ticks.** When help is charged the words are underlined in the accent colour, which holds a
+  moment and fades back; asked for less motion, the colour is held still instead. Nothing grows
+  or moves, so nothing is drawn over the tier or the counter beside it. Not as a game opens with
+  the help it had — nor as a game behind Start, or made behind a dialog, takes up "Check guesses
+  when entered" as it first starts — nor for another game's help, nor when the setting is switched
+  on, and not for a hint asked for again, which is free. A charge made as a dialog opens (Show
+  me's) ticks as the dialog closes, where it can be seen. A screen reader hears the new count once,
+  with the move that charged it — "… Row 3, column 5. 2 hints used.", "1 check used.", "1 reveal
+  used.", "Auto candidates on. Counts as help." the first time, and "Checked as entered. Counts as
+  help." as Settings closes, or with "Resumed.", on a game already on show.
+- **Show me says what it cost.** Its walkthrough shows the charge after its introduction — "2
+  hints used." — so a sighted player sees it as it is made, and a screen reader hears it with the
+  dialog's description (the status region is hidden behind a dialog). Opened again for a hint
+  already counted, it is free, and says nothing of cost.
+- **While paused.** It stays on show, unlike the error counter: what help was taken says nothing
+  about the board — not which cells, nor whether a number is right — and, like the timer's
+  digits, it is a record of the game rather than of its cells.
+
 ## Racing friends
 
 A share link carries the puzzle itself, so it opens the same puzzle for anyone, on any version of
@@ -615,6 +666,11 @@ of the logs here were shed, none of the file's logs are taken.
   counts must never fall and must stay at nothing for a game that never lets a wrong number
   stand. What Check guesses marks has golden logs and a checklist entry of its own, and the error
   counter is checked to move only once a slip has settled, on the main hook's own play clock.
+  Help taken is held to History's words for every kind of help, to shortening by measure (full
+  words, counts, total) and to ticking on a charge only — not for help a game behind Start takes
+  up as it starts, and for Show me's, only as its walkthrough closes; through the main hook, a hint
+  asked for again costs and says nothing more, while the next new one says "2 hints used.", and
+  Check guesses switched on mid-game says it is help.
   Share links are held to the versions before them: a copy of the assists decoder every earlier
   version shipped must read a new link's help unchanged, skipping its mistakes, and an old link
   must read as mistakes not recorded, never 0.
@@ -630,10 +686,16 @@ of the logs here were shed, none of the file's logs are taken.
   phone layout from 320px wide up and on its side (the calendar's
   days measured at 44px at 320px, the head-to-head's every row, hour-long times on one line and a
   long right-to-left name kept inside its card, New game and the calendar whole on a phone on its
-  side, and the error counter's line, upright and on its side, a large phone's header folding
-  its buttons to fit it at 1:23:45). An accessibility pass
-  (`a11y.spec.ts`) runs axe-core's WCAG 2.2 A and AA rules over the main states — the board with
-  every kind of mark, the error counter in both its places, the Ready and Paused cards, the menus,
+  side, and the error counter's line with help taken beside it, upright and on its side, a large
+  phone's header folding its buttons to fit both at 1:23:45 — a daily Medium's wordmark and tier
+  never clipped, measured to the sub-pixel — and help taken giving way to its counts and then its
+  total, never cut, beside a counter with a candidate mistake; with neither shown, the board as
+  large as with the setting off; help taken alone above a 375×667 phone's controls, and on a
+  320×568 phone beside a hint that keeps to two lines; and a desktop's header with a daily Medium
+  and help at its widest). Help taken stays on show through a pause, its count the only one the
+  hidden board leaves beside the timer's. An accessibility pass (`a11y.spec.ts`) runs axe-core's WCAG 2.2 A and AA rules over the main states — the board with
+  every kind of mark, the error counter and help taken in both their places, the Ready and Paused
+  cards, the menus (the "…" menu's "Hint (1 used)" among them),
   every dialog (Show me's and the daily calendar's included) and each guide entry — in both
   themes, and the board, the dialogs, the menus and the calendar in High contrast, both chosen in
   Settings on a dark device and from a dark system asking for more contrast, measuring its heavier

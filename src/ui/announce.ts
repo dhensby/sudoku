@@ -7,6 +7,7 @@ import {
   isEditable,
   valuesOf,
   visibleCandidates,
+  type Assists,
   type CellMark,
   type CellState,
   type Digit,
@@ -17,7 +18,14 @@ import {
   type TechniqueId,
   type Unit,
 } from '../core';
-import { TECHNIQUE_LABEL, capitalise, joinList, withArticle } from './format';
+import {
+  CHECK_GUESSES_LABEL,
+  TECHNIQUE_LABEL,
+  capitalise,
+  count,
+  joinList,
+  withArticle,
+} from './format';
 
 /*
  * The words the game speaks: cell names for the grid, a line for the status
@@ -323,4 +331,26 @@ export function describeHint(hint: Hint): string {
     case 'none':
       return 'The puzzle is complete.';
   }
+}
+
+/**
+ * What a move cost, said after what it did, while "Show help taken" is on:
+ * the new count of the help it charged — "2 hints used.", "1 check used.",
+ * "1 reveal used." — or, for auto candidates switched on for the first time
+ * in the game, "Counts as help." (after the move's own "Auto candidates
+ * on."), and for "Check guesses when entered", taken up as Settings closes,
+ * "Checked as entered. Counts as help.". Null when it charged nothing, so a
+ * hint asked for again, which is free, says only the hint: the count is
+ * heard once, with the charge, as a sighted player sees it tick.
+ */
+export function describeCharge(before: Assists, after: Assists): string | null {
+  const parts: string[] = [];
+  if (after.autoCandidates && !before.autoCandidates) parts.push('Counts as help.');
+  if (after.checkGuesses === true && before.checkGuesses !== true) {
+    parts.push(`${CHECK_GUESSES_LABEL}. Counts as help.`);
+  }
+  if (after.hints > before.hints) parts.push(`${count(after.hints, 'hint')} used.`);
+  if (after.checks > before.checks) parts.push(`${count(after.checks, 'check')} used.`);
+  if (after.reveals > before.reveals) parts.push(`${count(after.reveals, 'reveal')} used.`);
+  return parts.length === 0 ? null : parts.join(' ');
 }

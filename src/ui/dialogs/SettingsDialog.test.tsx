@@ -11,6 +11,7 @@ function renderSettings(settings: Settings = DEFAULT_SETTINGS) {
 
 const SWITCHES: [keyof Settings, string][] = [
   ['showTimer', 'Show timer'],
+  ['showHelpTaken', 'Show help taken'],
   ['highlightRowColumn', 'Highlight row and column'],
   ['highlightBox', 'Highlight box'],
   ['highlightIdentical', 'Highlight identical numbers'],
@@ -56,9 +57,24 @@ describe('SettingsDialog', () => {
 
   it('groups the switches under named headings', () => {
     renderSettings();
-    for (const name of ['Timer', 'Highlighting', 'Candidates', 'Mistakes', 'Theme']) {
+    for (const name of ['Timer and help', 'Highlighting', 'Candidates', 'Mistakes', 'Theme']) {
       expect(screen.getByRole('group', { name })).toBeInTheDocument();
     }
+  });
+
+  it('puts Show help taken beside Show timer, on, saying the help is recorded either way', () => {
+    renderSettings();
+    const group = screen.getByRole('group', { name: 'Timer and help' });
+    const boxes = within(group).getAllByRole('checkbox');
+    expect(boxes.map((box) => box.getAttribute('id')?.split('-').at(-1))).toEqual([
+      'showTimer',
+      'showHelpTaken',
+    ]);
+    const help = within(group).getByRole('checkbox', { name: 'Show help taken' });
+    expect(help).toBeChecked();
+    expect(help).toHaveAccessibleDescription(
+      /hints used on the “…” menu’s Hint\. Hiding it only hides the count: your help is still recorded next to your time\./,
+    );
   });
 
   it('puts Check guesses and the error counter under Mistakes, saying which is help', () => {

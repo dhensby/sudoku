@@ -46,13 +46,13 @@
   --key-height: 46px;
   --controls-gap: 6px;
   --controls-height: calc(2 * var(--row-height) + 2 * var(--key-height) + 3 * var(--controls-gap));
-  /* The error counter's line above the controls, and the gap after it: none
-     unless "Show error counter" is on (.app--counter, below). */
-  --counter-height: 0px;
-  --counter-gap: 0px;
+  /* The tally's line above the controls (help taken and the error counter),
+     and the gap after it: none unless either is on (.app--tally, below). */
+  --tally-height: 0px;
+  --tally-gap: 0px;
   --chrome: calc(
     var(--header-height) + var(--main-pad-top) + var(--main-pad-bottom) + var(--hint-gap) +
-      var(--hint-height) + var(--play-gap) + var(--counter-height) + var(--counter-gap) +
+      var(--hint-height) + var(--play-gap) + var(--tally-height) + var(--tally-gap) +
       var(--controls-height)
   );
   --board-floor: 240px;
@@ -95,14 +95,18 @@
 }
 
 /*
- * With the error counter on, a phone held upright gives it a line of its own
- * above the controls (its header has no room): counted into --chrome, so the
- * board gives up that line's height rather than the page scrolling. Elsewhere
- * the counter sits in the header, and --chrome is not used.
+ * With something on the tally to show — the error counter, while it is on,
+ * or help taken, once there is any — a phone held upright gives it a line of
+ * its own above the controls (its header has no room): counted into
+ * --chrome, so the board gives up that line's height rather than the page
+ * scrolling. Not before: a game played without help keeps its board whole,
+ * and the line comes as the first help does, with the hint bar filling at
+ * the same moment. Elsewhere the tally sits in the header, and --chrome is
+ * not used.
  */
-.app--counter {
-  --counter-height: 18px;
-  --counter-gap: var(--play-gap);
+.app--tally {
+  --tally-height: 18px;
+  --tally-gap: var(--play-gap);
 }
 
 /* Where round() is known: whole-pixel cells. Elsewhere the board is merely
@@ -371,13 +375,25 @@
 }
 
 /*
- * A phone on its side has room for the error counter beside the timer: it
- * takes up to 11.5em ("Mistakes 12 · 12 candidates") and a gap, so the
- * wordmark, the short tier and "Daily ·" each give way that much sooner.
+ * A phone on its side has room for the tally beside the timer: help taken
+ * over the error counter, each line no wider than the counter's widest
+ * ("Mistakes 12 · 12 candidates"; help taken is held to it, see
+ * .help-taken--header) and a gap, so the wordmark, the short tier and
+ * "Daily ·" each give way that much sooner — the wordmark for a daily's
+ * "Daily ·" 3.3em sooner still, as without the tally.
  */
 @media (orientation: landscape) and (max-height: 500px) {
   @container header (max-width: calc(173px + 23.6em)) {
-    .header--counter .header__title {
+    .header--tally .header__title {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      clip-path: inset(50%);
+    }
+  }
+
+  @container header (max-width: calc(173px + 26.9em)) {
+    .header--tally.header--daily .header__title {
       position: absolute;
       width: 1px;
       height: 1px;
@@ -386,7 +402,7 @@
   }
 
   @container header (max-width: calc(167px + 19.2em)) {
-    .header--counter .header__tier {
+    .header--tally .header__tier {
       position: absolute;
       width: 1px;
       height: 1px;
@@ -395,13 +411,13 @@
       white-space: nowrap;
     }
 
-    .header--counter .header__tier-short {
+    .header--tally .header__tier-short {
       display: inline;
     }
   }
 
   @container header (max-width: calc(167px + 22.5em)) {
-    .header--counter.header--daily .header__daily {
+    .header--tally.header--daily .header__daily {
       display: none;
     }
   }
@@ -455,10 +471,19 @@
     }
   }
 
-  /* And the error counter beside the timer, a size up here: up to 12.5em
-     and a gap more. */
+  /* And the tally beside the timer, a size up here: the counter's widest
+     and a gap more — and for a daily's "Daily ·", 3.3em more again. */
   @container header (max-width: calc(432px + 26em)) {
-    .header--counter .header__title {
+    .header--tally .header__title {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      clip-path: inset(50%);
+    }
+  }
+
+  @container header (max-width: calc(432px + 29.3em)) {
+    .header--tally.header--daily .header__title {
       position: absolute;
       width: 1px;
       height: 1px;
@@ -467,7 +492,7 @@
   }
 
   /*
-   * Then, with the counter, the row of seven buttons still needs more than a
+   * Then, with the tally, the row of seven buttons still needs more than a
    * header held back by a short screen has (a large phone on its side is
    * wide enough for this layout, and its board, and so its header, is held
    * to the screen's height). Measured as above, at the widest — "Daily ·
@@ -480,13 +505,13 @@
    * tier and "Daily ·" give way here only while the seven buttons show.
    */
   @container header (min-width: calc(419px + 18.4em)) and (max-width: calc(419px + 23.4em)) {
-    .header--counter.header--daily .header__daily {
+    .header--tally.header--daily .header__daily {
       display: none;
     }
   }
 
   @container header (min-width: calc(419px + 18.4em)) and (max-width: calc(419px + 20.1em)) {
-    .header--counter .header__tier {
+    .header--tally .header__tier {
       position: absolute;
       width: 1px;
       height: 1px;
@@ -495,17 +520,17 @@
       white-space: nowrap;
     }
 
-    .header--counter .header__tier-short {
+    .header--tally .header__tier-short {
       display: inline;
     }
   }
 
   @container header (max-width: calc(419px + 18.4em)) {
-    .header--counter .header__actions .header__wide {
+    .header--tally .header__actions .header__wide {
       display: none;
     }
 
-    .header--counter .header__actions .header__narrow {
+    .header--tally .header__actions .header__narrow {
       display: inline-flex;
     }
   }
@@ -588,12 +613,12 @@
     margin-top: auto;
   }
 
-  /* The error counter goes down with them, on its line just above. */
-  .play > .error-counter--play {
+  /* The tally goes down with them, on its line just above. */
+  .play > .tally--play {
     margin-top: auto;
   }
 
-  .play > .error-counter--play + .controls {
+  .app--tally .play > .tally--play + .controls {
     margin-top: 0;
   }
 }
@@ -652,18 +677,82 @@
 }
 
 /* ==========================================================================
-   Error counter
+   The tally: help taken and the error counter
 
-   "Mistakes 2 · 1 candidate", while "Show error counter" is on. Rendered
+   "2 hints" and "Mistakes 2 · 1 candidate", while "Show help taken" or
+   "Show error counter" is on — designed together, as one strip. Rendered
    twice and shown once: beside the timer where the header has room (a
-   desktop, a phone on its side), and on a line of its own above the
-   controls on a phone held upright, where the header has none — a line
-   the layout counts in (see .app--counter). Quiet, like the timer's
-   digits: the label muted, the counts in ink and tabular, so the line holds
+   desktop, a phone on its side), help taken over the error counter, two
+   short lines no wider than the counter alone, so the header's breakpoints
+   above hold for both; and on a line of its own above the controls on a
+   phone held upright, where the header has none — help taken at the start,
+   over the mode toggle, and the counter at the end — a line the layout
+   counts in once it has something to show (see .app--tally). Help taken
+   gives way first: to the counts alone, then to their total, "Help 4"
+   (HelpTaken.tsx); the counter never does. Quiet, like the timer's
+   digits: the words muted, the counts in ink and tabular, so the line holds
    still as they change.
    ========================================================================== */
 
-.error-counter {
+.tally--header {
+  display: none;
+  flex: none;
+  flex-direction: column;
+  align-items: flex-end;
+  margin-left: auto;
+  line-height: 1.25;
+}
+
+/* A line high however it is filled — empty while the board hides the
+   counter. */
+.tally--play {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 1em;
+  height: var(--tally-height);
+  overflow: hidden;
+  line-height: var(--tally-height);
+}
+
+/* The counter at the end, over the end of the controls, whether or not
+   help taken is beside it. */
+.tally--play .error-counter {
+  flex: none;
+  margin-left: auto;
+}
+
+/* Out of the column until it has something to show: on the page from the
+   moment either setting is on, so help taken can tick as it first appears,
+   but taking no gap of the column's that --chrome has not counted. */
+.app:not(.app--tally) .tally--play {
+  display: none;
+}
+
+@media (min-width: 850px), (orientation: landscape) and (max-height: 500px) {
+  .tally--header {
+    display: flex;
+  }
+
+  /* Kept out of the row until it has something to show (it is on the page
+     from the moment either setting is on), so it adds no gap of its own. */
+  .tally--header:empty {
+    display: none;
+  }
+
+  /* Beside the timer, it takes the timer's place at the end of the space
+     the wordmark and tier leave. */
+  .tally--header:not(:empty) + .header__timer {
+    margin-left: 0;
+  }
+
+  .tally--play {
+    display: none;
+  }
+}
+
+.error-counter,
+.help-taken {
   margin: 0;
   color: var(--text-muted);
   font-size: 0.8125rem;
@@ -672,46 +761,116 @@
   white-space: nowrap;
 }
 
-.error-counter__count {
+.error-counter__count,
+.help-taken__count {
   color: var(--text);
   font-weight: 700;
 }
 
-.error-counter--header {
-  display: none;
-  flex: none;
-  margin-left: auto;
+@media (min-width: 850px) {
+  .error-counter,
+  .help-taken {
+    font-size: 0.875rem;
+  }
 }
 
-/* At the right, over the end of the controls, a line high however it is
-   filled — empty while the board is hidden. */
-.error-counter--play {
-  flex: none;
-  height: var(--counter-height);
-  overflow: hidden;
-  line-height: var(--counter-height);
-  text-align: end;
+/*
+ * Help taken: as wide as its full words, up to the room it is given — in
+ * the header, the error counter's widest ("Mistakes 12 · 12 candidates",
+ * measured at 173.5px on a phone on its side and 186.8px on a desktop with
+ * the bundled faces), so the header's breakpoints, made for the counter,
+ * hold for help taken too; on a phone's line, what the counter leaves. The
+ * three wordings are laid in one cell, the ones not on show hidden but the
+ * full words still sizing the box; HelpTaken measures which fits it.
+ */
+.help-taken {
+  flex: 0 1 auto;
+  min-width: 0;
 }
 
-@media (min-width: 850px), (orientation: landscape) and (max-height: 500px) {
-  .error-counter--header {
-    display: block;
-  }
-
-  /* Beside the timer, it takes the timer's place at the end of the space
-     the wordmark and tier leave. */
-  .error-counter--header + .header__timer {
-    margin-left: 0;
-  }
-
-  .error-counter--play {
-    display: none;
-  }
+.help-taken--header {
+  max-width: 10.8rem;
 }
 
 @media (min-width: 850px) {
-  .error-counter {
-    font-size: 0.875rem;
+  .help-taken--header {
+    max-width: 11.6rem;
+  }
+}
+
+.help-taken__face {
+  display: grid;
+  grid-template-columns: minmax(0, max-content);
+  overflow: hidden;
+}
+
+.help-taken--header .help-taken__face {
+  justify-items: end;
+}
+
+.help-taken__full,
+.help-taken__counts,
+.help-taken__total {
+  grid-area: 1 / 1;
+}
+
+/* Their own widths, whatever the box's, for HelpTaken to measure. */
+.help-taken__full,
+.help-taken__counts {
+  width: max-content;
+}
+
+.help-taken__counts,
+.help-taken__total {
+  visibility: hidden;
+}
+
+/* "Help 4" is short enough for any phone beside any counter; only "Help
+   taken", for a switch alone, could ever be cut short, and never a count. */
+.help-taken__total {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.help-taken__face--counts .help-taken__full,
+.help-taken__face--total .help-taken__full {
+  visibility: hidden;
+}
+
+.help-taken__face--counts .help-taken__counts,
+.help-taken__face--total .help-taken__total {
+  visibility: visible;
+}
+
+/*
+ * A charge ticks: the words underlined, so it shows without colour too (and
+ * in forced colours), and in the accent colour, which holds a moment and
+ * fades back — for as long as the tick is marked. Nothing moves or grows,
+ * so nothing is drawn over the tier, the wordmark or the counter beside it.
+ * Asked for less motion, the global rule (index.css) stops the fade, and
+ * the colour is held still instead.
+ */
+@keyframes help-taken-tick {
+  from,
+  40% {
+    color: var(--accent);
+  }
+}
+
+.help-taken__face--tick {
+  text-decoration: underline;
+}
+
+.help-taken__face--tick,
+.help-taken__face--tick .help-taken__count {
+  animation: help-taken-tick 1200ms ease-in;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .help-taken__face--tick,
+  .help-taken__face--tick .help-taken__count {
+    color: var(--accent);
   }
 }
 
@@ -963,9 +1122,10 @@
 }
 
 /*
- * Narrower still — no phone we size for, but a short window can make one —
- * "Show me" is its play mark alone, its words kept as its name: every hint
- * then fits two lines down to a bar of 243px.
+ * Narrower still — a 320×568 phone's bar once the tally's line above the
+ * controls takes its height from the board (help taken, or the error
+ * counter), or a short window — "Show me" is its play mark alone, its words
+ * kept as its name: every hint then fits two lines down to a bar of 243px.
  */
 @container hint-bar (max-width: 16.5em) {
   .hint-bar__show {
