@@ -3,8 +3,8 @@ import type { Digit, Direction } from '../core';
 /*
  * What a key press means to the game. A pure mapping, so every chord can be
  * tested from a table; the document-level handler that uses it decides when
- * keys count at all (not with a dialog open, not while typing in a field) and
- * calls preventDefault for anything that maps to a command.
+ * keys count at all (not with a dialog or a menu open) and calls
+ * preventDefault for anything that maps to a command.
  */
 
 /** A game command a key can give. */
