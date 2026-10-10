@@ -1129,8 +1129,11 @@
 
 /* Theme: radios drawn as a segmented control. Each radio covers its whole
    option, invisible, so the native control is what is clicked and focused. */
+/* Four themes in one row of equal options; on a narrow phone "High
+   contrast" breaks onto two lines rather than squeeze the others. */
 .settings__theme {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 4px;
   margin-top: 8px;
   padding: 4px;
@@ -1138,18 +1141,24 @@
   background: var(--surface);
 }
 
+.settings__theme + .settings__description {
+  margin-top: 8px;
+}
+
 .settings__theme-option {
   position: relative;
   display: flex;
-  flex: 1;
   align-items: center;
   justify-content: center;
   min-height: 36px;
+  padding: 2px 4px;
   border: 1px solid transparent;
   border-radius: 2px;
   color: var(--text-muted);
   font-size: 0.875rem;
   font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
   cursor: pointer;
 }
 

@@ -1,4 +1,5 @@
 import {
+  CONTRAST,
   DARK,
   DEFICIENCIES,
   LIGHT,
@@ -13,10 +14,10 @@ import {
 
 /*
  * The palette's accessibility, as a table: every pair of colours a player
- * reads, in both themes, with the contrast it must hold (WCAG 2 relative
- * luminance). The tokens are read from index.css itself, so an edit there
- * that weakens a pair fails here, naming the pair, rather than in a
- * player's eyes.
+ * reads, in each palette — light, dark and High contrast — with the
+ * contrast it must hold (WCAG 2 relative luminance). The tokens are read
+ * from index.css itself, so an edit there that weakens a pair fails here,
+ * naming the pair, rather than in a player's eyes.
  *
  * The targets:
  * - 7:1 (AAA) for given and player digits on every cell they can sit on;
@@ -32,9 +33,13 @@ import {
  *   that colour-blind players keep too (the simulated ladders, below) — and
  *   two smaller steps that keep a given's screen where the highlights meet
  *   it: 1.1:1 from a peer cell beside it, and 1.15:1 between a given and a
- *   player's cell inside the same highlight. Those two are held in normal
- *   vision only. They sit between the ladders rather than on one, and a
+ *   player's cell inside the same highlight, the selection included. Those
+ *   two are held in normal vision only. They sit between the ladders rather than on one, and a
  *   given carries its typeface and its ink as well as its screen.
+ *
+ * High contrast is held to all of that, and more: everything it sets as
+ * text at 7:1, and its same-number ring at 3:1 against the fill it sits on
+ * (below).
  */
 
 const AAA = 7;
@@ -103,6 +108,11 @@ const PAIRS: Pair[] = [
     TEXT,
   ]),
   ['candidate on the selected cell', 'candidate-selected', 'hl-selected', TEXT],
+  // The selected cell's number among the candidates: lit only in High
+  // contrast, but held everywhere. It is never on the selected cell, which
+  // holds the number.
+  ['candidate of the selected number on a plain cell', 'candidate-same', 'cell-bg', TEXT],
+  ['candidate of the selected number on a peer cell', 'candidate-same', 'hl-peer', TEXT],
 
   // ---- Lines ----
   // The thin rules hold 3:1 on every fill but the same number's. There,
@@ -137,6 +147,9 @@ const PAIRS: Pair[] = [
   // a given keeps its screen against the player's cells beside it.
   ['peer given against peer', 'hl-peer-given', 'hl-peer', 1.15],
   ['same-number given against same-number', 'hl-same-given', 'hl-same', 1.15],
+  // And the selected block tells a given from a player's cell, as every
+  // other highlight does: the cell the player is about to type into.
+  ['selected given against selected', 'hl-selected-given', 'hl-selected', 1.15],
   ['selected given against given', 'hl-selected-given', 'cell-given-bg', NON_TEXT],
   ['selected given against same-number given', 'hl-selected-given', 'hl-same-given', 1.6],
   ['same-number given against peer given', 'hl-same-given', 'hl-peer-given', 1.3],
@@ -291,13 +304,44 @@ const PAIRS: Pair[] = [
   ['the answer’s rule against its box', 'success', 'surface', NON_TEXT],
 ];
 
+/*
+ * High contrast's own marks. A same-number cell's yellow ring is drawn just
+ * inside its edge, so it touches two things: its own fill on the inside,
+ * which is what carries it, at 3:1 for a player's cell and a given alike;
+ * and the grid on the outside. No other cell's fill ever meets it — a thin
+ * rule or a box line always lies between. The grid side is left out, as the
+ * thin rule on the same-number fill is: yellow beside the grey thin rule is
+ * about 2.4:1, and beside a white box line or the frame about 1.4:1, and
+ * neither can rise without the rule losing its 3:1 on the other fills or
+ * the box line its ink. The ring is kept clear of the digit too (board.css,
+ * and measured in e2e/a11y.spec.ts), so the two are never compared: yellow
+ * against white is barely 1.4:1.
+ */
+const CONTRAST_PAIRS: Pair[] = [
+  ['same-number ring against its own fill', 'hl-same-ring', 'hl-same', NON_TEXT],
+  ['same-number ring against a given’s own fill', 'hl-same-ring', 'hl-same-given', NON_TEXT],
+];
+
+/*
+ * High contrast holds everything it sets as text to 7:1 (AAA), not just the
+ * digits: checked and revealed digits, candidates and every label too. One
+ * pair keeps 4.5:1: the guide's struck-out candidate, in red stepped
+ * towards white, on the same-number fill. It is bold and struck through in
+ * red as well, and lifting it to 7:1 would pale the red of every conflict
+ * dot and wrong slash to a salmon.
+ */
+const HELD_AT_TEXT = new Set(['removed candidate on hl-same']);
+const textMinimum = (tokens: Tokens, what: string, minimum: number): number =>
+  tokens === CONTRAST && minimum === TEXT && !HELD_AT_TEXT.has(what) ? AAA : minimum;
+
 describe.each([
-  ['light', LIGHT],
-  ['dark', DARK],
-] as const)('the %s palette', (_, tokens) => {
-  it.each(PAIRS)('holds %s', (_what, foreground, background, minimum) => {
+  ['light', LIGHT, PAIRS],
+  ['dark', DARK, PAIRS],
+  ['High contrast', CONTRAST, [...PAIRS, ...CONTRAST_PAIRS]],
+] as const)('the %s palette', (_, tokens, pairs) => {
+  it.each(pairs)('holds %s', (what, foreground, background, minimum) => {
     const ratio = contrast(resolve(tokens, foreground), resolve(tokens, background));
-    expect(ratio).toBeGreaterThanOrEqual(minimum);
+    expect(ratio).toBeGreaterThanOrEqual(textMinimum(tokens, what, minimum));
   });
 
   /*

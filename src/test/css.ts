@@ -35,6 +35,9 @@ const INDEX = readStyles('index.css');
 export const LIGHT = tokensOf(INDEX, ':root {');
 export const DARK = tokensOf(INDEX, ":root:not([data-theme='light']) {");
 export const DARK_FORCED = tokensOf(INDEX, ":root[data-theme='dark'] {");
+/** High contrast: under System on a dark device that asks for more contrast, and chosen. */
+export const CONTRAST = tokensOf(INDEX, ':root:not([data-theme]) {');
+export const CONTRAST_FORCED = tokensOf(INDEX, ":root[data-theme='contrast'] {");
 export const FORCED = tokensOf(INDEX, ':root:root {');
 
 /** Every declaration block whose selector list includes `selector`, joined. */

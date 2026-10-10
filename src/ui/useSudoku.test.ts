@@ -511,7 +511,7 @@ describe('useSudoku', () => {
     it('say a newer version’s theme is stored until a theme is picked here', async () => {
       // Applied as System, but Settings must let the player pick System to replace it.
       const storage = memoryStorage();
-      storage.setItem('sudoku.prefs', JSON.stringify({ settings: { theme: 'contrast' } }));
+      storage.setItem('sudoku.prefs', JSON.stringify({ settings: { theme: 'sepia' } }));
       const { result } = await started({ storage });
       expect(result.current.settings.theme).toBe('system');
       expect(result.current.isThemeNewer).toBe(true);
@@ -520,6 +520,16 @@ describe('useSudoku', () => {
       act(() => result.current.actions.updateSettings({ theme: 'system' }));
       expect(result.current.isThemeNewer).toBe(false);
       expect(loadPreferences(storage).settings.theme).toBe('system');
+    });
+
+    it('take High contrast for a theme of their own, not a newer version’s', async () => {
+      // The version before this one stored it as a newer theme and kept it;
+      // this one shows it chosen.
+      const storage = memoryStorage();
+      storage.setItem('sudoku.prefs', JSON.stringify({ settings: { theme: 'contrast' } }));
+      const { result } = await started({ storage });
+      expect(result.current.settings.theme).toBe('contrast');
+      expect(result.current.isThemeNewer).toBe(false);
     });
 
     it('remember the player’s name, tidied', async () => {

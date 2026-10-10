@@ -149,6 +149,19 @@ describe('Cell', () => {
     expect(cell).toHaveTextContent('4');
   });
 
+  it('marks the candidate it is told is the selected number, and only that one', () => {
+    renderCell({ candidates: (1 << 2) | (1 << 4), sameCandidate: 5, highlight: 'none', ghosts: 0 });
+    const marked = document.querySelectorAll('.cell__candidate--same');
+    expect(marked).toHaveLength(1);
+    expect(marked[0]).toHaveTextContent('5');
+    expect(document.querySelectorAll('.cell__candidate')).toHaveLength(9);
+  });
+
+  it('marks no candidate when there is no selected number to match', () => {
+    renderCell({ candidates: (1 << 2) | (1 << 4), highlight: 'none', ghosts: 0 });
+    expect(document.querySelector('.cell__candidate--same')).toBeNull();
+  });
+
   it('ticks a checked-correct digit, out of hearing, and nothing else', () => {
     // Correct, revealed and the player's own inks differ by hue alone, which
     // a colour-blind player can lose: the tick says it in shape.

@@ -11,7 +11,8 @@
    The board is nine cells a side with eight lines between them, printed
    flat, square-cornered and shadowless: 1px thin rules inside each box, 3px
    ink between boxes, and a 4px frame round the outside (2px and 3px on a
-   board under 400px, where the heavier lines crowd the cells). The sizes —
+   board under 400px, where the heavier lines crowd the cells, and a pixel
+   more on each in High contrast). The sizes —
    --cell, --frame, --thick, --thin and --board-outer — are worked out once
    on .app (layout.css), rounded to whole pixels, so the controls and the
    header can take the board's exact width too, and the overlay card, sized
@@ -142,8 +143,13 @@
   background: var(--hl-peer-given);
 }
 
+/* In High contrast a same-number cell also carries a yellow ring just inside
+   its edge, which the other palettes turn off (no width, no colour). It is
+   kept to the edge, clear of the digit: yellow against white is barely
+   1.4:1, and touching the digit it would blur it. */
 .cell--same {
   background: var(--hl-same);
+  box-shadow: inset 0 0 0 var(--hl-same-ring-width) var(--hl-same-ring);
 }
 
 .cell--given.cell--same {
@@ -238,6 +244,12 @@
   left: max(11%, 6px);
 }
 
+/* And clear of High contrast's same-number ring, the same 6px in. */
+.cell--same .cell__tick {
+  top: max(12%, calc(3 * var(--hl-same-ring-width)));
+  left: max(11%, calc(3 * var(--hl-same-ring-width)));
+}
+
 /* ---- Candidates ---- */
 
 /*
@@ -319,6 +331,14 @@
   }
 }
 
+/* A candidate of the selected cell's number. Its ink is the plain
+   candidate's in every palette but High contrast, which lights it in the
+   same-number ring's yellow, so the places a number can still go stand out
+   with the places it already is. */
+.cell__candidate--same {
+  color: var(--candidate-same);
+}
+
 /* ---- Conflicts and wrong answers ---- */
 
 /* A small dot bottom-right on every duplicate, popping in as it appears.
@@ -342,6 +362,13 @@
 .cell--selected .cell__conflict {
   right: max(8%, 6px);
   bottom: max(8%, 6px);
+}
+
+/* Past High contrast's same-number ring and the halo, as on the selected
+   block; with no ring (every other palette) the percentage stands. */
+.cell--same .cell__conflict {
+  right: max(8%, calc(2 * var(--hl-same-ring-width)));
+  bottom: max(8%, calc(2 * var(--hl-same-ring-width)));
 }
 
 @keyframes conflict-pop {

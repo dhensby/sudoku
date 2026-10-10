@@ -15,6 +15,13 @@ export interface CellProps {
   mark: CellMark;
   /** The candidates on show (a mask); only an empty cell has any. */
   candidates: number;
+  /**
+   * The candidate on show that is the selected cell's number, when same
+   * numbers are highlighted; 0 for none. It is marked for the stylesheet,
+   * which lights it in High contrast only. Given only to a cell that has
+   * it, so a new selection repaints just those.
+   */
+  sameCandidate?: number;
   highlight: Highlight;
   /** Clashes with a peer — and conflicts are being shown. */
   conflict: boolean;
@@ -61,6 +68,7 @@ function CellComponent(props: CellProps) {
     given,
     mark,
     candidates,
+    sameCandidate = 0,
     highlight,
     conflict,
     ghosts,
@@ -128,7 +136,14 @@ function CellComponent(props: CellProps) {
         candidates !== 0 && (
           <span className="cell__candidates" aria-hidden="true">
             {DIGITS.map((digit) => (
-              <span className="cell__candidate" key={digit}>
+              <span
+                className={
+                  digit === sameCandidate
+                    ? 'cell__candidate cell__candidate--same'
+                    : 'cell__candidate'
+                }
+                key={digit}
+              >
                 {hasDigit(candidates, digit) ? digit : ''}
               </span>
             ))}

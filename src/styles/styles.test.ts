@@ -1,5 +1,7 @@
 import { THEME_COLOUR } from '../ui/theme';
 import {
+  CONTRAST,
+  CONTRAST_FORCED,
   DARK,
   DARK_FORCED,
   FORCED,
@@ -21,6 +23,7 @@ import { fileURLToPath } from 'node:url';
  * and is the end-to-end suite's job.
  */
 
+const INDEX = readStyles('index.css');
 const BOARD = readStyles('board.css');
 const CONTROLS = readStyles('controls.css');
 const DIALOGS = readStyles('dialogs.css');
@@ -28,22 +31,31 @@ const LAYOUT = readStyles('layout.css');
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
-describe('the palette', () => {
-  it.each([
-    ['light', LIGHT],
-    ['dark', DARK],
-  ] as const)('gives each %s key state a shade of its own, pressed past hover', (_, tokens) => {
-    const [rest, hover, pressed] = ['key-bg', 'key-bg-active', 'key-bg-pressed'].map((name) =>
-      parseHex(tokens[name]),
-    );
-    expect(contrast(pressed, hover)).toBeGreaterThan(1.1);
-    expect(contrast(pressed, rest)).toBeGreaterThan(contrast(hover, rest));
-  });
+const PALETTES = [
+  ['light', LIGHT],
+  ['dark', DARK],
+  ['High contrast', CONTRAST],
+] as const;
 
-  it.each([
-    ['light', LIGHT],
-    ['dark', DARK],
-  ] as const)('rings the %s selection in the box lines’ own ink', (_, tokens) => {
+/** A palette's own tokens: all but the fonts and the radius, which belong to none (light declares them). */
+const themed = (tokens: Record<string, string>): string[] =>
+  Object.keys(tokens)
+    .filter((name) => !/^(font|radius)/.test(name))
+    .sort();
+
+describe('the palette', () => {
+  it.each(PALETTES)(
+    'gives each %s key state a shade of its own, pressed past hover',
+    (_, tokens) => {
+      const [rest, hover, pressed] = ['key-bg', 'key-bg-active', 'key-bg-pressed'].map((name) =>
+        parseHex(tokens[name]),
+      );
+      expect(contrast(pressed, hover)).toBeGreaterThan(1.1);
+      expect(contrast(pressed, rest)).toBeGreaterThan(contrast(hover, rest));
+    },
+  );
+
+  it.each(PALETTES)('rings the %s selection in the box lines’ own ink', (_, tokens) => {
     // Where the selected block meets a box line, the ring is what the line
     // touches, so the box line is held to no contrast against the block.
     expect(tokens['hl-ring']).toBe(tokens['grid-thick']);
@@ -53,19 +65,72 @@ describe('the palette', () => {
     expect(DARK_FORCED).toEqual(DARK);
   });
 
-  it('defines every token in both themes', () => {
-    // Fonts and the radius belong to no theme; every colour must be in both.
-    const colours = Object.keys(LIGHT).filter((name) => !/^(font|radius)/.test(name));
-    expect(Object.keys(DARK).sort()).toEqual(colours.sort());
+  it('keeps the system High contrast palette and the chosen one identical', () => {
+    expect(CONTRAST_FORCED).toEqual(CONTRAST);
   });
 
-  it('maps every colour token to a system colour in forced-colours mode', () => {
-    const colours = Object.keys(LIGHT).filter((name) => !/^(font|radius)/.test(name));
-    expect(Object.keys(FORCED).sort()).toEqual(colours.sort());
+  it.each([
+    ['dark', DARK],
+    ['High contrast', CONTRAST],
+    ['forced-colours', FORCED],
+  ] as const)(
+    'defines every token light does in the %s palette, the ones that are not colours too',
+    (_, tokens) => {
+      // A token one palette left out would keep whichever palette's value
+      // matched before it: High contrast's ring, say, under dark.
+      expect(themed(tokens)).toEqual(themed(LIGHT));
+    },
+  );
+
+  it.each([
+    ['light', LIGHT],
+    ['dark', DARK],
+  ] as const)(
+    'turns High contrast’s ring, lit candidates and heavier lines off in %s',
+    (_, tokens) => {
+      expect(tokens['hl-same-ring']).toBe('transparent');
+      expect(tokens['hl-same-ring-width']).toBe('0px');
+      expect(tokens['line-boost']).toBe('0px');
+      expect(tokens['candidate-same']).toBe(tokens.candidate);
+    },
+  );
+
+  it('rings the same numbers and thickens the lines in High contrast', () => {
+    expect(CONTRAST['hl-same-ring-width']).toBe('2px');
+    expect(CONTRAST['line-boost']).toBe('1px');
+    expect(CONTRAST['candidate-same']).toBe(CONTRAST['hl-same-ring']);
+  });
+
+  it('leaves forced colours as they were, whatever the theme', () => {
+    // The forced block comes last at the same weight, so it overrides High
+    // contrast's extras too.
+    expect(FORCED['hl-same-ring']).toBe('transparent');
+    expect(FORCED['hl-same-ring-width']).toBe('0px');
+    expect(FORCED['line-boost']).toBe('0px');
+    expect(FORCED['candidate-same']).toBe(FORCED.candidate);
+  });
+
+  it('puts High contrast after dark, and forced colours after both', () => {
+    // Each wins over the one before it by order alone: the specificity is
+    // the same, (0,2,0), in every block.
+    const at = (opener: string) => INDEX.indexOf(opener);
+    const dark = Math.max(
+      at(":root:not([data-theme='light']) {"),
+      at(":root[data-theme='dark'] {"),
+    );
+    const contrast = [at(":root[data-theme='contrast'] {"), at(':root:not([data-theme]) {')];
+    expect(Math.min(...contrast)).toBeGreaterThan(dark);
+    expect(at(':root:root {')).toBeGreaterThan(Math.max(...contrast));
+  });
+
+  it('applies High contrast under System only on a dark device asking for more contrast', () => {
+    expect(INDEX).toMatch(
+      /@media \(prefers-color-scheme: dark\) and \(prefers-contrast: more\) \{\s*:root:not\(\[data-theme\]\) \{/,
+    );
   });
 
   it('paints the browser chrome in the page colour, in the page, script and manifest', () => {
-    expect(THEME_COLOUR).toEqual({ light: LIGHT.bg, dark: DARK.bg });
+    expect(THEME_COLOUR).toEqual({ light: LIGHT.bg, dark: DARK.bg, contrast: CONTRAST.bg });
     const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
     expect(html).toContain(`<meta name="theme-color" content="${LIGHT.bg}" />`);
     const manifest = JSON.parse(
@@ -145,6 +210,28 @@ describe('the board', () => {
     const tick = rule(BOARD, '.cell--selected .cell__tick');
     expect(tick).toMatch(/top:\s*max\(12%, 6px\)/);
     expect(tick).toMatch(/left:\s*max\(11%, 6px\)/);
+  });
+
+  it('rings a same-number cell inside its edge, where High contrast gives the ring a width', () => {
+    expect(rule(BOARD, '.cell--same')).toMatch(
+      /box-shadow:\s*inset 0 0 0 var\(--hl-same-ring-width\) var\(--hl-same-ring\)/,
+    );
+  });
+
+  it('keeps the conflict dot and the tick clear of the same-number ring', () => {
+    // Twice the ring for the dot (the ring, then the halo's 1.5px), three
+    // times for the tick, as on the selected block; with no ring, the
+    // percentages stand.
+    const dot = rule(BOARD, '.cell--same .cell__conflict');
+    expect(dot).toMatch(/right:\s*max\(8%, calc\(2 \* var\(--hl-same-ring-width\)\)\)/);
+    expect(dot).toMatch(/bottom:\s*max\(8%, calc\(2 \* var\(--hl-same-ring-width\)\)\)/);
+    const tick = rule(BOARD, '.cell--same .cell__tick');
+    expect(tick).toMatch(/top:\s*max\(12%, calc\(3 \* var\(--hl-same-ring-width\)\)\)/);
+    expect(tick).toMatch(/left:\s*max\(11%, calc\(3 \* var\(--hl-same-ring-width\)\)\)/);
+  });
+
+  it('inks a candidate of the selected number in its own token', () => {
+    expect(rule(BOARD, '.cell__candidate--same')).toMatch(/color:\s*var\(--candidate-same\)/);
   });
 
   it('tells givens, entries and revealed digits apart by more than colour', () => {
@@ -244,9 +331,11 @@ describe('the controls', () => {
 
 describe('the layout', () => {
   it('frames the board more heavily than its box lines, each a pixel lighter on a small board', () => {
+    // And a pixel heavier in High contrast (--line-boost): its box lines
+    // are never under 3px, nor its frame under 4px.
     const app = rule(LAYOUT, '.app');
-    expect(app).toMatch(/--frame:\s*clamp\(3px,[^;]*4px\)/);
-    expect(app).toMatch(/--thick:\s*clamp\(2px,[^;]*3px\)/);
+    expect(app).toMatch(/--frame:\s*calc\(clamp\(3px,[^;]*4px\) \+ var\(--line-boost\)\)/);
+    expect(app).toMatch(/--thick:\s*calc\(clamp\(2px,[^;]*3px\) \+ var\(--line-boost\)\)/);
   });
 
   it('rules off the header in ink, as under a masthead', () => {

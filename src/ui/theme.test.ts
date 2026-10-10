@@ -3,25 +3,43 @@ import type { ThemePreference } from '../storage/prefs';
 import { THEME_COLOUR, applyTheme, resolveTheme, useTheme } from './theme';
 
 /**
- * jsdom has no matchMedia at all; stand one in whose answer the test controls
- * and whose change listeners it can fire, as the system would on switching.
+ * jsdom has no matchMedia at all; stand one in whose answers the test
+ * controls — whether the system is dark, and whether it asks for more
+ * contrast — and whose change listeners it can fire, as the system would on
+ * switching.
  */
-function stubMatchMedia(isDark: boolean) {
-  const listeners = new Set<() => void>();
-  const query = {
-    matches: isDark,
-    media: '(prefers-color-scheme: dark)',
-    addEventListener: vi.fn((_type: string, listener: () => void) => listeners.add(listener)),
-    removeEventListener: vi.fn((_type: string, listener: () => void) => listeners.delete(listener)),
+function stubMatchMedia(isDark: boolean, isMoreContrast = false) {
+  const answers: Record<string, boolean> = {
+    '(prefers-color-scheme: dark)': isDark,
+    '(prefers-contrast: more)': isMoreContrast,
   };
-  const matchMedia = vi.fn(() => query);
+  // Each query's listeners apart, so a test can see both are listened to.
+  const listeners = new Map(Object.keys(answers).map((media) => [media, new Set<() => void>()]));
+  const matchMedia = vi.fn((media: string) => {
+    const own = listeners.get(media);
+    if (own === undefined) throw new Error(`unexpected media query ${media}`);
+    return {
+      get matches() {
+        return answers[media];
+      },
+      media,
+      addEventListener: vi.fn((_type: string, listener: () => void) => own.add(listener)),
+      removeEventListener: vi.fn((_type: string, listener: () => void) => own.delete(listener)),
+    };
+  });
   vi.stubGlobal('matchMedia', matchMedia);
+  const notify = () => listeners.forEach((own) => own.forEach((listener) => listener()));
   return {
     matchMedia,
-    listeners,
+    /** How many queries are being listened to. */
+    listening: () => [...listeners.values()].filter((own) => own.size > 0).length,
     switchTo(dark: boolean) {
-      query.matches = dark;
-      listeners.forEach((listener) => listener());
+      answers['(prefers-color-scheme: dark)'] = dark;
+      notify();
+    },
+    askForMoreContrast(more: boolean) {
+      answers['(prefers-contrast: more)'] = more;
+      notify();
     },
   };
 }
@@ -43,15 +61,28 @@ afterEach(() => {
 
 describe('resolveTheme', () => {
   it('takes a forced palette at its word', () => {
-    stubMatchMedia(true);
+    stubMatchMedia(true, true);
     expect(resolveTheme('light')).toBe('light');
     expect(resolveTheme('dark')).toBe('dark');
+    stubMatchMedia(false);
+    expect(resolveTheme('contrast')).toBe('contrast');
   });
 
   it('follows the system for "system"', () => {
     stubMatchMedia(true);
     expect(resolveTheme('system')).toBe('dark');
     stubMatchMedia(false);
+    expect(resolveTheme('system')).toBe('light');
+  });
+
+  it('comes to High contrast for "system" when the system is dark and asks for more contrast', () => {
+    stubMatchMedia(true, true);
+    expect(resolveTheme('system')).toBe('contrast');
+  });
+
+  it('stays light for "system" when a light system asks for more contrast', () => {
+    // Light is ink on paper already; the stylesheet keeps it too.
+    stubMatchMedia(false, true);
     expect(resolveTheme('system')).toBe('light');
   });
 
@@ -83,6 +114,21 @@ describe('applyTheme', () => {
     expect(themeAttribute()).toBeUndefined();
     // The meta tag cannot read the stylesheet, so it is told what it says.
     expect(themeColours()).toEqual([THEME_COLOUR.dark]);
+  });
+
+  it('forces High contrast with the attribute and blackens the browser chrome', () => {
+    stubMatchMedia(false);
+    applyTheme('contrast');
+    expect(themeAttribute()).toBe('contrast');
+    expect(themeColours()).toEqual([THEME_COLOUR.contrast]);
+  });
+
+  it('clears the attribute for "system" on a dark system asking for more contrast', () => {
+    stubMatchMedia(true, true);
+    applyTheme('contrast');
+    applyTheme('system');
+    expect(themeAttribute()).toBeUndefined();
+    expect(themeColours()).toEqual([THEME_COLOUR.contrast]);
   });
 
   it('uses the light chrome for "system" when the system cannot be asked', () => {
@@ -138,6 +184,23 @@ describe('useTheme', () => {
     expect(themeAttribute()).toBeUndefined();
   });
 
+  it('follows the system into High contrast and out again while set to "system"', () => {
+    const system = stubMatchMedia(true);
+    renderHook(() => useTheme('system'));
+    expect(themeColours()).toEqual([THEME_COLOUR.dark]);
+
+    system.askForMoreContrast(true);
+    expect(themeColours()).toEqual([THEME_COLOUR.contrast]);
+    expect(themeAttribute()).toBeUndefined();
+
+    system.switchTo(false);
+    expect(themeColours()).toEqual([THEME_COLOUR.light]);
+    system.switchTo(true);
+    expect(themeColours()).toEqual([THEME_COLOUR.contrast]);
+    system.askForMoreContrast(false);
+    expect(themeColours()).toEqual([THEME_COLOUR.dark]);
+  });
+
   it('stops listening once the preference is forced or the page is gone', () => {
     // A listener left behind would keep rewriting the chrome colour to the
     // system's after the player had forced a theme.
@@ -145,24 +208,24 @@ describe('useTheme', () => {
     const { rerender, unmount } = renderHook(({ preference }) => useTheme(preference), {
       initialProps: { preference: 'system' as ThemePreference },
     });
-    expect(system.listeners.size).toBe(1);
+    expect(system.listening()).toBe(2);
     rerender({ preference: 'light' });
-    expect(system.listeners.size).toBe(0);
+    expect(system.listening()).toBe(0);
 
     system.switchTo(true);
     expect(themeColours()).toEqual([THEME_COLOUR.light]);
 
     rerender({ preference: 'system' });
-    expect(system.listeners.size).toBe(1);
+    expect(system.listening()).toBe(2);
     unmount();
-    expect(system.listeners.size).toBe(0);
+    expect(system.listening()).toBe(0);
   });
 
   it('does not listen for a forced theme at all', () => {
     const system = stubMatchMedia(false);
     renderHook(() => useTheme('dark'));
     expect(system.matchMedia).not.toHaveBeenCalled();
-    expect(system.listeners.size).toBe(0);
+    expect(system.listening()).toBe(0);
   });
 
   it('copes with "system" where there is no matchMedia', () => {

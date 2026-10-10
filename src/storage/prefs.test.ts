@@ -125,7 +125,7 @@ describe('loadPreferences', () => {
     expect(prefs.playerName).toBe('Dan');
   });
 
-  it.each(['system', 'light', 'dark'])('keeps the %s theme', (theme) => {
+  it.each(['system', 'light', 'dark', 'contrast'])('keeps the %s theme', (theme) => {
     expect(loadPreferences(storageWith({ settings: { theme } })).settings.theme).toBe(theme);
   });
 
@@ -282,7 +282,7 @@ describe('what a newer version stored', () => {
   const NEWER = {
     settings: {
       ...DEFAULT_SETTINGS,
-      theme: 'contrast',
+      theme: 'sepia',
       checkGuesses: true,
       showErrorCounter: false,
     },
@@ -312,18 +312,18 @@ describe('what a newer version stored', () => {
     const storage = storageWith(NEWER);
     change(storage);
     expect(stored(storage)).toMatchObject({
-      settings: { theme: 'contrast', checkGuesses: true, showErrorCounter: false },
+      settings: { theme: 'sepia', checkGuesses: true, showErrorCounter: false },
       tourSeen: true,
     });
     // And again: what was kept is kept on the next save too.
     updateSettings(storage, { highlightBox: false });
     expect(stored(storage)).toMatchObject({
-      settings: { theme: 'contrast', checkGuesses: true, highlightBox: false },
+      settings: { theme: 'sepia', checkGuesses: true, highlightBox: false },
       tourSeen: true,
     });
   });
 
-  it.each(['light', 'dark', 'system'])(
+  it.each(['light', 'dark', 'contrast', 'system'])(
     'replaces the new theme once the player picks %s',
     (theme) => {
       const storage = storageWith(NEWER);
@@ -345,9 +345,11 @@ describe('what a newer version stored', () => {
   it.each<[string, unknown]>([
     ['nothing stored', undefined],
     ['one of its own themes', { settings: { theme: 'dark' } }],
+    // An older version took High contrast for a newer theme; this one knows it.
+    ['High contrast', { settings: { theme: 'contrast' } }],
     ['an odd theme', { settings: { theme: 'High-Contrast' } }],
-    ['settings that are not an object', { settings: 'contrast' }],
-    ['preferences that are not an object', 'contrast'],
+    ['settings that are not an object', { settings: 'sepia' }],
+    ['preferences that are not an object', 'sepia'],
   ])('does not say the stored theme is a newer one for %s', (_label, value) => {
     const storage = value === undefined ? memoryStorage() : storageWith(value);
     expect(hasNewerTheme(storage)).toBe(false);
