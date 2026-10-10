@@ -4,6 +4,7 @@ import {
   checkedBoardOf,
   dateKeyOf,
   elapsedMs,
+  encodeMoveLog,
   explainCell,
   explainHint,
   findHint,
@@ -48,6 +49,7 @@ import {
   type GameRecord,
   type ImportResult,
 } from '../storage/history';
+import { loadEncodedMoveLog } from '../storage/moveLogs';
 import {
   hasNewerTheme,
   loadPreferences,
@@ -94,6 +96,9 @@ import {
 import { clearShareParams } from './url';
 import { useElapsed } from './useElapsed';
 import { useStableActions } from './useStableActions';
+import type { HistoryPlace } from './dialogs/HistoryDialog';
+import type { PlaybackSource } from './dialogs/PlaybackDialog';
+import { isWatchable, ownSolveSource } from './watch';
 
 export type { ChallengeOffer, PauseReason, Phase, ShareTarget } from './session';
 
@@ -206,12 +211,27 @@ export interface StruckView {
   charge?: string | null;
 }
 
+/**
+ * A solve played back (see `PlaybackDialog`). `returnTo` is the dialog it was
+ * opened from — the Solved dialog, or History as it was (filtered, scrolled
+ * to the row) — which takes its place again as it closes, focus back on the
+ * Watch that opened it.
+ */
+export interface PlaybackView {
+  kind: 'playback';
+  source: PlaybackSource;
+  returnTo:
+    { kind: 'completion'; result: CompletionResult } | { kind: 'history'; place: HistoryPlace };
+}
+
 /** The dialog on show — one at a time. */
 export type DialogState =
-  | { kind: 'completion'; result: CompletionResult }
+  /** `isBackFromWatch`: back from watching the solve, so focus goes back to Watch. */
+  | { kind: 'completion'; result: CompletionResult; isBackFromWatch?: boolean }
   /** `returnTo` reopens History when the share was started from it. */
   | { kind: 'share'; target: ShareTarget; returnTo: 'history' | null }
-  | { kind: 'history' }
+  /** `place`: back from watching a game, the list as it was (see `HistoryPlace`). */
+  | { kind: 'history'; place?: HistoryPlace }
   | { kind: 'settings' }
   | { kind: 'help' }
   /**
@@ -225,7 +245,8 @@ export type DialogState =
   | { kind: 'challenge'; offer: ChallengeOffer }
   | { kind: 'confirmReset' }
   /** The daily calendar and streaks. */
-  | { kind: 'daily'; calendar: CalendarView };
+  | { kind: 'daily'; calendar: CalendarView }
+  | PlaybackView;
 
 /** The dialogs the header opens. */
 export type HeaderDialog = 'daily' | 'history' | 'settings' | 'techniques' | 'help' | 'share';
@@ -305,6 +326,18 @@ export interface SudokuActions {
   /** Play a history entry's puzzle again: the unfinished attempt at it if there is one, else a fresh one. */
   replayRecord: (id: string) => void;
   shareRecord: (id: string) => void;
+  /**
+   * Whether a History row's game can be watched played back: solved, with a
+   * log this build replays to the solve (see `isWatchable`).
+   */
+  canWatchRecord: (record: GameRecord) => boolean;
+  /**
+   * From History: watch a solved game played back, coming back to the list
+   * as it was (`place`). Changes nothing.
+   */
+  watchRecord: (id: string, place: HistoryPlace) => void;
+  /** From the Solved dialog: watch the game just solved played back. Changes nothing. */
+  watchSolve: () => void;
   deleteRecord: (id: string) => void;
   exportHistory: () => string;
   importHistory: (json: string) => ImportResult;
@@ -381,6 +414,11 @@ export interface Sudoku {
   history: HistoryView;
   /** The board should play its solved wave. */
   isCelebrating: boolean;
+  /**
+   * The game on screen is solved and can be watched played back (see
+   * `isWatchable`): the Solved dialog offers "Watch your solve".
+   */
+  canWatchSolve: boolean;
   actions: SudokuActions;
 }
 
@@ -575,6 +613,14 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
   // A partial solve, fast enough for every change (see `explainCell`), and
   // kept while the clock ticks and nothing on the board moves.
   const walkthrough = useMemo(() => walkthroughFor(game), [game]);
+  // The solved game's log, encoded once: what "Watch your solve" plays.
+  const solvedLog = session?.game.status === 'solved' ? session.moves : null;
+  const solvedEncoded = useMemo(
+    () => (solvedLog === null ? null : encodeMoveLog(solvedLog)),
+    [solvedLog],
+  );
+  const canWatchSolve =
+    session !== null && solvedEncoded !== null && isWatchable(session.record.givens, solvedEncoded);
   const effectiveMode: InputMode =
     game === null ? 'normal' : heldModifiers.size > 0 ? flip(game.mode) : game.mode;
 
@@ -649,6 +695,16 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
   const flush = (): void => {
     if (session !== null && savedRef.current !== session) persist(session);
   };
+
+  /**
+   * The encoded log a game would be watched from: the game on screen's own,
+   * as it plays — which storage has too, unless a write was refused — and any
+   * other's as stored.
+   */
+  const watchedLogOf = (id: string): string | null =>
+    session?.record.id === id && session.moves !== null
+      ? encodeMoveLog(session.moves)
+      : loadEncodedMoveLog(storage, id);
 
   const readHistory = (wall: number): HistoryView => ({
     records: loadHistory(storage),
@@ -1476,6 +1532,16 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
         setDialog({ kind: 'history' });
         return;
       }
+      if (dialog?.kind === 'playback') {
+        const { returnTo } = dialog;
+        if (returnTo.kind === 'history') setHistory(readHistory(now()));
+        setDialog(
+          returnTo.kind === 'history'
+            ? { kind: 'history', place: returnTo.place }
+            : { ...returnTo, isBackFromWatch: true },
+        );
+        return;
+      }
       setDialog(null);
       // The game on screen was deleted from History: its replacement is made
       // now, as the player can see it arrive.
@@ -1534,6 +1600,36 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       const record = history.records.find((entry) => entry.id === id);
       if (record === undefined) return;
       setDialog({ kind: 'share', target: shareTargetOfRecord(record), returnTo: 'history' });
+    },
+    canWatchRecord: (record) =>
+      record.status === 'solved' && isWatchable(record.givens, watchedLogOf(record.id)),
+    watchRecord: (id, place) => {
+      const record = history.records.find((entry) => entry.id === id);
+      const encoded = watchedLogOf(id);
+      if (record === undefined || !actions.canWatchRecord(record) || encoded === null) return;
+      // The game behind is paused already, for History: watching keeps it so,
+      // and writes nothing.
+      setDialog({
+        kind: 'playback',
+        source: ownSolveSource(record, encoded, dateKeyOf(now())),
+        returnTo: { kind: 'history', place },
+      });
+    },
+    watchSolve: () => {
+      if (dialog?.kind !== 'completion' || session === null || !canWatchSolve) return;
+      const { result } = dialog;
+      const solved = {
+        givens: session.record.givens,
+        difficulty: result.difficulty,
+        daily: result.daily?.date,
+        elapsedMs: result.elapsedMs,
+      };
+      setDialog({
+        kind: 'playback',
+        // `canWatchSolve` says the log is there.
+        source: ownSolveSource(solved, solvedEncoded!, result.daily?.today ?? dateKeyOf(now())),
+        returnTo: { kind: 'completion', result },
+      });
     },
     deleteRecord: (id) => {
       deleteRecord(storage, id);
@@ -1602,6 +1698,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     dialog,
     history,
     isCelebrating: session?.isCelebrating ?? false,
+    canWatchSolve,
     actions,
   };
 }

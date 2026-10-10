@@ -250,6 +250,41 @@
   left: max(11%, calc(3 * var(--hl-same-ring-width)));
 }
 
+/*
+ * The cell the move on show acted on, in a solve played back: a ring in the
+ * accent just inside its edge — the colour that marks where to look
+ * everywhere else, and a different line from the box lines' ink. Drawn as
+ * an outline so forced colours keep it (it becomes Highlight).
+ *
+ * The ring is sized from the cell, as the playback's board can be small (a
+ * 20px cell on a 320px phone), and what the caption is about keeps clear of
+ * it: the candidates are inset by its width, and the tick by a pixel more.
+ * The conflict dot keeps its own corner, as on any other cell — moved in by
+ * a fixed amount, as the selected block's is, it would sit on a small cell's
+ * digit; its halo parts it from the ring instead.
+ */
+.cell--current {
+  --current-ring: clamp(2px, calc(var(--cell) * 0.06), 3px);
+
+  z-index: 1;
+  outline: var(--current-ring) solid var(--accent);
+  outline-offset: calc(-1 * var(--current-ring));
+}
+
+.cell--current .cell__tick {
+  top: max(12%, calc(var(--current-ring) + 1px));
+  left: max(11%, calc(var(--current-ring) + 1px));
+}
+
+.cell--current .cell__candidates {
+  padding: max(calc(var(--cell) * 0.04), var(--current-ring));
+}
+
+/* A board only to be looked at (a playback): nothing on it can be pressed. */
+.board--read-only .cell {
+  cursor: default;
+}
+
 /* ---- Candidates ---- */
 
 /*
@@ -449,10 +484,11 @@
 }
 
 /* Hover belongs to pointers that have one; on touch it sticks after a tap.
-   Only a plain cell of a board still in play answers it, taking the peer
-   fill, so a hover never hides a highlight that means something. */
+   Only a plain cell of a board still in play — not one solved, nor one
+   played back — answers it, taking the peer fill, so a hover never hides a
+   highlight that means something. */
 @media (hover: hover) {
-  .board:not([aria-readonly='true'])
+  .board:not([aria-readonly='true'], .board--read-only)
     .cell:not(.cell--given, .cell--peer, .cell--same, .cell--selected):hover {
     background: var(--hl-peer);
   }

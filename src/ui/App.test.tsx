@@ -794,6 +794,41 @@ describe('App', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
+  it('watches the solve played back from the Solved dialog and from History, the game keys standing down', async () => {
+    const near = nearlySolved([0, 1]);
+    await startApp({ source: fakeSource(near) });
+    press(String(answerAt(0)));
+    press('ArrowRight');
+    press(String(answerAt(1)));
+    await screen.findByRole('dialog', { name: 'Solved!' });
+    fireEvent.click(screen.getByRole('button', { name: 'Watch your solve' }));
+
+    const playback = screen.getByRole('dialog', { name: 'Your solve' });
+    const board = within(playback).getByRole('table', { name: 'Sudoku board' });
+    expect(within(board).getAllByRole('cell')[0]).toHaveAccessibleName('empty');
+    // Its keys are its own: Right steps the playback, and the game behind hears nothing.
+    press('ArrowRight', {}, within(playback).getByRole('button', { name: 'Play' }));
+    expect(playback.querySelector('.playback__caption')).toHaveTextContent(
+      `${answerAt(0)} in row 1, column 1`,
+    );
+    expect(cells()[0]).toHaveAttribute('aria-selected', 'false');
+
+    // Back to the Solved dialog, focus on the Watch that opened the playback.
+    fireEvent.click(within(playback).getByRole('button', { name: 'Close' }));
+    const solved = screen.getByRole('dialog', { name: 'Solved!' });
+    expect(within(solved).getByRole('button', { name: 'Watch your solve' })).toHaveFocus();
+    fireEvent.click(within(solved).getByRole('button', { name: 'Close' }));
+    fireEvent.click(screen.getByRole('button', { name: 'History' }));
+    const history = screen.getByRole('dialog', { name: 'History' });
+    fireEvent.click(within(history).getByRole('button', { name: /^Watch your solve, Easy/ }));
+    expect(screen.getByRole('dialog', { name: 'Your solve' })).toHaveAccessibleDescription(
+      /^Easy · 0:0\d$/,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    const back = screen.getByRole('dialog', { name: 'History' });
+    expect(within(back).getByRole('button', { name: /^Watch your solve, Easy/ })).toHaveFocus();
+  });
+
   it('reports a broken link under the board', async () => {
     await startApp({ search: '?p=nonsense!' });
     expect(

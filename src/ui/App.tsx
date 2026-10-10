@@ -20,6 +20,7 @@ import {
   DailyDialog,
   HelpDialog,
   HistoryDialog,
+  PlaybackDialog,
   SettingsDialog,
   ShareDialog,
   StruckDialog,
@@ -411,6 +412,8 @@ export function App({ options }: AppProps = {}) {
           <CompletionDialog
             {...dialog.result}
             onShare={actions.shareResult}
+            onWatch={sudoku.canWatchSolve ? actions.watchSolve : undefined}
+            isBackFromWatch={dialog.isBackFromWatch}
             onNewGame={() => handleNewGame(dialog.result.difficulty)}
             onClose={actions.closeDialog}
           />
@@ -435,11 +438,17 @@ export function App({ options }: AppProps = {}) {
             onResume={actions.resumeRecord}
             onReplay={actions.replayRecord}
             onShare={actions.shareRecord}
+            canWatch={actions.canWatchRecord}
+            onWatch={actions.watchRecord}
+            place={dialog.place}
             onDelete={actions.deleteRecord}
             onExport={actions.exportHistory}
             onImport={actions.importHistory}
             onClose={actions.closeDialog}
           />
+        )}
+        {dialog?.kind === 'playback' && (
+          <PlaybackDialog {...dialog.source} settings={settings} onClose={actions.closeDialog} />
         )}
         {dialog?.kind === 'settings' && (
           <SettingsDialog

@@ -205,6 +205,24 @@ export function ChevronRightIcon(props: IconProps) {
   );
 }
 
+/** A chevron left against a bar: all the way back, to the start (a playback's). */
+export function ToStartIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M6.5 5.5v13M17.5 5.5 11 12l6.5 6.5" />
+    </Icon>
+  );
+}
+
+/** A chevron right against a bar: all the way on, to the end (a playback's solve). */
+export function ToEndIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M17.5 5.5v13M6.5 5.5 13 12l-6.5 6.5" />
+    </Icon>
+  );
+}
+
 /** A plus: start a new game. */
 export function NewGameIcon(props: IconProps) {
   return (

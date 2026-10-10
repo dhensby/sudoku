@@ -30,6 +30,8 @@ describe('icons', () => {
         'RevealIcon',
         'SettingsIcon',
         'ShareIcon',
+        'ToEndIcon',
+        'ToStartIcon',
         'UndoIcon',
         'UploadIcon',
       ].sort(),

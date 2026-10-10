@@ -16,6 +16,7 @@ describe('HelpDialog', () => {
       'Auto candidates',
       'Hints',
       'Mistakes',
+      'Watching a solve',
       'Difficulty',
       'The clock',
       'Racing friends',
@@ -68,6 +69,23 @@ describe('HelpDialog', () => {
     // A way of playing that has no control for an action says so plainly.
     const held = within(table).getByRole('row', { name: /^Switch while held/ });
     expect(within(held).getAllByRole('cell')[1]).toHaveTextContent('—');
+  });
+
+  it('says where to watch a solve, what the marks show, and that watching changes nothing', () => {
+    render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={vi.fn()} />);
+    const section = screen.getByRole('heading', { name: 'Watching a solve' }).closest('section')!;
+    expect(section).toHaveTextContent(
+      /Watch your solve in the Solved dialog, or Watch on the game in History, plays it back/,
+    );
+    expect(section).toHaveTextContent(/mistakes, slips you put right in time, and help you took/);
+    expect(section).toHaveTextContent(
+      /up to 8×; the time beside it is the time you'd really taken/,
+    );
+    expect(section).toHaveTextContent(/Watching changes nothing/);
+    const row = within(screen.getByRole('table')).getByRole('row', { name: /^Watch your solve/ });
+    expect(row).toHaveTextContent(
+      'Space to play or pause, ← → a move, Home End to the start or the solve',
+    );
   });
 
   it('says where the menus are for what has no key', () => {

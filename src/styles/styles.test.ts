@@ -671,6 +671,83 @@ describe('Show me', () => {
   });
 });
 
+describe('Watch your solve', () => {
+  it('draws the played-back board with the game’s own geometry, from a size of its own', () => {
+    const board = rule(DIALOGS, '.playback__board');
+    for (const name of ['--frame', '--thick', '--thin', '--lines', '--board-outer']) {
+      const own = new RegExp(`${name}:\\s*([^;]+);`).exec(rule(LAYOUT, '.app'))![1];
+      expect(board, name).toContain(`${name}: ${own};`);
+    }
+    // Whole-pixel cells where round() is known, as the game's are.
+    expect(DIALOGS).toMatch(
+      /@supports \(width: round\(down, 10\.5px, 1px\)\) \{\s*\.playback__board \{\s*--cell: round\(down/,
+    );
+  });
+
+  it('rings the move on show’s cell in the accent, as an outline forced colours keep', () => {
+    const current = rule(BOARD, '.cell--current');
+    // Sized from the cell: 2px on a phone's small board, 3px on a large one.
+    expect(current).toMatch(/--current-ring:\s*clamp\(2px, calc\(var\(--cell\) \* 0\.06\), 3px\)/);
+    expect(current).toMatch(/outline:\s*var\(--current-ring\) solid var\(--accent\)/);
+    expect(current).toMatch(/outline-offset:\s*calc\(-1 \* var\(--current-ring\)\)/);
+  });
+
+  it('keeps what the caption is about clear of the ring, on the smallest board too', () => {
+    // The candidates inset by the ring, the tick a pixel past it.
+    expect(rule(BOARD, '.cell--current .cell__candidates')).toMatch(
+      /padding:\s*max\(calc\(var\(--cell\) \* 0\.04\), var\(--current-ring\)\)/,
+    );
+    expect(rule(BOARD, '.cell--current .cell__tick')).toMatch(
+      /top:\s*max\(12%, calc\(var\(--current-ring\) \+ 1px\)\)/,
+    );
+    // The conflict dot keeps its corner: moved in by a fixed 6px, as on the
+    // selected block, it would sit on a 20px cell's digit.
+    expect(BOARD).not.toContain('.cell--current .cell__conflict');
+  });
+
+  it('gives a played-back board no hover and no pointer, as nothing on it can be pressed', () => {
+    expect(BOARD).toMatch(/\.board:not\(\[aria-readonly='true'\], \.board--read-only\)/);
+    expect(rule(BOARD, '.board--read-only .cell')).toMatch(/cursor:\s*default/);
+  });
+
+  it('tells the scrubber’s marks apart by place and shape, and draws them itself in forced colours', () => {
+    expect(rule(DIALOGS, '.playback__tick--mistake')).toMatch(/background:\s*var\(--danger\)/);
+    expect(rule(DIALOGS, '.playback__tick--slip')).toMatch(
+      /border:\s*1\.5px solid var\(--danger\)/,
+    );
+    expect(rule(DIALOGS, '.playback__tick--help')).toMatch(/bottom:/);
+    expect(DIALOGS).toMatch(
+      /\.playback__ticks,\s*\.playback__key \.playback__tick\s*\{\s*forced-color-adjust:\s*none/,
+    );
+  });
+
+  it('gives the scrubber and the speeds a finger’s height on a touch screen', () => {
+    const touch = DIALOGS.slice(
+      DIALOGS.indexOf('@media (pointer: coarse)', DIALOGS.indexOf('Touch support')),
+    );
+    expect(touch).toMatch(/\.playback__scrubber\s*\{\s*--thumb:\s*24px;\s*height:\s*44px/);
+    expect(touch).toMatch(/\.playback__speed\s*\{\s*min-height:\s*40px/);
+  });
+
+  it('marks the buttons past an end unavailable, still and faded, without disabling them', () => {
+    expect(rule(DIALOGS, ".playback__button[aria-disabled='true']:hover")).toMatch(
+      /opacity:\s*0\.5/,
+    );
+  });
+
+  it('puts the board beside the controls on a phone on its side', () => {
+    const short = DIALOGS.slice(
+      DIALOGS.indexOf(
+        '@media (max-height: 500px) and (min-width: 500px)',
+        DIALOGS.indexOf('a playback'),
+      ),
+    );
+    expect(short).toMatch(/\.dialog--playback \.dialog__body\s*\{\s*display:\s*grid/);
+    expect(short).toMatch(/\.playback\s*\{\s*display:\s*contents/);
+    expect(short).toMatch(/--board-size:\s*clamp\(160px, calc\(100dvh - 104px\), 400px\)/);
+  });
+});
+
 describe('the daily calendar', () => {
   it('draws a daily’s marks in ink, the empty one muted', () => {
     expect(rule(DIALOGS, '.daily-mark')).toMatch(/color:\s*var\(--text\)/);

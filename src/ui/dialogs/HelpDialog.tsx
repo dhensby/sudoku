@@ -100,6 +100,16 @@ const CONTROLS: readonly Control[] = [
     pointer: 'The calendar in the header (on a phone, the ☰ menu), or the + button',
   },
   {
+    action: 'Watch your solve',
+    keyboard: (
+      <>
+        <kbd>Space</kbd> to play or pause, <kbd>←</kbd> <kbd>→</kbd> a move, <kbd>Home</kbd>{' '}
+        <kbd>End</kbd> to the start or the solve
+      </>
+    ),
+    pointer: 'The buttons and the bar under its board',
+  },
+  {
     action: 'History, share, settings, help',
     keyboard: null,
     pointer: 'The header (on a phone, the ☰ menu)',
@@ -269,6 +279,26 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
               with nothing forgiven. Numbers entered before you turn it on are not checked, even
               when Undo or Redo brings them back. It is help: from the moment it is on, your time
               says “guesses checked as entered”, even if you turn it off again.
+            </li>
+          </ul>
+        </section>
+
+        <section className="help__section">
+          <h3 className="help__heading">Watching a solve</h3>
+          <ul className="help__list">
+            <li>
+              Once you&apos;ve solved a puzzle, <strong>Watch your solve</strong> in the Solved
+              dialog, or <strong>Watch</strong> on the game in History, plays it back move by move:
+              every number, note, hint, undo and check, each with a caption saying what it was.
+            </li>
+            <li>
+              Play and pause, step a move at a time, or drag along the bar. Marks along it show your
+              mistakes, slips you put right in time, and help you took. Long pauses are shortened,
+              and it plays at up to 8×; the time beside it is the time you&apos;d really taken.
+            </li>
+            <li>
+              Watching changes nothing: the clock stays stopped, and your time and record stay as
+              they were. A game from before solves were recorded move by move can&apos;t be watched.
             </li>
           </ul>
         </section>
