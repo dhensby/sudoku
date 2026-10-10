@@ -11,6 +11,7 @@ import {
   isGridString,
 } from './grid';
 import { TECHNIQUE_ORDER } from './grader';
+import { fieldsOf, newerFields } from './newerFields';
 import type {
   Assists,
   Difficulty,
@@ -836,6 +837,16 @@ export interface SerialisedCellHints {
 /**
  * A game as plain JSON for storage. No undo history is kept (NYT doesn't keep
  * it either) and neither is the input mode or the hint just asked for.
+ *
+ * A newer version may add fields, as long as it stays version 1 and keeps
+ * these readable. Here they are ignored on load; the store carries them over
+ * when it saves the game again (see `saveGameBlob` and
+ * `SERIALISED_GAME_FIELDS`), so a tab still on this version does not wipe
+ * them. Keeping these readable includes `marks`: a newer version must not
+ * write a mark code other than `.wcr` (this version rejects the whole save),
+ * and may mark a wrong guess 'w' without a Check only when its assists carry
+ * `checkGuesses: true` — otherwise this version takes the mark as a Check
+ * (see `reconcileAssists`).
  */
 export interface SerialisedGame {
   /** Format version; anything else is rejected on load. */
@@ -856,7 +867,11 @@ export interface SerialisedGame {
   autoCandidates: boolean;
   /** Informational only: ignored on load and worked out again from the values. */
   status: 'playing' | 'solved';
-  /** Help taken; on load, raised to cover any help the board shows (reveals, checks, auto mode, hints). */
+  /**
+   * Help taken; on load, raised to cover any help the board shows (reveals,
+   * checks, auto mode, hints). Small fields a newer version added here are
+   * kept through a load and save (see `ASSIST_FIELDS`).
+   */
   assists: Assists;
   /**
    * The hints remembered per cell. Absent from saves made before hints were
@@ -865,6 +880,47 @@ export interface SerialisedGame {
    */
   cellHints?: SerialisedCellHints[];
 }
+
+/**
+ * The fields of `Assists` this version knows. Anything else found on stored
+ * assists is a newer version's, and kept as it is (see `newerFields`): the
+ * reducer only ever spreads assists to change them, so such a field rides
+ * along from load to save, and into the history record.
+ */
+export const ASSIST_FIELDS = fieldsOf<Assists>({
+  autoCandidates: true,
+  hints: true,
+  checks: true,
+  reveals: true,
+});
+
+/**
+ * The name reserved for the help "Check guesses when entered", which a later
+ * version records as a sticky `checkGuesses: true` on the assists. This
+ * version reads it in one place only: while it was on, a digit marked wrong
+ * says nothing about a Check having been taken (see `reconcileAssists`).
+ */
+export const CHECK_GUESSES_ASSIST = 'checkGuesses';
+
+/**
+ * The top-level fields of `SerialisedGame` this version knows. When the game
+ * is saved again, a field of the previous save not in this list is a newer
+ * version's and is carried over (see `saveGameBlob`); one in it is never
+ * carried, even if this version leaves it out of a save.
+ */
+export const SERIALISED_GAME_FIELDS = fieldsOf<SerialisedGame>({
+  v: true,
+  puzzle: true,
+  values: true,
+  notes: true,
+  autoRemoved: true,
+  marks: true,
+  selected: true,
+  autoCandidates: true,
+  status: true,
+  assists: true,
+  cellHints: true,
+});
 
 /** The game as plain, JSON-safe data. */
 export function serialiseGame(state: GameState): SerialisedGame {
@@ -982,12 +1038,19 @@ function readCellHints(
   return cellHints;
 }
 
+/**
+ * Stored assists, or null if they are not well-formed. The four this version
+ * knows must be exactly right; any small field a newer version added — a new
+ * kind of help — is kept alongside them (see `newerFields`), so that it is
+ * neither a reason to reject the save nor lost when this version saves the
+ * game again. Help taken must never be lost, whoever counted it.
+ */
 function readAssists(data: unknown): Assists | null {
   if (!isRecord(data)) return null;
   const { autoCandidates, hints, checks, reveals } = data;
   if (typeof autoCandidates !== 'boolean' || !isCount(hints) || !isCount(checks)) return null;
   if (!isCount(reveals)) return null;
-  return { autoCandidates, hints, checks, reveals };
+  return { ...newerFields(data, ASSIST_FIELDS), autoCandidates, hints, checks, reveals };
 }
 
 /**
@@ -997,7 +1060,9 @@ function readAssists(data: unknown): Assists | null {
  * hint, and every "Show me" opened, was counted once when it was first
  * shown; a cell checked correct means at least one check, and so does one
  * marked wrong unless a hint accounts for it (a hint marks the mistake it
- * points at the same way); and auto mode on or any elimination (only ever
+ * points at the same way) or a newer version's "Check guesses when entered"
+ * was on (it marks a wrong digit as it goes in, with no Check taken — see
+ * `CHECK_GUESSES_ASSIST`); and auto mode on or any elimination (only ever
  * recorded in auto mode) means auto mode was used.
  */
 function reconcileAssists(
@@ -1012,10 +1077,15 @@ function reconcileAssists(
     remembered += Number(fill !== null) + Number(mistake !== null) + Number(walkthrough);
   }
   const hints = Math.max(assists.hints, remembered);
+  // Read off the stored object: `Assists` does not know the field.
+  const isGuessChecked = Reflect.get(assists, CHECK_GUESSES_ASSIST) === true;
   const isMarkedWrong = cells.some((cell) => cell.mark === 'wrong');
-  const isChecked = cells.some((cell) => cell.mark === 'correct') || (isMarkedWrong && hints === 0);
+  const isChecked =
+    cells.some((cell) => cell.mark === 'correct') ||
+    (isMarkedWrong && hints === 0 && !isGuessChecked);
   const isAutoUsed = autoCandidates || cells.some((cell) => cell.autoRemoved !== 0);
   return {
+    ...assists,
     autoCandidates: assists.autoCandidates || isAutoUsed,
     hints,
     checks: Math.max(assists.checks, isChecked ? 1 : 0),
@@ -1042,7 +1112,8 @@ function readMark(code: string, value: number, answer: number): CellMark {
  * rejected: the puzzle (its solution complete, valid and agreeing with the
  * givens), the values (givens in place), the note and elimination masks, the
  * marks string and the shape of the assists (help taken must never be lost or
- * invented). What can be derived or defaulted without changing the board is
+ * invented; a newer version's extra kinds of help are kept, see
+ * `readAssists`). What can be derived or defaulted without changing the board is
  * coerced instead: an out-of-range `selected` becomes the first empty cell, a
  * non-boolean `autoCandidates` is off, `status` is re-derived from the values,
  * marks a check could never have produced become 'none', notes on givens are

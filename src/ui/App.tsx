@@ -390,6 +390,7 @@ export function App({ options }: AppProps = {}) {
         {dialog?.kind === 'settings' && (
           <SettingsDialog
             settings={settings}
+            isThemeNewer={sudoku.isThemeNewer}
             onChange={actions.updateSettings}
             onClose={actions.closeDialog}
           />

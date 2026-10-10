@@ -69,6 +69,25 @@ describe('SettingsDialog', () => {
     expect(onChange).toHaveBeenLastCalledWith({ theme: 'system' });
   });
 
+  it('shows no theme as chosen when a newer version’s is stored, so System can be picked', () => {
+    // Settings say System, as the newer theme is applied; but a radio already
+    // checked sends nothing when clicked, so System must not show as checked.
+    const onChange = vi.fn();
+    render(
+      <SettingsDialog
+        settings={DEFAULT_SETTINGS}
+        isThemeNewer
+        onChange={onChange}
+        onClose={vi.fn()}
+      />,
+    );
+    for (const name of ['System', 'Light', 'Dark']) {
+      expect(screen.getByRole('radio', { name })).not.toBeChecked();
+    }
+    fireEvent.click(screen.getByRole('radio', { name: 'System' }));
+    expect(onChange).toHaveBeenCalledExactlyOnceWith({ theme: 'system' });
+  });
+
   it('closes from its close button', () => {
     const { onClose } = renderSettings();
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));

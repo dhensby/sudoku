@@ -586,6 +586,58 @@ describe('saveSession and restoreSession', () => {
     expect(restored.record).toMatchObject({ status: 'solved', completedAt: NOW + 5000 });
   });
 
+  describe('in a tab still open on this version after a newer one is deployed', () => {
+    /** Storage as a newer version leaves it after saving `session`: new fields on the record and the board. */
+    function savedByNewer(session: Session, isOnBoard: boolean): StorageLike {
+      const storage = memoryStorage();
+      saveSession(storage, session, at(NOW));
+      const [record] = loadHistory(storage);
+      storage.setItem(
+        'sudoku.history',
+        JSON.stringify([
+          {
+            ...record,
+            mistakes: { values: 1, candidates: 0 },
+            assists: { ...record.assists, checkGuesses: true },
+          },
+        ]),
+      );
+      const blob = loadGameBlob(storage, session.record.id) as Record<string, object>;
+      const assists = isOnBoard ? { ...blob.assists, checkGuesses: true } : blob.assists;
+      saveGameBlob(storage, session.record.id, { ...blob, assists, undo: 'ab' });
+      return storage;
+    }
+
+    /** Restore the game, play a move and save it, as the old tab would. */
+    function playOn(storage: StorageLike, id: string): void {
+      const restored = restoreSession(storage, loadHistory(storage), id, NOW + 1000)!;
+      const game = reduce(restored.game, { type: 'enter', digit: answerAt(FIRST_EMPTY) as 1 });
+      saveSession(storage, { ...restored, game }, at(NOW + 2000));
+    }
+
+    it('keeps what the newer version added to the record and the board through a restore and a save', () => {
+      const session = running();
+      const storage = savedByNewer(session, true);
+      playOn(storage, session.record.id);
+      const [record] = loadHistory(storage);
+      expect(record).toMatchObject({
+        mistakes: { values: 1, candidates: 0 },
+        assists: { checkGuesses: true },
+      });
+      expect(loadGameBlob(storage, session.record.id)).toMatchObject({
+        undo: 'ab',
+        assists: { checkGuesses: true },
+      });
+    });
+
+    it('keeps a new kind of help on the record even when the board does not carry it', () => {
+      const session = running();
+      const storage = savedByNewer(session, false);
+      playOn(storage, session.record.id);
+      expect(loadHistory(storage)[0].assists).toMatchObject({ checkGuesses: true });
+    });
+  });
+
   it('dates a solved orphan as finished when it is found', () => {
     const storage = memoryStorage();
     const near = running(nearlySolved([0]));

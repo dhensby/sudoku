@@ -4,6 +4,7 @@ import { saveGameBlob } from './history';
 import {
   DEFAULT_PREFERENCES,
   DEFAULT_SETTINGS,
+  hasNewerTheme,
   loadPreferences,
   setLastDifficulty,
   setPlayerName,
@@ -269,5 +270,126 @@ describe('setLastDifficulty', () => {
     const prefs = setLastDifficulty(storage, 'extreme' as Difficulty);
     expect(prefs.lastDifficulty).toBe('hard');
     expect(loadPreferences(storage).lastDifficulty).toBe('hard');
+  });
+});
+
+describe('what a newer version stored', () => {
+  /*
+   * A tab left open on this version after a deploy saves the preferences
+   * whenever the player changes something. It must not wipe what the newer
+   * version added to them.
+   */
+  const NEWER = {
+    settings: {
+      ...DEFAULT_SETTINGS,
+      theme: 'contrast',
+      checkGuesses: true,
+      showErrorCounter: false,
+    },
+    playerName: 'Dan',
+    lastDifficulty: 'hard',
+    tourSeen: true,
+  };
+
+  const stored = (storage: ReturnType<typeof memoryStorage>): Record<string, unknown> =>
+    JSON.parse(storage.getItem(KEY)!) as Record<string, unknown>;
+
+  it('shows a theme it does not know as System', () => {
+    const prefs = loadPreferences(storageWith(NEWER));
+    expect(prefs.settings).toEqual(DEFAULT_SETTINGS);
+    expect(prefs).toEqual({
+      settings: DEFAULT_SETTINGS,
+      playerName: 'Dan',
+      lastDifficulty: 'hard',
+    });
+  });
+
+  it.each<[string, (storage: ReturnType<typeof memoryStorage>) => unknown]>([
+    ['a setting changes', (storage) => updateSettings(storage, { showTimer: false })],
+    ['the name changes', (storage) => setPlayerName(storage, 'Sam')],
+    ['the tier changes', (storage) => setLastDifficulty(storage, 'easy')],
+  ])('keeps the new settings, the new fields and the new theme when %s', (_label, change) => {
+    const storage = storageWith(NEWER);
+    change(storage);
+    expect(stored(storage)).toMatchObject({
+      settings: { theme: 'contrast', checkGuesses: true, showErrorCounter: false },
+      tourSeen: true,
+    });
+    // And again: what was kept is kept on the next save too.
+    updateSettings(storage, { highlightBox: false });
+    expect(stored(storage)).toMatchObject({
+      settings: { theme: 'contrast', checkGuesses: true, highlightBox: false },
+      tourSeen: true,
+    });
+  });
+
+  it.each(['light', 'dark', 'system'])(
+    'replaces the new theme once the player picks %s',
+    (theme) => {
+      const storage = storageWith(NEWER);
+      const prefs = updateSettings(storage, { theme: theme as Settings['theme'] });
+      expect(prefs.settings.theme).toBe(theme);
+      expect(stored(storage)).toMatchObject({ settings: { theme, checkGuesses: true } });
+    },
+  );
+
+  it('says the stored theme is a newer one until the player picks one here', () => {
+    const storage = storageWith(NEWER);
+    expect(hasNewerTheme(storage)).toBe(true);
+    updateSettings(storage, { showTimer: false });
+    expect(hasNewerTheme(storage)).toBe(true);
+    updateSettings(storage, { theme: 'system' });
+    expect(hasNewerTheme(storage)).toBe(false);
+  });
+
+  it.each<[string, unknown]>([
+    ['nothing stored', undefined],
+    ['one of its own themes', { settings: { theme: 'dark' } }],
+    ['an odd theme', { settings: { theme: 'High-Contrast' } }],
+    ['settings that are not an object', { settings: 'contrast' }],
+    ['preferences that are not an object', 'contrast'],
+  ])('does not say the stored theme is a newer one for %s', (_label, value) => {
+    const storage = value === undefined ? memoryStorage() : storageWith(value);
+    expect(hasNewerTheme(storage)).toBe(false);
+  });
+
+  it.each<[string, unknown]>([
+    ['an odd theme', 'High-Contrast'],
+    ['a theme that is not a string', 3],
+  ])('does not keep %s', (_label, theme) => {
+    const storage = storageWith({ settings: { theme } });
+    updateSettings(storage, { showTimer: false });
+    expect(stored(storage)).toMatchObject({ settings: { theme: 'system' } });
+  });
+
+  it('drops new fields too big or odd to keep', () => {
+    const storage = storageWith({
+      settings: { Junk: true, notes: 'x'.repeat(300) },
+      'odd-field': 1,
+      history: 'x'.repeat(300),
+    });
+    updateSettings(storage, { showTimer: false });
+    expect(stored(storage)).toEqual({
+      settings: { ...DEFAULT_SETTINGS, showTimer: false },
+      playerName: '',
+      lastDifficulty: 'easy',
+    });
+  });
+
+  it('never lets a stored field override one it knows', () => {
+    const storage = storageWith({ ...NEWER, settings: { ...NEWER.settings, showTimer: 'no' } });
+    updateSettings(storage, { highlightBox: false });
+    expect(stored(storage)).toMatchObject({ settings: { showTimer: true, highlightBox: false } });
+  });
+
+  it('saves as before over settings that are not an object', () => {
+    const storage = storageWith({ settings: 'all on', tourSeen: true });
+    updateSettings(storage, { showTimer: false });
+    expect(stored(storage)).toEqual({
+      settings: { ...DEFAULT_SETTINGS, showTimer: false },
+      playerName: '',
+      lastDifficulty: 'easy',
+      tourSeen: true,
+    });
   });
 });
