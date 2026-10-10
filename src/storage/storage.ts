@@ -113,29 +113,71 @@ function attemptWrite(storage: StorageLike, key: string, value: string): boolean
 }
 
 /**
+ * Frees space after a write was refused (see `writeItem`). What it returns
+ * says what to do next:
+ *   false      it found nothing to free: no retry, on to the next stage
+ *   true       it freed some, a little at a time, and may free more: if the
+ *              retry still fails it is asked again
+ *   undefined  it freed what it could in one go: retry, then the next stage
+ * True must mean something was freed — a stage that says so while freeing
+ * nothing is asked again only up to `MAX_STAGE_ROUNDS` times.
+ */
+export type MakeRoom = (storage: StorageLike) => boolean | void;
+
+/**
+ * The most times one stage of making room is asked again (see `MakeRoom`):
+ * far more than any real one needs — the move logs, shed in chunks, take
+ * some twenty at worst — and only a bound on one that misbehaves.
+ */
+export const MAX_STAGE_ROUNDS = 1000;
+
+/**
  * Write a value, best-effort. Returns whether it was stored.
  *
- * A refused write — `QuotaExceededError`, or any other throw — gets one more
- * chance: `makeRoom` frees what it can, then the write is tried once more. If
- * that fails too the value is dropped without a word. Retrying in a loop could
- * not help (whatever is filling the origin may not be ours to delete), and
- * surfacing the error would turn a lost save into a broken game.
+ * A refused write — `QuotaExceededError`, or any other throw — gets another
+ * chance after each stage of `makeRoom`, cheapest loss first: each frees what
+ * it can (a stage that frees a little at a time is asked again until the
+ * write fits or it has nothing left; see `MakeRoom`), then the write is tried
+ * again, and the stages stop at the first retry that goes through, so nothing
+ * is shed much beyond what the write needed. If every retry fails the value
+ * is dropped without a word. Retrying on its own could not help (whatever is
+ * filling the origin may not be ours to delete), and surfacing the error
+ * would turn a lost save into a broken game.
  */
 export function writeItem(
   storage: StorageLike,
   key: string,
   value: string,
-  makeRoom?: (storage: StorageLike) => void,
+  makeRoom?: MakeRoom | readonly MakeRoom[],
 ): boolean {
   if (attemptWrite(storage, key, value)) return true;
-  if (makeRoom === undefined) return false;
-  try {
-    makeRoom(storage);
-  } catch {
-    // Whatever it managed to free before throwing still counts: retry anyway.
+  const stages: readonly MakeRoom[] =
+    makeRoom === undefined ? [] : typeof makeRoom === 'function' ? [makeRoom] : makeRoom;
+  for (const stage of stages) {
+    for (let round = 0; round < MAX_STAGE_ROUNDS; round++) {
+      let freed: boolean | void;
+      try {
+        freed = stage(storage);
+      } catch {
+        // Whatever it managed to free before throwing still counts: retry
+        // anyway, but don't ask it again.
+        freed = undefined;
+      }
+      if (freed === false) break;
+      if (attemptWrite(storage, key, value)) return true;
+      if (freed !== true) break;
+    }
   }
-  return attemptWrite(storage, key, value);
+  return false;
 }
+
+/**
+ * What a game id may look like. `createGameId` writes far less than this
+ * allows; the pattern is loose so ids from another version of the game still
+ * load, and exists at all so an imported file cannot mint arbitrary storage
+ * keys.
+ */
+export const GAME_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 
 // ---------------------------------------------------------------------------
 // Field validators shared by the stores

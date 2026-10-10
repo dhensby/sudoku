@@ -1,4 +1,21 @@
-import { STOPPED_CLOCK, createGame, dateKeyOf, reduce, serialiseGame, type Puzzle } from '../core';
+import {
+  MAX_MOVES,
+  MOVES_VERSION,
+  STOPPED_CLOCK,
+  appendMove,
+  createGame,
+  createMoveLog,
+  dateKeyOf,
+  encodeMoveLog,
+  findHint,
+  gridValues,
+  reduce,
+  serialiseGame,
+  valuesOf,
+  type Digit,
+  type MoveLog,
+  type Puzzle,
+} from '../core';
 import {
   deleteRecord,
   loadGameBlob,
@@ -6,12 +23,16 @@ import {
   markSeen,
   saveCurrentId,
   saveGameBlob,
+  saveGameMoves,
   upsertRecord,
   type Challenge,
   type GameRecord,
 } from '../storage/history';
+import { loadEncodedMoveLog, loadMoveLog } from '../storage/moveLogs';
+import { LOG_IN_A_LATER_FORMAT, logFromAnotherBuild } from '../test/movePlayers';
 import { memoryStorage, type StorageLike } from '../storage/storage';
 import {
+  advance,
   asDaily,
   tagDaily,
   attemptSource,
@@ -421,6 +442,269 @@ describe('pausing and resuming', () => {
     // pause, or closing it would resume a game the player meant to keep paused.
     const paused = pauseSession(running(), 'user', NOW + 1000);
     expect(pauseSession(paused, 'dialog', NOW + 2000)).toBe(paused);
+  });
+});
+
+describe('the move log', () => {
+  const answer = answerAt(FIRST_EMPTY) as Digit;
+  const place = { type: 'enter', digit: answer } as const;
+  /** Another empty cell's answer, for a move after `place`. */
+  const second = PUZZLE.givens.indexOf('0', FIRST_EMPTY + 1);
+  const placeSecond = { type: 'enter', digit: answerAt(second) as Digit, index: second } as const;
+
+  it('starts empty with every new game, saying whether it began in auto candidate mode', () => {
+    expect(running().moves).toEqual({ autoCandidates: false, moves: [], truncated: false });
+    const auto = newSession(PUZZLE, {
+      source: 'generated',
+      challenge: null,
+      now: at(NOW),
+      autoCandidates: true,
+      start: 'running',
+    });
+    expect(auto.moves).toEqual(createMoveLog({ autoCandidates: true }));
+  });
+
+  describe('advance', () => {
+    it('makes the move and logs it at the time on the play clock', () => {
+      const next = advance(running(), place, NOW + 12_345);
+      expect(next.game.cells[FIRST_EMPTY].value).toBe(answer);
+      expect(next.moves?.moves).toEqual([
+        { op: 'place', cell: FIRST_EMPTY, digit: answer, clearPeerNotes: false, at: 12_300 },
+      ]);
+    });
+
+    it('counts play only: time paused adds nothing', () => {
+      const paused = pauseSession(running(), 'user', NOW + 5000);
+      const resumed = resumeSession(paused, at(NOW + 65_000));
+      const next = advance(resumed, place, NOW + 66_000);
+      expect(next.moves?.moves[0].at).toBe(6000);
+    });
+
+    it('logs a move made while the clock is stopped at the time it stopped at', () => {
+      // A reset is confirmed behind its dialog, with the clock held.
+      const paused = pauseSession(advance(running(), place, NOW + 1000), 'dialog', NOW + 4000);
+      const next = advance(paused, { type: 'reset' }, NOW + 90_000);
+      expect(next.moves?.moves.map((move) => move.at)).toEqual([1000, 4000]);
+    });
+
+    it('comes back unchanged — the same object — for a move that changes nothing', () => {
+      const session = running();
+      expect(advance(session, { type: 'erase' }, NOW + 1000)).toBe(session);
+    });
+
+    it('changes the game but logs nothing for a selection', () => {
+      const session = running();
+      const next = advance(session, { type: 'select', index: 80 }, NOW + 1000);
+      expect(next.game.selected).toBe(80);
+      expect(next.moves).toBe(session.moves);
+    });
+
+    it('logs Show me opened again for a cell already counted, which changes nothing', () => {
+      const session = running();
+      const hint = findHint(valuesOf(session.game), gridValues(PUZZLE.solution));
+      const hinted = advance(session, { type: 'hint', hint }, NOW + 1000);
+      const index = (hint as { index: number }).index;
+      const once = advance(hinted, { type: 'walkthrough', index }, NOW + 2000);
+      const twice = advance(once, { type: 'walkthrough', index }, NOW + 3000);
+      expect(twice.game).toBe(once.game);
+      expect(twice.moves?.moves.map((move) => move.op)).toEqual([
+        'hint',
+        'walkthrough',
+        'walkthrough',
+      ]);
+    });
+
+    it('plays on without logging a game that is not being recorded', () => {
+      const next = advance({ ...running(), moves: null }, place, NOW + 1000);
+      expect(next.game.cells[FIRST_EMPTY].value).toBe(answer);
+      expect(next.moves).toBeNull();
+    });
+
+    it('stops recording a game whose log reaches its limit', () => {
+      // Cut off, the log would no longer reach the game.
+      let moves: MoveLog = createMoveLog();
+      const select = { op: 'erase', cell: 0 } as const;
+      for (let i = 0; i < MAX_MOVES; i++) moves = appendMove(moves, select, 0);
+      const next = advance({ ...running(), moves }, place, NOW + 1000);
+      expect(next.game.cells[FIRST_EMPTY].value).toBe(answer);
+      expect(next.moves).toBeNull();
+    });
+  });
+
+  describe('saved and restored', () => {
+    /** A game a few moves in, as the hook leaves it: every move through `advance`. */
+    function played(): Session {
+      let session = running();
+      session = advance(session, place, NOW + 2000);
+      session = advance(
+        session,
+        { type: 'enter', digit: 1, index: 2, mode: 'candidate' },
+        NOW + 3500,
+      );
+      return advance(session, { type: 'undo' }, NOW + 4000);
+    }
+
+    it('saves the log with the game, under its own key, and nowhere else', () => {
+      const storage = memoryStorage();
+      const session = played();
+      saveSession(storage, session, at(NOW + 5000));
+      const encoded = encodeMoveLog(session.moves!);
+      expect(loadEncodedMoveLog(storage, session.record.id)).toBe(encoded);
+      expect(storage.getItem('sudoku.history')).not.toContain(encoded);
+      expect(JSON.stringify(loadGameBlob(storage, session.record.id))).not.toContain(encoded);
+    });
+
+    it('reopens the log with its game when it replays to the board saved, and goes on with it', () => {
+      const storage = memoryStorage();
+      const session = played();
+      const { records } = saveSession(storage, session, at(NOW + 5000));
+      const restored = restoreSession(storage, records, session.record.id, NOW + 9000)!;
+      expect(restored.moves).toEqual(session.moves);
+
+      const resumed = resumeSession(restored, at(NOW + 20_000));
+      const next = advance(resumed, placeSecond, NOW + 21_000);
+      expect(next.moves?.moves.at(-1)?.at).toBe(6000);
+      const again = saveSession(storage, next, at(NOW + 22_000)).records;
+      expect(restoreSession(storage, again, session.record.id, NOW + 30_000)?.moves).toEqual(
+        next.moves,
+      );
+    });
+
+    it('does not record a game saved without a log — one begun before logs were kept', () => {
+      const storage = memoryStorage();
+      const session = played();
+      saveGameBlob(storage, session.record.id, serialiseGame(session.game));
+      upsertRecord(storage, recordOf(session, at(NOW + 5000)));
+      const restored = restoreSession(storage, loadHistory(storage), session.record.id, NOW)!;
+      expect(restored.moves).toBeNull();
+      expect(restored.game.cells[FIRST_EMPTY].value).toBe(answer);
+    });
+
+    it('does not record a game whose log does not decode', () => {
+      const storage = memoryStorage();
+      const session = played();
+      const { records } = saveSession(storage, session, at(NOW + 5000));
+      storage.setItem(`sudoku.moves.${session.record.id}`, 'garbled');
+      expect(restoreSession(storage, records, session.record.id, NOW)?.moves).toBeNull();
+    });
+
+    it('stops recording a game played on without its log, and deletes the log left behind', () => {
+      // A tab still on a version from before logs were kept plays on: the
+      // board moves, the log stays where it was.
+      const storage = memoryStorage();
+      const session = played();
+      saveSession(storage, session, at(NOW + 5000));
+      const game = reduce(session.game, placeSecond);
+      saveGameBlob(storage, session.record.id, serialiseGame(game));
+
+      const restored = restoreSession(storage, loadHistory(storage), session.record.id, NOW)!;
+      expect(restored.moves).toBeNull();
+      saveSession(storage, restored, at(NOW + 6000));
+      expect(loadEncodedMoveLog(storage, session.record.id)).toBeNull();
+    });
+
+    it('takes up the clock from the log when its last move is later than the record’s time', () => {
+      // The record's write was refused after the log's went through: the
+      // time played since must not be lost.
+      const storage = memoryStorage();
+      const session = played();
+      const { records } = saveSession(storage, session, at(NOW + 5000));
+      const later = advance(session, placeSecond, NOW + 25_050);
+      saveGameBlob(storage, session.record.id, serialiseGame(later.game));
+      saveGameMoves(storage, session.record.id, later.moves);
+      const restored = restoreSession(storage, records, session.record.id, NOW)!;
+      expect(restored.moves).toEqual(later.moves);
+      expect(restored.clock.bankedMs).toBe(25_000);
+    });
+
+    it('saves the log before the board and the record', () => {
+      const storage = memoryStorage();
+      const session = played();
+      const set = vi.spyOn(storage, 'setItem');
+      saveSession(storage, session, at(NOW + 5000));
+      const keys = set.mock.calls.map(([key]) => key);
+      const log = keys.indexOf(`sudoku.moves.${session.record.id}`);
+      expect(log).toBeGreaterThanOrEqual(0);
+      expect(log).toBeLessThan(keys.indexOf(`sudoku.game.${session.record.id}`));
+      expect(log).toBeLessThan(keys.indexOf('sudoku.history'));
+    });
+
+    it('reopens a log saved ahead of its board trimmed back to the board', () => {
+      // The log went through, the board after it did not (refused for space,
+      // or lost to a crash): the moves the board never got go with it, and
+      // what is left is the whole log of the game as saved.
+      const storage = memoryStorage();
+      const session = played();
+      const { records } = saveSession(storage, session, at(NOW + 5000));
+      const later = advance(session, placeSecond, NOW + 25_050);
+      saveGameMoves(storage, session.record.id, later.moves);
+      const restored = restoreSession(storage, records, session.record.id, NOW)!;
+      expect(restored.moves).toEqual(session.moves);
+      expect(restored.game.cells[second].value).toBe(0);
+      // The record's time, not the dropped move's.
+      expect(restored.clock.bankedMs).toBe(5000);
+      saveSession(storage, restored, at(NOW + 6000));
+      expect(loadMoveLog(storage, session.record.id)).toEqual(session.moves);
+    });
+
+    it.each([
+      ['a later format', LOG_IN_A_LATER_FORMAT],
+      ['a later rules version', logFromAnotherBuild(MOVES_VERSION + 1, 2754)],
+      ['a move code added since', logFromAnotherBuild(MOVES_VERSION, 2759)],
+    ])(
+      'leaves a log of %s alone as it reopens the game, for the build that wrote it',
+      (_, newer) => {
+        // A newer build in another tab recorded the game; this tab cannot read
+        // its log, so it does not record the game, nor throw the log away.
+        const storage = memoryStorage();
+        const session = played();
+        const { records } = saveSession(storage, session, at(NOW + 5000));
+        storage.setItem(`sudoku.moves.${session.record.id}`, newer);
+        const restored = restoreSession(storage, records, session.record.id, NOW)!;
+        expect(restored.moves).toBeNull();
+        const resumed = resumeSession(restored, at(NOW + 6000));
+        saveSession(storage, resumed, at(NOW + 7000));
+        saveSession(storage, pauseSession(resumed, 'user', NOW + 8000), at(NOW + 8000));
+        expect(loadEncodedMoveLog(storage, session.record.id)).toBe(newer);
+      },
+    );
+
+    it('takes up the clock from the record when it is later than the log', () => {
+      const storage = memoryStorage();
+      const session = played();
+      const { records } = saveSession(storage, session, at(NOW + 50_000));
+      expect(restoreSession(storage, records, session.record.id, NOW)?.clock.bankedMs).toBe(50_000);
+    });
+
+    it('reopens paused, not behind Start, a game whose time only its log kept', () => {
+      // Auto candidates on and off leave the board as it began; with the
+      // record's time lost, only the log says the game was ever started.
+      const storage = memoryStorage();
+      let session = running();
+      session = advance(session, { type: 'setAutoCandidates', enabled: true }, NOW + 3000);
+      session = advance(session, { type: 'setAutoCandidates', enabled: false }, NOW + 4000);
+      saveGameBlob(storage, session.record.id, serialiseGame(session.game));
+      saveGameMoves(storage, session.record.id, session.moves);
+      const restored = restoreSession(storage, [], session.record.id, NOW + 5000)!;
+      expect(restored.clock.bankedMs).toBe(4000);
+      expect(restored.pause).toBe('restored');
+    });
+
+    it('keeps a solved game’s log once its board has gone', () => {
+      const storage = memoryStorage();
+      const near = running(nearlySolved([0]));
+      const solved = advance(
+        near,
+        { type: 'enter', digit: answerAt(0) as Digit, index: 0 },
+        NOW + 9000,
+      );
+      saveCurrentId(storage, near.record.id);
+      saveSession(storage, solved, at(NOW + 9000));
+      saveCurrentId(storage, null);
+      upsertRecord(storage, recordOf(running(), at(NOW + 10_000)));
+      expect(loadGameBlob(storage, near.record.id)).toBeNull();
+      expect(loadMoveLog(storage, near.record.id)).toEqual(solved.moves);
+    });
   });
 });
 

@@ -1,7 +1,18 @@
 import { act, renderHook } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { dateKeyOf, serialiseGame, type Digit, type Puzzle } from '../core';
+import {
+  dateKeyOf,
+  reduce,
+  serialiseGame,
+  verifyMoveLog,
+  type Digit,
+  type LoggedMove,
+  type Puzzle,
+} from '../core';
 import { ArchiveUnavailableError, dailies as appDailies } from '../daily/dailies';
 import {
   computeStats,
@@ -13,6 +24,7 @@ import {
   upsertRecord,
   type GameRecord,
 } from '../storage/history';
+import { loadEncodedMoveLog, loadMoveLog, readMoveLogIds, storeMoveLog } from '../storage/moveLogs';
 import { loadPreferences, setLastDifficulty } from '../storage/prefs';
 import { memoryStorage, type StorageLike } from '../storage/storage';
 import { STUCK_ON_A_HIDDEN_PAIR } from '../test/logic-fixtures';
@@ -862,6 +874,174 @@ describe('useSudoku', () => {
       enter(result, FIRST_EMPTY, answerAt(FIRST_EMPTY) === 9 ? 1 : 9);
       act(() => result.current.actions.hint());
       expect(result.current.game?.hint).toEqual({ kind: 'mistake', index: FIRST_EMPTY });
+    });
+  });
+
+  describe('the move log', () => {
+    /**
+     * A play clock of its own, apart from the wall clock and running from
+     * another origin, as the monotonic one does: it moves with the fake timers.
+     */
+    const clock = (): number => Date.now() - NOW + 7_000_000;
+    const wrong = (index: number): number => (answerAt(index) % 9) + 1;
+    /** Each move logged, as [op, time on the play clock]. */
+    const timeline = (moves: readonly LoggedMove[]) => moves.map((move) => [move.op, move.at]);
+
+    it('records every kind of move at its time on the play clock, pauses left out', async () => {
+      const { result, storage } = await started({ clock });
+      const id = result.current.record!.id;
+      const step = (ms: number, action: () => void): void => {
+        advance(ms);
+        act(action);
+      };
+      const { actions } = result.current;
+      step(1000, () => actions.select(EMPTIES[0]));
+      act(() => actions.enterDigit(answerAt(EMPTIES[0]) as Digit));
+      step(1000, () => actions.toggleCandidate(EMPTIES[1], 1));
+      step(1000, () => actions.select(EMPTIES[1]));
+      act(() => actions.erase());
+      step(1000, () => actions.setAutoCandidates(true));
+      step(500, () => actions.setAutoCandidates(false));
+      step(500, () => actions.undo());
+      step(500, () => actions.redo());
+      // A minute paused counts for nothing.
+      step(0, () => actions.pause());
+      step(60_000, () => actions.resume());
+      step(1000, () => actions.hint());
+      step(500, () => actions.showMe());
+      // Nor does the time Show me's dialog is open.
+      step(10_000, () => actions.closeDialog());
+      step(1000, () => actions.select(EMPTIES[5]));
+      act(() => actions.enterDigit(wrong(EMPTIES[5]) as Digit));
+      step(500, () => actions.check('cell'));
+      step(500, () => actions.select(EMPTIES[6]));
+      act(() => actions.enterDigit(wrong(EMPTIES[6]) as Digit));
+      act(() => actions.check('puzzle'));
+      step(500, () => actions.select(EMPTIES[7]));
+      act(() => actions.reveal());
+      step(500, () => actions.requestReset());
+      step(5000, () => actions.confirmReset());
+      act(() => actions.pause());
+
+      const log = loadMoveLog(storage, id)!;
+      expect(timeline(log.moves)).toEqual([
+        ['place', 1000],
+        ['candidate', 2000],
+        ['erase', 3000],
+        ['autoOn', 4000],
+        ['autoOff', 4500],
+        ['undo', 5000],
+        ['redo', 5500],
+        ['hint', 6500],
+        ['walkthrough', 7000],
+        ['place', 8000],
+        ['checkCell', 8500],
+        ['place', 9000],
+        ['checkPuzzle', 9000],
+        ['reveal', 9500],
+        ['reset', 10_000],
+      ]);
+      expect(result.current.elapsedMs).toBe(10_000);
+      // And it replays to the game on screen.
+      expect(verifyMoveLog(PUZZLE, log, result.current.game!)).toBe(true);
+    });
+
+    it('records the solving move, and keeps the log once the game is solved', async () => {
+      const near = nearlySolved([0]);
+      const { result, storage } = await started({ clock, source: fakeSource(near) });
+      advance(2000);
+      enter(result, 0, answerAt(0));
+      expect(result.current.phase).toBe('solved');
+      const log = loadMoveLog(storage, result.current.record!.id)!;
+      expect(timeline(log.moves)).toEqual([['place', 2000]]);
+      expect(verifyMoveLog(near, log, result.current.game!)).toBe(true);
+    });
+
+    it('logs nothing for moves that change nothing, and saves the log no more often than the game', async () => {
+      const { result, storage } = await started({ clock });
+      const id = result.current.record!.id;
+      act(() => result.current.actions.select(EMPTIES[3]));
+      act(() => result.current.actions.setMode('candidate'));
+      act(() => result.current.actions.erase());
+      advance(SAVE_DELAY_MS);
+      expect(loadMoveLog(storage, id)?.moves).toEqual([]);
+      const encoded = loadEncodedMoveLog(storage, id);
+      advance(CLOCK_SAVE_MS);
+      expect(loadEncodedMoveLog(storage, id)).toBe(encoded);
+    });
+
+    it('goes on with the log after a reload', async () => {
+      const storage = memoryStorage();
+      const first = await started({ clock, storage });
+      const id = first.result.current.record!.id;
+      advance(3000);
+      enter(first.result, EMPTIES[0], answerAt(EMPTIES[0]));
+      act(() => {
+        window.dispatchEvent(new Event('pagehide'));
+      });
+      first.unmount();
+
+      const second = setup({ clock, storage });
+      expect(second.result.current.record?.id).toBe(id);
+      advance(30_000);
+      act(() => second.result.current.actions.resume());
+      advance(2000);
+      enter(second.result, EMPTIES[1], answerAt(EMPTIES[1]));
+      act(() => second.result.current.actions.pause());
+      expect(timeline(loadMoveLog(storage, id)!.moves)).toEqual([
+        ['place', 3000],
+        ['place', 5000],
+      ]);
+    });
+
+    it('stops recording a game a tab on an older version played on, leaving no log', async () => {
+      const storage = memoryStorage();
+      const first = await started({ clock, storage });
+      const id = first.result.current.record!.id;
+      enter(first.result, EMPTIES[0], answerAt(EMPTIES[0]));
+      act(() => first.result.current.actions.pause());
+      first.unmount();
+      // The old tab moves the board on and saves it, knowing nothing of logs.
+      const game = reduce(first.result.current.game!, {
+        type: 'enter',
+        digit: answerAt(EMPTIES[1]) as Digit,
+        index: EMPTIES[1],
+      });
+      storage.setItem(`sudoku.game.${id}`, JSON.stringify(serialiseGame(game)));
+
+      const second = setup({ clock, storage });
+      act(() => second.result.current.actions.resume());
+      enter(second.result, EMPTIES[2], answerAt(EMPTIES[2]));
+      act(() => second.result.current.actions.pause());
+      expect(second.result.current.game?.cells[EMPTIES[2]].value).toBe(answerAt(EMPTIES[2]));
+      expect(loadEncodedMoveLog(storage, id)).toBeNull();
+      expect(readMoveLogIds(storage)).toEqual([]);
+    });
+
+    it('deletes a glimpsed game’s log with it', async () => {
+      const { result, storage } = await started({ source: fakeSource(PUZZLE, nearlySolved([1])) });
+      const glimpsed = result.current.record!.id;
+      expect(readMoveLogIds(storage)).toEqual([glimpsed]);
+      act(() => result.current.actions.newGame('easy'));
+      await settle();
+      expect(loadEncodedMoveLog(storage, glimpsed)).toBeNull();
+      expect(readMoveLogIds(storage)).toEqual([result.current.record!.id]);
+    });
+
+    it('deletes a game’s log when History deletes the game', async () => {
+      const { result, storage } = await started();
+      const id = result.current.record!.id;
+      enter(result, EMPTIES[0], answerAt(EMPTIES[0]));
+      act(() => result.current.actions.openDialog('history'));
+      act(() => result.current.actions.deleteRecord(id));
+      expect(loadEncodedMoveLog(storage, id)).toBeNull();
+    });
+
+    it('sweeps away logs whose game is no longer in the history as a visit starts', async () => {
+      const storage = memoryStorage();
+      storeMoveLog(storage, 'gone-0000', 'AB_');
+      const { result } = await started({ storage });
+      expect(readMoveLogIds(storage)).toEqual([result.current.record!.id]);
     });
   });
 
@@ -2265,6 +2445,15 @@ describe('useSudoku', () => {
   });
 
   describe('guards', () => {
+    it('changes the game only through advance, so the move log never misses a move', () => {
+      // A path that called the reducer itself would make a move the log
+      // never heard of, and every replay of the game would go wrong from there.
+      // A path rather than `new URL(name, import.meta.url)`, which Vite rewrites.
+      const here = dirname(fileURLToPath(import.meta.url));
+      const source = readFileSync(join(here, 'useSudoku.ts'), 'utf8');
+      expect(source).not.toMatch(/\breduce\(/);
+    });
+
     it('reads the address bar and localStorage, and asks the app’s dailies, when not told otherwise', () => {
       const near = nearlySolved([0, 1]);
       window.history.replaceState(null, '', `/${linkFor(near.givens)}`);

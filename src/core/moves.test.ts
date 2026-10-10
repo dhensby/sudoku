@@ -21,6 +21,7 @@ import {
   readMoveLogHeader,
   replayMoveSteps,
   replayMoves,
+  verifiedMoveCount,
   verifyMoveLog,
   type LoggedHint,
   type Move,
@@ -882,6 +883,40 @@ describe('verifyMoveLog', () => {
     ],
   ])('does not vouch for a game that differs in %s', (_, changed) => {
     expect(verifyMoveLog(PUZZLE, log, changed() as GameState)).toBe(false);
+  });
+});
+
+describe('verifiedMoveCount', () => {
+  const { game, log } = playActions([place(2, 4), place(40, 9), pencil(3, 2), pencil(3, 6)]);
+
+  it('counts every move for the game the whole log rebuilds', () => {
+    expect(verifiedMoveCount(PUZZLE, log, reload(game))).toBe(4);
+  });
+
+  it('counts the moves that rebuild a board saved before the log moved on', () => {
+    const saved = replayMoves(PUZZLE, log, 2);
+    expect(verifiedMoveCount(PUZZLE, log, reload(saved))).toBe(2);
+    expect(verifiedMoveCount(PUZZLE, log, createGame(PUZZLE))).toBe(0);
+  });
+
+  it('takes the longest prefix when Undo brought the game back to an earlier point', () => {
+    const undone = playActions([place(2, 4), place(40, 9), { type: 'undo' }]);
+    // After one move, and again after the Undo: the log that went on to it.
+    expect(verifiedMoveCount(PUZZLE, undone.log, reload(undone.game))).toBe(3);
+  });
+
+  it('counts none for a game no prefix of the log rebuilds', () => {
+    const elsewhere = reduce(game, place(3, 6));
+    expect(elsewhere).not.toBe(game);
+    expect(verifiedMoveCount(PUZZLE, log, reload(elsewhere))).toBeNull();
+  });
+
+  it('does not vouch for a truncated log, nor a game of another puzzle', () => {
+    expect(verifiedMoveCount(PUZZLE, { ...log, truncated: true }, game)).toBeNull();
+    const other = { ...PUZZLE, givens: `0${PUZZLE.givens.slice(1)}` };
+    expect(verifiedMoveCount(other, log, game)).toBeNull();
+    const solution = { ...PUZZLE, solution: `9${PUZZLE.solution.slice(1)}` };
+    expect(verifiedMoveCount(PUZZLE, log, { ...game, puzzle: solution })).toBeNull();
   });
 });
 

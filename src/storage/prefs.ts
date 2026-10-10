@@ -1,5 +1,5 @@
 import { fieldsOf, newerFields, type Difficulty } from '../core';
-import { freeSpace } from './history';
+import { MAKE_ROOM } from './history';
 import {
   isDifficulty,
   isObject,
@@ -213,7 +213,7 @@ function savePreferences(storage: StorageLike, prefs: Preferences, isThemePicked
       ...(!isThemePicked && isNewerTheme(storedTheme) ? { theme: storedTheme } : {}),
     },
   };
-  writeItem(storage, STORAGE_KEY, JSON.stringify(saved), freeSpace);
+  writeItem(storage, STORAGE_KEY, JSON.stringify(saved), MAKE_ROOM);
 }
 
 /**

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   DIFFICULTIES,
   MAX_NAME_LENGTH,
+  MAX_STAGE_ROUNDS,
   browserStorage,
   deleteItem,
   isDifficulty,
@@ -224,6 +225,91 @@ describe('writeItem', () => {
     const storage = quotaStorage(5);
     expect(writeItem(storage, 'k', 'far too long a value')).toBe(false);
     expect(storage.writes()).toBe(1);
+  });
+
+  describe('with stages of making room', () => {
+    it('stops at the first stage after which the write fits', () => {
+      const storage = quotaStorage(30);
+      storage.setItem('a', '0123456789'); // 11
+      storage.setItem('b', '0123456789'); // 22 of 30 used
+      const first = vi.fn((s: StorageLike) => s.removeItem('a'));
+      const second = vi.fn((s: StorageLike) => s.removeItem('b'));
+      expect(writeItem(storage, 'k', '0123456789', [first, second])).toBe(true);
+      expect(first).toHaveBeenCalledTimes(1);
+      expect(second).not.toHaveBeenCalled();
+      expect(storage.keys()).toEqual(['b', 'k']);
+    });
+
+    it('goes on to the next stage while the write still does not fit', () => {
+      const storage = quotaStorage(30);
+      storage.setItem('a', '01'); // 3
+      storage.setItem('b', '0123456789012345678'); // 23 of 30 used
+      const stages = [(s: StorageLike) => s.removeItem('a'), (s: StorageLike) => s.removeItem('b')];
+      expect(writeItem(storage, 'k', '0123456789', stages)).toBe(true);
+      expect(storage.keys()).toEqual(['k']);
+      // The first try, then a retry after each stage.
+      expect(storage.writes()).toBe(5);
+    });
+
+    it('skips the retry after a stage that found nothing to free', () => {
+      const storage = quotaStorage(5);
+      const nothing = vi.fn(() => false);
+      expect(writeItem(storage, 'k', 'far too long a value', [nothing, nothing])).toBe(false);
+      expect(nothing).toHaveBeenCalledTimes(2);
+      expect(storage.writes()).toBe(1);
+    });
+
+    it('gives up quietly after the last stage', () => {
+      const storage = quotaStorage(5);
+      expect(writeItem(storage, 'k', 'far too long a value', [() => {}, () => {}])).toBe(false);
+      expect(storage.writes()).toBe(3);
+    });
+
+    it('asks a stage that frees a little at a time again, until the write fits', () => {
+      const storage = quotaStorage(40);
+      for (const key of ['a', 'b', 'c']) storage.setItem(key, '0123456789'); // 33 of 40
+      const chunk = vi.fn((s: StorageLike) => {
+        const key = ['a', 'b', 'c'].find((k) => s.getItem(k) !== null);
+        if (key === undefined) return false;
+        s.removeItem(key);
+        return true;
+      });
+      const after = vi.fn();
+      expect(writeItem(storage, 'k', '0123456789012345678', [chunk, after])).toBe(true);
+      // Two chunks were enough: the third stays, and so does what comes after.
+      expect(chunk).toHaveBeenCalledTimes(2);
+      expect(after).not.toHaveBeenCalled();
+      expect(storage.keys()).toEqual(['c', 'k']);
+    });
+
+    it('moves on once such a stage has nothing left to free', () => {
+      const storage = quotaStorage(5);
+      let left = 2;
+      const chunk = vi.fn(() => left-- > 0);
+      const after = vi.fn();
+      expect(writeItem(storage, 'k', 'far too long a value', [chunk, after])).toBe(false);
+      expect(chunk).toHaveBeenCalledTimes(3);
+      expect(after).toHaveBeenCalledTimes(1);
+      // The first try, a retry after each chunk, and one after the last stage.
+      expect(storage.writes()).toBe(4);
+    });
+
+    it('asks a stage again only so many times, should it never stop saying it freed some', () => {
+      const storage = quotaStorage(5);
+      const liar = vi.fn(() => true);
+      expect(writeItem(storage, 'k', 'far too long a value', liar)).toBe(false);
+      expect(liar).toHaveBeenCalledTimes(MAX_STAGE_ROUNDS);
+    });
+
+    it('does not ask a stage that threw again', () => {
+      const storage = quotaStorage(5);
+      const thrower = vi.fn(() => {
+        throw new Error('no');
+      });
+      expect(writeItem(storage, 'k', 'far too long a value', thrower)).toBe(false);
+      expect(thrower).toHaveBeenCalledTimes(1);
+      expect(storage.writes()).toBe(2);
+    });
   });
 });
 

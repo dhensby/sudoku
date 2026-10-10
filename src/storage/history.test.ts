@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { addDays, encodeGivens, formatGrid, mulberry32, parseGrid } from '../core';
+import {
+  MOVES_VERSION,
+  addDays,
+  appendMove,
+  createMoveLog,
+  encodeGivens,
+  encodeMoveLog,
+  formatGrid,
+  mulberry32,
+  parseGrid,
+  type Digit,
+  type MoveLog,
+} from '../core';
 import {
   MAX_RECORDS,
   MAX_SAVED_GAMES,
@@ -22,13 +34,32 @@ import {
   markSeen,
   saveCurrentId,
   saveGameBlob,
+  saveGameMoves,
   savedGameIds,
+  sweepMoveLogs,
   upsertRecord,
   type GameRecord,
 } from './history';
+import {
+  loadEncodedMoveLog,
+  loadMoveLog,
+  moveLogSize,
+  readMoveLogIds,
+  storeMoveLog,
+  storeMoveLogs,
+} from './moveLogs';
 import { memoryStorage, type StorageLike } from './storage';
 import { computeStreak, dailyStatuses } from './streaks';
 import { quotaStorage, throwingStorage } from '../test/misc-storage';
+import {
+  EASY_PUZZLE,
+  EXPERT_PUZZLES,
+  LOG_IN_A_LATER_FORMAT,
+  logFromAnotherBuild,
+  solveByPlacing,
+  solveWithAutoCandidates,
+  solveWithNotes,
+} from '../test/movePlayers';
 import { WIKIPEDIA_PUZZLE } from '../test/grids';
 
 const HISTORY = 'sudoku.history';
@@ -896,6 +927,7 @@ describe('exportHistory', () => {
       exportedAt: 1_759_600_000_000,
       records: loadHistory(storage),
       games: { b: { v: 1, values: PUZZLE } },
+      moves: {},
       seen: [],
       dailyLedger: {},
     });
@@ -1486,48 +1518,6 @@ describe('fields a newer version added', () => {
       expect(storage.getItem('sudoku.game.g')).toBe(once);
     });
   });
-
-  describe('the keys reserved for move logs', () => {
-    const RESERVED = ['sudoku.moves.a', 'sudoku.moves.s0', 'sudoku.moves.p0', 'sudoku.moveLogs'];
-
-    /** A storage holding move logs, that records every key anything tries to remove. */
-    function withMoveLogs(): ReturnType<typeof quotaStorage> & { removed: string[] } {
-      const inner = quotaStorage();
-      const remove = inner.removeItem;
-      const removed: string[] = [];
-      for (const key of RESERVED) inner.setItem(key, '"log"');
-      return Object.assign(inner, {
-        removed,
-        removeItem: (key: string) => {
-          removed.push(key);
-          remove(key);
-        },
-      });
-    }
-
-    it('are never removed by pruning, sweeping, shedding, deleting or importing', () => {
-      const storage = withMoveLogs();
-      const records: GameRecord[] = [];
-      for (let i = 0; i < 400; i++) records.push(solved(`s${i}`, i * 10));
-      for (let i = 0; i < 60; i++) {
-        records.push(playing(`p${i}`, 10_000 + i, { updatedAt: 20_000 + i }));
-        saveGameBlob(storage, `p${i}`, { state: 'x'.repeat(200) });
-      }
-      seed(storage, records);
-      upsertRecord(storage, playing('a', 50_000));
-      freeSpace(storage);
-      deleteRecord(storage, 'a');
-      deleteRecord(storage, 's0');
-      deleteGameBlob(storage, 'p0');
-      importHistory(storage, exportHistory(storage, 0));
-      storage.capacity = storage.used() + 10;
-      upsertRecord(storage, playing('b', 60_000, { elapsedMs: 1 }));
-
-      expect(storage.removed.length).toBeGreaterThan(0);
-      expect(storage.removed.filter((key) => key.startsWith('sudoku.move'))).toEqual([]);
-      for (const key of RESERVED) expect(storage.getItem(key)).toBe('"log"');
-    });
-  });
 });
 
 describe('daily records', () => {
@@ -1894,6 +1884,549 @@ describe('daily records', () => {
       expect(ids(findDailyAttempts(records, '2026-10-13', 'hard'))).toEqual(['e', 'a']);
       expect(ids(findDailyAttempts(records, '2026-10-13', 'easy'))).toEqual(['c']);
       expect(findDailyAttempts(records, '2026-10-14', 'hard')).toEqual([]);
+    });
+  });
+});
+
+describe('move logs', () => {
+  /**
+   * A log of `count` placements a second apart. Its content means nothing
+   * here — the store never replays a log — only that it decodes, and its
+   * length: about 3 characters a move.
+   */
+  function logOf(count = 3, autoCandidates = false): MoveLog {
+    let log = createMoveLog({ autoCandidates });
+    for (let i = 0; i < count; i++) {
+      const move = { op: 'place', cell: i % 81, digit: ((i % 9) + 1) as Digit } as const;
+      log = appendMove(log, { ...move, clearPeerNotes: false }, i * 1000);
+    }
+    return log;
+  }
+
+  /** Store a log for each id, as saving their games would have. */
+  function withLogs(storage: StorageLike, idsWithLogs: readonly string[], moves = 3): void {
+    for (const id of idsWithLogs) storeMoveLog(storage, id, encodeMoveLog(logOf(moves)));
+  }
+
+  const hasLog = (storage: StorageLike, id: string): boolean =>
+    loadEncodedMoveLog(storage, id) !== null;
+
+  describe('saveGameMoves', () => {
+    it('stores the log encoded under the game’s own key, listed, and nowhere else', () => {
+      const storage = memoryStorage();
+      upsertRecord(storage, playing('a', 1));
+      saveGameBlob(storage, 'a', { v: 1 });
+      const log = logOf();
+      expect(saveGameMoves(storage, 'a', log)).toBe(true);
+      expect(storage.getItem('sudoku.moves.a')).toBe(encodeMoveLog(log));
+      expect(readMoveLogIds(storage)).toEqual(['a']);
+      expect(loadMoveLog(storage, 'a')).toEqual(log);
+      // Neither the history nor the board carries it.
+      expect(storage.getItem(HISTORY)).not.toContain(encodeMoveLog(log));
+      expect(storage.getItem('sudoku.game.a')).not.toContain(encodeMoveLog(log));
+    });
+
+    it('writes a log only when it has changed since it was last saved', () => {
+      const storage = countingStorage();
+      const log = logOf(3);
+      saveGameMoves(storage, 'a', log);
+      storage.sets.length = 0;
+      expect(saveGameMoves(storage, 'a', log)).toBe(true);
+      expect(storage.sets).toEqual([]);
+      const longer = appendMove(log, { op: 'erase', cell: 0 }, 5000);
+      saveGameMoves(storage, 'a', longer);
+      expect(storage.sets).toEqual(['sudoku.moves.a']);
+      expect(loadMoveLog(storage, 'a')).toEqual(longer);
+    });
+
+    it('deletes the log of a game no longer recorded, once', () => {
+      const storage = countingStorage();
+      saveGameMoves(storage, 'a', logOf());
+      saveGameMoves(storage, 'a', null);
+      expect(hasLog(storage, 'a')).toBe(false);
+      expect(readMoveLogIds(storage)).toEqual([]);
+      storage.removes = 0;
+      saveGameMoves(storage, 'a', null);
+      expect(storage.removes).toBe(0);
+    });
+
+    it('writes the same log again once something has deleted it', () => {
+      const storage = memoryStorage();
+      upsertRecord(storage, playing('a', 1));
+      const log = logOf();
+      saveGameMoves(storage, 'a', log);
+      deleteRecord(storage, 'a');
+      upsertRecord(storage, playing('a', 1));
+      saveGameMoves(storage, 'a', log);
+      expect(loadMoveLog(storage, 'a')).toEqual(log);
+    });
+
+    it('makes room for itself by shedding other finished games’ logs, never its own', () => {
+      // A finished game off screen, saved once more (as a game set aside is):
+      // the oldest finished logs go, this one stays.
+      const storage = quotaStorage();
+      const records = Array.from({ length: 300 }, (_, i) => solved(`s${i}`, i * 10));
+      seed(storage, records);
+      withLogs(storage, ids(records), 100);
+      storage.capacity = storage.used() + 10;
+      const longer = logOf(110);
+      expect(saveGameMoves(storage, 's0', longer)).toBe(true);
+      expect(loadMoveLog(storage, 's0')).toEqual(longer);
+      expect(hasLog(storage, 's1')).toBe(false);
+      expect(hasLog(storage, 's299')).toBe(true);
+    });
+
+    it('gives up quietly when there is no room to be had', () => {
+      const storage = quotaStorage(10);
+      expect(saveGameMoves(storage, 'a', logOf())).toBe(false);
+      expect(storage.keys()).toEqual([]);
+    });
+  });
+
+  describe('go with their record', () => {
+    it('when it is deleted', () => {
+      const storage = memoryStorage();
+      upsertRecord(storage, solved('a', 1));
+      upsertRecord(storage, solved('b', 2));
+      withLogs(storage, ['a', 'b']);
+      deleteRecord(storage, 'a');
+      expect(hasLog(storage, 'a')).toBe(false);
+      expect(hasLog(storage, 'b')).toBe(true);
+      expect(readMoveLogIds(storage)).toEqual(['b']);
+    });
+
+    it('when it is pruned by the cap on records', () => {
+      const storage = memoryStorage();
+      const records = Array.from({ length: MAX_RECORDS }, (_, i) => solved(`s${i}`, i));
+      seed(storage, records);
+      withLogs(storage, ['s0', 's1', 's999']);
+      upsertRecord(storage, playing('new', 5000));
+      // One over the cap: the oldest finished game goes, and its log with it.
+      expect(ids(loadHistory(storage))).not.toContain('s0');
+      expect(hasLog(storage, 's0')).toBe(false);
+      expect(hasLog(storage, 's1')).toBe(true);
+      expect(hasLog(storage, 's999')).toBe(true);
+    });
+
+    it('but stay when only the saved board goes', () => {
+      // A finished game's board is dropped once it is off screen; its log is
+      // what plays it back.
+      const storage = memoryStorage();
+      upsertRecord(storage, solved('a', 1));
+      saveGameBlob(storage, 'a', { v: 1 });
+      withLogs(storage, ['a']);
+      upsertRecord(storage, playing('b', 2));
+      expect(hasGameBlob(storage, 'a')).toBe(false);
+      expect(hasLog(storage, 'a')).toBe(true);
+    });
+  });
+
+  describe('sweepMoveLogs', () => {
+    // logOf(3)'s last move is at 2 seconds: the solve, for a record of 2,000 ms.
+    const solvedAt2s = (id: string, createdAt: number, ms = 2000): GameRecord =>
+      solved(id, createdAt, ms);
+
+    it('deletes the logs whose record has gone, sparing the current game’s', () => {
+      const storage = memoryStorage();
+      upsertRecord(storage, solvedAt2s('kept', 1));
+      withLogs(storage, ['kept', 'orphan', 'current']);
+      saveCurrentId(storage, 'current');
+      sweepMoveLogs(storage);
+      expect(readMoveLogIds(storage)).toEqual(['kept', 'current']);
+      expect(hasLog(storage, 'orphan')).toBe(false);
+    });
+
+    it('touches nothing when every log has its record and reaches its end', () => {
+      const storage = countingStorage();
+      upsertRecord(storage, solvedAt2s('a', 1));
+      upsertRecord(storage, solvedAt2s('b', 2, 2999));
+      upsertRecord(storage, playing('c', 3, { elapsedMs: 90_000 }));
+      withLogs(storage, ['a', 'b', 'c']);
+      storage.sets.length = 0;
+      sweepMoveLogs(storage);
+      expect(storage.sets).toEqual([]);
+      expect(storage.removes).toBe(0);
+    });
+
+    it('deletes a solved game’s log that stops short of the solve', () => {
+      // A tab still on a version that keeps no logs took the game on, played
+      // it to the end and dropped its board: the log stops at 2 seconds, the
+      // solve was at 40.
+      const storage = memoryStorage();
+      upsertRecord(storage, solvedAt2s('whole', 1));
+      upsertRecord(storage, solvedAt2s('short', 2, 40_000));
+      upsertRecord(storage, solvedAt2s('ahead', 3, 500));
+      upsertRecord(storage, solvedAt2s('empty', 4));
+      withLogs(storage, ['whole', 'short']);
+      storeMoveLog(storage, 'ahead', encodeMoveLog(logOf(4)));
+      storeMoveLog(storage, 'empty', encodeMoveLog(createMoveLog()));
+      sweepMoveLogs(storage);
+      expect(readMoveLogIds(storage)).toEqual(['whole']);
+    });
+
+    it('spares the current game’s log, which is checked against its board instead', () => {
+      const storage = memoryStorage();
+      upsertRecord(storage, solvedAt2s('current', 1, 40_000));
+      withLogs(storage, ['current']);
+      saveCurrentId(storage, 'current');
+      sweepMoveLogs(storage);
+      expect(hasLog(storage, 'current')).toBe(true);
+    });
+
+    it('deletes a broken log, or one listed but missing, but leaves a newer build’s', () => {
+      const storage = memoryStorage();
+      const newer = {
+        'later-format': LOG_IN_A_LATER_FORMAT,
+        'later-rules': logFromAnotherBuild(MOVES_VERSION + 1, 2754),
+        'new-move': logFromAnotherBuild(MOVES_VERSION, 2759),
+      };
+      const doomed = {
+        broken: encodeMoveLog(logOf()).slice(0, -1),
+        'older-rules': logFromAnotherBuild(MOVES_VERSION - 1, 2754),
+      };
+      for (const [id, encoded] of Object.entries({ ...newer, ...doomed })) {
+        upsertRecord(storage, solved(id, 1));
+        storeMoveLog(storage, id, encoded);
+      }
+      upsertRecord(storage, playing('missing', 2));
+      storage.setItem('sudoku.moveLogs', JSON.stringify([...readMoveLogIds(storage), 'missing']));
+      sweepMoveLogs(storage);
+      expect(readMoveLogIds(storage).sort()).toEqual(Object.keys(newer).sort());
+      expect(hasLog(storage, 'broken')).toBe(false);
+      expect(hasLog(storage, 'older-rules')).toBe(false);
+    });
+
+    it('reads nothing more than the list when there are no logs', () => {
+      const storage = memoryStorage();
+      seed(storage, ['not even a record']);
+      expect(() => sweepMoveLogs(storage)).not.toThrow();
+    });
+  });
+
+  describe('in a full storage', () => {
+    /**
+     * 400 finished games and 20 unfinished ones (p19 on screen), every one
+     * with a log of 100 moves (some 320 characters), the unfinished ones with
+     * saved boards too, and no room to spare.
+     */
+    function fullStorage(): ReturnType<typeof quotaStorage> {
+      const storage = quotaStorage();
+      const records: GameRecord[] = [];
+      for (let i = 0; i < 400; i++) records.push(solved(`s${i}`, i * 10));
+      for (let i = 0; i < 20; i++) {
+        records.push(playing(`p${i}`, 10_000 + i, { updatedAt: 20_000 + i }));
+        saveGameBlob(storage, `p${i}`, { state: 'x'.repeat(2000) });
+      }
+      seed(storage, records);
+      withLogs(storage, ids(records), 100);
+      saveCurrentId(storage, 'p19');
+      storage.capacity = storage.used() + 100;
+      return storage;
+    }
+
+    const solvedIds = Array.from({ length: 400 }, (_, i) => `s${i}`);
+    const playingIds = Array.from({ length: 20 }, (_, i) => `p${i}`);
+
+    it('sheds the oldest finished games’ logs first, and nothing else', () => {
+      const storage = fullStorage();
+      const after = upsertRecord(storage, playing('new', 50_000, { updatedAt: 50_000 }));
+      expect(ids(loadHistory(storage))).toEqual(ids(after));
+      expect(after).toHaveLength(421);
+      // Some 50,000 characters of the oldest finished games' logs went…
+      const shed = solvedIds.filter((id) => !hasLog(storage, id));
+      expect(shed).toEqual(solvedIds.slice(0, shed.length));
+      expect(shed.length).toBeGreaterThan(140);
+      expect(shed.length).toBeLessThan(170);
+      // …and every board, record and unfinished game's log stayed.
+      expect(playingIds.every((id) => hasGameBlob(storage, id) && hasLog(storage, id))).toBe(true);
+    });
+
+    it('never sheds the current game’s log, even an old finished one', () => {
+      const storage = fullStorage();
+      saveCurrentId(storage, 's0');
+      upsertRecord(storage, playing('new', 50_000, { updatedAt: 50_000 }));
+      expect(hasLog(storage, 's0')).toBe(true);
+      expect(hasLog(storage, 's1')).toBe(false);
+    });
+
+    it('keeps shedding the oldest finished games’ logs, a chunk at a time, until it fits', () => {
+      const storage = fullStorage();
+      // More than one chunk of logs short, but far less than all of them.
+      const short = 75_000;
+      storage.capacity = storage.used() - short;
+      const sizes = new Map(solvedIds.map((id) => [id, moveLogSize(storage, id)]));
+      const after = upsertRecord(storage, playing('new', 50_000, { updatedAt: 50_000 }));
+      expect(after).toHaveLength(421);
+      const shed = solvedIds.filter((id) => !hasLog(storage, id));
+      expect(shed).toEqual(solvedIds.slice(0, shed.length));
+      // Enough for the write, and less than a chunk more than it needed.
+      const freed = shed.reduce((sum, id) => sum + sizes.get(id)!, 0);
+      expect(freed).toBeGreaterThan(short);
+      expect(freed).toBeLessThan(short + 50_000);
+      expect(playingIds.every((id) => hasGameBlob(storage, id) && hasLog(storage, id))).toBe(true);
+    });
+
+    it('sheds every finished game’s log before a board or a record, if it must', () => {
+      const storage = fullStorage();
+      // Short by nearly every finished game's log.
+      storage.capacity = storage.used() - 125_000;
+      const after = upsertRecord(storage, playing('new', 50_000, { updatedAt: 50_000 }));
+      expect(after).toHaveLength(421);
+      expect(solvedIds.filter((id) => hasLog(storage, id)).length).toBeLessThan(10);
+      expect(playingIds.every((id) => hasGameBlob(storage, id) && hasLog(storage, id))).toBe(true);
+    });
+
+    it('then sheds boards and old records as before, the unfinished games’ logs kept', () => {
+      const storage = fullStorage();
+      // Even with every finished game's log gone, the history does not fit.
+      storage.capacity = storage.used() - 160_000;
+      const after = upsertRecord(storage, playing('new', 50_000, { updatedAt: 50_000 }));
+      expect(after.filter((record) => record.status === 'solved')).toHaveLength(300);
+      expect(playingIds.filter((id) => hasGameBlob(storage, id))).toHaveLength(9);
+      expect(playingIds.every((id) => hasLog(storage, id))).toBe(true);
+      expect(solvedIds.filter((id) => hasLog(storage, id))).toEqual([]);
+    });
+
+    it('sheds logs first for any other write the storage refuses', () => {
+      const storage = fullStorage();
+      saveGameBlob(storage, 'p19', { state: 'y'.repeat(2500) });
+      expect(loadGameBlob(storage, 'p19')).toEqual({ state: 'y'.repeat(2500) });
+      expect(hasLog(storage, 's0')).toBe(false);
+      expect(playingIds.every((id) => hasGameBlob(storage, id))).toBe(true);
+      expect(loadHistory(storage)).toHaveLength(420);
+    });
+
+    it('sheds the logs of games no longer in the history before any other', () => {
+      const storage = fullStorage();
+      storage.capacity = Number.POSITIVE_INFINITY;
+      // Bigger than a shedding's worth on its own (no real log is this long).
+      storeMoveLog(storage, 'gone', 'A'.repeat(60_000));
+      storage.capacity = storage.used() + 100;
+      upsertRecord(storage, playing('new', 50_000, { updatedAt: 50_000 }));
+      expect(hasLog(storage, 'gone')).toBe(false);
+      expect(hasLog(storage, 's0')).toBe(true);
+    });
+  });
+
+  describe('export and import', () => {
+    it('round-trip every game’s log with the history', () => {
+      const source = memoryStorage();
+      upsertRecord(source, solved('a', 1));
+      upsertRecord(source, playing('b', 2));
+      upsertRecord(source, playing('c', 3));
+      withLogs(source, ['a', 'b']);
+      const exported = JSON.parse(exportHistory(source, 0)) as { moves: Record<string, string> };
+      expect(exported.moves).toEqual({
+        a: loadEncodedMoveLog(source, 'a'),
+        b: loadEncodedMoveLog(source, 'b'),
+      });
+
+      const target = memoryStorage();
+      importHistory(target, exportHistory(source, 0));
+      expect(loadMoveLog(target, 'a')).toEqual(logOf());
+      expect(loadMoveLog(target, 'b')).toEqual(logOf());
+      expect(hasLog(target, 'c')).toBe(false);
+      expect(readMoveLogIds(target).sort()).toEqual(['a', 'b']);
+    });
+
+    it('leave out a log listed but missing, and one whose record has gone', () => {
+      const storage = memoryStorage();
+      upsertRecord(storage, solved('a', 1));
+      storage.setItem('sudoku.moveLogs', JSON.stringify(['a', 'orphan']));
+      storage.setItem('sudoku.moves.orphan', encodeMoveLog(logOf()));
+      const exported = JSON.parse(exportHistory(storage, 0)) as { moves: object };
+      expect(exported.moves).toEqual({});
+    });
+
+    /** An export file built by hand, with logs. */
+    function file(records: unknown[], moves: unknown): string {
+      return JSON.stringify({ app: 'sudoku', version: 1, records, games: {}, moves });
+    }
+
+    it('take a log only for a record the import adds or updates', () => {
+      const storage = memoryStorage();
+      upsertRecord(storage, solved('older-here', 1, 60_000, { updatedAt: 100 }));
+      upsertRecord(storage, solved('newer-here', 2, 60_000, { updatedAt: 900 }));
+      withLogs(storage, ['older-here', 'newer-here'], 1);
+      const theirs = encodeMoveLog(logOf(5));
+      importHistory(
+        storage,
+        file(
+          [
+            solved('older-here', 1, 60_000, { updatedAt: 500 }),
+            solved('newer-here', 2, 60_000, { updatedAt: 500 }),
+            solved('new', 3),
+          ],
+          { 'older-here': theirs, 'newer-here': theirs, new: theirs, stray: theirs },
+        ),
+      );
+      expect(loadEncodedMoveLog(storage, 'older-here')).toBe(theirs);
+      expect(loadMoveLog(storage, 'newer-here')).toEqual(logOf(1));
+      expect(loadEncodedMoveLog(storage, 'new')).toBe(theirs);
+      expect(hasLog(storage, 'stray')).toBe(false);
+    });
+
+    it('drop the log here of a record replaced by a copy that has none', () => {
+      const storage = memoryStorage();
+      upsertRecord(storage, solved('a', 1, 60_000, { updatedAt: 100 }));
+      withLogs(storage, ['a']);
+      importHistory(storage, file([solved('a', 1, 60_000, { updatedAt: 500 })], {}));
+      expect(hasLog(storage, 'a')).toBe(false);
+    });
+
+    it('drop a log that does not decode, never the import', () => {
+      const storage = memoryStorage();
+      const good = encodeMoveLog(logOf());
+      const result = importHistory(
+        storage,
+        file([solved('a', 1), solved('b', 2), solved('c', 3), solved('d', 4)], {
+          a: good,
+          b: good.slice(0, -1),
+          c: 42,
+          d: '{"moves":[]}',
+        }),
+      );
+      expect(result).toEqual({ ok: true, added: 4, updated: 0 });
+      expect(readMoveLogIds(storage)).toEqual(['a']);
+    });
+
+    it.each([
+      ['missing', undefined],
+      ['a list', ['x']],
+      ['a string', 'moves'],
+    ])('import the records when the logs are %s', (_label, moves) => {
+      const storage = memoryStorage();
+      expect(importHistory(storage, file([solved('a', 1)], moves))).toEqual({
+        ok: true,
+        added: 1,
+        updated: 0,
+      });
+      expect(hasLog(storage, 'a')).toBe(false);
+    });
+
+    it('take none for a record pruned by the cap on the way in', () => {
+      const storage = memoryStorage();
+      seed(
+        storage,
+        Array.from({ length: MAX_RECORDS }, (_, i) => playing(`here${i}`, 1000 + i)),
+      );
+      importHistory(
+        storage,
+        file([solved('old-solve', 1)], { 'old-solve': encodeMoveLog(logOf()) }),
+      );
+      expect(hasLog(storage, 'old-solve')).toBe(false);
+    });
+
+    it('never evict anything to make room for the file’s logs', () => {
+      // Room for the record and for a single log of the two: the newer gets it.
+      const storage = quotaStorage();
+      upsertRecord(storage, solved('here', 1));
+      withLogs(storage, ['here'], 100);
+      const incoming = [
+        solved('older', 2, 1, { updatedAt: 10 }),
+        solved('newer', 3, 1, { updatedAt: 20 }),
+      ];
+      const growth =
+        JSON.stringify([...loadHistory(storage), ...incoming]).length -
+        JSON.stringify(loadHistory(storage)).length;
+      storage.capacity = storage.used() + growth + 600;
+      const theirs = encodeMoveLog(logOf(150));
+      importHistory(storage, file(incoming, { older: theirs, newer: theirs }));
+      expect(hasLog(storage, 'here')).toBe(true);
+      expect(hasLog(storage, 'newer')).toBe(true);
+      expect(hasLog(storage, 'older')).toBe(false);
+      expect(readMoveLogIds(storage).sort()).toEqual(['here', 'newer']);
+    });
+    it('store none of the file’s logs once its records only fitted by shedding logs here', () => {
+      // 600 finished games here, each with a log, and a file of 300 more that
+      // needs far more room than one chunk of logs frees.
+      const storage = quotaStorage();
+      const here = Array.from({ length: 600 }, (_, i) => solved(`here${i}`, i * 10));
+      seed(storage, here);
+      withLogs(storage, ids(here), 100);
+      storage.capacity = storage.used() + 1000;
+      const theirs = encodeMoveLog(logOf(100));
+      const incoming = Array.from({ length: 300 }, (_, i) => solved(`new${i}`, 10_000 + i));
+      const result = importHistory(
+        storage,
+        file(incoming, Object.fromEntries(incoming.map(({ id }) => [id, theirs]))),
+      );
+      expect(result).toEqual({ ok: true, added: 300, updated: 0 });
+      expect(loadHistory(storage)).toHaveLength(900);
+      // The oldest logs here went for the records, and only as many as they
+      // needed; the space that left over is not the file's to fill.
+      const kept = ids(here).filter((id) => hasLog(storage, id));
+      expect(kept.length).toBeGreaterThan(0);
+      expect(kept).toEqual(ids(here).slice(-kept.length));
+      expect(incoming.some(({ id }) => hasLog(storage, id))).toBe(false);
+    });
+  });
+
+  describe('in a full history', () => {
+    /** The quota browsers give a site, in the characters they count it in: about 5 MB. */
+    const QUOTA = 5 * 1024 * 1024;
+
+    /** `count` encoded logs of real solves of each kind, by players as people play. */
+    function solves(play: typeof solveByPlacing, count: number): string[] {
+      const puzzles = [EASY_PUZZLE, ...EXPERT_PUZZLES];
+      return Array.from({ length: count }, (_, i) =>
+        encodeMoveLog(play(puzzles[i % puzzles.length], mulberry32(i + 1)).log),
+      );
+    }
+
+    /**
+     * A history of 1,000 games — one in twenty unfinished, with its board
+     * saved, the newest of them on screen — each with a log from `pool`.
+     */
+    function fullHistory(pool: readonly string[]): ReturnType<typeof quotaStorage> {
+      const storage = quotaStorage();
+      const records = Array.from({ length: MAX_RECORDS }, (_, i) =>
+        i % 20 === 0 ? playing(`g${i}`, i * 1000) : solved(`g${i}`, i * 1000, 400_000),
+      );
+      seed(storage, records);
+      for (const record of records.filter(({ status }) => status === 'playing')) {
+        saveGameBlob(storage, record.id, { state: 'x'.repeat(950) });
+      }
+      storeMoveLogs(
+        storage,
+        records.map((record, i) => [record.id, pool[i % pool.length]] as const),
+      );
+      saveCurrentId(storage, 'g980');
+      return storage;
+    }
+
+    it('takes under a third of the quota, even if every game pencilled in every candidate', () => {
+      const storage = fullHistory(solves(solveWithNotes, 6));
+      expect(storage.used()).toBeLessThan(QUOTA / 3);
+    });
+
+    it('sheds logs once, then has room for a whole game played on after the storage fills', () => {
+      const pool = [
+        ...solves(solveByPlacing, 9),
+        ...solves(solveWithAutoCandidates, 7),
+        ...solves(solveWithNotes, 4),
+      ];
+      const storage = fullHistory(pool);
+      storage.capacity = storage.used() + 100;
+      const game = solveWithNotes(EASY_PUZZLE, mulberry32(99)).log;
+      const current = playing('g980', 980_000);
+      const counts: number[] = [];
+      for (let m = 1; m <= game.moves.length; m++) {
+        const log = { ...game, moves: game.moves.slice(0, m) };
+        upsertRecord(storage, { ...current, elapsedMs: log.moves.at(-1)!.at, updatedAt: 1e6 + m });
+        expect(saveGameMoves(storage, 'g980', log)).toBe(true);
+        counts.push(readMoveLogIds(storage).length);
+      }
+      // One shedding, of a hundred or so of the oldest finished games' logs…
+      const sheddings = counts.filter((count, i) => count < (counts[i - 1] ?? MAX_RECORDS));
+      expect(sheddings).toHaveLength(1);
+      expect(MAX_RECORDS - counts.at(-1)!).toBeGreaterThan(50);
+      expect(MAX_RECORDS - counts.at(-1)!).toBeLessThan(200);
+      // …and nothing else lost: every record, board and unfinished game's log.
+      expect(loadHistory(storage)).toHaveLength(MAX_RECORDS);
+      expect(savedGameIds(storage).size).toBe(50);
+      expect(hasLog(storage, 'g0')).toBe(true);
+      expect(hasLog(storage, 'g1')).toBe(false);
     });
   });
 });

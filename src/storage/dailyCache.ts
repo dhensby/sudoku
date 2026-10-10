@@ -22,7 +22,7 @@ import { isDifficulty, isObject, readJson, writeItem, type StorageLike } from '.
  * only by that version (a new engine deals new puzzles from the same seeds),
  * held to the MAX_CACHED_DAILIES written last, and never written at the cost
  * of anything else: a write the browser refuses is dropped, rather than
- * making room by shedding the history (see `freeSpace`).
+ * making room by shedding the history (see `MAKE_ROOM`).
  */
 
 /** The most dailies kept: four weeks of all four tiers. */

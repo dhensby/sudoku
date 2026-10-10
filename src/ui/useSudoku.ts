@@ -9,7 +9,6 @@ import {
   formatDuration,
   gridValues,
   isBoardFull,
-  reduce,
   shownHint,
   toSeconds,
   valuesOf,
@@ -37,6 +36,7 @@ import {
   markSeen,
   saveCurrentId,
   savedGameIds,
+  sweepMoveLogs,
   upsertRecord,
   type Challenge,
   type DifficultyStats,
@@ -60,6 +60,7 @@ import type { TodayDailies } from './DifficultyMenu';
 import { createPuzzleSource, type PuzzleSource } from './puzzleSource';
 import type { GuideId } from './techniqueGuide';
 import {
+  advance,
   asDaily,
   attemptSource,
   hasBoardShown,
@@ -414,7 +415,8 @@ function isFullButWrong(game: GameState): boolean {
  * plus the history around it.
  *
  * Follows minesweeper's hook: values fixed for its lifetime are lazy state,
- * and each handler works out the next game state with the pure reducer,
+ * and each handler works out the next game state with the pure reducer —
+ * always through `advance`, which logs the move with the time it was made —
  * makes its side effects (the clock, the history, the status region), then
  * sets state. Effects only listen (visibility, page hide), save on a timer,
  * and wait for things that are genuinely asynchronous: a puzzle from the
@@ -873,12 +875,13 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
   const run = (action: DescribedAction): void => {
     if (session === null || (phase !== 'playing' && phase !== 'solved')) return;
     const previous = session.game;
-    const next = reduce(previous, action);
-    // The reducer returns the same state for a no-op.
-    if (next === previous) return;
+    const advanced = advance(session, action, clock());
+    // The very same session when the move changed nothing and logged nothing.
+    if (advanced === session) return;
+    const next = advanced.game;
 
     if (next.status === 'solved' && previous.status !== 'solved') {
-      setSession(solve({ ...session, game: next }));
+      setSession(solve(advanced));
       return;
     }
 
@@ -893,7 +896,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       if (notice?.kind === 'boardFull' && !isBoardFull(next)) setNotice(null);
       announce(said);
     }
-    setSession({ ...session, game: next });
+    setSession(advanced);
   };
 
   // ---- Effects ----------------------------------------------------------
@@ -907,6 +910,9 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
   // address bar and storage from being touched twice for nothing.
   const handleStartup = useEffectEvent(() => {
     if (startup.isLinkConsumed) clearShareParams();
+    // Logs that no longer go with a record — whose game a tab on an older
+    // version, which knows nothing of logs, pruned, or finished without them.
+    sweepMoveLogs(storage);
     // A link's game takes the place of the one on screen, which goes the way
     // a New game would leave it.
     if (startup.left !== null && isGlimpse(startup.left)) discard(startup.left);
@@ -1161,9 +1167,10 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       }
       const t = at();
       // Counted as a hint the first time for the cell — the reducer keeps
-      // count — and the clock stops silently, as for any dialog.
-      const charged = reduce(session.game, { type: 'walkthrough', index: checked.target });
-      const next = pauseSession({ ...session, game: charged }, 'dialog', t.clock);
+      // count — and logged every time, as help seen; then the clock stops
+      // silently, as for any dialog.
+      const charged = advance(session, { type: 'walkthrough', index: checked.target }, t.clock);
+      const next = pauseSession(charged, 'dialog', t.clock);
       persist(next, t);
       setSession(next);
       setDialog({ kind: 'walkthrough', walkthrough: checked, step: 0 });
@@ -1184,10 +1191,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       // stood, running again as the confirmation closes. Otherwise studying
       // the board, then resetting it, would bank a time that left the
       // studying out.
-      const next: Session = {
-        ...resumeSession(session, t),
-        game: reduce(session.game, { type: 'reset' }),
-      };
+      const next = resumeSession(advance(session, { type: 'reset' }, t.clock), t);
       persist(next, t);
       setSession(next);
       if (notice?.kind === 'boardFull') setNotice(null);

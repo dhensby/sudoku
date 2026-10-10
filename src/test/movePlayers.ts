@@ -1,4 +1,5 @@
 import {
+  MOVE_LOG_FORMAT,
   PEERS,
   appendMove,
   computeCandidates,
@@ -11,6 +12,7 @@ import {
   moveFor,
   parseGrid,
   reduce,
+  seedFromString,
   valuesOf,
   type Digit,
   type Direction,
@@ -425,3 +427,33 @@ export function randomAction(game: GameState, rng: RandomFn, accuracy = 0.6): Ga
   if (roll < 99.3) return { type: 'reset' };
   return { type: 'hint', hint: { kind: 'none' } };
 }
+
+const LOG_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+
+/**
+ * An encoded log as another build would write it, which this one refuses:
+ * `rules` (the rules version) and `code` (one move's code, at no time at all)
+ * written out by hand in this build's format, with an intact check — a log
+ * from an older or a newer rules version, or one holding a move code added
+ * since. Written from the format's description (see `src/core/moves.ts`), not
+ * by the module, which would refuse to.
+ */
+export function logFromAnotherBuild(rules: number, code: number): string {
+  const body =
+    LOG_ALPHABET[MOVE_LOG_FORMAT] +
+    LOG_ALPHABET[rules] +
+    'A' +
+    LOG_ALPHABET[code >> 6] +
+    LOG_ALPHABET[code & 63] +
+    'A';
+  const hash = seedFromString(body);
+  return (
+    body +
+    LOG_ALPHABET[(hash >> 12) & 63] +
+    LOG_ALPHABET[(hash >> 6) & 63] +
+    LOG_ALPHABET[hash & 63]
+  );
+}
+
+/** A log in a later format than this build's, which it cannot read at all. */
+export const LOG_IN_A_LATER_FORMAT = `${LOG_ALPHABET[MOVE_LOG_FORMAT + 1]}AAAAAAAA`;
