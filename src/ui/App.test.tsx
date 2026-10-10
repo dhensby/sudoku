@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { encodeGivens, type Puzzle } from '../core';
@@ -957,8 +957,15 @@ describe('App', () => {
       fireEvent.click(key);
       await nextFrame();
       expect(selectedCell()).toHaveFocus();
-      await screen.findByRole('dialog', { name: 'Solved!' });
+      const dialog = await screen.findByRole('dialog', { name: 'Solved!' });
+      // It opens on a timer, outside act, so its effects run a task after it
+      // is on the page. They take focus and start listening for Escape in the
+      // same run, so focus inside means Escape will be heard.
+      await waitFor(() =>
+        expect(within(dialog).getByRole('button', { name: 'Share your time' })).toHaveFocus(),
+      );
       fireEvent.keyDown(document, { key: 'Escape' });
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
       expect(selectedCell()).toHaveFocus();
     });
 
