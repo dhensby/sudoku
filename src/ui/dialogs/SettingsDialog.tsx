@@ -43,11 +43,22 @@ const SWITCH_TEXT: Readonly<Record<SwitchKey, { label: string; description: stri
   },
   startInAutoCandidate: {
     label: 'Start new games in auto candidate mode',
-    description: 'Every possible candidate is filled in from the start. Counts as an assist.',
+    description:
+      'Every possible candidate is filled in from the start. Counts as help, shown next to your time.',
   },
   clearPeerNotes: {
     label: 'Remove candidates from peers when placing a number',
     description: 'Placing a number clears it from the notes in its row, column and box.',
+  },
+  checkGuesses: {
+    label: 'Check guesses when entered',
+    description:
+      'A wrong number is marked the moment you enter it, and counts as a mistake at once. Counts as help, shown next to your time.',
+  },
+  showErrorCounter: {
+    label: 'Show error counter',
+    description:
+      'Shows your mistakes so far as you play, each once it counts. Not counted as help.',
   },
 };
 
@@ -59,6 +70,7 @@ const GROUPS: readonly { title: string; keys: readonly SwitchKey[] }[] = [
     keys: ['highlightRowColumn', 'highlightBox', 'highlightIdentical', 'highlightConflicts'],
   },
   { title: 'Candidates', keys: ['startInAutoCandidate', 'clearPeerNotes'] },
+  { title: 'Mistakes', keys: ['checkGuesses', 'showErrorCounter'] },
 ];
 
 /** What each theme is called. A Record, so a new theme will not compile until it has a name here. */

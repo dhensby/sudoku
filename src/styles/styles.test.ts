@@ -354,6 +354,66 @@ describe('the layout', () => {
   });
 });
 
+describe('the error counter', () => {
+  it('counts its line above a phone’s controls into the column, only while it is on', () => {
+    const app = rule(LAYOUT, '.app');
+    expect(app).toMatch(/--counter-height:\s*0px/);
+    expect(app).toMatch(/--counter-gap:\s*0px/);
+    expect(app).toMatch(/--chrome:[^;]*var\(--counter-height\)\s*\+\s*var\(--counter-gap\)/);
+    const on = rule(LAYOUT, '.app--counter');
+    expect(on).toMatch(/--counter-height:\s*18px/);
+    expect(on).toMatch(/--counter-gap:\s*var\(--play-gap\)/);
+    // A line of exactly that height, however it is filled.
+    expect(rule(LAYOUT, '.error-counter--play')).toMatch(/height:\s*var\(--counter-height\)/);
+  });
+
+  it('sits beside the timer where the header has room, and above the controls where it has not', () => {
+    expect(rule(LAYOUT, '.error-counter--header')).toMatch(/display:\s*none/);
+    expect(LAYOUT).toMatch(
+      /@media \(min-width: 850px\), \(orientation: landscape\) and \(max-height: 500px\) \{\s*\.error-counter--header \{\s*display: block;\s*\}[^@]*\.error-counter--play \{\s*display: none;/,
+    );
+  });
+
+  it('moves the timer off the end of the header only where the counter takes its place', () => {
+    // Everywhere else, the counter is not shown, and the timer stays at the end.
+    const beside = [...LAYOUT.matchAll(/\.error-counter--header \+ \.header__timer/g)];
+    expect(beside).toHaveLength(1);
+    const media = LAYOUT.lastIndexOf('@media', beside[0].index);
+    expect(LAYOUT.slice(media, beside[0].index)).toMatch(
+      /^@media \(min-width: 850px\), \(orientation: landscape\) and \(max-height: 500px\) \{/,
+    );
+  });
+
+  it('makes the wordmark give way for it sooner where it shares the header', () => {
+    expect(LAYOUT).toMatch(
+      /@container header \(max-width: calc\(432px \+ 26em\)\) \{\s*\.header--counter \.header__title/,
+    );
+    expect(LAYOUT).toMatch(
+      /@container header \(max-width: calc\(173px \+ 23\.6em\)\) \{\s*\.header--counter \.header__title/,
+    );
+  });
+
+  it('makes the row of seven buttons give way for it too, folding them into the Menu last', () => {
+    // Inside the desktop's block, where the seven buttons show.
+    const fold = LAYOUT.indexOf('@container header (max-width: calc(419px + 18.4em))');
+    expect(LAYOUT.slice(LAYOUT.lastIndexOf('@media', fold), fold)).toMatch(
+      /^@media \(min-width: 850px\) \{/,
+    );
+    const block = LAYOUT.slice(LAYOUT.lastIndexOf('@media', fold));
+    // "Daily ·" first, then the tier, each only while the seven buttons show.
+    expect(block).toMatch(
+      /@container header \(min-width: calc\(419px \+ 18\.4em\)\) and \(max-width: calc\(419px \+ 23\.4em\)\) \{\s*\.header--counter\.header--daily \.header__daily \{\s*display: none;/,
+    );
+    expect(block).toMatch(
+      /@container header \(min-width: calc\(419px \+ 18\.4em\)\) and \(max-width: calc\(419px \+ 20\.1em\)\) \{\s*\.header--counter \.header__tier \{[^}]*clip-path: inset\(50%\);[^}]*\}\s*\.header--counter \.header__tier-short \{\s*display: inline;/,
+    );
+    // Then the five less-used actions fold into the Menu, as on a phone.
+    expect(block).toMatch(
+      /@container header \(max-width: calc\(419px \+ 18\.4em\)\) \{\s*\.header--counter \.header__actions \.header__wide \{\s*display: none;\s*\}\s*\.header--counter \.header__actions \.header__narrow \{\s*display: inline-flex;/,
+    );
+  });
+});
+
 describe('the dialogs', () => {
   it('spells out the primary button and the "Current" badge in forced colours', () => {
     // Left to their tokens, they are HighlightText on Highlight — which the

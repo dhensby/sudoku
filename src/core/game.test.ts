@@ -58,6 +58,8 @@ const CHECK_CELL: GameAction = { type: 'check', scope: 'cell' };
 const CHECK_PUZZLE: GameAction = { type: 'check', scope: 'puzzle' };
 const AUTO_ON: GameAction = { type: 'setAutoCandidates', enabled: true };
 const AUTO_OFF: GameAction = { type: 'setAutoCandidates', enabled: false };
+const CHECK_GUESSES_ON: GameAction = { type: 'setCheckGuesses', enabled: true };
+const CHECK_GUESSES_OFF: GameAction = { type: 'setCheckGuesses', enabled: false };
 
 function newGame(autoCandidates?: boolean): GameState {
   return createGame(PUZZLE, autoCandidates === undefined ? undefined : { autoCandidates });
@@ -1175,6 +1177,163 @@ describe('selectors', () => {
   });
 });
 
+describe('Check guesses when entered', () => {
+  it('starts off, and switching it on records the help for good', () => {
+    expect(newGame().checkGuesses).toBe(false);
+    const on = play(newGame(), CHECK_GUESSES_ON);
+    expect(on.checkGuesses).toBe(true);
+    expect(on.assists).toEqual({ ...NO_ASSISTS, checkGuesses: true });
+    const off = play(on, CHECK_GUESSES_OFF);
+    expect(off.checkGuesses).toBe(false);
+    expect(off.assists).toEqual({ ...NO_ASSISTS, checkGuesses: true });
+    // And on again: the help is already on the record.
+    expect(play(off, CHECK_GUESSES_ON).assists).toBe(off.assists);
+  });
+
+  it('is no move to undo, and leaves the board, the history and the hint on show alone', () => {
+    const before = play(newGame(), place(2, 1), place(3, 6), UNDO, { type: 'hint', hint: HINT });
+    const after = play(before, CHECK_GUESSES_ON);
+    expect(after.cells).toBe(before.cells);
+    expect(after.undoStack).toBe(before.undoStack);
+    expect(after.redoStack).toBe(before.redoStack);
+    expect(after.hint).toBe(HINT);
+  });
+
+  it('changes nothing when it is already so, or the game is solved', () => {
+    const game = newGame();
+    expect(reduce(game, CHECK_GUESSES_OFF)).toBe(game);
+    const on = play(game, CHECK_GUESSES_ON);
+    expect(reduce(on, CHECK_GUESSES_ON)).toBe(on);
+    const solved = solvedGame();
+    expect(reduce(solved, CHECK_GUESSES_ON)).toBe(solved);
+  });
+
+  it('never judges a number already on the board as it comes on', () => {
+    const on = play(newGame(), place(2, 1), CHECK_GUESSES_ON);
+    expect(on.cells[2]).toMatchObject({ value: 1, mark: 'none' });
+  });
+
+  it('marks a wrong number wrong the moment it is entered, and a right one not at all', () => {
+    const on = play(newGame(), CHECK_GUESSES_ON, place(2, 1), place(3, 6));
+    expect(on.cells[2]).toMatchObject({ value: 1, mark: 'wrong' });
+    expect(on.cells[3]).toMatchObject({ value: 6, mark: 'none' });
+  });
+
+  it('marks a wrong number typed over another, and clears the mark for the answer', () => {
+    const wrongAgain = play(newGame(), CHECK_GUESSES_ON, place(2, 1), place(2, 2));
+    expect(wrongAgain.cells[2]).toMatchObject({ value: 2, mark: 'wrong' });
+    expect(play(wrongAgain, place(2, 4)).cells[2]).toMatchObject({ value: 4, mark: 'none' });
+  });
+
+  it('never judges a number entered before it came on that Undo or Redo brings back', () => {
+    const before = play(newGame(), place(2, 1), place(2, 4), CHECK_GUESSES_ON);
+    const undone = play(before, UNDO);
+    expect(undone.cells[2]).toMatchObject({ value: 1, mark: 'none' });
+    const redone = play(newGame(), place(2, 1), UNDO, CHECK_GUESSES_ON, REDO);
+    expect(redone.cells[2]).toMatchObject({ value: 1, mark: 'none' });
+  });
+
+  it('gives no free Check of the board by Undo all the way back then Redo all the way', () => {
+    const before = play(newGame(), place(3, 6), place(2, 1), place(5, 2), CHECK_GUESSES_ON);
+    const replayed = play(before, UNDO, UNDO, UNDO, REDO, REDO, REDO);
+    expect(replayed.cells.map((cell) => cell.mark)).toEqual(before.cells.map((cell) => cell.mark));
+    expect(replayed.cells[2]).toMatchObject({ value: 1, mark: 'none' });
+    expect(replayed.assists).toEqual({ ...NO_ASSISTS, checkGuesses: true });
+  });
+
+  it('brings back a number it marked with its mark, by Undo of an erase', () => {
+    const erased = play(newGame(), CHECK_GUESSES_ON, place(2, 1), erase(2), CHECK_GUESSES_OFF);
+    expect(play(erased, UNDO).cells[2]).toMatchObject({ value: 1, mark: 'wrong' });
+  });
+
+  it('keeps its mark out of the history: Undo takes the number, Redo brings it back marked', () => {
+    const on = play(newGame(), CHECK_GUESSES_ON, place(2, 1));
+    expect(on.undoStack.at(-1)?.cells).toEqual([[2, expect.objectContaining({ mark: 'none' })]]);
+    const undone = play(on, UNDO);
+    expect(undone.cells[2]).toMatchObject({ value: 0, mark: 'none' });
+    expect(play(undone, CHECK_GUESSES_OFF, REDO).cells[2]).toMatchObject({
+      value: 1,
+      mark: 'wrong',
+    });
+  });
+
+  it('stops marking once off, and leaves the marks it gave', () => {
+    const off = play(newGame(), CHECK_GUESSES_ON, place(2, 1), CHECK_GUESSES_OFF, place(3, 2));
+    expect(off.cells[2]).toMatchObject({ value: 1, mark: 'wrong' });
+    expect(off.cells[3]).toMatchObject({ value: 2, mark: 'none' });
+  });
+
+  it('marks nothing that a candidate entry, an erase or a peer’s cleared notes change', () => {
+    const on = play(newGame(), note(3, 1), CHECK_GUESSES_ON, place(2, 1), note(2, 7));
+    expect(on.cells[2]).toMatchObject({ value: 0, mark: 'none' });
+    // Cell 5 is in cell 3's row: the 1 placed there clears cell 3's note.
+    const cleared = play(on, place(5, 1, true), erase(5));
+    expect(cleared.cells[3]).toMatchObject({ value: 0, notes: 0, mark: 'none' });
+    expect(cleared.cells[5]).toMatchObject({ value: 0, mark: 'none' });
+  });
+
+  it('leaves a revealed cell its own mark', () => {
+    const revealed = play(newGame(), CHECK_GUESSES_ON, select(2), REVEAL);
+    expect(revealed.cells[2]).toMatchObject({ value: 4, mark: 'revealed' });
+  });
+
+  it('is no Check: a Check of a cell it marked still counts as one', () => {
+    const checked = play(newGame(), CHECK_GUESSES_ON, place(2, 1), select(2), CHECK_CELL);
+    expect(checked.assists).toEqual({ ...NO_ASSISTS, checks: 1, checkGuesses: true });
+  });
+
+  describe('saved and loaded', () => {
+    it('is saved only while on, and loads as it was saved', () => {
+      expect(serialiseGame(newGame())).not.toHaveProperty('checkGuesses');
+      const on = play(newGame(), CHECK_GUESSES_ON, place(2, 1));
+      const data = serialiseGame(on);
+      expect(data.checkGuesses).toBe(true);
+      expect(data.assists).toEqual({ ...NO_ASSISTS, checkGuesses: true });
+      const loaded = deserialiseGame(JSON.parse(JSON.stringify(data)))!;
+      expect(loaded.checkGuesses).toBe(true);
+      expect(loaded.cells[2].mark).toBe('wrong');
+      expect(loaded.assists).toEqual({ ...NO_ASSISTS, checkGuesses: true });
+    });
+
+    it('loads as off from a save without it, or with anything but on', () => {
+      const data = serialiseGame(newGame());
+      for (const checkGuesses of [undefined, false, 1, 'true']) {
+        expect(deserialiseGame({ ...data, checkGuesses })?.checkGuesses).toBe(false);
+      }
+    });
+
+    it('records the help for a game saved with it on but not in its assists', () => {
+      const data = serialiseGame(play(newGame(), CHECK_GUESSES_ON));
+      const loaded = deserialiseGame({ ...data, assists: NO_ASSISTS });
+      expect(loaded?.assists).toEqual({ ...NO_ASSISTS, checkGuesses: true });
+    });
+
+    it('does not take a wrong mark for a Check while it was on', () => {
+      // A wrong guess is marked as it goes in, with no Check taken.
+      const wrong = serialiseGame(play(newGame(), place(2, 1), CHECK_CELL));
+      const assists = { ...NO_ASSISTS, checkGuesses: true };
+      const restored = deserialiseGame({ ...wrong, assists });
+      expect(restored?.cells[2].mark).toBe('wrong');
+      expect(restored?.assists).toEqual(assists);
+    });
+
+    it('takes a wrong mark for a Check, and drops the help, when it is anything but on', () => {
+      const wrong = serialiseGame(play(newGame(), place(2, 1), CHECK_CELL));
+      for (const checkGuesses of [false, 1, 'true']) {
+        const restored = deserialiseGame({ ...wrong, assists: { ...NO_ASSISTS, checkGuesses } });
+        expect(restored?.assists).toEqual({ ...NO_ASSISTS, checks: 1 });
+      }
+    });
+
+    it('still takes a mark of correct for a Check while it was on', () => {
+      // Only a Check says a digit is right; checking guesses marks wrong ones alone.
+      const right = serialiseGame(play(newGame(), place(2, 4), CHECK_CELL));
+      const assists = { ...NO_ASSISTS, checkGuesses: true };
+      expect(deserialiseGame({ ...right, assists })?.assists).toEqual({ ...assists, checks: 1 });
+    });
+  });
+});
+
 describe('serialiseGame / deserialiseGame', () => {
   // A game with something in every field worth saving: notes (5), a checked
   // right value (2), a checked wrong one (3), an elimination (6), a reveal (7),
@@ -1620,15 +1779,16 @@ describe('serialiseGame / deserialiseGame', () => {
   it('lists every top-level field a save has as one this version knows', () => {
     // `saveGameBlob` carries over only fields not on this list, so one this
     // version writes but leaves off it could have a stale value brought back.
-    expect(Object.keys(data).sort()).toEqual([...SERIALISED_GAME_FIELDS].sort());
+    const everything = serialiseGame(play(rich, CHECK_GUESSES_ON));
+    expect(Object.keys(everything).sort()).toEqual([...SERIALISED_GAME_FIELDS].sort());
   });
 
   describe('assists a newer version added', () => {
-    // As a later version would save them: a sticky "Check guesses" assist.
-    const newer = { ...data, assists: { ...data.assists, checkGuesses: true } };
+    // As a later version might save them: a new kind of help, counted.
+    const newer = { ...data, assists: { ...data.assists, peeks: 2 } };
 
     it('loads the save, keeping the new field', () => {
-      expect(deserialiseGame(newer)?.assists).toEqual({ ...data.assists, checkGuesses: true });
+      expect(deserialiseGame(newer)?.assists).toEqual({ ...data.assists, peeks: 2 });
     });
 
     it('carries the field through play and into the next save', () => {
@@ -1637,42 +1797,18 @@ describe('serialiseGame / deserialiseGame', () => {
         type: 'hint',
         hint: HINT,
       });
-      expect(serialiseGame(played).assists).toMatchObject({ checkGuesses: true });
+      expect(serialiseGame(played).assists).toMatchObject({ peeks: 2 });
     });
 
     it('keeps the field when the assists are raised to cover the board', () => {
-      const restored = deserialiseGame({ ...newer, assists: { ...NO_ASSISTS, checkGuesses: 1 } });
+      const restored = deserialiseGame({ ...newer, assists: { ...NO_ASSISTS, peeks: 1 } });
       expect(restored?.assists).toEqual({
         autoCandidates: true,
         hints: 1,
         checks: 1,
         reveals: 1,
-        checkGuesses: 1,
+        peeks: 1,
       });
-    });
-
-    it('does not take a wrong mark for a Check while "Check guesses" was on', () => {
-      // A later version marks a wrong guess as it goes in, with no Check taken.
-      const wrong = serialiseGame(play(newGame(), place(2, 1), CHECK_CELL));
-      const assists = { ...NO_ASSISTS, checkGuesses: true };
-      const restored = deserialiseGame({ ...wrong, assists });
-      expect(restored?.cells[2].mark).toBe('wrong');
-      expect(restored?.assists).toEqual(assists);
-    });
-
-    it('still takes a wrong mark for a Check when "Check guesses" is anything but on', () => {
-      const wrong = serialiseGame(play(newGame(), place(2, 1), CHECK_CELL));
-      for (const checkGuesses of [false, 1, 'true']) {
-        const restored = deserialiseGame({ ...wrong, assists: { ...NO_ASSISTS, checkGuesses } });
-        expect(restored?.assists).toEqual({ ...NO_ASSISTS, checks: 1, checkGuesses });
-      }
-    });
-
-    it('still takes a mark of correct for a Check while "Check guesses" was on', () => {
-      // Only a Check says a digit is right; checking guesses marks wrong ones alone.
-      const right = serialiseGame(play(newGame(), place(2, 4), CHECK_CELL));
-      const assists = { ...NO_ASSISTS, checkGuesses: true };
-      expect(deserialiseGame({ ...right, assists })?.assists).toEqual({ ...assists, checks: 1 });
     });
 
     it('drops new fields too big or odd to keep, and still loads', () => {

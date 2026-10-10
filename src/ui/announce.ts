@@ -42,9 +42,10 @@ export interface DescribeOptions {
 /**
  * The actions `describeChange` speaks for. A reset is not one of them: it
  * goes through a confirmation, and the hook says "Puzzle reset." as it
- * closes.
+ * closes. Nor is switching Check guesses: that is a setting, switched in
+ * Settings, whose switch speaks for itself.
  */
-export type DescribedAction = Exclude<GameAction, { type: 'reset' }>;
+export type DescribedAction = Exclude<GameAction, { type: 'reset' | 'setCheckGuesses' }>;
 
 /** What a cell's accessible name is built from. */
 export interface CellLabelParams {
@@ -163,14 +164,17 @@ function describeEntry(
   const after = next.cells[index];
   const position = describePosition(index);
   if (after.value !== 0 && after.value !== before.value) {
+    // Marked wrong as it went in: "Check guesses when entered" is on, and
+    // the mark is said as the board shows it, after anything else.
+    const verdict = after.mark === 'wrong' ? ' Incorrect.' : '';
     const placed = `${after.value} in ${position}.`;
-    if (!(options.conflicts ?? true)) return placed;
+    if (!(options.conflicts ?? true)) return placed + verdict;
     const units = conflictingUnits(valuesOf(next), index);
-    if (units.length === 0) return placed;
+    if (units.length === 0) return placed + verdict;
     // The units by kind alone, never by number: heard aloud, "row 1, column
     // 3" is a cell's position, and would sound like one.
     const kinds = joinList(units.map((unit) => unit.kind));
-    return `${placed} Clashes with another ${after.value} in its ${kinds}.`;
+    return `${placed} Clashes with another ${after.value} in its ${kinds}.${verdict}`;
   }
   const toggle = describeToggle(before, after, action.digit, next.autoCandidates);
   if (after.value === before.value) return toggle;

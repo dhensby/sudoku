@@ -34,6 +34,8 @@ import { memoryStorage, type StorageLike } from '../storage/storage';
 import {
   advance,
   asDaily,
+  followCheckGuesses,
+  mistakesSoFar,
   tagDaily,
   attemptSource,
   createRecord,
@@ -52,6 +54,7 @@ import {
   shareTargetOfRecord,
   type Moment,
   type Session,
+  type SessionStart,
 } from './session';
 import { FIRST_EMPTY, PUZZLE, answerAt, linkFor, nearlySolved } from './testFixtures';
 
@@ -220,7 +223,7 @@ describe('hasBoardShown', () => {
       start,
     });
     expect(hasBoardShown(session)).toBe(false);
-    expect(hasBoardShown(resumeSession(session, at(NOW + 1000)))).toBe(true);
+    expect(hasBoardShown(resumeSession(session, at(NOW + 1000), false))).toBe(true);
   });
 });
 
@@ -391,17 +394,19 @@ describe('resumeSession and the start date', () => {
       '2026-10-13',
       'hard',
     );
-    const started = resumeSession(waiting, at(NOW + DAY));
+    const started = resumeSession(waiting, at(NOW + DAY), false);
     expect(started.record.startedOn).toBe(dateKeyOf(NOW + DAY));
     // Resumed again later, it keeps the date it was first started on.
     const paused = pauseSession(started, 'user', NOW + DAY + 1000);
-    expect(resumeSession(paused, at(NOW + 3 * DAY)).record.startedOn).toBe(dateKeyOf(NOW + DAY));
+    expect(resumeSession(paused, at(NOW + 3 * DAY), false).record.startedOn).toBe(
+      dateKeyOf(NOW + DAY),
+    );
   });
 
   it('dates an attempt that has run before, its date never written down, by the day it was created', () => {
     const { startedOn: _, ...undated } = asDaily(running(), '2026-10-12', 'hard').record;
     const paused = pauseSession({ ...running(), record: undated }, 'user', NOW + 1000);
-    expect(resumeSession(paused, at(NOW + 3 * DAY)).record.startedOn).toBe(dateKeyOf(NOW));
+    expect(resumeSession(paused, at(NOW + 3 * DAY), false).record.startedOn).toBe(dateKeyOf(NOW));
   });
 
   it('dates no other game', () => {
@@ -412,7 +417,7 @@ describe('resumeSession and the start date', () => {
       autoCandidates: false,
       start: 'dialog',
     });
-    expect(resumeSession(held, at(NOW + DAY)).record).not.toHaveProperty('startedOn');
+    expect(resumeSession(held, at(NOW + DAY), false).record).not.toHaveProperty('startedOn');
   });
 });
 
@@ -421,7 +426,7 @@ describe('pausing and resuming', () => {
     const paused = pauseSession(running(), 'hidden', NOW + 61_000);
     expect(paused.clock).toEqual({ bankedMs: 61_000, runningSince: null });
     expect(paused.pause).toBe('hidden');
-    const resumed = resumeSession(paused, at(NOW + 100_000));
+    const resumed = resumeSession(paused, at(NOW + 100_000), false);
     expect(resumed.clock).toEqual({ bankedMs: 61_000, runningSince: NOW + 100_000 });
     expect(resumed.pause).toBeNull();
   });
@@ -434,7 +439,7 @@ describe('pausing and resuming', () => {
       autoCandidates: false,
       start: 'dialog',
     });
-    expect(resumeSession(held, at(NOW + 1000)).isSeen).toBe(true);
+    expect(resumeSession(held, at(NOW + 1000), false).isSeen).toBe(true);
   });
 
   it('leaves a stopped session alone, keeping the reason it was stopped for', () => {
@@ -475,7 +480,7 @@ describe('the move log', () => {
 
     it('counts play only: time paused adds nothing', () => {
       const paused = pauseSession(running(), 'user', NOW + 5000);
-      const resumed = resumeSession(paused, at(NOW + 65_000));
+      const resumed = resumeSession(paused, at(NOW + 65_000), false);
       const next = advance(resumed, place, NOW + 66_000);
       expect(next.moves?.moves[0].at).toBe(6000);
     });
@@ -561,7 +566,7 @@ describe('the move log', () => {
       const restored = restoreSession(storage, records, session.record.id, NOW + 9000)!;
       expect(restored.moves).toEqual(session.moves);
 
-      const resumed = resumeSession(restored, at(NOW + 20_000));
+      const resumed = resumeSession(restored, at(NOW + 20_000), false);
       const next = advance(resumed, placeSecond, NOW + 21_000);
       expect(next.moves?.moves.at(-1)?.at).toBe(6000);
       const again = saveSession(storage, next, at(NOW + 22_000)).records;
@@ -650,7 +655,7 @@ describe('the move log', () => {
     it.each([
       ['a later format', LOG_IN_A_LATER_FORMAT],
       ['a later rules version', logFromAnotherBuild(MOVES_VERSION + 1, 2754)],
-      ['a move code added since', logFromAnotherBuild(MOVES_VERSION, 2759)],
+      ['a move code added since', logFromAnotherBuild(MOVES_VERSION, 2761)],
     ])(
       'leaves a log of %s alone as it reopens the game, for the build that wrote it',
       (_, newer) => {
@@ -662,7 +667,7 @@ describe('the move log', () => {
         storage.setItem(`sudoku.moves.${session.record.id}`, newer);
         const restored = restoreSession(storage, records, session.record.id, NOW)!;
         expect(restored.moves).toBeNull();
-        const resumed = resumeSession(restored, at(NOW + 6000));
+        const resumed = resumeSession(restored, at(NOW + 6000), false);
         saveSession(storage, resumed, at(NOW + 7000));
         saveSession(storage, pauseSession(resumed, 'user', NOW + 8000), at(NOW + 8000));
         expect(loadEncodedMoveLog(storage, session.record.id)).toBe(newer);
@@ -837,6 +842,134 @@ describe('mistakes on the record', () => {
   });
 });
 
+describe('Check guesses when entered', () => {
+  const checked = (start: SessionStart = 'running'): Session =>
+    newSession(PUZZLE, {
+      source: 'generated',
+      challenge: null,
+      now: at(NOW),
+      autoCandidates: false,
+      checkGuesses: true,
+      start,
+    });
+  const wrong = { type: 'enter', digit: 1, index: FIRST_EMPTY, mode: 'normal' } as const;
+
+  it('is on from a new game’s first moment when the setting is, and its log says so', () => {
+    const session = checked();
+    expect(session.game.checkGuesses).toBe(true);
+    expect(session.moves?.moves).toEqual([{ op: 'checkGuessesOn', at: 0 }]);
+    expect(session.record.assists).toEqual({ ...NO_HELP, checkGuesses: true });
+    // Nothing entered, so no guess was checked: still only a glimpse.
+    expect(isGlimpse(session)).toBe(true);
+  });
+
+  it.each(['ready', 'dialog'] as const)(
+    'waits for a game made to start later (%s) to start before taking it up',
+    (start) => {
+      const waiting = checked(start);
+      expect(waiting.game.checkGuesses).toBe(false);
+      expect(waiting.moves?.moves).toEqual([]);
+      expect(waiting.record.assists).toEqual(NO_HELP);
+      // Started with it still on: on from 0:00, as one that starts at once.
+      const on = resumeSession(waiting, at(NOW + 60_000), true);
+      expect(on.moves?.moves).toEqual([{ op: 'checkGuessesOn', at: 0 }]);
+      expect(on.game.assists).toEqual({ ...NO_HELP, checkGuesses: true });
+      // Switched off before Start: played, and recorded, without it.
+      const off = resumeSession(waiting, at(NOW + 60_000), false);
+      expect(off.game.checkGuesses).toBe(false);
+      expect(off.moves?.moves).toEqual([]);
+      expect(off.game.assists).toEqual(NO_HELP);
+      expect(off.record.assists).toEqual(NO_HELP);
+    },
+  );
+
+  it('is off, and unlogged, by default', () => {
+    expect(running().game.checkGuesses).toBe(false);
+    expect(running().moves?.moves).toEqual([]);
+  });
+
+  it('is taken up as a game starts again, at the time on its clock', () => {
+    const paused = pauseSession(advance(running(), wrong, NOW + 2000), 'dialog', NOW + 5000);
+    const resumed = resumeSession(paused, at(NOW + 60_000), true);
+    expect(resumed.game.checkGuesses).toBe(true);
+    expect(resumed.moves?.moves.at(-1)).toEqual({ op: 'checkGuessesOn', at: 5000 });
+    // Never judging what was entered before.
+    expect(resumed.game.cells[FIRST_EMPTY]).toMatchObject({ value: 1, mark: 'none' });
+    const off = resumeSession(
+      pauseSession(resumed, 'dialog', NOW + 61_000),
+      at(NOW + 62_000),
+      false,
+    );
+    expect(off.game.checkGuesses).toBe(false);
+    expect(off.moves?.moves.at(-1)).toEqual({ op: 'checkGuessesOff', at: 6000 });
+    expect(off.game.assists.checkGuesses).toBe(true);
+  });
+
+  it('changes nothing when the game already has it so, or is solved', () => {
+    const session = checked();
+    expect(followCheckGuesses(session, true, NOW + 1000)).toBe(session);
+    const near = running(nearlySolved([0]));
+    const solved = advance(near, { type: 'enter', digit: answerAt(0) as Digit, index: 0 }, NOW + 1);
+    expect(followCheckGuesses(solved, true, NOW + 1000)).toBe(solved);
+  });
+
+  it('marks a wrong number as it goes in, and comes back marked after a reload', () => {
+    const storage = memoryStorage();
+    const session = advance(checked(), wrong, NOW + 2000);
+    expect(session.game.cells[FIRST_EMPTY].mark).toBe('wrong');
+    saveAsCurrent(storage, session, NOW + 3000);
+    const restored = restoreSession(storage, loadHistory(storage), session.record.id, NOW)!;
+    expect(restored.game.checkGuesses).toBe(true);
+    expect(restored.game.cells[FIRST_EMPTY].mark).toBe('wrong');
+    // The log still rebuilds it: the game goes on being recorded.
+    expect(restored.moves?.moves).toHaveLength(2);
+    expect(loadHistory(storage)[0].assists).toEqual({ ...NO_HELP, checkGuesses: true });
+  });
+});
+
+describe('mistakes so far, for the error counter', () => {
+  /** A wrong 1 in the first empty cell, whose answer (4) is not obvious. */
+  const slip = { type: 'enter', digit: 1, index: FIRST_EMPTY, mode: 'normal' } as const;
+
+  it('shows a mistake only once its window has closed, with Check guesses off', () => {
+    const session = advance(running(), slip, NOW + 1000);
+    expect(mistakesSoFar(session, 1000)).toEqual({ values: 0, candidates: 0 });
+    expect(mistakesSoFar(session, 3900)).toEqual({ values: 0, candidates: 0 });
+    expect(mistakesSoFar(session, 4000)).toEqual({ values: 1, candidates: 0 });
+  });
+
+  it('shows one at once with Check guesses on, even before the time on show catches up', () => {
+    const on = followCheckGuesses(running(), true, NOW);
+    const session = advance(on, slip, NOW + 1500);
+    // The display last read the clock at 1 s; the move was made at 1.5 s.
+    expect(mistakesSoFar(session, 1000)).toEqual({ values: 1, candidates: 0 });
+  });
+
+  it('shows one the move after it settles at once, before the clock is read again', () => {
+    const elsewhere = PUZZLE.givens.indexOf('0', FIRST_EMPTY + 1);
+    const move = { type: 'enter', digit: answerAt(elsewhere) as Digit, index: elsewhere } as const;
+    const session = advance(advance(running(), slip, NOW + 1000), move, NOW + 2000);
+    expect(mistakesSoFar(session, 1000)).toEqual({ values: 1, candidates: 0 });
+  });
+
+  it('knows none for a game not recorded move by move, unless it was solved with a count', () => {
+    const session = { ...advance(running(), slip, NOW + 1000), moves: null };
+    expect(mistakesSoFar(session, 60_000)).toBeNull();
+    const near = running(nearlySolved([0]));
+    const solved = advance(near, { type: 'enter', digit: answerAt(0) as Digit, index: 0 }, NOW + 5);
+    const record: GameRecord = {
+      ...solved.record,
+      status: 'solved',
+      elapsedMs: 5000,
+      mistakes: { values: 2, candidates: 1, atMs: 5000 },
+    };
+    expect(mistakesSoFar({ ...solved, record, moves: null }, 5000)).toEqual({
+      values: 2,
+      candidates: 1,
+    });
+  });
+});
+
 describe('saveSession and restoreSession', () => {
   it('saves the board and the record together, and reopens them paused', () => {
     const storage = memoryStorage();
@@ -983,12 +1116,12 @@ describe('saveSession and restoreSession', () => {
           {
             ...record,
             medals: { gold: 1, silver: 0 },
-            assists: { ...record.assists, checkGuesses: true },
+            assists: { ...record.assists, peeks: 2 },
           },
         ]),
       );
       const blob = loadGameBlob(storage, session.record.id) as Record<string, object>;
-      const assists = isOnBoard ? { ...blob.assists, checkGuesses: true } : blob.assists;
+      const assists = isOnBoard ? { ...blob.assists, peeks: 2 } : blob.assists;
       saveGameBlob(storage, session.record.id, { ...blob, assists, undo: 'ab' });
       return storage;
     }
@@ -1007,11 +1140,11 @@ describe('saveSession and restoreSession', () => {
       const [record] = loadHistory(storage);
       expect(record).toMatchObject({
         medals: { gold: 1, silver: 0 },
-        assists: { checkGuesses: true },
+        assists: { peeks: 2 },
       });
       expect(loadGameBlob(storage, session.record.id)).toMatchObject({
         undo: 'ab',
-        assists: { checkGuesses: true },
+        assists: { peeks: 2 },
       });
     });
 
@@ -1019,7 +1152,7 @@ describe('saveSession and restoreSession', () => {
       const session = running();
       const storage = savedByNewer(session, false);
       playOn(storage, session.record.id);
-      expect(loadHistory(storage)[0].assists).toMatchObject({ checkGuesses: true });
+      expect(loadHistory(storage)[0].assists).toMatchObject({ peeks: 2 });
     });
   });
 

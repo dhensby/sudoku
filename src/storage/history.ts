@@ -360,7 +360,11 @@ function toCount(value: unknown): number {
   return isFiniteNumber(value) && value > 0 ? Math.floor(value) : 0;
 }
 
-/** Assists from storage or a file: the known counts coerced, a newer version's small fields kept. */
+/**
+ * Assists from storage or a file: the known counts coerced, a newer version's
+ * small fields kept. "Check guesses when entered" is kept only as `true`, and
+ * otherwise left off, as it is on every game that never had it on.
+ */
 function normaliseAssists(value: unknown): Assists {
   const source = isObject(value) ? value : {};
   return {
@@ -369,6 +373,7 @@ function normaliseAssists(value: unknown): Assists {
     hints: toCount(source.hints),
     checks: toCount(source.checks),
     reveals: toCount(source.reveals),
+    ...(source.checkGuesses === true ? { checkGuesses: true as const } : {}),
   };
 }
 

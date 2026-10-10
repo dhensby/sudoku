@@ -68,6 +68,7 @@ import {
   attemptSource,
   hasBoardShown,
   isGlimpse,
+  mistakesSoFar,
   newSession,
   pauseSession,
   phaseOf,
@@ -314,6 +315,12 @@ export interface Sudoku {
   isLoadFailed: boolean;
   /** Time on the clock, for display. */
   elapsedMs: number;
+  /**
+   * For the error counter, while "Show error counter" is on: the mistakes
+   * that have settled by the time on show (see `mistakesSoFar`), or null when
+   * they are not known — or the setting is off, or there is no game.
+   */
+  mistakesSoFar: MistakeTally | null;
   /** The mode digits go in with: the latched mode, flipped while Shift or Alt is held. */
   effectiveMode: InputMode;
   settings: Settings;
@@ -748,7 +755,11 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     const unfinished = unfinishedAttempt(records, puzzle.givens, t.wall);
     if (unfinished !== null) {
       if (unfinished !== session) setAside(t);
-      adopt(resumeSession(playing(unfinished), t), t, resumeMessage(unfinished));
+      adopt(
+        resumeSession(playing(unfinished), t, settings.checkGuesses),
+        t,
+        resumeMessage(unfinished),
+      );
       return;
     }
     setAside(t);
@@ -757,6 +768,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       challenge,
       now: t,
       autoCandidates: settings.startInAutoCandidate,
+      checkGuesses: settings.checkGuesses,
       start: 'running',
       daily,
     });
@@ -778,7 +790,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       if (unfinished !== session) setAside(t);
       const tagged = asDaily(unfinished, date, tier);
       if (start === 'running') {
-        adopt(resumeSession(tagged, t), t, resumeMessage(tagged));
+        adopt(resumeSession(tagged, t, settings.checkGuesses), t, resumeMessage(tagged));
         return;
       }
       // Behind a dialog, or in a hidden tab, it waits as it was left.
@@ -794,6 +806,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       challenge: null,
       now: t,
       autoCandidates: settings.startInAutoCandidate,
+      checkGuesses: settings.checkGuesses,
       start,
       daily: date,
     });
@@ -970,6 +983,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       challenge: null,
       now: t,
       autoCandidates: settings.startInAutoCandidate,
+      checkGuesses: settings.checkGuesses,
       start,
     });
     persist(next, t);
@@ -1202,7 +1216,11 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       // stood, running again as the confirmation closes. Otherwise studying
       // the board, then resetting it, would bank a time that left the
       // studying out.
-      const next = resumeSession(advance(session, { type: 'reset' }, t.clock), t);
+      const next = resumeSession(
+        advance(session, { type: 'reset' }, t.clock),
+        t,
+        settings.checkGuesses,
+      );
       persist(next, t);
       setSession(next);
       if (notice?.kind === 'boardFull') setNotice(null);
@@ -1214,7 +1232,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     },
     resume: () => {
       if (session === null || (phase !== 'paused' && phase !== 'ready')) return;
-      const next = resumeSession(session, at());
+      const next = resumeSession(session, at(), settings.checkGuesses);
       // Its board is on show from this moment, perhaps for the first time.
       noteSeen(next);
       setSession(next);
@@ -1241,7 +1259,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
         session.game.status === 'playing'
       ) {
         if (generating !== null) setGenerating(null);
-        adopt(resumeSession(session, t), t, resumeMessage(session));
+        adopt(resumeSession(session, t, settings.checkGuesses), t, resumeMessage(session));
         return;
       }
       const records = loadHistory(storage);
@@ -1353,7 +1371,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       // paused stays paused behind the dialog they opened.
       if (session === null || session.pause !== 'dialog' || generating !== null) return;
       const t = at();
-      const next = resumeSession(session, t);
+      const next = resumeSession(session, t, settings.checkGuesses);
       // A game made behind the dialog is seen for the first time, and its
       // record starts now.
       if (!session.isSeen) persist(next, t);
@@ -1383,7 +1401,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       // The game on screen is set aside with its clock stopped: two clocks
       // must never run at once.
       setAside(t);
-      adopt(resumeSession(restored, t), t, resumeMessage(restored));
+      adopt(resumeSession(restored, t, settings.checkGuesses), t, resumeMessage(restored));
     },
     replayRecord: (id) => {
       const record = loadHistory(storage).find((entry) => entry.id === id);
@@ -1453,6 +1471,8 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     today,
     isLoadFailed,
     elapsedMs: elapsed,
+    mistakesSoFar:
+      session === null || !settings.showErrorCounter ? null : mistakesSoFar(session, elapsed),
     effectiveMode,
     settings,
     isThemeNewer,

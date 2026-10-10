@@ -289,6 +289,16 @@ describe('loadHistory', () => {
       { assists: { autoCandidates: 'yes', hints: -2, checks: 'x', reveals: 1.7 } },
       { assists: { autoCandidates: false, hints: 0, checks: 0, reveals: 1 } },
     ],
+    [
+      'Check guesses as anything but on',
+      { assists: { ...NO_ASSISTS, checkGuesses: 'true' } },
+      { assists: NO_ASSISTS },
+    ],
+    [
+      'a challenge’s Check guesses as anything but on',
+      { challenge: { seconds: 5, assists: { ...NO_ASSISTS, checkGuesses: 1 } } },
+      { challenge: { name: null, seconds: 5, assists: NO_ASSISTS } },
+    ],
     ['a challenge that is not an object', { challenge: 'Dan' }, { challenge: null }],
     ['a challenge with no time', { challenge: { name: 'Dan' } }, { challenge: null }],
     ['a challenge of zero seconds', { challenge: { seconds: 0 } }, { challenge: null }],
@@ -332,6 +342,17 @@ describe('loadHistory', () => {
     const storage = memoryStorage();
     seed(storage, [{ ...playing('x', 100), ...fields }]);
     expect(loadHistory(storage)).toEqual([{ ...playing('x', 100), ...expected }]);
+  });
+
+  it('keeps "Check guesses when entered" on a record and its challenge, through a save', () => {
+    const storage = memoryStorage();
+    const checked = { ...NO_ASSISTS, hints: 1, checkGuesses: true as const };
+    const record = solved('x', 100, 1000, {
+      assists: checked,
+      challenge: { name: 'Dan', seconds: 5, assists: checked },
+    });
+    upsertRecord(storage, record);
+    expect(loadHistory(storage)).toEqual([record]);
   });
 
   it('fills in a missing completion time on a solved game from its update time', () => {
@@ -1374,11 +1395,11 @@ describe('fields a newer version added', () => {
     return {
       ...base,
       medals: { gold: 2, silver: 1 },
-      assists: { ...base.assists, checkGuesses: true },
+      assists: { ...base.assists, peeks: 2 },
       challenge: {
         name: 'Dan',
         seconds: 323,
-        assists: { ...NO_ASSISTS, checkGuesses: false },
+        assists: { ...NO_ASSISTS, peeks: 0 },
         medals: { gold: 0, silver: 0 },
       },
     } as GameRecord;
@@ -1396,6 +1417,7 @@ describe('fields a newer version added', () => {
         hints: record.assists.hints,
         checks: record.assists.checks,
         reveals: record.assists.reveals,
+        ...(record.assists.checkGuesses ? { checkGuesses: true as const } : {}),
       },
     };
   }
@@ -1450,7 +1472,7 @@ describe('fields a newer version added', () => {
     expect(ids(loadHistory(storage))).toEqual(['x']);
     expect(loaded).not.toHaveProperty('daily');
     expect(loaded).not.toHaveProperty('startedOn');
-    expect(loaded.assists).toEqual({ ...NO_ASSISTS, checkGuesses: true });
+    expect(loaded.assists).toEqual({ ...NO_ASSISTS, peeks: 2 });
     expect(loaded.challenge).toBeNull();
   });
 
@@ -1471,7 +1493,7 @@ describe('fields a newer version added', () => {
     expect(saved).toEqual({
       ...newer('x', 1),
       elapsedMs: 90_000,
-      assists: { ...NO_ASSISTS, hints: 3, checkGuesses: true },
+      assists: { ...NO_ASSISTS, hints: 3, peeks: 2 },
     });
     expect(loadHistory(storage)).toEqual([saved]);
   });
@@ -2166,7 +2188,7 @@ describe('move logs', () => {
       const newer = {
         'later-format': LOG_IN_A_LATER_FORMAT,
         'later-rules': logFromAnotherBuild(MOVES_VERSION + 1, 2754),
-        'new-move': logFromAnotherBuild(MOVES_VERSION, 2759),
+        'new-move': logFromAnotherBuild(MOVES_VERSION, 2761),
       };
       const doomed = {
         broken: encodeMoveLog(logOf()).slice(0, -1),

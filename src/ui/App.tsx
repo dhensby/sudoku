@@ -10,6 +10,7 @@ import {
 import { Board } from './Board';
 import { BoardOverlay, type BoardOverlayContent } from './BoardOverlay';
 import { Controls } from './Controls';
+import { ErrorCounter, MistakeAnnouncer } from './ErrorCounter';
 import {
   ChallengeDialog,
   CompletionDialog,
@@ -241,6 +242,12 @@ export function App({ options }: AppProps = {}) {
 
   const content = boardContent(sudoku);
   const isPlaying = phase === 'playing';
+  // The error counter shows only with the board: a hidden board hides it too.
+  const isCounting = settings.showErrorCounter;
+  const isCountShown = phase === 'playing' || phase === 'solved';
+  const errorCounter = (placement: 'header' | 'play') => (
+    <ErrorCounter mistakes={sudoku.mistakesSoFar} isShown={isCountShown} placement={placement} />
+  );
   const counts = game === null ? EMPTY_COUNTS : digitCounts(game);
   const selectedCell = game === null ? null : game.cells[game.selected];
   const canRevealCell = game !== null && isEditable(game, game.selected);
@@ -262,7 +269,9 @@ export function App({ options }: AppProps = {}) {
 
   return (
     <FocusHomeContext value={focusHome}>
-      <div className="app">
+      {/* With the counter on, a phone held upright gives it a line above the
+        controls, which the layout counts in (layout.css). */}
+      <div className={isCounting ? 'app app--counter' : 'app'}>
         {/* The board's changes, spoken. The inner element is keyed so the same
           words twice still re-announce: a live region only speaks when its
           contents actually change. */}
@@ -271,6 +280,13 @@ export function App({ options }: AppProps = {}) {
             <span key={sudoku.announcement.id}>{sudoku.announcement.text}</span>
           )}
         </div>
+        {isCounting && (
+          <MistakeAnnouncer
+            mistakes={sudoku.mistakesSoFar}
+            gameId={sudoku.record?.id ?? null}
+            isShown={isCountShown}
+          />
+        )}
 
         <Header
           difficulty={sudoku.difficulty}
@@ -285,6 +301,7 @@ export function App({ options }: AppProps = {}) {
           onOpenDaily={(difficulty) => handleOpenDaily(sudoku.today.date, difficulty)}
           onRefreshToday={actions.refreshToday}
           onOpenDialog={actions.openDialog}
+          errorCounter={isCounting ? errorCounter('header') : undefined}
         />
 
         <main className="main">
@@ -327,6 +344,8 @@ export function App({ options }: AppProps = {}) {
                 onOpenGuide={actions.openTechniques}
               />
             </div>
+
+            {isCounting && errorCounter('play')}
 
             <Controls
               mode={sudoku.effectiveMode}

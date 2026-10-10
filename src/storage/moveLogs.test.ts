@@ -216,7 +216,7 @@ describe('saveMoveLog', () => {
   it.each([
     ['a later format', LOG_IN_A_LATER_FORMAT],
     ['a later rules version', logFromAnotherBuild(MOVES_VERSION + 1, 2754)],
-    ['a move code added since', logFromAnotherBuild(MOVES_VERSION, 2759)],
+    ['a move code added since', logFromAnotherBuild(MOVES_VERSION, 2761)],
   ])('with null leaves a log of %s alone, for the build that wrote it', (_label, newer) => {
     const storage = memoryStorage();
     storeMoveLog(storage, 'a', newer);
@@ -271,7 +271,7 @@ describe('isNewerMoveLog', () => {
   it('tells a newer build’s log from one this build can judge', () => {
     expect(isNewerMoveLog(LOG_IN_A_LATER_FORMAT)).toBe(true);
     expect(isNewerMoveLog(logFromAnotherBuild(MOVES_VERSION + 1, 2754))).toBe(true);
-    expect(isNewerMoveLog(logFromAnotherBuild(MOVES_VERSION, 2759))).toBe(true);
+    expect(isNewerMoveLog(logFromAnotherBuild(MOVES_VERSION, 2761))).toBe(true);
     expect(isNewerMoveLog(logFromAnotherBuild(MOVES_VERSION - 1, 2754))).toBe(false);
     // This build's own: one it reads, and one that is broken.
     expect(isNewerMoveLog(logFromAnotherBuild(MOVES_VERSION, 2754))).toBe(false);

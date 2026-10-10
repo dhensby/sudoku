@@ -119,6 +119,23 @@ describe('HistoryDialog', () => {
       expect(within(row).getByText('Dan').tagName).toBe('BDI');
     });
 
+    it('shows guesses checked as entered as a chip of its own, after auto candidates', () => {
+      const [record] = RECORDS;
+      renderHistory({
+        records: [
+          {
+            ...record,
+            assists: { ...record.assists, autoCandidates: true, hints: 1, checkGuesses: true },
+          },
+        ],
+      });
+      expect(
+        within(within(rows()[0]).getByRole('list', { name: 'Help used' }))
+          .getAllByRole('listitem')
+          .map((chip) => chip.textContent),
+      ).toEqual(['Auto candidates', 'Checked as entered', '1 hint']);
+    });
+
     it('describes an unfinished game, and an anonymous challenger', () => {
       renderHistory();
       expect(rows()[2]).toHaveTextContent('In progress · 2:10');

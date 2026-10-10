@@ -53,11 +53,12 @@ your browser.
   your time too, with your help and your [mistakes](#mistakes): your friend sees "Dan solved this
   Hard puzzle in 5:23. Can you beat it?" over "Dan's solve: no mistakes · with 2 hints.", starts
   the clock when they are ready, and gets a head-to-head at the end: a table with a column for each
-  of you, the two times on one row, each kind of help either of you took (auto candidates, hints,
-  checks, reveals) on a row of its own — or "Neither of you took any help." — and your mistakes
-  and candidate mistakes on rows of their own, so it reads straight across. The faster time wins,
-  whatever the help or the mistakes; they are there so the comparison is fair. Plus a link of
-  their own to send back. Nothing is uploaded; everything travels in the link.
+  of you, the two times on one row, each kind of help either of you took (auto candidates, guesses
+  checked as entered, hints, checks, reveals) on a row of its own — or "Neither of you took any
+  help." — and your mistakes and candidate mistakes on rows of their own, so it reads straight
+  across. The faster time wins, whatever the help or the mistakes; they are there so the
+  comparison is fair. Plus a link of their own to send back. Nothing is uploaded; everything
+  travels in the link.
 - **History and stats** — every game you play is kept: resume unfinished ones, play a solved
   puzzle again, share it, or delete it. A game you only glanced at — nothing entered, no help
   taken — is dropped when you move on to another, so browsing the levels doesn't clutter the list
@@ -76,15 +77,19 @@ your browser.
   It counts as one more hint, once per cell. Whether it is on offer never gives away a wrong digit
   elsewhere: pressed with one on the board, it points at that instead, as Hint would. On a phone on
   its side, each step's board is sized to the screen with its caption beside it. Check cell, Check
-  puzzle and Reveal cell are in the "…" menu. Any help you take (auto candidates included) is
-  recorded next to your time, so comparisons stay fair.
+  puzzle and Reveal cell are in the "…" menu, and **Check guesses when entered**, in Settings,
+  marks a wrong number the moment it goes in, as NYT's does. Any help you take (auto candidates
+  and checked guesses included) is recorded next to your time, so comparisons stay fair.
 - **Mistakes, counted honestly** — the Solved dialog says how clean the solve was: "No mistakes",
   "1 mistake", or "2 mistakes · 1 candidate mistake", the wrong numbers you entered kept apart from
-  the right answers you struck out of your candidates. Nothing shows while you play, so the count
-  is no free Check, and mistakes never touch a time, a best or who wins a race. A slip of the finger
-  is forgiven: a wrong number where the answer was obvious, or a struck candidate, put right within
-  3 seconds, before changing anything else (see [Mistakes](#mistakes)). History shows a solved
-  game's count beside its time, and a shared time carries it to a friend.
+  the right answers you struck out of your candidates. Mistakes never touch a time, a best or who
+  wins a race. A slip of the finger is forgiven: a wrong number where the answer was obvious, or a
+  struck candidate, put right within 3 seconds, before changing anything else (see
+  [Mistakes](#mistakes)). History shows a solved game's count beside its time, and a shared time
+  carries it to a friend. Nothing shows while you play unless you turn on **Show error counter** —
+  "Mistakes 2 · 1 candidate", beside the timer (above the controls on a phone) — which shows each
+  mistake only once it counts, so it is no free Check, and is not help. With **Check guesses when
+  entered** on as well, a mistake counts, and shows, the moment it goes in.
 - **A guide to the solving techniques** — every technique the grader knows, from a full house to
   the alternating chain: its other names, what it is, why it works, how to spot it, and a worked
   example from a real puzzle, drawn with the pattern ringed (and a chain's links traced), the
@@ -99,8 +104,10 @@ your browser.
 - **At home on a phone** — the whole game fits a 320×568 screen, or a phone turned on its side,
   without scrolling, and on a taller phone the controls sit at the foot of the screen, under your
   thumb; the daily calendar, History, Share, Settings, the technique guide and Help fold into a ☰
-  menu so the header stays one row; touch targets are at least 44px; and the game can be added to
-  your home screen.
+  menu so the header stays one row (the error counter, when it is on, takes a line of its own
+  above the controls, and the board gives up that line's height; on a phone on its side it sits
+  beside the timer, and a large phone's row of seven buttons folds into the ☰ menu to make room
+  for it); touch targets are at least 44px; and the game can be added to your home screen.
 - **Broadsheet, a theme drawn for clarity** — the puzzle page of a morning paper: warm newsprint,
   ink-black box lines, one ultramarine spot colour, the selected cell printed as a solid block,
   givens typeset in a slab and your own numbers in a grotesque. Givens and your own numbers hold
@@ -356,7 +363,9 @@ What the logs show so far is a game's [mistakes](#mistakes); where they are kept
 - **What is logged:** every move that changed the game, with its time on the play clock (which
   stops while paused), rounded down to a tenth of a second so that a logged time is never later
   than the clock: placing and pencilling a digit, erasing, hints (with their technique and unit),
-  Show me, Check, Reveal, auto candidates on and off, Undo, Redo and Reset. Show me opened again
+  Show me, Check, Reveal, auto candidates on and off, "Check guesses when entered" on and off (at
+  the start of a game begun with it on, and wherever it changed — a setting, but one that decides
+  how what follows is marked and counted), Undo, Redo and Reset. Show me opened again
   for a cell already counted is logged too, though it changes nothing, because it is still help
   seen. A move that acts on the selected cell carries the cell. Selecting, moving the selection,
   the input mode, pauses and a hint with nothing to say are not logged.
@@ -366,8 +375,9 @@ What the logs show so far is a game's [mistakes](#mistakes); where they are kept
 - **The format:** base64url only, so it can go in a link. A 3-character header (the format
   version, the rules version and flags: whether the game began in auto candidate mode, whether the
   log was cut off at 5,000 moves), then each move as a 2-character code (`op × 81 + cell`, the
-  moves without a cell above those; a hint adds 2 more, from a fixed table of techniques and
-  units) and the time since the previous move as a varint, then a 3-character check, so that a log
+  moves without a cell above those — Check guesses on and off among them, in the two codes kept
+  for them when the format was made, so they came with no new rules version; a hint adds 2 more,
+  from a fixed table of techniques and units) and the time since the previous move as a varint, then a 3-character check, so that a log
   cut short or mistyped is refused rather than read as another game. That comes to 3–4 characters
   a move: about 160–250 for a solve that only places digits, 190–370 with auto candidates, and
   500–1,100 for one that pencils in every candidate. Decoding is strict: anything malformed, or
@@ -419,8 +429,32 @@ answer is back (pencilled in again, the strike taken back, or placed) in time. P
 good: the same wrong digit typed in again afterwards is judged afresh in a window of its own, while
 one brought back before it was put right shares the earlier window, and is forgiven only if the
 answer was obvious both times it went in. Reset never forgives; the solve settles everything still
-open, as put right. A later version's "Check guesses when entered" will count every mistake at once,
-with nothing forgiven: the analysis takes it as an option already.
+open, as put right.
+
+With **Check guesses when entered** on, nothing waits: a wrong number typed, or a candidate
+struck, while it is on counts the moment it is made, with nothing forgiven, and the wrong number is
+struck through with the slash a Check gives (`markWrongGuesses` in `src/core/game.ts`; a right
+number gets no mark). The log says when it was on, so each move is judged by the setting as it
+stood. It judges only what is typed: turning it on judges nothing already on the board, and nor
+does Undo or Redo, which bring a number back with the mark it had — either would be a free Check —
+so a slip made just before it came on keeps its window, even brought back by Undo or Redo. Typed
+again while it is on, though, that slip is marked, and counts at once. It is help,
+recorded next to the time (`assists.checkGuesses`, sticky like auto candidates: turning it off
+again stops the marking, not the record), and spoken as "guesses checked as entered" — "Checked as
+entered" on a History chip and in the head-to-head. The setting follows the player from game to
+game: changed in Settings, it takes effect as Settings closes; a game reopened, or one waiting
+behind Start or a dialog, takes it up as its clock starts — so one switched off before Start is
+played, and recorded, without it. A saved game marks such a number `w`, as a Check would, only once its assists
+carry `checkGuesses: true` — so a tab still on a version from before the setting, which keeps that
+field without knowing it, never takes those marks for Checks.
+
+**Show error counter** shows the count so far as the game is played: "Mistakes 2", and "· 1
+candidate" once there is a candidate mistake. It shows what has settled by the time on the clock
+(`mistakesSoFar` in `src/ui/session.ts`, read on the timer's once-a-second render and at every
+move), so with Check guesses off it never moves while a slip can still be put right — it would be
+a free Check — and with Check guesses on it moves with the move. It is hidden with the board while
+the game is paused, says "Mistakes —" for a game not recorded move by move, and tells a screen
+reader "1 mistake counted." as each one settles. It is only a display: not help, and not recorded.
 
 Counts only go up. Each save writes the count so far onto the game's record as `mistakes:
 { values, candidates, atMs }`, never lower than it was, and the solve freezes it: a game reopened
@@ -428,7 +462,8 @@ solved keeps the count it was solved with. `atMs` is the record's time it was co
 still open on a version from before mistakes keeps the field as it found it while it plays on, so
 a solved record whose `atMs` is not its own `elapsedMs` reads as not recorded — never as a final
 count that missed what came after. Only solved games show a count (an unfinished game's would
-work as a free Check), and a game not recorded move by move from its start (see
+work as a free Check — the error counter shows the settled count, see above), and a game not
+recorded move by move from its start (see
 [The move log](#the-move-log)) shows none at all — never "No mistakes". A game solved by a version
 that kept logs but did not count mistakes is counted from its log once, as a visit starts, if the
 log holds the whole game.
@@ -450,13 +485,13 @@ one.
 A share link carries the puzzle itself, so it opens the same puzzle for anyone, on any version of
 the game — there is no server and nothing is uploaded.
 
-| Parameter      | Meaning                                                                                                     |
-| -------------- | ----------------------------------------------------------------------------------------------------------- |
-| `?p=<code>`    | The puzzle: its givens packed into ~26–34 URL-safe characters.                                              |
-| `&t=<secs>`    | The sharer's time in whole seconds — the time to beat.                                                      |
-| `&n=<name>`    | The sharer's name (optional; past 24 characters it is cut short with an ellipsis).                          |
-| `&a=<assists>` | Help: `c` auto candidates, `h<N>` hints, `k<N>` checks, `r<N>` reveals; mistakes: `m<N>`, candidate `x<N>`. |
-| `&d=<date>`    | A daily's date (`2026-10-13`): the opener checks it against that day's daily of the tier.                   |
+| Parameter      | Meaning                                                                                                                                                     |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `?p=<code>`    | The puzzle: its givens packed into ~26–34 URL-safe characters.                                                                                              |
+| `&t=<secs>`    | The sharer's time in whole seconds — the time to beat.                                                                                                      |
+| `&n=<name>`    | The sharer's name (optional; past 24 characters it is cut short with an ellipsis).                                                                          |
+| `&a=<assists>` | Help the sharer took: `c` auto candidates, `g` guesses checked as entered, `h<N>` hints, `k<N>` checks, `r<N>` reveals; mistakes: `m<N>`, candidate `x<N>`. |
+| `&d=<date>`    | A daily's date (`2026-10-13`): the opener checks it against that day's daily of the tier.                                                                   |
 
 Opening a link:
 
@@ -471,6 +506,8 @@ Opening a link:
 
 The difficulty is always re-graded from the puzzle itself rather than taken from the link, and
 the parameters are cleared from the address bar once read, so reloading never drags you back.
+A version of the game opens a link from a later one all the same: it skips a letter of `a=` it
+does not know (`g` came after the others), and reads the rest as written.
 
 The mistakes ride in `a=` rather than a parameter of their own, after the help: `m<N>` is always
 there once the count is known — an unaided, mistake-free solve sends `a=m0` — so a link that says
@@ -574,27 +611,33 @@ of the logs here were shed, none of the file's logs are taken.
   storage quota, shedding in the order [Your data](#your-data) gives. Mistakes are held to every
   rule by a table of scenarios at exact play times (`src/core/mistakes.test.ts`) — a slip put
   right at 2.9 s and at 3.1 s, every way a window closes, Undo and Redo, candidates in both
-  layers, Check guesses on — and by random games, whose counts must never fall and must stay at
-  nothing for a game that never lets a wrong number stand. Share links are held to the versions
-  before them: a copy of the assists decoder every earlier version shipped must read a new link's
-  help unchanged, skipping its mistakes, and an old link must read as mistakes not recorded, never 0.
+  layers, Check guesses on from the start and switched on part-way — and by random games, whose
+  counts must never fall and must stay at nothing for a game that never lets a wrong number
+  stand. What Check guesses marks has golden logs and a checklist entry of its own, and the error
+  counter is checked to move only once a slip has settled, on the main hook's own play clock.
+  Share links are held to the versions before them: a copy of the assists decoder every earlier
+  version shipped must read a new link's help unchanged, skipping its mistakes, and an old link
+  must read as mistakes not recorded, never 0.
   Coverage thresholds are enforced in CI, with the engine held to 100%.
 - **End-to-end** (`e2e/`, Playwright): full journeys against the built app — playing and solving,
   pausing and reloading, share links between two browsers (a solve with a mistake shared, opened in
   the other and compared row by row), the history, the technique guide, a
   hint's Show me walkthrough, the daily puzzles on a fixed clock (today's Hard from New game to
   the end and its streak, yesterday's from the calendar kept but not counted, a friend's daily
-  link recognised), mistakes (an obvious slip put right at once, and a wrong number where the
-  answer was not obvious) and the phone layout from 320px wide up and on its side (the calendar's
+  link recognised), mistakes (an obvious slip put right at once, a wrong number where the answer
+  was not obvious, Check guesses marking and counting one at once with "guesses checked as
+  entered" beside the time, and the error counter waiting out a slip's 3 seconds of play) and the
+  phone layout from 320px wide up and on its side (the calendar's
   days measured at 44px at 320px, the head-to-head's every row, hour-long times on one line and a
   long right-to-left name kept inside its card, New game and the calendar whole on a phone on its
-  side). An accessibility pass
+  side, and the error counter's line, upright and on its side, a large phone's header folding
+  its buttons to fit it at 1:23:45). An accessibility pass
   (`a11y.spec.ts`) runs axe-core's WCAG 2.2 A and AA rules over the main states — the board with
-  every kind of mark, the Ready and Paused cards, the menus, every dialog (Show me's and the daily
-  calendar's included) and each guide entry — in both themes, and the board, the dialogs, the
-  menus and the calendar in High contrast, both chosen in Settings on a dark device and from a dark
-  system asking for more contrast, measuring its heavier lines and its same-number ring kept off
-  the digits — and allows no violations. Three projects:
+  every kind of mark, the error counter in both its places, the Ready and Paused cards, the menus,
+  every dialog (Show me's and the daily calendar's included) and each guide entry — in both
+  themes, and the board, the dialogs, the menus and the calendar in High contrast, both chosen in
+  Settings on a dark device and from a dark system asking for more contrast, measuring its heavier
+  lines and its same-number ring kept off the digits — and allows no violations. Three projects:
 
   | Project    | Device         | Engine   | Specs                                                 |
   | ---------- | -------------- | -------- | ----------------------------------------------------- |

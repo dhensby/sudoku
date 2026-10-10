@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { formatDuration, type Assists, type MistakeTally } from '../../core';
 import type { Challenge } from '../../storage/history';
+import { CHECK_GUESSES_LABEL } from '../format';
 
 /** How one time compares with another. */
 export interface TimeComparison {
@@ -67,6 +68,15 @@ interface ComparisonGroup {
   none: string | null;
 }
 
+/** Help that stays on for a game once taken, as Yes or No, shown only when either player took it. */
+function helpFlag(label: string, of: (assists: Assists) => boolean): ComparisonRow {
+  return {
+    label,
+    value: (side) => (of(side.assists) ? 'Yes' : 'No'),
+    shows: (mine, theirs) => of(mine.assists) || of(theirs.assists),
+  };
+}
+
 /** A count of some help, shown only when either player took any. */
 function helpCount(label: string, of: (assists: Assists) => number): ComparisonRow {
   return {
@@ -81,11 +91,8 @@ function helpCount(label: string, of: (assists: Assists) => number): ComparisonR
  * (see `describeAssists`), so the table and the share text read alike.
  */
 const HELP_ROWS: readonly ComparisonRow[] = [
-  {
-    label: 'Auto candidates',
-    value: (side) => (side.assists.autoCandidates ? 'Yes' : 'No'),
-    shows: (mine, theirs) => mine.assists.autoCandidates || theirs.assists.autoCandidates,
-  },
+  helpFlag('Auto candidates', (assists) => assists.autoCandidates),
+  helpFlag(CHECK_GUESSES_LABEL, (assists) => assists.checkGuesses === true),
   helpCount('Hints', (assists) => assists.hints),
   helpCount('Checks', (assists) => assists.checks),
   helpCount('Reveals', (assists) => assists.reveals),
