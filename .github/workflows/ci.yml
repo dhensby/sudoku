@@ -87,14 +87,21 @@ jobs:
   # above, rather than every project in turn in one job: end-to-end is most of
   # CI's time, and this way only the slowest project sets the pace. Each job
   # installs just the engine its project's device runs on, named in `browser`.
+  #
+  # TRIAL, not for merging: every project runs with 1 worker (today's setting,
+  # as the control) and with 2, side by side on separate runners so they share
+  # the run's conditions. Each runs the suite once, for timing, then again with
+  # every test repeated three times and a flaky test counted as a failure.
   e2e:
-    name: End-to-end (${{ matrix.project }})
+    name: End-to-end (${{ matrix.project }}, ${{ matrix.workers }} worker)
     if: github.event.action != 'edited' || github.event.changes.base != null
     runs-on: ubuntu-latest
     strategy:
       # Let every project finish, so one failing never hides another's result.
       fail-fast: false
       matrix:
+        project: [chromium, iphone, android]
+        workers: [1, 2]
         include:
           - project: chromium
             browser: chromium
@@ -116,15 +123,23 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps ${{ matrix.browser }}
 
-      - name: End-to-end tests
-        run: npm run test:e2e -- --project=${{ matrix.project }}
+      - name: End-to-end tests (timing)
+        run: npm run test:e2e -- --project=${{ matrix.project }} --workers=${{ matrix.workers }}
 
-      - name: Upload Playwright report
+      - name: End-to-end tests (each repeated 3 times, failing on flaky)
+        if: ${{ !cancelled() }}
+        run: npm run test:e2e -- --project=${{ matrix.project }} --workers=${{ matrix.workers }} --repeat-each=3 --fail-on-flaky-tests
+        env:
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report-repeated
+
+      - name: Upload Playwright reports
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: playwright-report-${{ matrix.project }}
-          path: playwright-report/
+          name: playwright-report-${{ matrix.project }}-${{ matrix.workers }}-worker
+          path: |
+            playwright-report/
+            playwright-report-repeated/
           if-no-files-found: ignore
 
   # The "green-ci" ruleset on main requires a check named "Lint, test & build",
