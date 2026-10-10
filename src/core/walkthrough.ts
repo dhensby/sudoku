@@ -2,7 +2,7 @@ import type { FillHint } from './game';
 import { TECHNIQUE_ORDER, harderTechnique, nextStep, type TechniqueTrace } from './grader';
 import { BOX, COL, PEERS, POPCOUNT, ROW, bit, digitsOf, lowestDigit, unitCells } from './grid';
 import { isStepValid, reliance, stepOn } from './patterns';
-import { createBoard, eliminate, place, type SolveStep, type SolverBoard } from './techniques';
+import { cloneBoard, eliminate, place, type SolveStep, type SolverBoard } from './techniques';
 import type { Digit, Hint, SingleTechniqueId, TechniqueId, Unit, Values } from './types';
 
 /*
@@ -43,8 +43,11 @@ import type { Digit, Hint, SingleTechniqueId, TechniqueId, Unit, Values } from '
  * so when that technique was first needed nothing easier would do, and no
  * chain of easier steps gets the board past that point.
  *
- * Every candidate is a naked candidate of the placed digits, less what
- * earlier steps of the walkthrough removed — never the player's own notes.
+ * Every candidate is one the board it starts from has, less what earlier
+ * steps of the walkthrough removed. That board is today always `createBoard`
+ * of the placed digits — their naked candidates, never the player's own
+ * notes; taking a board rather than the digits is what lets it one day be
+ * the candidates the player sees.
  */
 
 /** The steps that solve one cell. */
@@ -145,13 +148,15 @@ function singlesAt(board: SolverBoard, target: number): SolveStep[] {
 }
 
 /**
- * Solve easiest-first from `values` until `target` can be filled by a
- * single (step 1 above). Null when the techniques stall first, or the cell
- * is not an empty cell of the grid. Pure; does not mutate input.
+ * Solve easiest-first from `start` until `target` can be filled by a single
+ * (step 1 above). Null when the techniques stall first, or the cell is not
+ * an empty cell of the grid. Pure; does not mutate input.
  */
-export function solveToCell(values: Values, target: number): CellSolve | null {
-  if (!Number.isInteger(target) || target < 0 || target > 80 || values[target] !== 0) return null;
-  const board = createBoard(values);
+export function solveToCell(start: SolverBoard, target: number): CellSolve | null {
+  if (!Number.isInteger(target) || target < 0 || target > 80 || start.values[target] !== 0) {
+    return null;
+  }
+  const board = cloneBoard(start);
   const steps: SolveStep[] = [];
   const before: Uint16Array[] = [];
   for (;;) {
@@ -236,16 +241,19 @@ function replayOn(board: SolverBoard, steps: readonly SolveStep[]): TechniqueTra
 }
 
 /**
- * Replay steps from `values`, each read afresh on the board the earlier ones
+ * Replay steps from `start`, each read afresh on the board the earlier ones
  * leave (step 3 above): the trace of every step, or null as soon as one does
- * not hold there.
+ * not hold there. Pure; `start` is left as it was.
  */
-export function replaySteps(values: Values, steps: readonly SolveStep[]): TechniqueTrace[] | null {
-  return replayOn(createBoard(values), steps);
+export function replaySteps(
+  start: SolverBoard,
+  steps: readonly SolveStep[],
+): TechniqueTrace[] | null {
+  return replayOn(cloneBoard(start), steps);
 }
 
 /**
- * Replay steps from `values` without any the rest can do without (step 4
+ * Replay steps from `start` without any the rest can do without (step 4
  * above): each is tried, last to first but for the single that ends them,
  * by replaying the others without it. The traces of what is left, or null
  * when the steps do not hold to begin with.
@@ -254,8 +262,8 @@ export function replaySteps(values: Values, steps: readonly SolveStep[]): Techni
  * still as they were replayed at first, so each try starts from the board
  * they leave, and stops at the first step that no longer holds.
  */
-function prune(values: Values, steps: readonly SolveStep[]): TechniqueTrace[] | null {
-  const traces = replaySteps(values, steps);
+function prune(start: SolverBoard, steps: readonly SolveStep[]): TechniqueTrace[] | null {
+  const traces = replaySteps(start, steps);
   if (traces === null) return null;
   let rest = steps.slice(-1);
   for (let k = steps.length - 2; k >= 0; k--) {
@@ -264,11 +272,11 @@ function prune(values: Values, steps: readonly SolveStep[]): TechniqueTrace[] | 
     if (replayOn(board, rest) === null) rest = [steps[k], ...rest];
   }
   // The steps left held when the last of them was tried, or are all of them.
-  return replaySteps(values, rest)!;
+  return replaySteps(start, rest)!;
 }
 
 /**
- * The steps that solve `target` from `values`, as few as the solve allows:
+ * The steps that solve `target` from `board`, as few as the solve allows:
  * only the ones the cell depends on — none of which it could do without —
  * ending with the single that fills it. For a cell that is a single
  * already, that is the single alone.
@@ -276,21 +284,27 @@ function prune(values: Values, steps: readonly SolveStep[]): TechniqueTrace[] | 
  * Null when there is none to show: the cell is not an empty cell of the
  * grid, the techniques stall before reaching it, or — when `solution` is
  * given — a placed digit disagrees with it (no sound walkthrough starts
- * from a mistake, and one built on it could end in the wrong digit). Pure.
+ * from a mistake, and one built on it could end in the wrong digit). Pure;
+ * `board` is left as it was.
  *
  * Fast enough to call on a click or a selection change: it is one partial
  * solve, like `findHint`'s.
  */
-export function explainCell(values: Values, target: number, solution?: Values): Walkthrough | null {
+export function explainCell(
+  board: SolverBoard,
+  target: number,
+  solution?: Values,
+): Walkthrough | null {
   if (solution !== undefined) {
+    const { values } = board;
     for (let i = 0; i < 81; i++) if (values[i] !== 0 && values[i] !== solution[i]) return null;
   }
-  const solve = solveToCell(values, target);
+  const solve = solveToCell(board, target);
   if (solve === null) return null;
   const { final, kept } = sliceSolve(solve);
   const steps =
-    prune(values, [...kept.map((k) => solve.steps[k]), final]) ??
-    prune(values, [...solve.steps, final]);
+    prune(board, [...kept.map((k) => solve.steps[k]), final]) ??
+    prune(board, [...solve.steps, final]);
   if (steps === null) return null;
   return { target, digit: final.placement!.digit, steps };
 }
@@ -299,9 +313,9 @@ export function explainCell(values: Values, target: number, solution?: Values): 
  * The walkthrough for a hint's cell, if it has one: a single or a deduction
  * can be shown; a mistake, or "nothing to suggest", cannot. See `explainCell`.
  */
-export function explainHint(values: Values, hint: Hint, solution?: Values): Walkthrough | null {
+export function explainHint(board: SolverBoard, hint: Hint, solution?: Values): Walkthrough | null {
   return hint.kind === 'single' || hint.kind === 'deduction'
-    ? explainCell(values, hint.index, solution)
+    ? explainCell(board, hint.index, solution)
     : null;
 }
 

@@ -8,6 +8,7 @@ import { isStepValid } from './patterns';
 import { solve } from './solver';
 import {
   TECHNIQUES,
+  cloneBoard,
   createBoard,
   eliminate,
   place,
@@ -124,7 +125,7 @@ describe('explainCell', () => {
     it('is the puzzle of the shared link, with the hint the player saw', () => {
       expect(decodeGivens(STUCK_ON_A_HIDDEN_PAIR.code)).toBe(STUCK_ON_A_HIDDEN_PAIR.givens);
       expect(solve(gridValues(STUCK_ON_A_HIDDEN_PAIR.givens))).toEqual(solution);
-      expect(findHint(values, solution)).toEqual<Hint>({
+      expect(findHint(createBoard(values), solution)).toEqual<Hint>({
         kind: 'deduction',
         index: target,
         technique: 'hiddenPair',
@@ -132,7 +133,7 @@ describe('explainCell', () => {
     });
 
     it('shows exactly the hidden pair, the pointing pair it opens and the single that leaves', () => {
-      const walkthrough = explainCell(values, target, solution)!;
+      const walkthrough = explainCell(createBoard(values), target, solution)!;
       expect(walkthrough.target).toBe(target);
       expect(walkthrough.digit).toBe(8);
       expect(walkthrough.steps.map((trace) => trace.step)).toEqual<SolveStep[]>([
@@ -182,7 +183,7 @@ describe('explainCell', () => {
     });
 
     it('draws each step on the real board, with the candidates the earlier steps leave', () => {
-      const [first, second, third] = explainCell(values, target, solution)!.steps;
+      const [first, second, third] = explainCell(createBoard(values), target, solution)!.steps;
       for (const trace of [first, second, third]) expect(trace.values).toEqual(values);
       // The digits on the board allow these — not the player's own notes.
       const naked = computeCandidates(values);
@@ -196,28 +197,25 @@ describe('explainCell', () => {
     });
 
     it('leaves out the five steps the grader took first about other cells', () => {
-      expect(solveToCell(values, target)!.steps.map((step) => step.technique)).toEqual([
-        'pointing',
-        'pointing',
-        'pointing',
-        'nakedPair',
-        'nakedPair',
-        'hiddenPair',
-        'pointing',
-      ]);
-      expect(sliceSolve(solveToCell(values, target)!).kept).toEqual([5, 6]);
+      expect(solveToCell(createBoard(values), target)!.steps.map((step) => step.technique)).toEqual(
+        ['pointing', 'pointing', 'pointing', 'nakedPair', 'nakedPair', 'hiddenPair', 'pointing'],
+      );
+      expect(sliceSolve(solveToCell(createBoard(values), target)!).kept).toEqual([5, 6]);
     });
 
     it('is the same for the hint, and without the solution on a board with no mistakes', () => {
-      const walkthrough = explainCell(values, target, solution);
-      expect(explainHint(values, findHint(values, solution), solution)).toEqual(walkthrough);
-      expect(explainCell(values, target)).toEqual(walkthrough);
+      const walkthrough = explainCell(createBoard(values), target, solution);
+      expect(
+        explainHint(createBoard(values), findHint(createBoard(values), solution), solution),
+      ).toEqual(walkthrough);
+      expect(explainCell(createBoard(values), target)).toEqual(walkthrough);
     });
 
     it('leaves the board it was given as it was', () => {
-      const copy = values.slice();
-      explainCell(values, target, solution);
-      expect(values).toEqual(copy);
+      const board = createBoard(values);
+      const copy = cloneBoard(board);
+      explainCell(board, target, solution);
+      expect(board).toEqual(copy);
     });
   });
 
@@ -228,10 +226,10 @@ describe('explainCell', () => {
         // Each technique's worked example has a hint naming that technique.
         const values = gridValues(EXAMPLE_PUZZLES[technique]);
         const solution = solve(values)!;
-        const hint = findHint(values, solution);
+        const hint = findHint(createBoard(values), solution);
         if (hint.kind !== 'single') throw new Error(`No single on the ${technique} example`);
         expect(hint.technique).toBe(technique);
-        const walkthrough = explainHint(values, hint, solution)!;
+        const walkthrough = explainHint(createBoard(values), hint, solution)!;
         expect(walkthrough.steps).toHaveLength(1);
         const [{ step, candidates }] = walkthrough.steps;
         expect(step.technique).toBe(technique);
@@ -244,11 +242,11 @@ describe('explainCell', () => {
     it('fills the cell asked about, even where the grader would find another single first', () => {
       const values = parseGrid(WIKIPEDIA_PUZZLE);
       const solution = parseGrid(WIKIPEDIA_SOLUTION);
-      const hint = findHint(values, solution) as Extract<Hint, { index: number }>;
+      const hint = findHint(createBoard(values), solution) as Extract<Hint, { index: number }>;
       const other = Array.from({ length: 81 }, (_, i) => i).find(
-        (i) => i !== hint.index && solveToCell(values, i)?.steps.length === 0,
+        (i) => i !== hint.index && solveToCell(createBoard(values), i)?.steps.length === 0,
       )!;
-      const walkthrough = explainCell(values, other, solution)!;
+      const walkthrough = explainCell(createBoard(values), other, solution)!;
       expect(walkthrough.steps).toHaveLength(1);
       expect(walkthrough.steps[0].step.placement).toEqual({ index: other, digit: solution[other] });
     });
@@ -263,9 +261,12 @@ describe('explainCell', () => {
       (_name, seed, placed, target, solveLength, techniques) => {
         const { givens, solution } = seeded(seed);
         const values = afterPlacements(givens, placed);
-        expect(findHint(values, solution)).toMatchObject({ kind: 'deduction', index: target });
-        expect(solveToCell(values, target)!.steps).toHaveLength(solveLength);
-        const walkthrough = explainCell(values, target, solution)!;
+        expect(findHint(createBoard(values), solution)).toMatchObject({
+          kind: 'deduction',
+          index: target,
+        });
+        expect(solveToCell(createBoard(values), target)!.steps).toHaveLength(solveLength);
+        const walkthrough = explainCell(createBoard(values), target, solution)!;
         expect(walkthrough.steps.map((trace) => trace.step.technique)).toEqual(techniques);
         expect(problemsWith(walkthrough, values, solution, target)).toEqual([]);
       },
@@ -296,17 +297,17 @@ describe('explainCell', () => {
         const values = parseGrid(grid);
         const solution = solve(values)!;
         expect(decodeGivens(code)).toBe(grid);
-        expect(findHint(values, solution)).toEqual<Hint>({
+        expect(findHint(createBoard(values), solution)).toEqual<Hint>({
           kind: 'deduction',
           index: target,
           technique,
         });
-        const cellSolve = solveToCell(values, target)!;
+        const cellSolve = solveToCell(createBoard(values), target)!;
         const { final, kept } = sliceSolve(cellSolve);
         expect(
           [...kept.map((k) => cellSolve.steps[k]), final].map((step) => step.technique),
         ).toEqual(sliced);
-        const walkthrough = explainCell(values, target, solution)!;
+        const walkthrough = explainCell(createBoard(values), target, solution)!;
         expect(walkthrough.steps.map((trace) => trace.step.technique)).toEqual(techniques);
         expect(problemsWith(walkthrough, values, solution, target)).toEqual([]);
       },
@@ -318,7 +319,7 @@ describe('explainCell', () => {
       const values = parseGrid(
         '000200090002000043089600271950810320803709060400300009090407000000100030001060002',
       );
-      const [first] = explainCell(values, rc(5, 9))!.steps;
+      const [first] = explainCell(createBoard(values), rc(5, 9))!.steps;
       expect(first.step.houses).toEqual([box(8)]);
       expect(first.step.eliminations).toEqual([
         { index: rc(8, 7), mask: maskOf([5, 6, 8]) },
@@ -333,7 +334,7 @@ describe('explainCell', () => {
       // most of the solve, the naked single the least.
       const { givens, solution } = seeded(1);
       const target = rc(8, 2);
-      const solve = solveToCell(givens, target)!;
+      const solve = solveToCell(createBoard(givens), target)!;
       expect(solve.steps).toHaveLength(47);
       const lengths = solve.finals.map((final) => sliceSolve({ ...solve, finals: [final] }).kept);
       expect(solve.finals.map((final) => final.technique)).toEqual([
@@ -345,7 +346,7 @@ describe('explainCell', () => {
       const { final, kept } = sliceSolve(solve);
       expect(final.technique).toBe('nakedSingle');
       expect(kept).toEqual(lengths[2]);
-      const walkthrough = explainCell(givens, target, solution)!;
+      const walkthrough = explainCell(createBoard(givens), target, solution)!;
       expect(walkthrough.steps).toHaveLength(43);
       expect(walkthrough.steps.at(-1)!.step.technique).toBe('nakedSingle');
       expect(problemsWith(walkthrough, givens, solution, target)).toEqual([]);
@@ -355,7 +356,7 @@ describe('explainCell', () => {
       const { givens, solution } = seeded(1);
       const values = afterPlacements(givens, 21);
       const target = rc(8, 7);
-      const solve = solveToCell(values, target)!;
+      const solve = solveToCell(createBoard(values), target)!;
       expect(solve.steps).toHaveLength(0);
       expect(solve.finals.map((final) => final.technique)).toEqual([
         'fullHouse',
@@ -363,7 +364,9 @@ describe('explainCell', () => {
         'hiddenSingleLine',
         'nakedSingle',
       ]);
-      expect(explainCell(values, target, solution)!.steps[0].step.technique).toBe('fullHouse');
+      expect(explainCell(createBoard(values), target, solution)!.steps[0].step.technique).toBe(
+        'fullHouse',
+      );
     });
 
     /*
@@ -389,20 +392,22 @@ describe('explainCell', () => {
         const placements = grade(givens).solveOrder.length;
         for (const fraction of [0, 0.25, 0.5, 0.75]) {
           const values = afterPlacements(givens, Math.floor(placements * fraction));
-          const hint = findHint(values, solution);
+          const hint = findHint(createBoard(values), solution);
           const targets = Array.from({ length: 81 }, (_, i) => i).filter(
             (i) => values[i] === 0 && (i % 5 === p % 5 || ('index' in hint && i === hint.index)),
           );
           for (const target of targets) {
             const at = `puzzle ${p}, ${fraction} in, cell ${target}`;
-            const solve = solveToCell(values, target);
-            const walkthrough = explainCell(values, target, solution);
+            const solve = solveToCell(createBoard(values), target);
+            const walkthrough = explainCell(createBoard(values), target, solution);
             if (solve === null) {
               if (walkthrough !== null) problems.push(`${at}: explained past a stall`);
               continue;
             }
             const { final, kept } = sliceSolve(solve);
-            if (replaySteps(values, [...kept.map((k) => solve.steps[k]), final]) === null) {
+            if (
+              replaySteps(createBoard(values), [...kept.map((k) => solve.steps[k]), final]) === null
+            ) {
               problems.push(`${at}: the slice does not hold`);
             }
             if (walkthrough === null) {
@@ -420,7 +425,7 @@ describe('explainCell', () => {
             for (let k = 0; k < chain.length - 1; k++) {
               if (
                 replaySteps(
-                  values,
+                  createBoard(values),
                   chain.filter((_, j) => j !== k),
                 ) !== null
               ) {
@@ -455,28 +460,30 @@ describe('explainCell', () => {
       ['a cell that is not a number', Number.NaN],
       ['a filled cell', rc(1, 9)],
     ])('for %s', (_name, target) => {
-      expect(explainCell(values, target, solution)).toBeNull();
+      expect(explainCell(createBoard(values), target, solution)).toBeNull();
     });
 
     it('for a cell the techniques stall before reaching', () => {
       // Every placement the grader can make, and then it is stuck.
       const values = afterPlacements(gridValues(BEYOND_THE_SET.givens), 81);
       const answer = gridValues(BEYOND_THE_SET.solution);
-      const hint = findHint(values, answer);
+      const hint = findHint(createBoard(values), answer);
       expect(hint).toMatchObject({ kind: 'deduction', technique: null });
-      expect(explainHint(values, hint, answer)).toBeNull();
+      expect(explainHint(createBoard(values), hint, answer)).toBeNull();
     });
 
     it('from a board with a mistake on it, when the solution is given', () => {
       const mistaken = values.slice();
       mistaken[rc(1, 1)] = 1; // should be 9
-      expect(explainCell(mistaken, STUCK_ON_A_HIDDEN_PAIR.target, solution)).toBeNull();
+      expect(
+        explainCell(createBoard(mistaken), STUCK_ON_A_HIDDEN_PAIR.target, solution),
+      ).toBeNull();
     });
 
     it.each<Hint>([{ kind: 'mistake', index: 0 }, { kind: 'none' }])(
       'for a hint that fills nothing: %o',
       (hint) => {
-        expect(explainHint(values, hint, solution)).toBeNull();
+        expect(explainHint(createBoard(values), hint, solution)).toBeNull();
       },
     );
   });
@@ -512,12 +519,14 @@ describe('explainCell', () => {
         'hiddenPair',
         (step) => (step.eliminations = step.eliminations.filter((e) => e.index !== rc(4, 6))),
         () => {
-          const solve = solveToCell(values, target)!;
+          const solve = solveToCell(createBoard(values), target)!;
           const { final, kept } = sliceSolve(solve);
           expect(kept).toEqual([6]);
-          expect(replaySteps(values, [...kept.map((k) => solve.steps[k]), final])).toBeNull();
+          expect(
+            replaySteps(createBoard(values), [...kept.map((k) => solve.steps[k]), final]),
+          ).toBeNull();
           // The whole solve, pruned, comes to the same three steps as ever.
-          const walkthrough = explainCell(values, target, solution)!;
+          const walkthrough = explainCell(createBoard(values), target, solution)!;
           expect(walkthrough.steps.map((trace) => trace.step.technique)).toEqual([
             'hiddenPair',
             'pointing',
@@ -538,7 +547,7 @@ describe('explainCell', () => {
         'pointing',
         (step) => step.houses.reverse(),
         () => {
-          expect(explainCell(values, target, solution)).toBeNull();
+          expect(explainCell(createBoard(values), target, solution)).toBeNull();
         },
       );
     });
@@ -550,8 +559,8 @@ describe('walkthroughHint', () => {
   const { target } = STUCK_ON_A_HIDDEN_PAIR;
 
   it('puts a walkthrough of several steps as a deduction, naming the hardest of them', () => {
-    expect(walkthroughHint(explainCell(values, target, solution)!)).toEqual<Hint>(
-      findHint(values, solution),
+    expect(walkthroughHint(explainCell(createBoard(values), target, solution)!)).toEqual<Hint>(
+      findHint(createBoard(values), solution),
     );
   });
 
@@ -561,7 +570,7 @@ describe('walkthroughHint', () => {
     const later = values.slice();
     later[rc(5, 5)] = 9;
     later[rc(5, 6)] = 5;
-    expect(walkthroughHint(explainCell(later, target, solution)!)).toEqual<Hint>({
+    expect(walkthroughHint(explainCell(createBoard(later), target, solution)!)).toEqual<Hint>({
       kind: 'single',
       index: target,
       technique: 'nakedSingle',
@@ -574,8 +583,8 @@ describe('walkthroughHint', () => {
     (technique) => {
       const values = gridValues(EXAMPLE_PUZZLES[technique]);
       const solution = solve(values)!;
-      const hint = findHint(values, solution);
-      expect(walkthroughHint(explainHint(values, hint, solution)!)).toEqual(hint);
+      const hint = findHint(createBoard(values), solution);
+      expect(walkthroughHint(explainHint(createBoard(values), hint, solution)!)).toEqual(hint);
     },
   );
 });

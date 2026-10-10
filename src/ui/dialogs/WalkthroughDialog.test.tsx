@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
-import { explainCell, findHint, explainHint, type Walkthrough } from '../../core';
+import { createBoard, explainCell, findHint, explainHint, type Walkthrough } from '../../core';
 import { STUCK_ON_A_HIDDEN_PAIR, stuckOnAHiddenPair } from '../../test/logic-fixtures';
 import { walkthroughCaption } from '../techniqueGuide';
 import { WALKTHROUGH_INTRO } from './text';
@@ -11,7 +11,7 @@ import { WalkthroughDialog } from './WalkthroughDialog';
  */
 function stuck(): Walkthrough {
   const { values, solution } = stuckOnAHiddenPair();
-  return explainCell(values, STUCK_ON_A_HIDDEN_PAIR.target, solution)!;
+  return explainCell(createBoard(values), STUCK_ON_A_HIDDEN_PAIR.target, solution)!;
 }
 
 function renderWalkthrough(walkthrough: Walkthrough = stuck(), initialStep?: number) {
@@ -131,9 +131,9 @@ describe('WalkthroughDialog', () => {
   it('shows a single on its own: one step, the hint’s, and the answer', () => {
     // From the givens alone, the hint is a single.
     const { givens, solution } = stuckOnAHiddenPair();
-    const hint = findHint(givens, solution);
+    const hint = findHint(createBoard(givens), solution);
     expect(hint.kind).toBe('single');
-    renderWalkthrough(explainHint(givens, hint, solution)!);
+    renderWalkthrough(explainHint(createBoard(givens), hint, solution)!);
     expect(stepHeading()).toHaveAccessibleName(/^Step 1 of 1: /);
     expect(answer()).toBeInTheDocument();
     expect(

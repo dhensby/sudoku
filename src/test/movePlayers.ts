@@ -9,6 +9,7 @@ import {
   findHint,
   formatGrid,
   gridValues,
+  hintBoardOf,
   moveFor,
   parseGrid,
   reduce,
@@ -115,7 +116,7 @@ function answerAt(puzzle: Puzzle, index: number): Digit {
 
 /** The cell a person would fill next: where a hint would point (asked of the board, not the game). */
 function nextCell(game: GameState): number {
-  const hint = findHint(valuesOf(game), gridValues(game.puzzle.solution));
+  const hint = findHint(hintBoardOf(game), gridValues(game.puzzle.solution));
   // Every scripted player puts its slips right at once, so the hint is a
   // single or a deduction: the board is never full while the game is on.
   return (hint as Exclude<Hint, { kind: 'none' }>).index;
@@ -236,7 +237,7 @@ export function playWithHelp(puzzle: Puzzle, rng: RandomFn): Played {
   ];
   for (const step of steps) played = act(played, step(played.game), t());
   // A hint about the board as it stands, its walkthrough, and the placement.
-  const hint = findHint(valuesOf(played.game), solution);
+  const hint = findHint(hintBoardOf(played.game), solution);
   played = act(played, { type: 'hint', hint }, t());
   if (hint.kind === 'single' || hint.kind === 'deduction') {
     played = act(played, { type: 'walkthrough', index: hint.index }, t());
@@ -244,7 +245,11 @@ export function playWithHelp(puzzle: Puzzle, rng: RandomFn): Played {
   while (played.game.status === 'playing') {
     const cell = nextCell(played.game);
     if (rng() < 0.1)
-      played = act(played, { type: 'hint', hint: findHint(valuesOf(played.game), solution) }, t());
+      played = act(
+        played,
+        { type: 'hint', hint: findHint(hintBoardOf(played.game), solution) },
+        t(),
+      );
     // The last cell revealed, which completes the grid.
     const isLast = played.game.cells.filter(({ value }) => value === 0).length === 1;
     played = isLast
@@ -412,7 +417,7 @@ function randomHint(game: GameState, rng: RandomFn): Hint {
   const roll = rng();
   // Off the grid now and then: counted, but about no cell.
   const index = rng() < 0.03 ? pick([-1, 81], rng) : Math.floor(rng() * 81);
-  if (roll < 0.1) return findHint(valuesOf(game), gridValues(game.puzzle.solution));
+  if (roll < 0.1) return findHint(hintBoardOf(game), gridValues(game.puzzle.solution));
   if (roll < 0.15) return { kind: 'none' };
   if (roll < 0.35) return { kind: 'mistake', index };
   if (roll < 0.65) {

@@ -15,7 +15,7 @@ import {
 } from './grid';
 import { findHint } from './hint';
 import { hasUniqueSolution, solve } from './solver';
-import type { SolveStep } from './techniques';
+import { createBoard, type SolveStep } from './techniques';
 import type { TechniqueId, Unit } from './types';
 import { checkSoundness } from '../test/logic-fixtures';
 
@@ -195,7 +195,7 @@ describe('techniqueExample', () => {
    */
   it.each(TECHNIQUE_ORDER)('gives a hint on the %s board that names it', (id) => {
     const values = gridValues(EXAMPLE_PUZZLES[id]);
-    const hint = findHint(values, solve(values)!);
+    const hint = findHint(createBoard(values), solve(values)!);
     expect('technique' in hint ? hint.technique : undefined).toBe(
       id === 'swordfish' ? 'skyscraper' : id,
     );

@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/react';
-import { COL, POPCOUNT, ROW, bit, explainCell, type TechniqueId } from '../core';
+import { COL, POPCOUNT, ROW, bit, createBoard, explainCell, type TechniqueId } from '../core';
 import { STUCK_ON_A_HIDDEN_PAIR, stuckOnAHiddenPair } from '../test/logic-fixtures';
 import { TechniqueDiagram } from './TechniqueDiagram';
 import { guideExamples, guideIdFor } from './techniqueGuide';
@@ -429,7 +429,11 @@ describe('TechniqueDiagram', () => {
     // on: a hidden pair in column 6, a pointing pair in box 5, and a naked
     // single.
     const { values, solution } = stuckOnAHiddenPair();
-    const { target, steps } = explainCell(values, STUCK_ON_A_HIDDEN_PAIR.target, solution)!;
+    const { target, steps } = explainCell(
+      createBoard(values),
+      STUCK_ON_A_HIDDEN_PAIR.target,
+      solution,
+    )!;
 
     function drawStep(k: number, props: Partial<Parameters<typeof TechniqueDiagram>[0]> = {}) {
       const view = render(

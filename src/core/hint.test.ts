@@ -1,6 +1,7 @@
 import { grade, harderTechnique } from './grader';
 import { POPCOUNT, computeCandidates, formatGrid, gridValues, parseGrid } from './grid';
 import { findHint } from './hint';
+import { cloneBoard, createBoard } from './techniques';
 import type { Hint, TechniqueId } from './types';
 import { WIKIPEDIA_PUZZLE, WIKIPEDIA_SOLUTION } from '../test/grids';
 import { ALL_FIXTURES, HARDEST, solvedPuzzle } from '../test/logic-fixtures';
@@ -41,24 +42,30 @@ describe('findHint', () => {
     const values = parseGrid(WIKIPEDIA_PUZZLE);
     values[72] = 1; // should be 3
     values[2] = 1; // should be 4
-    expect(findHint(values, parseGrid(WIKIPEDIA_SOLUTION))).toEqual({ kind: 'mistake', index: 2 });
+    expect(findHint(createBoard(values), parseGrid(WIKIPEDIA_SOLUTION))).toEqual({
+      kind: 'mistake',
+      index: 2,
+    });
   });
 
   it('points at a mistake on a full board rather than calling it complete', () => {
     const values = parseGrid(WIKIPEDIA_SOLUTION);
     values[40] = 9;
-    expect(findHint(values, parseGrid(WIKIPEDIA_SOLUTION))).toEqual({ kind: 'mistake', index: 40 });
+    expect(findHint(createBoard(values), parseGrid(WIKIPEDIA_SOLUTION))).toEqual({
+      kind: 'mistake',
+      index: 40,
+    });
   });
 
   it('has nothing to suggest on a complete, correct board', () => {
     const solution = parseGrid(WIKIPEDIA_SOLUTION);
-    expect(findHint(solution, solution)).toEqual({ kind: 'none' });
+    expect(findHint(createBoard(solution), solution)).toEqual({ kind: 'none' });
   });
 
   it('names a full house with its unit', () => {
     const values = parseGrid(WIKIPEDIA_SOLUTION);
     values[40] = 0;
-    expect(findHint(values, parseGrid(WIKIPEDIA_SOLUTION))).toEqual<Hint>({
+    expect(findHint(createBoard(values), parseGrid(WIKIPEDIA_SOLUTION))).toEqual<Hint>({
       kind: 'single',
       index: 40,
       technique: 'fullHouse',
@@ -67,7 +74,9 @@ describe('findHint', () => {
   });
 
   it('names a hidden single in a box with its box', () => {
-    expect(findHint(gridValues(HARDEST.pointing.givens), POINTING_SOLUTION)).toEqual<Hint>({
+    expect(
+      findHint(createBoard(gridValues(HARDEST.pointing.givens)), POINTING_SOLUTION),
+    ).toEqual<Hint>({
       kind: 'single',
       index: 0,
       technique: 'hiddenSingleBox',
@@ -76,7 +85,9 @@ describe('findHint', () => {
   });
 
   it('names a hidden single in a row with its row', () => {
-    expect(findHint(gridValues(LINE_SINGLE_POSITION), POINTING_SOLUTION)).toEqual<Hint>({
+    expect(
+      findHint(createBoard(gridValues(LINE_SINGLE_POSITION)), POINTING_SOLUTION),
+    ).toEqual<Hint>({
       kind: 'single',
       index: 56,
       technique: 'hiddenSingleLine',
@@ -85,7 +96,9 @@ describe('findHint', () => {
   });
 
   it('names a naked single, which belongs to no unit', () => {
-    expect(findHint(gridValues(NAKED_SINGLE_POSITION), POINTING_SOLUTION)).toEqual<Hint>({
+    expect(
+      findHint(createBoard(gridValues(NAKED_SINGLE_POSITION)), POINTING_SOLUTION),
+    ).toEqual<Hint>({
       kind: 'single',
       index: 49,
       technique: 'nakedSingle',
@@ -94,7 +107,7 @@ describe('findHint', () => {
   });
 
   it('points past the singles to the next cell a deduction unlocks', () => {
-    expect(findHint(gridValues(DEDUCTION_POSITION), POINTING_SOLUTION)).toEqual<Hint>({
+    expect(findHint(createBoard(gridValues(DEDUCTION_POSITION)), POINTING_SOLUTION)).toEqual<Hint>({
       kind: 'deduction',
       index: 35,
       technique: 'pointing',
@@ -112,22 +125,27 @@ describe('findHint', () => {
     expect([POPCOUNT[naked[3]], POPCOUNT[naked[5]]]).toEqual([3, 2]);
     // The pick goes by what the board shows, not by eliminations the hint
     // never explains (going by those would make it r0c3).
-    expect(findHint(values, gridValues(STALLED_SOLUTION))).toEqual<Hint>({
+    expect(findHint(createBoard(values), gridValues(STALLED_SOLUTION))).toEqual<Hint>({
       kind: 'deduction',
       index: 5,
       technique: null,
     });
   });
 
-  it('leaves the values it is given untouched', () => {
-    const values = gridValues(DEDUCTION_POSITION);
-    findHint(values, POINTING_SOLUTION);
-    expect(formatGrid(values)).toBe(DEDUCTION_POSITION);
+  it('leaves the board it is given untouched', () => {
+    const board = createBoard(gridValues(DEDUCTION_POSITION));
+    const copy = cloneBoard(board);
+    findHint(board, POINTING_SOLUTION);
+    expect(formatGrid(board.values)).toBe(DEDUCTION_POSITION);
+    expect(board).toEqual(copy);
   });
 
   it('accepts plain arrays', () => {
     expect(
-      findHint(Array.from(gridValues(LINE_SINGLE_POSITION)), Array.from(POINTING_SOLUTION)),
+      findHint(
+        createBoard(Array.from(gridValues(LINE_SINGLE_POSITION))),
+        Array.from(POINTING_SOLUTION),
+      ),
     ).toMatchObject({ kind: 'single', index: 56 });
   });
 
@@ -144,7 +162,7 @@ describe('findHint', () => {
     for (let k = 0; k < steps.length; k++) {
       const step = steps[k];
       if (step.placement) {
-        expect(findHint(values, solution)).toEqual({
+        expect(findHint(createBoard(values), solution)).toEqual({
           kind: 'single',
           index: step.placement.index,
           technique: step.technique,
@@ -157,7 +175,7 @@ describe('findHint', () => {
       for (const later of steps.slice(k)) {
         hardest = harderTechnique(hardest, later.technique);
         if (later.placement) {
-          expect(findHint(values, solution)).toEqual({
+          expect(findHint(createBoard(values), solution)).toEqual({
             kind: 'deduction',
             index: later.placement.index,
             technique: hardest,
@@ -165,7 +183,10 @@ describe('findHint', () => {
           return;
         }
       }
-      expect(findHint(values, solution)).toMatchObject({ kind: 'deduction', technique: null });
+      expect(findHint(createBoard(values), solution)).toMatchObject({
+        kind: 'deduction',
+        technique: null,
+      });
       return;
     }
   });
