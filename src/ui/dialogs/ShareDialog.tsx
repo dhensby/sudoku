@@ -1,5 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
-import type { Assists, DateKey, Difficulty, GridString } from '../../core';
+import type { Assists, DateKey, Difficulty, GridString, MistakeTally } from '../../core';
 import { normaliseName } from '../../storage/storage';
 import {
   buildShareText,
@@ -16,8 +16,12 @@ import { Dialog } from './Dialog';
 export interface ShareDialogProps {
   givens: GridString;
   difficulty: Difficulty;
-  /** The player's result to include, or null to share the puzzle alone (mid-game, or an unsolved history entry). */
-  result: { seconds: number; assists: Assists } | null;
+  /**
+   * The player's result to include, or null to share the puzzle alone
+   * (mid-game, or an unsolved history entry). Its mistakes are null when they
+   * are not known, and the message and link then say nothing of them.
+   */
+  result: { seconds: number; assists: Assists; mistakes: MistakeTally | null } | null;
   /** The date of the daily the puzzle is, if it was played as one: the message names it, and the link says so. */
   daily?: DateKey | null;
   /** The remembered name, already normalised. */
@@ -93,9 +97,7 @@ export function ShareDialog({
   const url = buildShareUrl(
     shareBaseUrl(),
     givens,
-    result === null
-      ? undefined
-      : { seconds: result.seconds, name: normaliseName(name), assists: result.assists },
+    result === null ? undefined : { ...result, name: normaliseName(name) },
     daily,
   );
   const text = buildShareText({ difficulty, result: result ?? undefined, daily });

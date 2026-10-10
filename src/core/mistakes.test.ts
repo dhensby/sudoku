@@ -4,9 +4,11 @@ import { bit, gridValues } from './grid';
 import { findHint } from './hint';
 import {
   GRACE_MS,
+  MAX_MISTAKES,
   NO_MISTAKES,
   analyseMistakes,
   isObviousAnswer,
+  isPossibleTally,
   mistakeOutcomeAt,
   tallyMistakes,
   type MistakeTally,
@@ -1087,3 +1089,23 @@ function rightAction(game: GameState, rng: () => number): GameAction {
   if (roll < 99) return { type: 'reveal' };
   return RESET;
 }
+
+describe('isPossibleTally', () => {
+  it('takes any count a game could make, none and the most of each kind included', () => {
+    expect(isPossibleTally(NO_MISTAKES)).toBe(true);
+    expect(isPossibleTally({ values: 3, candidates: 1 })).toBe(true);
+    expect(isPossibleTally(MAX_MISTAKES)).toBe(true);
+  });
+
+  it.each<[string, { values: unknown; candidates: unknown }]>([
+    ['more wrong digits than a game can count', { values: MAX_MISTAKES.values + 1, candidates: 0 }],
+    ['more strikes than a game can count', { values: 0, candidates: MAX_MISTAKES.candidates + 1 }],
+    ['a negative count', { values: -1, candidates: 0 }],
+    ['a fraction', { values: 0, candidates: 1.5 }],
+    ['a count as a string', { values: '2', candidates: 0 }],
+    ['a missing count', { values: 2, candidates: undefined }],
+    ['infinity', { values: Infinity, candidates: 0 }],
+  ])('refuses %s', (_label, tally) => {
+    expect(isPossibleTally(tally)).toBe(false);
+  });
+});

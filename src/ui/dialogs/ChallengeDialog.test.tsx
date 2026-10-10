@@ -116,6 +116,36 @@ describe('ChallengeDialog', () => {
     expect(within(versus).getByRole('row', { name: /^Reveals/ })).toHaveTextContent('Reveals20');
   });
 
+  it("sets the earlier solve's mistakes against the link's, when each is known", () => {
+    renderChallenge({
+      previous: { ...PREVIOUS, mistakes: { values: 2, candidates: 0, atMs: PREVIOUS.elapsedMs } },
+      challenge: {
+        name: 'Dan',
+        seconds: 323,
+        assists: NONE,
+        mistakes: { values: 0, candidates: 0 },
+      },
+    });
+    const versus = screen.getByRole('region', { name: 'Head to head' });
+    expect(within(versus).getByRole('row', { name: /^Mistakes/ })).toHaveTextContent('Mistakes20');
+  });
+
+  it('shows an earlier solve not counted at its solve as not recorded against the link', () => {
+    renderChallenge({
+      previous: { ...PREVIOUS, mistakes: { values: 2, candidates: 0, atMs: 1000 } },
+      challenge: {
+        name: 'Dan',
+        seconds: 323,
+        assists: NONE,
+        mistakes: { values: 1, candidates: 0 },
+      },
+    });
+    const versus = screen.getByRole('region', { name: 'Head to head' });
+    expect(within(versus).getByRole('row', { name: /^Mistakes/ })).toHaveTextContent(
+      'Mistakes—not recorded1',
+    );
+  });
+
   it('shows no comparison for a link without a time', () => {
     renderChallenge();
     expect(screen.queryByRole('region', { name: 'Head to head' })).toBeNull();

@@ -180,6 +180,31 @@ describe('CompletionDialog', () => {
       expect(document.querySelector('.result__assists')).toHaveTextContent('With 1 hint');
     });
 
+    it("sets the player's mistakes against the challenger's, row by row", () => {
+      renderCompletion({
+        mistakes: { values: 1, candidates: 0 },
+        challenge: { ...challenger('Dan', 323), mistakes: { values: 0, candidates: 2 } },
+      });
+      const versus = screen.getByRole('region', { name: 'Head to head' });
+      expect(within(versus).getByRole('row', { name: /^Mistakes/ })).toHaveTextContent(
+        'Mistakes10',
+      );
+      expect(within(versus).getByRole('row', { name: /^Candidate mistakes/ })).toHaveTextContent(
+        'Candidate mistakes02',
+      );
+    });
+
+    it("shows the player's mistakes against an old link's as not recorded", () => {
+      renderCompletion({
+        mistakes: { values: 0, candidates: 0 },
+        challenge: challenger('Dan', 323),
+      });
+      const versus = screen.getByRole('region', { name: 'Head to head' });
+      expect(within(versus).getByRole('row', { name: /^Mistakes/ })).toHaveTextContent(
+        'Mistakes0—not recorded',
+      );
+    });
+
     it('says when neither player took any help', () => {
       renderCompletion({ challenge: challenger('Dan', 323) });
       expect(screen.getByRole('region', { name: 'Head to head' })).toHaveTextContent(

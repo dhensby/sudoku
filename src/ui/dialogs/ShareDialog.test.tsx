@@ -6,7 +6,7 @@ import { ShareDialog, type ShareDialogProps } from './ShareDialog';
 
 const GIVENS = formatGrid(parseGrid(WIKIPEDIA_PUZZLE));
 const NONE = { autoCandidates: false, hints: 0, checks: 0, reveals: 0 };
-const RESULT = { seconds: 323, assists: { ...NONE, hints: 2 } };
+const RESULT = { seconds: 323, assists: { ...NONE, hints: 2 }, mistakes: null };
 
 function renderShare(overrides: Partial<ShareDialogProps> = {}) {
   const props: ShareDialogProps = {
@@ -94,6 +94,20 @@ describe('ShareDialog', () => {
       expect(document.querySelector('.share__text')?.textContent).toBe(RESULT_TEXT);
       expect(shownUrl()).toBe(linkFor('Dan'));
       expect(new URL(shownUrl()!).searchParams.get('a')).toBe('h2');
+    });
+
+    it('puts known mistakes in the message and the link, a clean solve as "m0"', () => {
+      const { unmount } = renderShare({
+        result: { ...RESULT, mistakes: { values: 1, candidates: 2 } },
+      });
+      expect(document.querySelector('.share__text')?.textContent).toBe(
+        'Sudoku · Hard · 5:23\n1 mistake · 2 candidate mistakes · with 2 hints\nCan you beat my time?',
+      );
+      expect(new URL(shownUrl()!).searchParams.get('a')).toBe('h2m1x2');
+      unmount();
+
+      renderShare({ result: { ...RESULT, assists: NONE, mistakes: { values: 0, candidates: 0 } } });
+      expect(new URL(shownUrl()!).searchParams.get('a')).toBe('m0');
     });
 
     it('starts the name field on the remembered name', () => {
@@ -363,7 +377,7 @@ describe('ShareDialog', () => {
     it('names the daily in the message, and puts its date in the link', () => {
       renderShare({ daily: '2026-10-13' });
       expect(document.querySelector('.share__text')?.textContent).toBe(
-        'Sudoku Daily · 13 Oct 2026 · Hard · 5:23\n(with 2 hints)\nCan you beat my time?',
+        'Sudoku Daily · 13 Oct 2026 · Hard · 5:23\nWith 2 hints\nCan you beat my time?',
       );
       expect(new URL(shownUrl()!).searchParams.get('d')).toBe('2026-10-13');
     });

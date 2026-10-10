@@ -94,6 +94,7 @@ export function ChallengeDialog({
         <Comparison
           mySeconds={toSeconds(previous.elapsedMs)}
           myAssists={previous.assists}
+          myMistakes={mistakes}
           challenge={challenge}
           verdictId={verdictId}
         />

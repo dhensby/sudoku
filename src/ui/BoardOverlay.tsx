@@ -2,7 +2,7 @@ import { useEffect, useId, useLayoutEffect, useRef } from 'react';
 import { formatDuration, type DateKey, type Difficulty } from '../core';
 import type { Challenge } from '../storage/history';
 import { dailyName, dailyPhrase } from './daily';
-import { DIFFICULTY_LABEL, capitalise, describeAssists, withArticle } from './format';
+import { DIFFICULTY_LABEL, capitalise, describeResult, withArticle } from './format';
 import { PlayIcon } from './icons';
 import { focusQuietly } from './keepFocus';
 
@@ -67,7 +67,27 @@ function puzzlePhrase(difficulty: Difficulty, daily: OverlayDaily | null | undef
   return dailyPhrase(daily.date, difficulty, daily.today);
 }
 
-/** The challenge line: "Dan solved this Hard puzzle in 5:23. Can you beat it?" */
+/**
+ * How the challenger's time was earned, as their share text put it: "No
+ * mistakes · with 2 hints", "With 2 hints" (mistakes not known) — or null.
+ */
+function challengeNote(challenge: Challenge): string | null {
+  return describeResult(challenge.assists, challenge.mistakes ?? null);
+}
+
+/** "No mistakes" → "no mistakes", to follow a colon. */
+function lowerFirst(text: string): string {
+  return text.charAt(0).toLowerCase() + text.slice(1);
+}
+
+/**
+ * The challenge line: "Dan solved this Hard puzzle in 5:23. Can you beat it?"
+ * — and under it, how that time was earned, when there is anything to say:
+ * "Dan's solve: no mistakes · with 2 hints." The note names whose solve it
+ * describes because, sitting between the question and "The timer starts
+ * when you do.", a bare "No mistakes." reads as a rule of the race, or as
+ * the player's own count.
+ */
 function ChallengeText({
   difficulty,
   challenge,
@@ -81,7 +101,7 @@ function ChallengeText({
   textId: string;
   noteId: string;
 }) {
-  const assists = describeAssists(challenge.assists);
+  const note = challengeNote(challenge);
   return (
     <>
       <p className="board-overlay__text" id={textId}>
@@ -91,9 +111,10 @@ function ChallengeText({
         {puzzlePhrase(difficulty, daily)} in {formatDuration(challenge.seconds * 1000)}. Can you
         beat it?
       </p>
-      {assists !== null && (
+      {note !== null && (
         <p className="board-overlay__note" id={noteId}>
-          With {assists}.
+          {challenge.name === null ? 'Your friend' : <bdi>{challenge.name}</bdi>}'s solve:{' '}
+          {lowerFirst(note)}.
         </p>
       )}
     </>
@@ -216,9 +237,7 @@ export function BoardOverlay(props: BoardOverlayProps) {
             aria-describedby={[
               titleId,
               textId,
-              props.challenge !== null && describeAssists(props.challenge.assists) !== null
-                ? noteId
-                : null,
+              props.challenge !== null && challengeNote(props.challenge) !== null ? noteId : null,
               timerNoteId,
             ]
               .filter((id) => id !== null)

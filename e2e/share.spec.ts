@@ -64,7 +64,7 @@ test.describe('opening a link', () => {
     const area = boardArea(page);
     await expect(area.getByRole('heading', { name: 'Ready?' })).toBeVisible();
     await expect(area).toContainText('Dan solved this Hard puzzle in 5:23. Can you beat it?');
-    await expect(area).toContainText('With auto candidates, 2 hints.');
+    await expect(area).toContainText("Dan's solve: with auto candidates, 2 hints.");
     await expect(area).toContainText('The timer starts when you do.');
     await expectLinkConsumed(page);
     // The tier is the puzzle's own, re-graded on arrival.
@@ -234,6 +234,10 @@ test.describe('racing a time', () => {
     await expect(versus).toContainText('10:00');
     // Help on one line per kind, the two players side by side; the verdict is on time alone.
     await expect(versus.getByRole('row').filter({ hasText: 'Hints' })).toHaveText(/Hints\s*0\s*2/);
+    // A link from before mistakes were shared: theirs are not recorded, never 0.
+    await expect(versus.getByRole('row').filter({ hasText: 'Mistakes' })).toHaveText(
+      /^Mistakes\s*0\s*—\s*not recorded$/,
+    );
     await expect(versus).toContainText(/You were 9:5\d faster than Dan!/);
   });
 
@@ -271,12 +275,18 @@ test.describe('the share dialog', () => {
     const copied = await copiedText(page);
     expect(copied).toHaveLength(1);
     const lines = copied[0].split('\n');
-    expect(lines[0]).toBe(`Sudoku · Easy · ${time}`);
+    expect(lines.slice(0, 3)).toEqual([
+      `Sudoku · Easy · ${time}`,
+      'No mistakes',
+      'Can you beat my time?',
+    ]);
     const link = new URL(lines.at(-1)!);
     expect(Object.fromEntries(link.searchParams)).toEqual({
       p: encodeGivens(NEARLY_DONE.givens),
       t: String(Number(time.split(':')[0]) * 60 + Number(time.split(':')[1])),
       n: 'Alice',
+      // Unaided and clean, and it says so: a link that says nothing is not the same.
+      a: 'm0',
     });
     // The preview shows the same link.
     await expect(dialog).toContainText(link.href);
@@ -289,9 +299,80 @@ test.describe('the share dialog', () => {
       await expect(boardArea(other)).toContainText(
         `Alice solved this Easy puzzle in ${time}. Can you beat it?`,
       );
+      await expect(boardArea(other)).toContainText("Alice's solve: no mistakes.");
       await startButton(other).click();
       await waitForPlaying(other);
       expect(await readBoard(other)).toBe(NEARLY_DONE.givens);
+    } finally {
+      await elsewhere.close();
+    }
+  });
+
+  test('a solve with a mistake goes out in the message and the link, and the friend compares it row by row', async ({
+    page,
+    browser,
+  }) => {
+    await stubClipboard(page);
+    await page.clock.install();
+    await startPuzzle(page, NEARLY_DONE);
+    // A wrong number, then a cell elsewhere: the window closes, and it counts.
+    const [first, second] = emptyCells(NEARLY_DONE.givens);
+    const wrong = (Number(NEARLY_DONE.solution[first]) % 9) + 1;
+    await typeDigits(page, [
+      { index: first, digit: wrong },
+      { index: second, digit: Number(NEARLY_DONE.solution[second]) },
+    ]);
+    await page.clock.fastForward('00:20');
+    const done = await solveAndComplete(page);
+    await expect(done.locator('.result__mistakes')).toHaveText('1 mistake');
+    const time = await readTimer(page);
+    await done.getByRole('button', { name: 'Share your time' }).click();
+
+    const share = page.getByRole('dialog', { name: 'Share your time' });
+    await share.getByRole('textbox', { name: 'Your name (optional)' }).fill('Alice');
+    await share.getByRole('button', { name: 'Copy', exact: true }).click();
+    await expect(share.getByRole('status')).toHaveText('Copied to clipboard');
+    const [message] = await copiedText(page);
+    const lines = message.split('\n');
+    expect(lines.slice(0, 3)).toEqual([
+      `Sudoku · Easy · ${time}`,
+      '1 mistake',
+      'Can you beat my time?',
+    ]);
+    const link = new URL(lines.at(-1)!);
+    expect(link.searchParams.get('a')).toBe('m1');
+
+    const elsewhere = await browser.newContext();
+    try {
+      const other = await elsewhere.newPage();
+      await other.clock.install();
+      await other.goto(link.href);
+      await expect(boardArea(other)).toContainText(
+        `Alice solved this Easy puzzle in ${time}. Can you beat it?`,
+      );
+      await expect(boardArea(other)).toContainText("Alice's solve: 1 mistake.");
+      await startButton(other).click();
+      await waitForPlaying(other);
+      await other.clock.fastForward('00:05');
+      const solved = await solveAndComplete(other);
+
+      // Row by row, each player's figure on the same line; the verdict on time alone.
+      const versus = solved.getByRole('region', { name: 'Head to head' });
+      const rows = versus.getByRole('row');
+      await expect(rows).toHaveCount(4);
+      await expect(rows.nth(0)).toHaveText(/^\s*You\s*Alice\s*$/);
+      await expect(rows.nth(1)).toHaveText(new RegExp(`^Time\\s*0:0\\d\\s*${time}$`));
+      await expect(rows.nth(2)).toHaveText('Neither of you took any help.');
+      await expect(rows.nth(3)).toHaveText(/^Mistakes\s*0\s*1$/);
+      await expect(versus).toContainText(/You were 0:1\d faster than Alice!/);
+      await solved.getByRole('button', { name: 'Close' }).click();
+
+      // History keeps the friend's mistakes with their time.
+      await openHeaderDialog(other, 'History');
+      const history = other.getByRole('dialog', { name: 'History' });
+      await expect(history.locator('.history-item__challenge').first()).toHaveText(
+        `vs Alice ${time} 1 mistake`,
+      );
     } finally {
       await elsewhere.close();
     }

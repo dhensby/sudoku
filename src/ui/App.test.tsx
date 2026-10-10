@@ -560,6 +560,13 @@ describe('App', () => {
     await screen.findByRole('dialog', { name: 'Solved!' });
     fireEvent.click(screen.getByRole('button', { name: 'Share your time' }));
     const share = screen.getByRole('dialog', { name: 'Share your time' });
+    // The solve's mistakes go with it, as its record has them: none, said as such.
+    expect(share.querySelector('.share__text')).toHaveTextContent(
+      /^Sudoku · Easy · 0:\d\d No mistakes/,
+    );
+    expect(new URL(share.querySelector('.share__url')!.textContent!).searchParams.get('a')).toBe(
+      'm0',
+    );
     fireEvent.click(within(share).getByRole('button', { name: 'Close' }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });

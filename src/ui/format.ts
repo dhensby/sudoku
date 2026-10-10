@@ -109,6 +109,24 @@ export function describeMistakes(mistakes: MistakeTally): string {
   return parts.length === 0 ? 'No mistakes' : parts.join(' · ');
 }
 
+/**
+ * How a time was earned, in one line to sit under it: its mistakes when they
+ * are known, then the help it took — "No mistakes · with 2 hints", "1 mistake
+ * · 1 candidate mistake", "No mistakes", or, with the mistakes not known,
+ * "With auto candidates, 2 hints" — or null for an unaided time whose
+ * mistakes are not known, which leaves nothing to say. Not known says
+ * nothing of mistakes rather than "No mistakes", which is a claim.
+ *
+ * The share text, a friend's Ready card and History's line about a friend's
+ * time all use it, so a result reads the same wherever it turns up.
+ */
+export function describeResult(assists: Assists, mistakes: MistakeTally | null): string | null {
+  const help = describeAssists(assists);
+  if (mistakes === null) return help === null ? null : `With ${help}`;
+  const clean = describeMistakes(mistakes);
+  return help === null ? clean : `${clean} · with ${help}`;
+}
+
 const TIME = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit' });
 const DAY_MONTH = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' });
 const DAY_MONTH_YEAR = new Intl.DateTimeFormat('en-GB', {

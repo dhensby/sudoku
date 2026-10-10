@@ -1,20 +1,29 @@
 import { render, screen, within } from '@testing-library/react';
-import type { Assists } from '../../core';
+import type { Assists, MistakeTally } from '../../core';
 import type { Challenge } from '../../storage/history';
 import { Comparison, compareTimes, type ComparisonProps, type TimeComparison } from './Comparison';
 
 const NONE: Assists = { autoCandidates: false, hints: 0, checks: 0, reveals: 0 };
 
-const challenger = (name: string | null, seconds: number, assists = NONE): Challenge => ({
+const challenger = (
+  name: string | null,
+  seconds: number,
+  assists = NONE,
+  mistakes?: MistakeTally,
+): Challenge => ({
   name,
   seconds,
   assists,
+  ...(mistakes === undefined ? {} : { mistakes }),
 });
+
+const tally = (values: number, candidates = 0): MistakeTally => ({ values, candidates });
 
 function renderComparison(overrides: Partial<ComparisonProps> = {}) {
   const props: ComparisonProps = {
     mySeconds: 290,
     myAssists: NONE,
+    myMistakes: null,
     challenge: challenger('Dan', 323),
     ...overrides,
   };
@@ -77,7 +86,7 @@ describe('Comparison', () => {
 
   it('is a table a screen reader can walk: named, with column and row headings', () => {
     renderComparison({ myAssists: { ...NONE, hints: 1 } });
-    expect(table()).toHaveAccessibleName("Your time and help, and your friend's");
+    expect(table()).toHaveAccessibleName("Your result and your friend's");
     expect(
       within(table())
         .getAllByRole('columnheader')
@@ -150,11 +159,19 @@ describe('Comparison', () => {
     expect(times()[0]).toHaveClass('comparison__time--winner');
     expect(times()[1]).not.toHaveClass('comparison__time--winner');
 
-    rerender(<Comparison mySeconds={335} myAssists={NONE} challenge={challenger('Dan', 323)} />);
+    const at = (mySeconds: number) => (
+      <Comparison
+        mySeconds={mySeconds}
+        myAssists={NONE}
+        myMistakes={null}
+        challenge={challenger('Dan', 323)}
+      />
+    );
+    rerender(at(335));
     expect(times()[0]).not.toHaveClass('comparison__time--winner');
     expect(times()[1]).toHaveClass('comparison__time--winner');
 
-    rerender(<Comparison mySeconds={323} myAssists={NONE} challenge={challenger('Dan', 323)} />);
+    rerender(at(323));
     for (const time of times()) expect(time).not.toHaveClass('comparison__time--winner');
   });
 
@@ -166,6 +183,86 @@ describe('Comparison', () => {
     });
     expect(region()).toHaveTextContent('You were 0:33 faster than Dan!');
     expect(times()[0]).toHaveClass('comparison__time--winner');
+  });
+
+  it('decides on time alone, whatever mistakes either player made', () => {
+    renderComparison({
+      mySeconds: 290,
+      myMistakes: tally(9, 4),
+      challenge: challenger('Dan', 323, NONE, tally(0)),
+    });
+    expect(region()).toHaveTextContent('You were 0:33 faster than Dan!');
+    expect(times()[0]).toHaveClass('comparison__time--winner');
+  });
+
+  describe('mistakes', () => {
+    /** The cells of one row, by its heading; undefined when it is not shown. */
+    const row = (label: string) => cellsByRow().find((cells) => cells[0] === label);
+
+    it('puts each kind on one line, the two players side by side, after the help', () => {
+      renderComparison({
+        myAssists: { ...NONE, hints: 2 },
+        myMistakes: tally(1, 2),
+        challenge: challenger('Dan', 323, { ...NONE, hints: 1 }, tally(3)),
+      });
+      expect(cellsByRow()).toEqual([
+        ['', 'You', 'Dan'],
+        ['Time', '4:50', '5:23'],
+        ['Hints', '2', '1'],
+        ['Mistakes', '1', '3'],
+        ['Candidate mistakes', '2', '0'],
+      ]);
+    });
+
+    it('keeps "no help" where the help would be, above the mistakes', () => {
+      renderComparison({ myMistakes: tally(0), challenge: challenger('Dan', 323, NONE, tally(2)) });
+      expect(cellsByRow().slice(2)).toEqual([
+        ['Neither of you took any help.'],
+        ['Mistakes', '0', '2'],
+      ]);
+    });
+
+    it('shows a clean solve as 0 against a friend’s, rather than hiding the row', () => {
+      renderComparison({ myMistakes: tally(0), challenge: challenger('Dan', 323, NONE, tally(0)) });
+      expect(row('Mistakes')).toEqual(['Mistakes', '0', '0']);
+      // Candidate mistakes only once either player made one, as the Solved dialog names them.
+      expect(row('Candidate mistakes')).toBeUndefined();
+    });
+
+    it.each<[string, MistakeTally | null, MistakeTally | undefined]>([
+      ['mine', tally(0, 1), undefined],
+      ['theirs', null, tally(2, 3)],
+    ])('shows candidate mistakes once either player made one (%s)', (_label, mine, theirs) => {
+      renderComparison({ myMistakes: mine, challenge: challenger('Dan', 323, NONE, theirs) });
+      expect(row('Candidate mistakes')).toBeDefined();
+    });
+
+    it('shows a count not known as a dash a screen reader hears as "not recorded", never as 0', () => {
+      // An old link: it says nothing of the friend's mistakes.
+      renderComparison({ myMistakes: tally(1, 1), challenge: challenger('Dan', 323) });
+      expect(row('Mistakes')).toEqual(['Mistakes', '1', '—not recorded']);
+      expect(row('Candidate mistakes')).toEqual(['Candidate mistakes', '1', '—not recorded']);
+      const [, , theirs] = within(table()).getByRole('row', { name: /^Mistakes/ }).children;
+      expect(within(theirs as HTMLElement).getByText('—')).toHaveAttribute('aria-hidden', 'true');
+      expect(within(theirs as HTMLElement).getByText('not recorded')).toHaveClass(
+        'visually-hidden',
+      );
+    });
+
+    it('shows mine as not recorded against a friend’s known count', () => {
+      renderComparison({ myMistakes: null, challenge: challenger('Dan', 323, NONE, tally(0)) });
+      expect(row('Mistakes')).toEqual(['Mistakes', '—not recorded', '0']);
+    });
+
+    it('says nothing of mistakes when neither count is known', () => {
+      renderComparison({ myMistakes: null, challenge: challenger('Dan', 323) });
+      expect(cellsByRow()).toEqual([
+        ['', 'You', 'Dan'],
+        ['Time', '4:50', '5:23'],
+        ['Neither of you took any help.'],
+      ]);
+      expect(table()).not.toHaveTextContent(/mistake/i);
+    });
   });
 
   it.each([

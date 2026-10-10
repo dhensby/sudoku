@@ -1,7 +1,7 @@
 import { decodeGivens, isDateKey, type DateKey, type GridString } from '../core';
 import type { Challenge } from '../storage/history';
 import { normaliseName } from '../storage/storage';
-import { decodeAssists } from './share';
+import { decodeAssists, decodeMistakes } from './share';
 
 /** The parameters a share link may carry. */
 const SHARE_PARAMS = ['p', 'd', 't', 'n', 'a'] as const;
@@ -30,7 +30,10 @@ export interface SharedLink {
  * instead of silently ignoring it. The result parameters are optional and
  * forgiving: a time that is not a whole number of seconds drops the challenge,
  * an unusable name drops the name, garbled assists read as none, and a
- * daily's date that is not a real date is no date at all.
+ * daily's date that is not a real date is no date at all. Mistakes are the
+ * exception: a link that does not say them — every link from before they
+ * were shared — or says them in a way no game could have counted leaves the
+ * challenge's mistakes unset, not known, never none (see `decodeMistakes`).
  *
  * Nothing from the link is trusted beyond the givens themselves: the caller
  * still validates them, re-grades the puzzle rather than taking a
@@ -45,9 +48,16 @@ export function readSharedLink(search: string): SharedLink | null {
   const time = params.get('t');
   const seconds = time !== null && /^\d{1,7}$/.test(time) ? Number(time) : 0;
   const name = normaliseName(params.get('n'));
+  const assists = params.get('a');
+  const mistakes = decodeMistakes(assists);
   const challenge: Challenge | null =
     seconds >= 1
-      ? { name: name === '' ? null : name, seconds, assists: decodeAssists(params.get('a')) }
+      ? {
+          name: name === '' ? null : name,
+          seconds,
+          assists: decodeAssists(assists),
+          ...(mistakes === null ? {} : { mistakes }),
+        }
       : null;
 
   const date = params.get('d');

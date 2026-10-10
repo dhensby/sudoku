@@ -138,6 +138,36 @@ describe('HistoryDialog', () => {
       expect(within(rows()[1]).queryByText(/^With /)).toBeNull();
     });
 
+    it("adds the challenger's mistakes, when their link said them, before their help", () => {
+      const [, won, , , peek] = RECORDS;
+      renderHistory({
+        records: [
+          { ...won, challenge: { ...won.challenge!, mistakes: { values: 0, candidates: 0 } } },
+          {
+            ...peek,
+            challenge: { ...peek.challenge!, mistakes: { values: 1, candidates: 2 } },
+          },
+        ],
+      });
+      expect(within(rows()[0]).getByText('No mistakes')).toHaveClass(
+        'history-item__challenge-help',
+      );
+      expect(rows()[0].querySelector('.history-item__challenge')).toHaveTextContent(
+        'vs Dan 5:23 No mistakes',
+      );
+      expect(rows()[1].querySelector('.history-item__challenge')).toHaveTextContent(
+        'vs your friend 6:40 1 mistake · 2 candidate mistakes · with auto candidates, 1 hint',
+      );
+    });
+
+    it('says nothing of a challenger\'s mistakes their link did not say, never "No mistakes"', () => {
+      // RECORDS' challenges are as old links leave them: no mistakes at all.
+      renderHistory({ records: [RECORDS[1]] });
+      expect(rows()[0].querySelector('.history-item__challenge')).toHaveTextContent(
+        /^vs Dan 5:23$/,
+      );
+    });
+
     it('tells a solved game’s mistakes in its status line, not among the help', () => {
       const solved = RECORDS[1];
       renderHistory({

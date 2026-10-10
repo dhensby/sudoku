@@ -38,15 +38,86 @@ describe('BoardOverlay', () => {
     expect(
       screen.getByText(/solved this Hard puzzle in 5:23\. Can you beat it\?/),
     ).toHaveTextContent('Dan solved this Hard puzzle in 5:23. Can you beat it?');
-    expect(screen.getByText('With auto candidates, 2 hints.')).toBeInTheDocument();
+    expect(screen.getByText(/solve: with/)).toHaveTextContent(
+      "Dan's solve: with auto candidates, 2 hints.",
+    );
     const start = screen.getByRole('button', { name: 'Start' });
     expect(start).toHaveFocus();
     // Landing on Start, a screen reader hears what it is starting.
     expect(start).toHaveAccessibleDescription(
-      'Ready? Dan solved this Hard puzzle in 5:23. Can you beat it? With auto candidates, 2 hints. The timer starts when you do.',
+      "Ready? Dan solved this Hard puzzle in 5:23. Can you beat it? Dan's solve: with auto candidates, 2 hints. The timer starts when you do.",
     );
     fireEvent.click(start);
     expect(onStart).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    [{ values: 0, candidates: 0 }, "Dan's solve: no mistakes · with auto candidates, 2 hints."],
+    [
+      { values: 2, candidates: 1 },
+      "Dan's solve: 2 mistakes · 1 candidate mistake · with auto candidates, 2 hints.",
+    ],
+  ])(
+    "adds the challenger's mistakes %o, when their link said them, before their help",
+    (mistakes, note) => {
+      render(
+        <BoardOverlay
+          kind="ready"
+          difficulty="hard"
+          isShared
+          challenge={{
+            name: 'Dan',
+            seconds: 323,
+            assists: { autoCandidates: true, hints: 2, checks: 0, reveals: 0 },
+            mistakes,
+          }}
+          onStart={vi.fn()}
+        />,
+      );
+      const shown = screen.getByText(/solve:/);
+      expect(shown).toHaveTextContent(note);
+      expect(shown).toHaveClass('board-overlay__note');
+      expect(screen.getByRole('button', { name: 'Start' })).toHaveAccessibleDescription(
+        `Ready? Dan solved this Hard puzzle in 5:23. Can you beat it? ${note} The timer starts when you do.`,
+      );
+    },
+  );
+
+  it("says a clean, unaided solve was clean, and nothing for one whose mistakes weren't said", () => {
+    const NONE = { autoCandidates: false, hints: 0, checks: 0, reveals: 0 };
+    const { rerender } = render(
+      <BoardOverlay
+        kind="ready"
+        difficulty="easy"
+        isShared
+        challenge={{
+          name: 'Dan',
+          seconds: 61,
+          assists: NONE,
+          mistakes: { values: 0, candidates: 0 },
+        }}
+        onStart={vi.fn()}
+      />,
+    );
+    // Named as the challenger's, so it never reads as a rule of the race or the player's own count.
+    expect(screen.getByText(/solve:/)).toHaveTextContent("Dan's solve: no mistakes.");
+    expect(screen.getByRole('button', { name: 'Start' })).toHaveAccessibleDescription(
+      "Ready? Dan solved this Easy puzzle in 1:01. Can you beat it? Dan's solve: no mistakes. The timer starts when you do.",
+    );
+    // An old link: its mistakes are not known, which is never "No mistakes".
+    rerender(
+      <BoardOverlay
+        kind="ready"
+        difficulty="easy"
+        isShared
+        challenge={{ name: 'Dan', seconds: 61, assists: NONE }}
+        onStart={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText(/mistake/i)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Start' })).toHaveAccessibleDescription(
+      'Ready? Dan solved this Easy puzzle in 1:01. Can you beat it? The timer starts when you do.',
+    );
   });
 
   it('keeps a nameless challenger nameless', () => {
@@ -64,6 +135,26 @@ describe('BoardOverlay', () => {
       />,
     );
     expect(screen.getByText(/Your friend solved this Easy puzzle in 1:01/)).toBeInTheDocument();
+  });
+
+  it("calls a nameless challenger's solve your friend's", () => {
+    render(
+      <BoardOverlay
+        kind="ready"
+        difficulty="easy"
+        isShared
+        challenge={{
+          name: null,
+          seconds: 61,
+          assists: { autoCandidates: false, hints: 1, checks: 0, reveals: 0 },
+          mistakes: { values: 1, candidates: 0 },
+        }}
+        onStart={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/solve:/)).toHaveTextContent(
+      "Your friend's solve: 1 mistake · with 1 hint.",
+    );
   });
 
   it('says a puzzle was shared when the link carries no time', () => {

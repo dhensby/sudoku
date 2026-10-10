@@ -8,10 +8,17 @@ import {
   type ImportResult,
 } from '../../storage/history';
 import { DIFFICULTIES } from '../../storage/storage';
-import { DIFFICULTY_LABEL, count, describeMistakes, formatDate, formatDay } from '../format';
+import {
+  DIFFICULTY_LABEL,
+  count,
+  describeMistakes,
+  describeResult,
+  formatDate,
+  formatDay,
+} from '../format';
 import { DownloadIcon, UploadIcon } from '../icons';
 import { Dialog } from './Dialog';
-import { assistChips, assistsSentence, formatStat } from './text';
+import { assistChips, formatStat } from './text';
 
 export interface HistoryDialogProps {
   /** Every record, newest first (as `loadHistory` returns them). */
@@ -131,7 +138,10 @@ const HistoryRow = memo(function HistoryRow({
   const context =
     day === null ? `${label} puzzle from ${date}` : `${label} daily for ${day}, from ${date}`;
   const chips = assistChips(assists);
-  const challengerHelp = challenge === null ? null : assistsSentence(challenge.assists);
+  // How the friend's time was earned: their help, and their mistakes when
+  // their link said them — the line their share text and Ready card had.
+  const challengerHelp =
+    challenge === null ? null : describeResult(challenge.assists, challenge.mistakes ?? null);
   // Solved games only: an unfinished game's count would work as a free Check.
   const mistakes = recordedMistakes(record);
 
@@ -176,9 +186,9 @@ const HistoryRow = memo(function HistoryRow({
           <p className="history-item__challenge">
             vs {challenge.name === null ? 'your friend' : <bdi>{challenge.name}</bdi>}{' '}
             {formatDuration(challenge.seconds * 1000)}
-            {/* The friend's help, on a quieter line of its own: it qualifies
-                their time, so it stays with it rather than among the chips,
-                which are this game's own help. */}
+            {/* The friend's help and mistakes, on a quieter line of its own:
+                they qualify their time, so they stay with it rather than
+                among the chips, which are this game's own help. */}
             {challengerHelp !== null && (
               <>
                 {' '}

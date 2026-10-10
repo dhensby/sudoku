@@ -50,18 +50,19 @@ your browser.
   waits behind a **Start** card, as does one you never started. Progress is saved every few
   seconds while the clock runs, and a reload reopens your game paused, where you left off.
 - **Race your friends** — share a link to any puzzle. Once you have solved it, the link carries
-  your time too: your friend sees "Dan solved this Hard puzzle in 5:23. Can you beat it?", starts
-  the clock when they are ready, and gets a head-to-head at the end: a table with a column for
-  each of you, the two times on one row and each kind of help either of you took (auto
-  candidates, hints, checks, reveals) on a row of its own, so it reads straight across — or
-  "Neither of you took any help." The faster time wins, whatever the help; the help is there so
-  the comparison is fair. Plus a link of their own to send back. Nothing is uploaded; everything
-  travels in the link.
+  your time too, with your help and your [mistakes](#mistakes): your friend sees "Dan solved this
+  Hard puzzle in 5:23. Can you beat it?" over "Dan's solve: no mistakes · with 2 hints.", starts
+  the clock when they are ready, and gets a head-to-head at the end: a table with a column for each
+  of you, the two times on one row, each kind of help either of you took (auto candidates, hints,
+  checks, reveals) on a row of its own — or "Neither of you took any help." — and your mistakes
+  and candidate mistakes on rows of their own, so it reads straight across. The faster time wins,
+  whatever the help or the mistakes; they are there so the comparison is fair. Plus a link of
+  their own to send back. Nothing is uploaded; everything travels in the link.
 - **History and stats** — every game you play is kept: resume unfinished ones, play a solved
   puzzle again, share it, or delete it. A game you only glanced at — nothing entered, no help
   taken — is dropped when you move on to another, so browsing the levels doesn't clutter the list
-  or count as played. A game raced against a friend's link shows their time, and the help it came
-  with under it. Per-difficulty stats show games played and solved, and best and average
+  or count as played. A game raced against a friend's link shows their time, and the help and
+  mistakes it came with under it. Per-difficulty stats show games played and solved, and best and average
   times. Export your history to a file and import it on another browser.
 - **Help when you want it** — Hint points at a cell you can fill next and names the technique
   ("Hidden single: there's only one place for a number in this box"), without ever giving the
@@ -83,7 +84,7 @@ your browser.
   is no free Check, and mistakes never touch a time, a best or who wins a race. A slip of the finger
   is forgiven: a wrong number where the answer was obvious, or a struck candidate, put right within
   3 seconds, before changing anything else (see [Mistakes](#mistakes)). History shows a solved
-  game's count beside its time.
+  game's count beside its time, and a shared time carries it to a friend.
 - **A guide to the solving techniques** — every technique the grader knows, from a full house to
   the alternating chain: its other names, what it is, why it works, how to spot it, and a worked
   example from a real puzzle, drawn with the pattern ringed (and a chain's links traced), the
@@ -432,18 +433,30 @@ work as a free Check), and a game not recorded move by move from its start (see
 that kept logs but did not count mistakes is counted from its log once, as a visit starts, if the
 log holds the whole game.
 
+**Shared.** A solved game's link carries its count — only a count as the record keeps it, stamped
+at the solve — inside the assists parameter (see [Racing friends](#racing-friends)), and its
+message says it on the line under the time, before the help: "No mistakes · with 2 hints", "1
+mistake · 1 candidate mistake", "No mistakes". The friend's Ready card says it the same way, under
+a "Dan's solve:" that keeps it from reading as a rule of the race or as their own count, the
+head-to-head sets it beside their own on a row for each kind, and their History keeps it with your
+time. A count that is not known — a game not recorded move by move, or a link from a version before
+mistakes were shared — is never sent or read as 0: the link and message say nothing of it, and the
+head-to-head shows a dash, which a screen reader reads as "not recorded". The "Mistakes" row shows
+whenever either count is known, a clean 0 included; "Candidate mistakes" only once either of you made
+one.
+
 ## Racing friends
 
 A share link carries the puzzle itself, so it opens the same puzzle for anyone, on any version of
 the game — there is no server and nothing is uploaded.
 
-| Parameter      | Meaning                                                                                   |
-| -------------- | ----------------------------------------------------------------------------------------- |
-| `?p=<code>`    | The puzzle: its givens packed into ~26–34 URL-safe characters.                            |
-| `&t=<secs>`    | The sharer's time in whole seconds — the time to beat.                                    |
-| `&n=<name>`    | The sharer's name (optional; past 24 characters it is cut short with an ellipsis).        |
-| `&a=<assists>` | Help the sharer took: `c` auto candidates, `h<N>` hints, `k<N>` checks, `r<N>` reveals.   |
-| `&d=<date>`    | A daily's date (`2026-10-13`): the opener checks it against that day's daily of the tier. |
+| Parameter      | Meaning                                                                                                     |
+| -------------- | ----------------------------------------------------------------------------------------------------------- |
+| `?p=<code>`    | The puzzle: its givens packed into ~26–34 URL-safe characters.                                              |
+| `&t=<secs>`    | The sharer's time in whole seconds — the time to beat.                                                      |
+| `&n=<name>`    | The sharer's name (optional; past 24 characters it is cut short with an ellipsis).                          |
+| `&a=<assists>` | Help: `c` auto candidates, `h<N>` hints, `k<N>` checks, `r<N>` reveals; mistakes: `m<N>`, candidate `x<N>`. |
+| `&d=<date>`    | A daily's date (`2026-10-13`): the opener checks it against that day's daily of the tier.                   |
 
 Opening a link:
 
@@ -458,6 +471,16 @@ Opening a link:
 
 The difficulty is always re-graded from the puzzle itself rather than taken from the link, and
 the parameters are cleared from the address bar once read, so reloading never drags you back.
+
+The mistakes ride in `a=` rather than a parameter of their own, after the help: `m<N>` is always
+there once the count is known — an unaided, mistake-free solve sends `a=m0` — so a link that says
+nothing is told apart from one that says none, and `x<N>` is added when there were candidate
+mistakes (`a=ch2m1x2`: auto candidates, 2 hints, 1 mistake, 2 candidate mistakes). Every version
+before reads `a=` by picking out `c`, `h`, `k` and `r` and skipping anything else, so a new link
+opens there with the same help, its mistakes unsaid; a test holds the old decoder to that. Read
+here, a link without `m` — every older link — leaves the mistakes not recorded, never 0, and so
+does one whose counts no game could make (more than 8 wrong numbers a cell, or a strike a cell),
+while the time and help still stand.
 
 A daily's link names it — "Sudoku Daily · 13 Oct 2026 · Hard · 5:23" — and carries its date as
 well as its givens. The link opens as any shared puzzle while the game checks the date against
@@ -552,10 +575,13 @@ of the logs here were shed, none of the file's logs are taken.
   rule by a table of scenarios at exact play times (`src/core/mistakes.test.ts`) — a slip put
   right at 2.9 s and at 3.1 s, every way a window closes, Undo and Redo, candidates in both
   layers, Check guesses on — and by random games, whose counts must never fall and must stay at
-  nothing for a game that never lets a wrong number stand.
+  nothing for a game that never lets a wrong number stand. Share links are held to the versions
+  before them: a copy of the assists decoder every earlier version shipped must read a new link's
+  help unchanged, skipping its mistakes, and an old link must read as mistakes not recorded, never 0.
   Coverage thresholds are enforced in CI, with the engine held to 100%.
 - **End-to-end** (`e2e/`, Playwright): full journeys against the built app — playing and solving,
-  pausing and reloading, share links between two browsers, the history, the technique guide, a
+  pausing and reloading, share links between two browsers (a solve with a mistake shared, opened in
+  the other and compared row by row), the history, the technique guide, a
   hint's Show me walkthrough, the daily puzzles on a fixed clock (today's Hard from New game to
   the end and its streak, yesterday's from the calendar kept but not counted, a friend's daily
   link recognised), mistakes (an obvious slip put right at once, and a wrong number where the

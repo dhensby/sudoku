@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { formatDuration, type Assists } from '../../core';
+import { formatDuration, type Assists, type MistakeTally } from '../../core';
 import type { Challenge } from '../../storage/history';
 
 /** How one time compares with another. */
@@ -27,6 +27,8 @@ export function compareTimes(mySeconds: number, theirSeconds: number): TimeCompa
 /** One player's column of the head-to-head: what they did, row by row. */
 interface ComparisonSide {
   assists: Assists;
+  /** Their mistakes, or null when not known (a link from before they were shared, say). */
+  mistakes: MistakeTally | null;
 }
 
 /**
@@ -57,8 +59,12 @@ interface ComparisonGroup {
   /** A key for the group's rows, unique in the table. */
   key: string;
   rows: readonly ComparisonRow[];
-  /** Said across both columns when none of the rows shows. */
-  none: string;
+  /**
+   * Said across both columns when none of the rows shows, or null to say
+   * nothing: a group whose rows only hide when there is nothing known to
+   * show has nothing true to say in their place.
+   */
+  none: string | null;
 }
 
 /** A count of some help, shown only when either player took any. */
@@ -85,9 +91,50 @@ const HELP_ROWS: readonly ComparisonRow[] = [
   helpCount('Reveals', (assists) => assists.reveals),
 ];
 
-/** The groups under the times, top to bottom. */
+/**
+ * A count that may not be known — a dash for a sighted reader, which a
+ * screen reader hears as "not recorded" rather than as a lone "dash".
+ */
+function mistakeCount(mistakes: MistakeTally | null, of: (tally: MistakeTally) => number) {
+  if (mistakes !== null) return String(of(mistakes));
+  return (
+    <>
+      <span aria-hidden="true">—</span>
+      <span className="visually-hidden">not recorded</span>
+    </>
+  );
+}
+
+/**
+ * The mistakes each solve made, in the words the rest of the game uses (see
+ * `describeMistakes`). Unlike help, none is worth a line: a clean solve is
+ * what a player wants to see against a friend's 3 — so "Mistakes" shows
+ * whenever either count is known, 0 and all, and a count not known shows as
+ * a dash beside it, never as 0. "Candidate mistakes" shows only once either
+ * player made one, as the Solved dialog names them only then; with neither
+ * count known there is nothing to compare, and the group says nothing.
+ */
+const MISTAKE_ROWS: readonly ComparisonRow[] = [
+  {
+    label: 'Mistakes',
+    value: (side) => mistakeCount(side.mistakes, (tally) => tally.values),
+    shows: (mine, theirs) => mine.mistakes !== null || theirs.mistakes !== null,
+  },
+  {
+    label: 'Candidate mistakes',
+    value: (side) => mistakeCount(side.mistakes, (tally) => tally.candidates),
+    shows: (mine, theirs) =>
+      (mine.mistakes?.candidates ?? 0) > 0 || (theirs.mistakes?.candidates ?? 0) > 0,
+  },
+];
+
+/**
+ * The groups under the times, top to bottom: the help first, as it qualifies
+ * the time just above it, then the mistakes.
+ */
 const GROUPS: readonly ComparisonGroup[] = [
   { key: 'help', rows: HELP_ROWS, none: 'Neither of you took any help.' },
+  { key: 'mistakes', rows: MISTAKE_ROWS, none: null },
 ];
 
 /**
@@ -113,6 +160,8 @@ export interface ComparisonProps {
   mySeconds: number;
   /** The help the player's time came with. */
   myAssists: Assists;
+  /** The player's mistakes, or null when not known (see `recordedMistakes`). */
+  myMistakes: MistakeTally | null;
   challenge: Challenge;
   /** An id for the verdict line, so a dialog can point `aria-describedby` at it. */
   verdictId?: string;
@@ -139,21 +188,30 @@ function verdictFor(comparison: TimeComparison, name: ReactNode | null): ReactNo
 }
 
 /**
- * The two results as a table — a column for each player, a row for the time
- * and for each kind of help either of them took — so each kind of help sits
- * on one line and reads straight across. The verdict under it is on time
- * alone: help is shown for fairness, never scored.
+ * The two results as a table — a column for each player, a row for the time,
+ * for each kind of help either of them took and for their mistakes — so each
+ * sits on one line and reads straight across. The verdict under it is on
+ * time alone: help and mistakes are shown for fairness, never scored.
  *
  * Names come from links strangers can write, so they sit inside <bdi>: a
  * right-to-left name would otherwise pull the punctuation and time beside it
  * into its own direction.
  */
-export function Comparison({ mySeconds, myAssists, challenge, verdictId }: ComparisonProps) {
+export function Comparison({
+  mySeconds,
+  myAssists,
+  myMistakes,
+  challenge,
+  verdictId,
+}: ComparisonProps) {
   const comparison = compareTimes(mySeconds, challenge.seconds);
   const { result } = comparison;
   const name = challenge.name === null ? null : <bdi>{challenge.name}</bdi>;
-  const mine: ComparisonSide = { assists: myAssists };
-  const theirs: ComparisonSide = { assists: challenge.assists };
+  const mine: ComparisonSide = { assists: myAssists, mistakes: myMistakes };
+  const theirs: ComparisonSide = {
+    assists: challenge.assists,
+    mistakes: challenge.mistakes ?? null,
+  };
 
   // The faster time is marked by weight and a rule as well as by colour, so
   // it still stands out without colour (and in Windows High Contrast).
@@ -163,8 +221,9 @@ export function Comparison({ mySeconds, myAssists, challenge, verdictId }: Compa
   return (
     <section className="comparison" aria-label="Head to head">
       <table className="comparison__table">
-        {/* Names the table for a screen reader; sighted, the columns say it. */}
-        <caption className="visually-hidden">Your time and help, and your friend&apos;s</caption>
+        {/* Names the table for a screen reader; sighted, the columns say it.
+            "Result" rather than a list of its rows, which come and go. */}
+        <caption className="visually-hidden">Your result and your friend&apos;s</caption>
         <thead>
           <tr>
             {/* The corner over the row headings; a <td>, as it heads nothing. */}
@@ -190,6 +249,7 @@ export function Comparison({ mySeconds, myAssists, challenge, verdictId }: Compa
           {GROUPS.map(({ key, rows, none }) => {
             const shown = rows.filter((row) => row.shows(mine, theirs));
             if (shown.length === 0) {
+              if (none === null) return null;
               return (
                 <tr key={key}>
                   <td className="comparison__none" colSpan={3}>
