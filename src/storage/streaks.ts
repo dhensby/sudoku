@@ -13,6 +13,10 @@ import { DIFFICULTIES } from './storage';
  * calendar never does, however soon after. It is still recorded, and the
  * calendar shows it — as solved on another day.
  *
+ * Nor does a daily solved after watching a friend's solve of it (see
+ * `GameRecord.watched`): it is recorded without a time, and the calendar
+ * marks it as it marks a daily solved but not counted.
+ *
  * The date an attempt was started is the one the device wrote down at the
  * time (`GameRecord.startedOn`), never worked out again later from the
  * moment it began: read in another time zone — after a flight east, or in a
@@ -97,15 +101,21 @@ export function isStartedEarly(record: GameRecord): boolean {
   return record.daily !== undefined && daysBetween(startedOnOf(record), record.daily) > 0;
 }
 
-/** Whether a record makes its date count towards its tier's streak: a daily, begun on its date, and solved. */
+/**
+ * Whether a record makes its date count towards its tier's streak: a daily,
+ * begun on its date, and solved — not after watching a shared solve of it.
+ */
 export function countsTowardsStreak(record: GameRecord): boolean {
-  return record.status === 'solved' && isStartedOnTheDay(record);
+  return record.status === 'solved' && record.watched !== true && isStartedOnTheDay(record);
 }
 
-/** How one daily attempt stands on its own (see `DailyStatus`). */
+/**
+ * How one daily attempt stands on its own (see `DailyStatus`). A solve after
+ * watching stands as one that does not count, whatever day it was begun.
+ */
 function statusOf(record: GameRecord): DailyStatus {
   if (record.status !== 'solved') return 'in-progress';
-  return isStartedOnTheDay(record) ? 'solved-on-the-day' : 'solved-later';
+  return countsTowardsStreak(record) ? 'solved-on-the-day' : 'solved-later';
 }
 
 /** The better of two standings. */

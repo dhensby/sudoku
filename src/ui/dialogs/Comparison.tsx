@@ -2,6 +2,8 @@ import type { ReactNode } from 'react';
 import { formatDuration, type Assists, type MistakeTally } from '../../core';
 import type { Challenge } from '../../storage/history';
 import { CHECK_GUESSES_LABEL } from '../format';
+import { PlayIcon } from '../icons';
+import { WatchFriendText } from '../WatchFriendText';
 
 /** How one time compares with another. */
 export interface TimeComparison {
@@ -162,9 +164,20 @@ function timeText(seconds: number): ReactNode {
   );
 }
 
+/**
+ * What the verdict says when the player has no time to compare: they watched
+ * a solve of the puzzle before solving it (see `GameRecord.watched`).
+ */
+const NO_VERDICT = "You watched a solve first, so there's no time to compare.";
+
 export interface ComparisonProps {
-  /** The player's time in whole seconds. */
-  mySeconds: number;
+  /**
+   * The player's time in whole seconds — or null for a solve recorded
+   * without one, after watching a solve of the puzzle: the table shows a
+   * dash for it, neither time is marked the faster, and the verdict says why
+   * there is none.
+   */
+  mySeconds: number | null;
   /** The help the player's time came with. */
   myAssists: Assists;
   /** The player's mistakes, or null when not known (see `recordedMistakes`). */
@@ -172,6 +185,13 @@ export interface ComparisonProps {
   challenge: Challenge;
   /** An id for the verdict line, so a dialog can point `aria-describedby` at it. */
   verdictId?: string;
+  /**
+   * Watch the friend's solve, which their link carried: a button under the
+   * verdict, given only when there is one this build plays back.
+   */
+  onWatch?: () => void;
+  /** Focus goes to that button as the dialog opens: back from the playback it opened. */
+  isWatchFocused?: boolean;
 }
 
 /** Who won, in words; `name` is null for a challenger whose link gave none. */
@@ -198,7 +218,9 @@ function verdictFor(comparison: TimeComparison, name: ReactNode | null): ReactNo
  * The two results as a table — a column for each player, a row for the time,
  * for each kind of help either of them took and for their mistakes — so each
  * sits on one line and reads straight across. The verdict under it is on
- * time alone: help and mistakes are shown for fairness, never scored.
+ * time alone: help and mistakes are shown for fairness, never scored. With
+ * no time of the player's own — a solve after watching one — there is no
+ * verdict at all, and the line says why.
  *
  * Names come from links strangers can write, so they sit inside <bdi>: a
  * right-to-left name would otherwise pull the punctuation and time beside it
@@ -210,9 +232,11 @@ export function Comparison({
   myMistakes,
   challenge,
   verdictId,
+  onWatch,
+  isWatchFocused = false,
 }: ComparisonProps) {
-  const comparison = compareTimes(mySeconds, challenge.seconds);
-  const { result } = comparison;
+  const comparison = mySeconds === null ? null : compareTimes(mySeconds, challenge.seconds);
+  const result = comparison?.result ?? null;
   const name = challenge.name === null ? null : <bdi>{challenge.name}</bdi>;
   const mine: ComparisonSide = { assists: myAssists, mistakes: myMistakes };
   const theirs: ComparisonSide = {
@@ -250,7 +274,16 @@ export function Comparison({
             <th className="comparison__label" scope="row">
               Time
             </th>
-            <td className={timeClass(result === 'faster')}>{timeText(mySeconds)}</td>
+            <td className={timeClass(result === 'faster')}>
+              {mySeconds === null ? (
+                <>
+                  <span aria-hidden="true">—</span>
+                  <span className="visually-hidden">no time recorded</span>
+                </>
+              ) : (
+                timeText(mySeconds)
+              )}
+            </td>
             <td className={timeClass(result === 'slower')}>{timeText(challenge.seconds)}</td>
           </tr>
           {GROUPS.map(({ key, rows, none }) => {
@@ -278,8 +311,21 @@ export function Comparison({
         </tbody>
       </table>
       <p className="comparison__verdict" id={verdictId}>
-        {verdictFor(comparison, name)}
+        {comparison === null ? NO_VERDICT : verdictFor(comparison, name)}
       </p>
+      {onWatch !== undefined && (
+        <p className="comparison__watch">
+          <button
+            type="button"
+            className="button button--small button--wraps"
+            data-autofocus={isWatchFocused || undefined}
+            onClick={onWatch}
+          >
+            <PlayIcon />
+            <WatchFriendText name={challenge.name} />
+          </button>
+        </p>
+      )}
     </section>
   );
 }

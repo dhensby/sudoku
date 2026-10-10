@@ -21,6 +21,7 @@ import {
   checkGivens,
   isPossibleTally,
   replayMoves,
+  MAX_SHARED_LOG_LENGTH,
   tallyMistakes,
   type Assists,
   type DateKey,
@@ -75,6 +76,9 @@ import {
  *                       show, least recently seen first (see `markSeen`)
  *   sudoku.dailyLedger  what the solved dailies among pruned records said,
  *                       so streaks outlast them (see `DailyLedger`)
+ *   sudoku.watched      the share codes of puzzles whose shared solve was
+ *                       watched before they were solved, least recently
+ *                       watched first (see `markWatched`)
  *   sudoku.moves.<id>   one game's move log
  *   sudoku.moveLogs     the ids that have a `sudoku.moves.<id>` key
  *
@@ -141,6 +145,17 @@ export interface Challenge {
    * as it was.
    */
   mistakes?: MistakeTally;
+  /**
+   * Their solve itself, as its link carried it: the encoded move log (see
+   * `src/core/moves.ts`), kept so that it can be watched once the player has
+   * solved the puzzle themselves (see `watched`). Only ever a log that
+   * played back to the solve of this puzzle, at the time the link claimed,
+   * when the link was opened (see `sharedSolveRefusal`); absent for a link
+   * that carried none. Read back from storage it is held only to the shape
+   * and length of a log in a link, as the replay that would prove more is
+   * left to the moment someone asks to watch it.
+   */
+  log?: string;
 }
 
 /**
@@ -217,6 +232,15 @@ export interface GameRecord {
    * its Start card has not been), and on every other game.
    */
   startedOn?: DateKey;
+  /**
+   * Set on an attempt at a puzzle whose shared solve the player watched
+   * before they had solved it (see `markWatched`): every attempt unfinished
+   * when they watched, and every attempt begun since. Its solve is recorded
+   * without a time: never a best or in an average, never in a streak, and
+   * never a time to share or race (see `hasRecordedTime`). Absent on every
+   * other game, never false; once set, never taken off.
+   */
+  watched?: true;
 }
 
 /** Totals for one tier. */
@@ -243,6 +267,12 @@ export const MAX_SAVED_GAMES = 50;
  * about 30 characters a code, a full list is some 60 KB.
  */
 export const MAX_SEEN = 2000;
+/**
+ * The most puzzles remembered as watched before they were solved (see
+ * `markWatched`): as many as are remembered as seen, for the same reason —
+ * the rule must outlast the records it applies to.
+ */
+export const MAX_WATCHED = MAX_SEEN;
 
 /** After a write is refused for space: unfinished games whose state survives… */
 const SAVED_GAMES_WHEN_FULL = 10;
@@ -271,6 +301,10 @@ const SAVED_KEY = 'sudoku.games';
 const GAME_KEY_PREFIX = 'sudoku.game.';
 const SEEN_KEY = 'sudoku.seen';
 const LEDGER_KEY = 'sudoku.dailyLedger';
+const WATCHED_KEY = 'sudoku.watched';
+
+/** What a log in a link is made of (see `src/core/moves.ts`): base64url. */
+const SHARED_LOG_PATTERN = /^[A-Za-z0-9_-]+$/;
 
 /** The fewest givens a uniquely solvable Sudoku can have. */
 const MIN_GIVENS = 17;
@@ -302,6 +336,7 @@ const RECORD_FIELDS = fieldsOf<GameRecord>({
   daily: true,
   startedOn: true,
   mistakes: true,
+  watched: true,
 });
 
 /** The fields of a challenge this version knows. */
@@ -310,6 +345,7 @@ const CHALLENGE_FIELDS = fieldsOf<Challenge>({
   seconds: true,
   assists: true,
   mistakes: true,
+  log: true,
 });
 
 function gameKey(id: string): string {
@@ -446,9 +482,23 @@ function normaliseChallengeMistakes(value: unknown): MistakeTally | null {
 }
 
 /**
+ * Whether a value is shaped like a solve a link carries (see `Challenge.log`):
+ * base64url, no longer than a link takes. Whether it plays back is asked
+ * when it is offered to watch, never at every load.
+ */
+function isSharedLog(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length <= MAX_SHARED_LOG_LENGTH &&
+    SHARED_LOG_PATTERN.test(value)
+  );
+}
+
+/**
  * A usable challenge, or null — a broken one only costs the comparison, so it
  * never sinks the record. Broken mistakes cost only themselves: the time and
- * help still stand, with the mistakes not known.
+ * help still stand, with the mistakes not known. So does a broken solve,
+ * which is dropped on its own (see `isSharedLog`).
  */
 function normaliseChallenge(value: unknown): Challenge | null {
   if (!isObject(value)) return null;
@@ -463,6 +513,7 @@ function normaliseChallenge(value: unknown): Challenge | null {
     assists: normaliseAssists(value.assists),
     // Left off rather than null, as on a record: absent is "not known".
     ...(mistakes === null ? {} : { mistakes }),
+    ...(isSharedLog(value.log) ? { log: value.log } : {}),
   };
 }
 
@@ -478,8 +529,8 @@ function normaliseChallenge(value: unknown): Challenge | null {
  * and a broken challenge or daily date is dropped on its own — the game is
  * still a game, just not one against a rival or on the calendar. So are
  * broken mistakes, which then read as not known (see `normaliseMistakes`).
- * Small fields a newer version added are kept as they are (see
- * `newerFields`).
+ * `watched` is kept only as `true`. Small fields a newer version added are
+ * kept as they are (see `newerFields`).
  */
 function normaliseRecord(value: unknown): GameRecord | null {
   if (!isObject(value)) return null;
@@ -523,7 +574,18 @@ function normaliseRecord(value: unknown): GameRecord | null {
       ? { startedOn: value.startedOn }
       : {}),
     ...(mistakes === null ? {} : { mistakes }),
+    ...(value.watched === true ? { watched: true as const } : {}),
   };
+}
+
+/**
+ * Whether a record has a time to its name: solved, and not after watching a
+ * shared solve of its puzzle (see `GameRecord.watched`) — whose solve is
+ * recorded, but without a time, so it is never shown, shared or raced, nor
+ * counted towards a best, an average or a streak.
+ */
+export function hasRecordedTime(record: GameRecord): boolean {
+  return record.status === 'solved' && record.watched !== true;
 }
 
 /**
@@ -749,6 +811,41 @@ function shedMoveLogs(
 }
 
 /**
+ * The records with every friend's solve (`Challenge.log`) dropped from their
+ * challenges, but for the protected games' — or null if there was none to
+ * drop. Each is a few hundred characters to a few thousand, kept inside its
+ * record, and only ever an extra: something to watch, never something the
+ * game, the stats or a race need, as the challenge keeps its name and time.
+ * So, once the move logs are gone, they are the next cheapest thing to lose,
+ * before any saved board or record.
+ */
+function withoutFriendLogs(
+  records: readonly GameRecord[],
+  keep: ReadonlySet<string>,
+): GameRecord[] | null {
+  let isChanged = false;
+  const stripped = records.map((record) => {
+    if (record.challenge?.log === undefined || keep.has(record.id)) return record;
+    isChanged = true;
+    const { log: _log, ...challenge } = record.challenge;
+    return { ...record, challenge };
+  });
+  return isChanged ? stripped : null;
+}
+
+/**
+ * A stage of making room for some other write (see `MAKE_ROOM`): rewrite the
+ * stored history without its friends' solves (see `withoutFriendLogs`).
+ * Frees what it can in one go, or says it found nothing.
+ */
+function shedFriendLogs(storage: StorageLike, keep: ReadonlySet<string>): boolean | void {
+  const stripped = withoutFriendLogs(loadHistory(storage), keep);
+  if (stripped === null || !writeItem(storage, HISTORY_KEY, JSON.stringify(stripped))) {
+    return false;
+  }
+}
+
+/**
  * Make room after a refused write, at the last: the saved state of all but the
  * 10 most recently played unfinished games (their records stay, replayable
  * from the givens), then finished records beyond the newest 300, their logs
@@ -769,8 +866,9 @@ function shed(
 /**
  * Write the record list. If the browser refuses it, shed what can be spared —
  * finished games' move logs first, a chunk at a time (see `shedMoveLogs`),
- * then saved games and finished records from this very list, so the last
- * retry is smaller, and never a game in `keep` — and try once more. Returns
+ * then friends' solves from this very list (see `withoutFriendLogs`), then
+ * saved games and finished records from it, so each retry is smaller, and
+ * never a game in `keep` — and try again after each. Returns
  * the list as it now stands, whether or not the write went through:
  * persistence is best-effort, and the session carries on regardless.
  */
@@ -799,7 +897,11 @@ function writeRecords(
   if (writeItem(storage, HISTORY_KEY, JSON.stringify(records), shedLogs)) {
     return { records, isTight };
   }
-  const kept = shed(storage, records, keep);
+  const stripped = withoutFriendLogs(records, keep) ?? records;
+  if (stripped !== records && writeItem(storage, HISTORY_KEY, JSON.stringify(stripped))) {
+    return { records: stripped, isTight: true };
+  }
+  const kept = shed(storage, stripped, keep);
   writeItem(storage, HISTORY_KEY, JSON.stringify(kept));
   return { records: kept, isTight: true };
 }
@@ -819,12 +921,14 @@ export function freeSpace(storage: StorageLike): void {
  * Making room after a write was refused, sparing the current game and those
  * in `ids`: the stages `writeItem` works through, cheapest loss first and
  * trying the write again after each — finished games' move logs, a chunk at
- * a time (see `shedMoveLogs`), then saved games and old finished records (see
- * `freeSpace`).
+ * a time (see `shedMoveLogs`), then friends' solves kept with their
+ * challenges (see `shedFriendLogs`), then saved games and old finished
+ * records (see `freeSpace`).
  */
 function makeRoomSparing(...ids: string[]): readonly MakeRoom[] {
   return [
     (storage) => shedMoveLogs(storage, loadHistory(storage), protectedIds(storage, ...ids)),
+    (storage) => shedFriendLogs(storage, protectedIds(storage, ...ids)),
     freeSpace,
   ];
 }
@@ -935,11 +1039,20 @@ export function loadHistory(storage: StorageLike): GameRecord[] {
  *
  * A newer version's fields on the stored copy, and on its assists, are kept
  * when the caller's record lacks them (see `keepNewerFields`).
+ *
+ * And the rule for watched puzzles is kept here, where every write of a
+ * game's record passes (see `isWatchedAttempt`), so that no way of coming
+ * back to a puzzle — a reload, Play again, a new attempt from a link, the
+ * generator or the calendar, a game resumed from History — can record a time
+ * for one whose solve the player has watched.
  */
 export function upsertRecord(storage: StorageLike, record: GameRecord): GameRecord[] {
   const records = loadHistory(storage);
   const stored = records.find((existing) => existing.id === record.id);
-  const incoming = normaliseRecord(stored === undefined ? record : keepNewerFields(record, stored));
+  const kept = stored === undefined ? record : keepNewerFields(record, stored);
+  const incoming = normaliseRecord(
+    isWatchedAttempt(storage, records, kept, stored) ? { ...kept, watched: true } : kept,
+  );
   if (incoming === null) return records;
   const index = records.findIndex((existing) => existing.id === incoming.id);
   if (index === -1) records.unshift(incoming);
@@ -950,6 +1063,28 @@ export function upsertRecord(storage: StorageLike, record: GameRecord): GameReco
   const saved = saveRecords(storage, capRecords(storage, records, keep), keep);
   sweepSavedGames(storage, saved, MAX_SAVED_GAMES);
   return saved;
+}
+
+/**
+ * Whether a record about to be written is an attempt at a watched puzzle (see
+ * `GameRecord.watched`): one flagged already — here or as stored, as the
+ * page writes the record it holds, which may be older than the flag — or a
+ * new attempt, or one still unfinished as stored, at a puzzle whose shared
+ * solve was watched before it was solved (see `hasWatched`). A game solved
+ * before it is written here at all — its first save the solve — is a new
+ * attempt like any other. A game already stored as solved is left as it was:
+ * it was solved before the solve was watched, or watching would have been
+ * free.
+ */
+function isWatchedAttempt(
+  storage: StorageLike,
+  records: readonly GameRecord[],
+  record: GameRecord,
+  stored: GameRecord | undefined,
+): boolean {
+  if (record.watched === true || stored?.watched === true) return true;
+  if (stored !== undefined && stored.status === 'solved') return false;
+  return isGridString(record.givens) && hasWatched(storage, record.givens, records);
 }
 
 /**
@@ -1019,9 +1154,10 @@ export function findDailyAttempts(
  * best and average cover only the solves that say something about the
  * player. That leaves out games with reveals — a revealed cell is a cell not
  * solved — and replays, puzzles the player had already seen: an attempt at a
- * board studied beforehand would be a record nobody could fairly beat. Other
- * help (hints, checks, auto candidates) still counts: it is shown next to the
- * time instead.
+ * board studied beforehand would be a record nobody could fairly beat. And
+ * solves after watching a shared solve of the puzzle, which have no time at
+ * all (see `hasRecordedTime`). Other help (hints, checks, auto candidates)
+ * still counts: it is shown next to the time instead.
  */
 export function computeStats(records: readonly GameRecord[]): Record<Difficulty, DifficultyStats> {
   const stats = {} as Record<Difficulty, DifficultyStats>;
@@ -1037,6 +1173,7 @@ export function computeStats(records: readonly GameRecord[]): Record<Difficulty,
       if (record.status !== 'solved') continue;
       solved++;
       if (record.assists.reveals > 0 || record.source === 'replay') continue;
+      if (!hasRecordedTime(record)) continue;
       timed++;
       totalMs += record.elapsedMs;
       if (bestMs === null || record.elapsedMs < bestMs) bestMs = record.elapsedMs;
@@ -1320,6 +1457,144 @@ function mergeSeen(storage: StorageLike, incoming: unknown): void {
 }
 
 // ---------------------------------------------------------------------------
+// Puzzles watched
+// ---------------------------------------------------------------------------
+
+/*
+ * A player who watches a friend's solve of a puzzle they have not solved
+ * themselves has seen every number of it go in: no time they set on it
+ * afterwards can be a fair one. So the puzzle is remembered as watched, and
+ * every attempt at it — unfinished as they watched, or begun since — is
+ * recorded without a time (see `GameRecord.watched`). Remembered for longer
+ * than its records, as the puzzles seen are: deleting or pruning an attempt
+ * must not hand back a puzzle whose solve was watched as a fresh one.
+ *
+ * Kept as share codes, least recently watched first, like the puzzles seen.
+ * A solve watched once the player had solved the puzzle already gives
+ * nothing away, and is not remembered here at all.
+ */
+
+/**
+ * The share codes the store holds, as last read, per storage: asked at every
+ * save of an unfinished game (see `isWatchedAttempt`), and the raw string
+ * compared is far cheaper than parsing a list of up to 2,000 codes each time.
+ */
+const watchedCache = new WeakMap<StorageLike, { raw: string; codes: string[] }>();
+
+/** The share codes of the puzzles watched, least recently first; junk costs only itself. */
+function readWatched(storage: StorageLike): string[] {
+  const raw = readItem(storage, WATCHED_KEY);
+  if (raw === null) return [];
+  const cached = watchedCache.get(storage);
+  if (cached?.raw === raw) return cached.codes;
+  const parsed = readJson(storage, WATCHED_KEY);
+  const codes = Array.isArray(parsed)
+    ? [
+        ...new Set(
+          parsed.filter(
+            (code): code is string => typeof code === 'string' && looksLikeShareCode(code),
+          ),
+        ),
+      ]
+    : [];
+  watchedCache.set(storage, { raw, codes });
+  return codes;
+}
+
+/** Write the list of puzzles watched, held to the MAX_WATCHED watched most recently. */
+function writeWatched(storage: StorageLike, codes: readonly string[]): void {
+  writeItem(storage, WATCHED_KEY, JSON.stringify(codes.slice(-MAX_WATCHED)), MAKE_ROOM);
+}
+
+/**
+ * Whether a shared solve of a puzzle was watched before the player had
+ * solved it (see `markWatched`) — so every attempt at it is recorded without
+ * a time.
+ *
+ * The list of puzzles watched says so, and so does any attempt at it flagged
+ * as watched (see `GameRecord.watched`): a flag can reach a record without
+ * its puzzle reaching the list — a file exported from a tab of an older
+ * version, which keeps the flag but has no list, or a list refused for space
+ * while the flags were written — and a flagged attempt is proof enough.
+ * `records` is the history, when the caller has it loaded already.
+ */
+export function hasWatched(
+  storage: StorageLike,
+  givens: GridString,
+  records?: readonly GameRecord[],
+): boolean {
+  if (readWatched(storage).includes(encodeGivens(givens))) return true;
+  return findAttempts(records ?? loadHistory(storage), givens).some(
+    (record) => record.watched === true,
+  );
+}
+
+/**
+ * Whether the player has solved a puzzle — any solve of it in the history,
+ * with a time or without — so that watching a shared solve of it gives
+ * nothing away.
+ */
+export function hasSolved(records: readonly GameRecord[], givens: GridString): boolean {
+  return findAttempts(records, givens).some((record) => record.status === 'solved');
+}
+
+/**
+ * Remember that the player watched a shared solve of a puzzle they had not
+ * solved, and flag every unfinished attempt at it in the history (see
+ * `GameRecord.watched`) — the game on screen among them, whatever its page
+ * goes on to write, as `upsertRecord` keeps the flag. Every later attempt is
+ * flagged as it is first written. Its board was on show in the playback, so
+ * the puzzle is seen too (see `markSeen`). Returns the history as it now
+ * stands.
+ *
+ * Best-effort, like every write: if the list cannot be written, the flags on
+ * the attempts already there still hold.
+ */
+export function markWatched(storage: StorageLike, givens: GridString): GameRecord[] {
+  const code = encodeGivens(givens);
+  const codes = readWatched(storage);
+  if (codes.at(-1) !== code) writeWatched(storage, [...codes.filter((c) => c !== code), code]);
+  markSeen(storage, givens);
+  const records = loadHistory(storage);
+  const flagged = flagWatched(records, new Set([code]));
+  return flagged === records ? records : saveRecords(storage, flagged);
+}
+
+/**
+ * The records with every unfinished attempt at a puzzle among `codes` flagged
+ * as watched — a new list, or the same one when none needed it.
+ */
+function flagWatched(records: GameRecord[], codes: ReadonlySet<string>): GameRecord[] {
+  if (codes.size === 0) return records;
+  let isChanged = false;
+  const flagged = records.map((record) => {
+    if (record.status !== 'playing' || record.watched === true) return record;
+    if (!codes.has(encodeGivens(record.givens))) return record;
+    isChanged = true;
+    return { ...record, watched: true as const };
+  });
+  return isChanged ? flagged : records;
+}
+
+/**
+ * Add the puzzles watched that an import brought to the ones here (the
+ * file's list, or the puzzles of its flagged records). Like the puzzles seen,
+ * it only ever adds, and the imported ones count as watched longer ago than
+ * any here.
+ */
+function mergeWatched(storage: StorageLike, incoming: unknown): void {
+  if (!Array.isArray(incoming)) return;
+  const local = readWatched(storage);
+  const known = new Set(local);
+  const added = incoming.filter(
+    (code): code is string =>
+      typeof code === 'string' && looksLikeShareCode(code) && !known.has(code),
+  );
+  if (added.length === 0) return;
+  writeWatched(storage, [...new Set(added), ...local]);
+}
+
+// ---------------------------------------------------------------------------
 // Export and import
 // ---------------------------------------------------------------------------
 
@@ -1328,7 +1603,8 @@ function mergeSeen(storage: StorageLike, incoming: unknown): void {
  * every game that has some, so an unfinished game can be resumed on the
  * other side; every game's move log, as stored (`moves`, by id — a file from
  * before logs were kept has none, and still imports); the puzzles seen, so one
- * played and deleted here is no fresh puzzle there either; and the daily
+ * played and deleted here is no fresh puzzle there either; the puzzles whose
+ * shared solve was watched, so none of them sets a time there; and the daily
  * ledger, so streaks travel whole. Safari deletes the storage of a site not
  * visited for seven days, so this file is the only backup there is.
  */
@@ -1351,6 +1627,7 @@ export function exportHistory(storage: StorageLike, now: number): string {
     }),
   );
   const seen = readSeen(storage);
+  const watched = readWatched(storage);
   const dailyLedger = encodeLedger(loadDailyLedger(storage));
   return JSON.stringify(
     {
@@ -1361,6 +1638,7 @@ export function exportHistory(storage: StorageLike, now: number): string {
       games,
       moves,
       seen,
+      watched,
       dailyLedger,
     },
     null,
@@ -1387,7 +1665,12 @@ export function exportHistory(storage: StorageLike, now: number): string {
  * freed is not theirs to fill. The file's seen puzzles are added to
  * the ones here (see `mergeSeen`); a file from before they were exported has
  * none, which is no loss, as its records count as seen in their own right. So
- * is its daily ledger (see `mergeLedger`).
+ * is its daily ledger (see `mergeLedger`), and so are its puzzles watched (see
+ * `mergeWatched`), with the puzzle of every flagged record among them —
+ * after which every unfinished attempt at a puzzle watched, here or there, is
+ * flagged as watched (see `markWatched`), the file's own among them. Flags are
+ * kept on both sides: a record replaced by the file's newer copy keeps its
+ * own, as the flag is never taken off.
  */
 export function importHistory(storage: StorageLike, json: string): ImportResult {
   let data: unknown;
@@ -1408,6 +1691,7 @@ export function importHistory(storage: StorageLike, json: string): ImportResult 
   const moves = isObject(data.moves) ? data.moves : {};
   mergeSeen(storage, data.seen);
   mergeLedger(storage, data.dailyLedger);
+  mergeWatched(storage, data.watched);
 
   const current = loadCurrentId(storage);
   const records = loadHistory(storage);
@@ -1420,12 +1704,23 @@ export function importHistory(storage: StorageLike, json: string): ImportResult 
     else if (incoming.id !== current && incoming.updatedAt > existing.updatedAt) {
       updated.add(incoming.id);
     } else continue;
-    byId.set(incoming.id, incoming);
+    // The flag is never taken off: a copy finished somewhere that knew
+    // nothing of the watch is still an attempt made after it.
+    byId.set(
+      incoming.id,
+      existing?.watched === true ? { ...incoming, watched: true as const } : incoming,
+    );
   }
   if (added.size + updated.size === 0) return { ok: true, added: 0, updated: 0 };
 
+  // A flagged record from the file makes its puzzle a watched one here, for
+  // the attempts still to come, though the file had no list to say so.
+  const flaggedCodes = [...byId.values()]
+    .filter((record) => record.watched === true)
+    .map((record) => encodeGivens(record.givens));
+  mergeWatched(storage, flaggedCodes);
   const keep = protectedIds(storage);
-  const merged = sortNewestFirst([...byId.values()]);
+  const merged = flagWatched(sortNewestFirst([...byId.values()]), new Set(readWatched(storage)));
   const { records: saved, isTight } = writeRecords(
     storage,
     capRecords(storage, merged, keep),

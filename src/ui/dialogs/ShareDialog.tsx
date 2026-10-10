@@ -24,6 +24,13 @@ export interface ShareDialogProps {
   result: { seconds: number; assists: Assists; mistakes: MistakeTally | null } | null;
   /** The date of the daily the puzzle is, if it was played as one: the message names it, and the link says so. */
   daily?: DateKey | null;
+  /**
+   * The solve that goes with the result, as its encoded move log, which the
+   * player may include for a friend to watch — only one the friend's game
+   * will play back at this time (see `ShareTarget.solve`) — or null (or left
+   * out) to offer none.
+   */
+  solve?: string | null;
   /** The remembered name, already normalised. */
   playerName: string;
   /**
@@ -70,12 +77,20 @@ function copyHint(isTouch: boolean): string {
  * friend needs, so there is nothing to upload: the dialog only builds the
  * message and hands it to the native share sheet or the clipboard — and, when
  * neither works, shows it selected for copying by hand.
+ *
+ * With a time, the solve itself can go too, for the friend to watch: a
+ * switch, "Include my solve", shown only when there is a solve that will
+ * play back. Off to begin with, every time: a race is what a shared time is
+ * for, and its link stays short; the solve makes it several times longer,
+ * and gives the puzzle away — the friend is warned before watching, but
+ * sending it should be the player's choice, not something they find they did.
  */
 export function ShareDialog({
   givens,
   difficulty,
   result,
   daily = null,
+  solve = null,
   playerName,
   onPlayerNameChange,
   onClose,
@@ -93,14 +108,22 @@ export function ShareDialog({
   const isSharing = useRef(false);
   // Fixed at opening, like the buttons: the device does not change mid-dialog.
   const [isTouch] = useState(isTouchDevice);
+  const [isSolveIncluded, setSolveIncluded] = useState(false);
+  // Only with a time: a solve is checked against the time it goes with.
+  const offered = result === null ? null : solve;
+  const log = isSolveIncluded ? offered : null;
 
   const url = buildShareUrl(
     shareBaseUrl(),
     givens,
-    result === null ? undefined : { ...result, name: normaliseName(name) },
+    result === null ? undefined : { ...result, name: normaliseName(name), log },
     daily,
   );
-  const text = buildShareText({ difficulty, result: result ?? undefined, daily });
+  const text = buildShareText({
+    difficulty,
+    result: result === null ? undefined : { ...result, log },
+    daily,
+  });
   const message = messageWithLink(text, url);
   const payload: ShareData = { title: 'Sudoku', text, url };
 
@@ -179,6 +202,7 @@ export function ShareDialog({
   const selectAll = () => fallbackRef.current?.select();
 
   const nameId = `${ids}-name`;
+  const solveId = `${ids}-solve`;
   const fallbackId = `${ids}-fallback`;
   const fallbackHintId = `${ids}-fallback-hint`;
   return (
@@ -232,6 +256,28 @@ export function ShareDialog({
               onBlur={commitName}
             />
             <p className="field__hint">Shown next to your time when a friend opens the link.</p>
+          </div>
+        )}
+
+        {offered !== null && (
+          <div className="settings__row share__solve">
+            <div className="settings__text">
+              <label className="settings__label" htmlFor={solveId}>
+                Include my solve
+              </label>
+              <p className="settings__description" id={`${solveId}-description`}>
+                Your friend can watch how you did it. If they watch before solving it themselves,
+                they won&apos;t get a time for it.
+              </p>
+            </div>
+            <input
+              id={solveId}
+              className="settings__switch"
+              type="checkbox"
+              checked={isSolveIncluded}
+              aria-describedby={`${solveId}-description`}
+              onChange={(event) => setSolveIncluded(event.target.checked)}
+            />
           </div>
         )}
 

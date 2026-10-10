@@ -11,7 +11,7 @@ export interface DailyMarkProps {
  * its colour, so it reads the same to every eye and in Windows High
  * Contrast: solid for solved on the day (the only kind that keeps a streak),
  * hatched for solved on another day (caught up on later, or begun early
- * from a friend's link), half filled for in progress, an empty outline
+ * from a friend's link) or after watching a friend's solve, half filled for in progress, an empty outline
  * for not started. Drawn on a 10-unit square in the text colour (the empty
  * one in the muted text colour, see dialogs.css).
  *

@@ -15,6 +15,7 @@ import {
   fakeSource,
   linkFor,
   nearlySolved,
+  shortSolve,
 } from './testFixtures';
 import type { UseSudokuOptions } from './useSudoku';
 
@@ -827,6 +828,119 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     const back = screen.getByRole('dialog', { name: 'History' });
     expect(within(back).getByRole('button', { name: /^Watch your solve, Easy/ })).toHaveFocus();
+  });
+
+  it('offers the solve itself with the time to share, once it is switched on', async () => {
+    await startApp({ source: fakeSource(nearlySolved([0]), PUZZLE) });
+    press(String(answerAt(0)));
+    await screen.findByRole('dialog', { name: 'Solved!' });
+    fireEvent.click(screen.getByRole('button', { name: 'Share your time' }));
+    const share = screen.getByRole('dialog', { name: 'Share your time' });
+    const url = () => new URL(share.querySelector('.share__url')!.textContent!);
+    const include = within(share).getByRole('checkbox', { name: 'Include my solve' });
+    expect(include).not.toBeChecked();
+    expect(url().searchParams.has('s')).toBe(false);
+    fireEvent.click(include);
+    expect(url().searchParams.get('s')).toMatch(/^[A-Za-z0-9_-]+$/);
+    expect(share.querySelector('.share__text')).toHaveTextContent(
+      "You can watch my solve too, once you've had a go.",
+    );
+  });
+
+  describe("a friend's solve", () => {
+    const { puzzle, encoded } = shortSolve();
+    const search = linkFor(puzzle.givens, { t: '9', n: 'Dan', s: encoded });
+
+    it('asks first from the Ready card, opening on Play it first, which starts the game', async () => {
+      renderApp({ search });
+      const card = await screen.findByRole('heading', { name: 'Ready?' });
+      expect(card).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: "Watch Dan's solve" }));
+      const spoiler = screen.getByRole('dialog', { name: "Watch Dan's solve?" });
+      expect(within(spoiler).getByRole('button', { name: 'Play it first' })).toHaveFocus();
+      fireEvent.click(within(spoiler).getByRole('button', { name: 'Play it first' }));
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(await screen.findByRole('grid')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Pause' })).toBeInTheDocument();
+    });
+
+    it('watched anyway: plays it, comes back to the card saying so, and the solve has no time', async () => {
+      renderApp({ search });
+      await screen.findByRole('heading', { name: 'Ready?' });
+      fireEvent.click(screen.getByRole('button', { name: "Watch Dan's solve" }));
+      fireEvent.click(screen.getByRole('button', { name: 'Watch anyway' }));
+      const playback = screen.getByRole('dialog', { name: "Dan's solve" });
+      expect(playback).toHaveAccessibleDescription('Easy · 0:09');
+      fireEvent.click(within(playback).getByRole('button', { name: 'Close' }));
+      expect(
+        screen.getByText("You've watched a solve of this puzzle, so no time will be recorded."),
+      ).toBeInTheDocument();
+
+      fireEvent.click(within(screen.getByRole('main')).getByRole('button', { name: 'Start' }));
+      await screen.findByRole('grid');
+      for (const index of [0, 40, 80]) {
+        fireEvent.click(cells()[index]);
+        press(String(answerAt(index, puzzle)));
+      }
+      const solved = await screen.findByRole('dialog', { name: 'Solved!' });
+      expect(solved).toHaveTextContent(
+        'Solved — no time recorded: you watched a solve of this puzzle first.',
+      );
+      expect(within(solved).getByRole('button', { name: 'Share puzzle' })).toBeInTheDocument();
+      // Nor does the header's timer show one.
+      expect(document.querySelector('.timer__time')).toHaveTextContent('Solved, no time recorded—');
+      // Watching it again is free now, from the head-to-head.
+      fireEvent.click(within(solved).getByRole('button', { name: "Watch Dan's solve" }));
+      expect(screen.getByRole('dialog', { name: "Dan's solve" })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+      expect(
+        within(screen.getByRole('dialog', { name: 'Solved!' })).getByRole('button', {
+          name: "Watch Dan's solve",
+        }),
+      ).toHaveFocus();
+    });
+
+    it('is free from the offer to play a puzzle solved already, focus back on it after', async () => {
+      const storage = memoryStorage();
+      upsertRecord(storage, {
+        id: 'mbx3k2f0-done',
+        givens: puzzle.givens,
+        difficulty: puzzle.difficulty,
+        source: 'generated',
+        createdAt: 1,
+        updatedAt: 2,
+        completedAt: 2,
+        status: 'solved',
+        elapsedMs: 60_000,
+        assists: { autoCandidates: false, hints: 0, checks: 0, reveals: 0 },
+        challenge: null,
+      });
+      renderApp({ storage, search });
+      const offer = await screen.findByRole('dialog', { name: "You've solved this one" });
+      fireEvent.click(within(offer).getByRole('button', { name: "Watch Dan's solve" }));
+      expect(screen.queryByRole('dialog', { name: "Watch Dan's solve?" })).toBeNull();
+      fireEvent.click(
+        within(screen.getByRole('dialog', { name: "Dan's solve" })).getByRole('button', {
+          name: 'Close',
+        }),
+      );
+      expect(
+        within(screen.getByRole('dialog', { name: "You've solved this one" })).getByRole('button', {
+          name: "Watch Dan's solve",
+        }),
+      ).toHaveFocus();
+    });
+
+    it('says, under the board, when a newer version recorded it', async () => {
+      renderApp({ search: linkFor(puzzle.givens, { t: '9', n: 'Dan', s: 'zAAAAAAAA' }) });
+      await screen.findByRole('heading', { name: 'Ready?' });
+      expect(
+        screen.getByText('This solve needs a newer version of the game to watch.', {
+          selector: '.hint-bar span',
+        }),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Watch/ })).toBeNull();
+    });
   });
 
   it('reports a broken link under the board', async () => {

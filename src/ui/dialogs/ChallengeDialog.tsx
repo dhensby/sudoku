@@ -1,6 +1,11 @@
 import { useId, useState } from 'react';
 import { dateKeyOf, formatDuration, toSeconds, type DateKey, type Difficulty } from '../../core';
-import { recordedMistakes, type Challenge, type GameRecord } from '../../storage/history';
+import {
+  hasRecordedTime,
+  recordedMistakes,
+  type Challenge,
+  type GameRecord,
+} from '../../storage/history';
 import { DIFFICULTY_LABEL, describeMistakes, formatDate, formatDay } from '../format';
 import { Comparison } from './Comparison';
 import { Dialog } from './Dialog';
@@ -19,6 +24,13 @@ export interface ChallengeDialogProps {
   /** The date of the daily the puzzle is, if it is one (a solved daily chosen from New game, or a link to one). */
   daily?: DateKey | null;
   onPlayAgain: () => void;
+  /**
+   * Watch the friend's solve the link carried — free, as the puzzle is
+   * solved; given only when there is one this build plays back.
+   */
+  onWatch?: () => void;
+  /** Focus opens on that Watch rather than Play again: back from the playback it opened. */
+  isBackFromWatch?: boolean;
   onClose: () => void;
 }
 
@@ -37,7 +49,10 @@ function whenSolved(epochMs: number, now: number): string {
  * Opening a puzzle already solved — from a link, or a solved daily chosen
  * from New game: say so, with the help and mistakes it took (the mistakes
  * when known), compare with the link's time if it carried one, and offer a
- * fresh attempt. Closing keeps whatever game was on screen.
+ * fresh attempt. Closing keeps whatever game was on screen. A link that
+ * carried the friend's solve offers it to watch, under the head-to-head:
+ * the puzzle is solved, so it gives nothing away. An earlier solve after
+ * watching one has no time, and says so.
  */
 export function ChallengeDialog({
   difficulty,
@@ -45,6 +60,8 @@ export function ChallengeDialog({
   challenge,
   daily = null,
   onPlayAgain,
+  onWatch,
+  isBackFromWatch = false,
   onClose,
 }: ChallengeDialogProps) {
   const ids = useId();
@@ -56,6 +73,8 @@ export function ChallengeDialog({
   const mistakes = recordedMistakes(previous);
   // A solved record always has completedAt; the fallback only guards a hand-edited one.
   const solvedAt = previous.completedAt ?? previous.updatedAt;
+  const isTimed = hasRecordedTime(previous);
+  const isWatchFocused = isBackFromWatch && onWatch !== undefined;
 
   return (
     <Dialog
@@ -68,7 +87,7 @@ export function ChallengeDialog({
           <button
             type="button"
             className="button button--primary"
-            data-autofocus
+            data-autofocus={isWatchFocused ? undefined : true}
             onClick={onPlayAgain}
           >
             Play again
@@ -85,18 +104,21 @@ export function ChallengeDialog({
           {daily === null
             ? `this ${DIFFICULTY_LABEL[difficulty]} puzzle`
             : `the ${DIFFICULTY_LABEL[difficulty]} daily for ${formatDay(daily, dateKeyOf(now))}`}{' '}
-          in {formatDuration(previous.elapsedMs)} {whenSolved(solvedAt, now)}.
+          {isTimed ? `in ${formatDuration(previous.elapsedMs)}` : 'after watching a solve'}{' '}
+          {whenSolved(solvedAt, now)}.
         </p>
         {help !== null && <p className="challenge__assists">{help}.</p>}
         {mistakes !== null && <p className="challenge__mistakes">{describeMistakes(mistakes)}.</p>}
       </div>
       {challenge !== null && (
         <Comparison
-          mySeconds={toSeconds(previous.elapsedMs)}
+          mySeconds={isTimed ? toSeconds(previous.elapsedMs) : null}
           myAssists={previous.assists}
           myMistakes={mistakes}
           challenge={challenge}
           verdictId={verdictId}
+          onWatch={onWatch}
+          isWatchFocused={isWatchFocused}
         />
       )}
     </Dialog>

@@ -259,6 +259,7 @@ const PAIRS: Pair[] = [
   ['settings switch off: knob against the track', 'surface-raised', 'text-muted', NON_TEXT],
   ['settings switch on: track against a dialog', 'accent', 'surface-raised', NON_TEXT],
   ['settings switch on: knob against the track', 'accent-text', 'accent', NON_TEXT],
+  // Share's "Include my solve" is Settings' own switch, on the same dialog.
   ...(['bg', 'surface', 'surface-raised', 'key-bg', 'key-bg-active', 'button-bg'] as const).map(
     (surface): Pair => [`focus ring against ${surface}`, 'accent', surface, NON_TEXT],
   ),
@@ -341,6 +342,11 @@ const PAIRS: Pair[] = [
   ['the key to the marks on a dialog', 'text-muted', 'surface-raised', TEXT],
   ['a speed not chosen, on its strip', 'text-muted', 'surface', TEXT],
   ['the chosen speed (page on ink)', 'bg', 'text', TEXT],
+
+  // ---- A friend's solve ----
+  ['a solve with no time, said where its time would be', 'text', 'surface-raised', TEXT],
+  ['a card saying no time will be recorded', 'text-muted', 'surface-raised', TEXT],
+  ['the card’s Watch, an outlined button, on the card', 'text', 'surface-raised', TEXT],
 ];
 
 /*

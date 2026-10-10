@@ -9,6 +9,7 @@ import {
   decodeMistakes,
   encodeAssists,
   encodeMistakes,
+  SOLVE_LINE,
   messageWithLink,
   nativeShare,
   shareBaseUrl,
@@ -221,6 +222,24 @@ describe('buildShareUrl', () => {
     expect(new URL(buildShareUrl(BASE, GIVENS, undefined, null)).searchParams.has('d')).toBe(false);
   });
 
+  it('carries a solve last, as it came, and none when there is none to carry', () => {
+    const result = {
+      seconds: 90,
+      name: 'Dan',
+      assists: NONE,
+      mistakes: { values: 0, candidates: 0 },
+    };
+    const url = new URL(buildShareUrl(BASE, GIVENS, { ...result, log: 'BBAxy-_z' }, '2026-10-13'));
+    expect([...url.searchParams.keys()]).toEqual(['p', 'd', 't', 'n', 'a', 's']);
+    expect(url.searchParams.get('s')).toBe('BBAxy-_z');
+    // base64url needs no escaping in a query.
+    expect(url.search).toContain('&s=BBAxy-_z');
+    expect(
+      new URL(buildShareUrl(BASE, GIVENS, { ...result, log: null })).searchParams.has('s'),
+    ).toBe(false);
+    expect(new URL(buildShareUrl(BASE, GIVENS, result)).searchParams.has('s')).toBe(false);
+  });
+
   it('replaces whatever query and hash the base had', () => {
     const url = buildShareUrl(`${BASE}?p=old&x=1#frag`, GIVENS);
     expect(url).not.toMatch(/old|x=1|#frag/);
@@ -230,6 +249,16 @@ describe('buildShareUrl', () => {
 describe('buildShareText', () => {
   it('invites a friend to an unsolved puzzle', () => {
     expect(buildShareText({ difficulty: 'hard' })).toBe('Try this Hard Sudoku!');
+  });
+
+  it('says, last, that a solve in the link can be watched — and nothing of how it went', () => {
+    expect(
+      buildShareText({ difficulty: 'easy', result: { seconds: 323, assists: NONE, log: 'BBA' } }),
+    ).toBe(`Sudoku · Easy · 5:23\nCan you beat my time?\n${SOLVE_LINE}`);
+    expect(SOLVE_LINE).toBe("You can watch my solve too, once you've had a go.");
+    expect(
+      buildShareText({ difficulty: 'easy', result: { seconds: 323, assists: NONE, log: null } }),
+    ).toBe('Sudoku · Easy · 5:23\nCan you beat my time?');
   });
 
   it('states a result, and the help it came with', () => {

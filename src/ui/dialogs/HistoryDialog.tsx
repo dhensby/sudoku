@@ -17,6 +17,8 @@ import {
   formatDay,
 } from '../format';
 import { DownloadIcon, UploadIcon } from '../icons';
+import { WATCHED_RECORD_TEXT, watchFriendLabel } from '../watch';
+import { WatchFriendText } from '../WatchFriendText';
 import { Dialog } from './Dialog';
 import { assistChips, formatStat } from './text';
 
@@ -41,6 +43,14 @@ export interface HistoryDialogProps {
   /** Watch a row's solve, from the list as it is now (`place`), to come back to as it closes. */
   onWatch?: (id: string, place: HistoryPlace) => void;
   /**
+   * Whether a row offers the solve of the friend its game was raced against
+   * (a solved game whose challenge carried one this version plays). Asked
+   * only of the rows built; keep it stable, as every row is memoised on it.
+   */
+  canWatchChallenge?: (record: GameRecord) => boolean;
+  /** Watch the friend's solve a row's game was raced against, from the list as it is now. */
+  onWatchChallenge?: (id: string, place: HistoryPlace) => void;
+  /**
    * The list as it was when a game was watched from it: it opens the same —
    * filtered, as long, and with focus on that row's Watch, scrolled to —
    * rather than back at the top of every game.
@@ -62,6 +72,8 @@ export interface HistoryPlace {
   readonly limit: number;
   /** The row whose Watch was pressed: focus goes back to it. */
   readonly id: string;
+  /** Which of its Watch buttons: the player's own solve (the default), or the friend's. */
+  readonly solve?: 'own' | 'friend';
 }
 
 const FILTERS: readonly Filter[] = ['all', ...DIFFICULTIES];
@@ -116,13 +128,19 @@ interface HistoryRowProps {
   canReplay: boolean;
   /** Solved, with a log that plays back. */
   canWatch: boolean;
-  /** Its solve was just watched: focus goes back to its Watch as the list comes back. */
-  isWatched: boolean;
+  /** Solved, raced against a friend whose link carried a solve that plays back. */
+  canWatchChallenge: boolean;
+  /**
+   * A solve of the row's was just watched — its own, or the friend's: focus
+   * goes back to that Watch as the list comes back. Null for every other row.
+   */
+  watched: 'own' | 'friend' | null;
   isConfirming: boolean;
   onResume: (id: string) => void;
   onReplay: (id: string) => void;
   onShare: (id: string) => void;
   onWatch: (id: string) => void;
+  onWatchChallenge: (id: string) => void;
   onRequestDelete: (id: string) => void;
   onCancelDelete: () => void;
   onConfirmDelete: (id: string) => void;
@@ -140,12 +158,14 @@ const HistoryRow = memo(function HistoryRow({
   isResumable,
   canReplay,
   canWatch,
-  isWatched,
+  canWatchChallenge,
+  watched,
   isConfirming,
   onResume,
   onReplay,
   onShare,
   onWatch,
+  onWatchChallenge,
   onRequestDelete,
   onCancelDelete,
   onConfirmDelete,
@@ -203,9 +223,11 @@ const HistoryRow = memo(function HistoryRow({
           {isCurrent && <span className="history-item__current">Current</span>}
         </p>
         <p className="history-item__status">
-          {status === 'solved'
-            ? `Solved in ${formatDuration(elapsedMs)}`
-            : `In progress · ${formatDuration(elapsedMs)}`}
+          {status === 'playing' && `In progress · ${formatDuration(elapsedMs)}`}
+          {status === 'solved' &&
+            (record.watched === true
+              ? WATCHED_RECORD_TEXT
+              : `Solved in ${formatDuration(elapsedMs)}`)}
           {mistakes !== null && ` · ${describeMistakes(mistakes)}`}
         </p>
         {chips.length > 0 && (
@@ -288,10 +310,21 @@ const HistoryRow = memo(function HistoryRow({
               type="button"
               className="button button--small"
               aria-label={`Watch your solve, ${context}`}
-              data-autofocus={isWatched || undefined}
+              data-autofocus={watched === 'own' || undefined}
               onClick={() => onWatch(id)}
             >
               Watch
+            </button>
+          )}
+          {canWatchChallenge && challenge !== null && (
+            <button
+              type="button"
+              className="button button--small button--wraps"
+              aria-label={`${watchFriendLabel(challenge.name)}, ${context}`}
+              data-autofocus={watched === 'friend' || undefined}
+              onClick={() => onWatchChallenge(id)}
+            >
+              <WatchFriendText name={challenge.name} />
             </button>
           )}
           <button
@@ -388,7 +421,8 @@ function AllStats({ stats }: { stats: Record<Difficulty, DifficultyStats> }) {
 
 /**
  * Every game played, finished or not: stats per tier, and a list to resume,
- * replay, watch (a solve played back), share or delete from — each row's actions on a line of their own
+ * replay, watch (a solve played back — the player's own, or the friend's it was raced against),
+ * share or delete from — each row's actions on a line of their own
  * under what it says, so the list reads the same whichever a row offers.
  * Export and import keep the history safe from a browser that clears site
  * data (Safari does after a week away).
@@ -403,6 +437,8 @@ export function HistoryDialog({
   onShare,
   canWatch = NEVER,
   onWatch = IGNORE,
+  canWatchChallenge = NEVER,
+  onWatchChallenge = IGNORE,
   place = null,
   onDelete,
   onExport,
@@ -467,6 +503,10 @@ export function HistoryDialog({
   const watch = useCallback(
     (id: string) => onWatch(id, { filter, limit, id }),
     [onWatch, filter, limit],
+  );
+  const watchChallenge = useCallback(
+    (id: string) => onWatchChallenge(id, { filter, limit, id, solve: 'friend' }),
+    [onWatchChallenge, filter, limit],
   );
   const requestDelete = useCallback((id: string) => setConfirmingId(id), []);
   const cancelDelete = useCallback(() => setConfirmingId(null), []);
@@ -616,12 +656,14 @@ export function HistoryDialog({
                       resumableIds.has(record.id),
                     )}
                     canWatch={canWatch(record)}
-                    isWatched={record.id === place?.id}
+                    canWatchChallenge={canWatchChallenge(record)}
+                    watched={record.id === place?.id ? (place.solve ?? 'own') : null}
                     isConfirming={record.id === confirmingId}
                     onResume={onResume}
                     onReplay={onReplay}
                     onShare={onShare}
                     onWatch={watch}
+                    onWatchChallenge={watchChallenge}
                     onRequestDelete={requestDelete}
                     onCancelDelete={cancelDelete}
                     onConfirmDelete={confirmDelete}

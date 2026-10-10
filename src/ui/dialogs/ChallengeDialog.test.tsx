@@ -172,4 +172,36 @@ describe('ChallengeDialog', () => {
       vi.useRealTimers();
     });
   });
+  describe('a solve after watching one, and a friend’s solve to watch', () => {
+    const dan = { name: 'Dan', seconds: 323, assists: NONE };
+
+    it('says an earlier solve after watching one had no time, and compares none', () => {
+      renderChallenge({ previous: { ...PREVIOUS, watched: true }, challenge: dan });
+      expect(dialog()).toHaveTextContent(
+        'You solved this Hard puzzle after watching a solve on 10 Oct.',
+      );
+      expect(dialog()).not.toHaveTextContent('4:50');
+      expect(screen.getByRole('region', { name: 'Head to head' })).toHaveTextContent(
+        "You watched a solve first, so there's no time to compare.",
+      );
+    });
+
+    it('offers the link’s solve to watch, free, under the head-to-head', () => {
+      const onWatch = vi.fn();
+      renderChallenge({ challenge: dan, onWatch });
+      expect(screen.getByRole('button', { name: 'Play again' })).toHaveFocus();
+      fireEvent.click(screen.getByRole('button', { name: "Watch Dan's solve" }));
+      expect(onWatch).toHaveBeenCalledTimes(1);
+    });
+
+    it('puts focus back on it, back from watching', () => {
+      renderChallenge({ challenge: dan, onWatch: vi.fn(), isBackFromWatch: true });
+      expect(screen.getByRole('button', { name: "Watch Dan's solve" })).toHaveFocus();
+    });
+
+    it('opens on Play again when there is nothing to go back to', () => {
+      renderChallenge({ challenge: dan, isBackFromWatch: true });
+      expect(screen.getByRole('button', { name: 'Play again' })).toHaveFocus();
+    });
+  });
 });

@@ -1,7 +1,16 @@
 import { MOVES_VERSION } from '../core';
 import { logFromAnotherBuild } from '../test/movePlayers';
 import { shortSolve } from './testFixtures';
-import { OWN_SOLVE_TITLE, isWatchable, ownSolveSource } from './watch';
+import {
+  OWN_SOLVE_TITLE,
+  WATCHED_RECORD_TEXT,
+  WATCHED_SOLVE_TEXT,
+  friendSolveSource,
+  friendsSolve,
+  isWatchable,
+  ownSolveSource,
+  watchFriendLabel,
+} from './watch';
 
 const { puzzle, encoded } = shortSolve();
 
@@ -47,5 +56,65 @@ describe('ownSolveSource', () => {
     expect(ownSolveSource({ ...game, daily: '2026-10-12' }, encoded, '2026-10-13').subtitle).toBe(
       'Daily · 12 Oct · Hard · 5:23',
     );
+  });
+
+  it('gives no time for a solve after watching a friend’s, which recorded none', () => {
+    expect(ownSolveSource({ ...game, watched: true }, encoded, '2026-10-13').subtitle).toBe('Hard');
+    expect(
+      ownSolveSource({ ...game, daily: '2026-10-12', watched: true }, encoded, '2026-10-13')
+        .subtitle,
+    ).toBe('Daily · 12 Oct · Hard');
+  });
+});
+
+describe("a friend's solve", () => {
+  const challenge = {
+    name: 'Dan',
+    seconds: 323,
+    assists: { autoCandidates: false, hints: 0, checks: 0, reveals: 0 },
+    log: encoded,
+  };
+  const solve = {
+    givens: puzzle.givens,
+    difficulty: 'hard' as const,
+    daily: null,
+    challenge,
+    log: encoded,
+  };
+
+  it('is headed with whose it is, over the tier and their time', () => {
+    expect(friendSolveSource(solve, '2026-10-13')).toEqual({
+      givens: puzzle.givens,
+      difficulty: 'hard',
+      log: encoded,
+      title: "Dan's solve",
+      name: 'Dan',
+      subtitle: 'Hard · 5:23',
+    });
+  });
+
+  it('names a daily, and a friend whose link gave no name', () => {
+    const source = friendSolveSource(
+      { ...solve, daily: '2026-10-12', challenge: { ...challenge, name: null } },
+      '2026-10-13',
+    );
+    expect(source.title).toBe("Your friend's solve");
+    expect(source.subtitle).toBe('Daily · 12 Oct · Hard · 5:23');
+  });
+
+  it('is offered by name, or as your friend’s', () => {
+    expect(friendsSolve('Dan')).toBe("Dan's solve");
+    expect(friendsSolve(null)).toBe("Your friend's solve");
+    expect(watchFriendLabel('Dan')).toBe("Watch Dan's solve");
+    expect(watchFriendLabel(null)).toBe("Watch your friend's solve");
+  });
+});
+
+describe('a solve after watching one', () => {
+  it('says why it has no time', () => {
+    expect(WATCHED_SOLVE_TEXT).toBe(
+      'Solved — no time recorded: you watched a solve of this puzzle first',
+    );
+    expect(WATCHED_RECORD_TEXT).toBe('Solved after watching a solve');
   });
 });
