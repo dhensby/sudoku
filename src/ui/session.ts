@@ -32,7 +32,7 @@ import {
   type MoveLog,
   type Puzzle,
 } from '../core';
-import type { Friend, Sighting } from '../storage/friends';
+import { indexFriends, type Friend, type Sighting } from '../storage/friends';
 import {
   createGameId,
   findAttempts,
@@ -210,6 +210,20 @@ export interface DailyHint {
   tier: Difficulty;
 }
 
+/**
+ * Who a link came from, by the player ID it carried with its time (see
+ * `Challenge.playerId`): the device to note among the friends, with the name
+ * the link gave and when it was opened.
+ */
+export interface LinkSharer extends Sighting {
+  /**
+   * No friend here holds that ID — "never seen" by the friends list, whatever
+   * records carry it — so the link asks who sent it before anything else it
+   * opens (see `WhoSentDialog`).
+   */
+  isNew: boolean;
+}
+
 /** What a visit opens with. */
 export interface Startup {
   /** The history as it stood at startup. */
@@ -243,11 +257,12 @@ export interface Startup {
    * Who a link came from, by the player ID it carried with its time (see
    * `Challenge.playerId`), with the name it gave and when it was opened: for
    * the hook to note among the friends once mounted (see `meetDevice`), as it
-   * does every such link, whatever it opens. Null for no link, a broken one,
-   * one without a time or an ID — and one from this browser's own ID, whose
+   * does every such link, whatever it opens — and, from someone new
+   * (`isNew`), to ask who sent it first. Null for no link, a broken one, one
+   * without a time or an ID — and one from this browser's own ID, whose
    * sharer is the player.
    */
-  sharer: Sighting | null;
+  sharer: LinkSharer | null;
 }
 
 /** The phase a session is in. `isGenerating` wins: a new puzzle is on its way. */
@@ -825,7 +840,8 @@ export function shareTargetOfRecord(record: GameRecord, encoded: string | null):
  * A link's player ID (`&u=`) goes with its challenge, whichever of the three
  * it opens, and names its sender for the hook to note among the friends
  * (`sharer`) — unless it is `playerId`, this browser's own: the player's own
- * link, opened here, is no friend's.
+ * link, opened here, is no friend's. An ID no friend here holds is someone
+ * new (`isNew`), whose link asks who sent it before any of the three shows.
  */
 export function planStartup(
   storage: StorageLike,
@@ -881,7 +897,12 @@ export function planStartup(
     sharer:
       link.challenge?.playerId === undefined || link.challenge.playerId === playerId
         ? null
-        : { id: link.challenge.playerId, sentAs: link.challenge.name, at: now.wall },
+        : {
+            id: link.challenge.playerId,
+            sentAs: link.challenge.name,
+            at: now.wall,
+            isNew: !indexFriends(friends).has(link.challenge.playerId),
+          },
   };
   const attempts = findAttempts(records, puzzle.givens);
 

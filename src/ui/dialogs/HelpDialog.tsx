@@ -437,6 +437,10 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
               the name its link gave.
             </li>
             <li>
+              The first link from someone new asks who sent it, with the name from their link filled
+              in. Skip it, and they go by their links&apos; names until you name them in Friends.
+            </li>
+            <li>
               Your friend&apos;s solve and yours are compared row by row: the time, each kind of
               help, and the mistakes. The faster time wins; the rest is there to keep it fair. A
               dash means the mistakes weren&apos;t recorded: a link from an older version of the

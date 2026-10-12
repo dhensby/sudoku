@@ -60,7 +60,7 @@ export type BoardOverlayContent =
       /** The friend's solve the game's link carried, to give up and watch. */
       solve?: CardSolve | null;
     }
-  /** Paused behind a dialog: nothing to say, and nothing to press — the dialog has the floor. */
+  /** Behind a dialog: nothing to say, and nothing to press — the dialog has the floor. */
   | { kind: 'veiled' };
 
 export type BoardOverlayProps = BoardOverlayContent & {

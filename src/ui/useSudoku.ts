@@ -118,6 +118,7 @@ import {
   shareTargetOfRecord,
   tagDaily,
   type ChallengeOffer,
+  type LinkSharer,
   type Moment,
   type PauseReason,
   type Phase,
@@ -131,6 +132,7 @@ import { useStableActions } from './useStableActions';
 import type { CompareSource } from './dialogs/CompareDialog';
 import type { HistoryPlace } from './dialogs/HistoryDialog';
 import type { PlaybackSource } from './dialogs/PlaybackDialog';
+import type { WhoSentAnswer } from './dialogs/WhoSentDialog';
 import {
   WATCHED_SOLVE_TEXT,
   compareSource,
@@ -357,6 +359,12 @@ export type DialogState =
   | { kind: 'confirmReset' }
   /** The daily calendar and streaks. */
   | { kind: 'daily'; calendar: CalendarView }
+  /**
+   * "Who sent this?": the first link from a player ID no friend here holds,
+   * asked before anything else the link opens. `offer`, to play a solved
+   * puzzle again, waits behind it (see `closeDialog`).
+   */
+  | { kind: 'whoSent'; sharer: LinkSharer; offer: ChallengeOffer | null }
   | PlaybackView
   | CompareView;
 
@@ -507,6 +515,13 @@ export interface SudokuActions {
    * back to each race's own link name (see `renameFriend`).
    */
   renameFriend: (deviceId: string, name: string) => void;
+  /**
+   * From "Who sent this?": the name to know the link's sender by (see
+   * `WhoSentAnswer`), then on to whatever the link opens — its card, or the
+   * offer it held back. Their device was noted as the link opened, so an
+   * empty name, like Skip, leaves them going by their links' names.
+   */
+  answerWhoSent: (answer: WhoSentAnswer) => void;
   deleteRecord: (id: string) => void;
   exportHistory: () => string;
   importHistory: (json: string) => ImportResult;
@@ -902,6 +917,11 @@ function dialogFriendSolve(
   return null;
 }
 
+/** An offer to play a daily again, once its link's date has checked out. */
+function asDailyOffer(offer: ChallengeOffer, date: DateKey, tier: Difficulty): ChallengeOffer {
+  return { ...offer, puzzle: { ...offer.puzzle, difficulty: tier }, daily: date };
+}
+
 /** A full board that is not the solution: the case the boardFull notice is for. */
 function isFullButWrong(game: GameState): boolean {
   return game.status === 'playing' && isBoardFull(game);
@@ -954,9 +974,14 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
   // The tier of the game on screen when History deleted it, to be replaced
   // as History closes.
   const [vacancy, setVacancy] = useState<Difficulty | null>(null);
-  const [dialog, setDialog] = useState<DialogState | null>(() =>
-    startup.offer === null ? null : { kind: 'challenge', offer: startup.offer },
-  );
+  const [dialog, setDialog] = useState<DialogState | null>(() => {
+    // The first link from someone new asks who sent it before anything else
+    // it opens; an offer to play a solved puzzle again waits behind it.
+    if (startup.sharer?.isNew === true) {
+      return { kind: 'whoSent', sharer: startup.sharer, offer: startup.offer };
+    }
+    return startup.offer === null ? null : { kind: 'challenge', offer: startup.offer };
+  });
   const [history, setHistory] = useState<HistoryView>(() => ({
     records: startup.records,
     resumableIds: new Set<string>(),
@@ -1718,16 +1743,12 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       }
     }
     // A link to a daily already solved: the offer to play it again names it,
-    // and a fresh attempt is recorded as it.
+    // and a fresh attempt is recorded as it — the offer still held back
+    // behind "Who sent this?" too, so that it comes out named.
     if (dialog?.kind === 'challenge' && dialog.offer.puzzle.givens === hint.givens) {
-      setDialog({
-        kind: 'challenge',
-        offer: {
-          ...dialog.offer,
-          puzzle: { ...dialog.offer.puzzle, difficulty: tier },
-          daily: date,
-        },
-      });
+      setDialog({ kind: 'challenge', offer: asDailyOffer(dialog.offer, date, tier) });
+    } else if (dialog?.kind === 'whoSent' && dialog.offer?.puzzle.givens === hint.givens) {
+      setDialog({ ...dialog, offer: asDailyOffer(dialog.offer, date, tier) });
     }
   });
   useEffect(() => {
@@ -2096,6 +2117,13 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       setDialog({ kind: 'techniques', initial });
     },
     closeDialog: () => {
+      // The offer the first link held back comes next, the game behind it
+      // still held by a dialog. Without one, the prompt closes as any dialog
+      // does: on the link's card, its clock never started.
+      if (dialog?.kind === 'whoSent' && dialog.offer !== null) {
+        setDialog({ kind: 'challenge', offer: dialog.offer });
+        return;
+      }
       // The guide opened from a walkthrough goes back to it, still paused.
       if (dialog?.kind === 'techniques' && dialog.returnTo !== undefined) {
         setDialog(dialog.returnTo);
@@ -2326,6 +2354,12 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     },
     renameFriend: (deviceId, name) =>
       setFriends(updateFriends(storage, (list) => renameFriend(list, deviceId, name))),
+    answerWhoSent: (answer) => {
+      if (dialog?.kind !== 'whoSent') return;
+      const { id } = dialog.sharer;
+      setFriends(updateFriends(storage, (list) => renameFriend(list, id, answer.name)));
+      actions.closeDialog();
+    },
     deleteRecord: (id) => {
       deleteRecord(storage, id);
       if (currentIdRef.current === id) currentIdRef.current = null;

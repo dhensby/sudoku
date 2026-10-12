@@ -1,6 +1,7 @@
 import { expect, test, type Browser, type Locator, type Page } from '@playwright/test';
 import {
   NEARLY_DONE,
+  answerWhoSent,
   copiedText,
   emptyCells,
   openHeaderDialog,
@@ -48,7 +49,10 @@ async function shareWithTheSolve(page: Page): Promise<string> {
   return message.split('\n').at(-1)!;
 }
 
-/** In a fresh browser, B opens the link, plays it first and solves it at 0:05. */
+/**
+ * In a fresh browser, B opens the link, skips "Who sent this?" (a first link
+ * from A's browser), plays it first and solves it at 0:05.
+ */
 async function elsewhere(
   browser: Browser,
   link: string,
@@ -60,6 +64,7 @@ async function elsewhere(
     const page = await context.newPage();
     await page.clock.install();
     await page.goto(link);
+    await answerWhoSent(page);
     await startButton(page).click();
     await waitForPlaying(page);
     await page.clock.fastForward('00:05');

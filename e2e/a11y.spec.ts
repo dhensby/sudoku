@@ -35,11 +35,12 @@ import {
  * Accessibility, checked by machine: axe-core runs its WCAG 2.2 A and AA
  * rules over the states a player meets — the board in play with every kind
  * of mark on it, the Ready and Paused cards, the "…" menu, every dialog (each
- * step of Show me, the Show me of a missing candidate, and Friends with a
- * name being changed, among them), each entry of the technique guide, and
- * a step hint with its houses tinted on the board — in the light theme and
- * the dark (and the main ones, the tint among them, in High contrast), and
- * each must come back with no violations at all, with no rule switched off.
+ * step of Show me, the Show me of a missing candidate, Friends with a name
+ * being changed, and "Who sent this?", among them), each entry of the
+ * technique guide, and a step hint with its houses tinted on the board — in
+ * the light theme and the dark (and the main ones, the tint among them, in
+ * High contrast), and each must come back with no violations at all, with no
+ * rule switched off.
  * Contrast is the rule that a palette change is likeliest to break:
  * contrast.test.ts holds the tokens to their targets pair by pair, and this
  * is the check that the rendered page, every colour composed, agrees.
@@ -288,18 +289,28 @@ const SEEDED_FRIENDS = [
 ];
 
 /**
- * A link from someone new, noted as it opens, then History with Friends at
- * its foot, Friends — the new sender and the seeded three, every kind of row
- * — and Friends with a name being changed. `before` runs once the link is
- * open (to choose High contrast, say).
+ * A link from someone new, noted as it opens: "Who sent this?" first, its
+ * field focused on the name the link gave, then skipped; then History with
+ * Friends at its foot, Friends — the new sender and the seeded three, every
+ * kind of row — and Friends with a name being changed. `before` runs first,
+ * on a puzzle of its own (to choose High contrast, say): the question comes
+ * before anything the link opens, the header's menus with it.
  */
 async function friendsList(page: Page, before?: () => Promise<void>): Promise<void> {
   await seedFriends(page, SEEDED_FRIENDS);
+  if (before !== undefined) {
+    await gotoPuzzle(page, EASY.givens);
+    await before();
+  }
   await gotoPuzzle(page, NEARLY_DONE.givens, {
     challenge: { seconds: 90, name: 'Newcomer', playerId: 'n3wc0m3r42' },
   });
+  const whoSent = dialog(page, 'Who sent this?');
+  await expect(whoSent.getByRole('textbox', { name: 'Their name' })).toBeFocused();
+  await expect(whoSent.getByRole('textbox', { name: 'Their name' })).toHaveValue('Newcomer');
+  await expectAccessible(page, 'Who sent this?');
+  await whoSent.getByRole('button', { name: 'Skip' }).click();
   await expect(startButton(page)).toBeVisible();
-  await before?.();
   await openHeaderDialog(page, 'History');
   const open = dialog(page, 'History').getByRole('button', { name: 'Friends' });
   await expect(open).toBeVisible();
@@ -769,12 +780,16 @@ for (const { way, isChosen, media } of HIGH_CONTRAST_WAYS) {
       });
     });
 
-    test('History with Friends at its foot, and the friends list', async ({ page }) => {
+    test('Who sent this?, History with Friends at its foot, and the friends list', async ({
+      page,
+    }) => {
       await page.emulateMedia(media);
       await friendsList(page, async () => {
         if (isChosen) await chooseHighContrast(page);
         await expectHighContrast(page, isChosen);
       });
+      // The link opens as a page of its own: its scans were in High contrast too.
+      await expectHighContrast(page, isChosen);
     });
 
     test('watching a solve played back, from History', async ({ page }) => {
@@ -997,7 +1012,7 @@ test.describe('on a phone', () => {
   }
 
   for (const scheme of ['light', 'dark'] as const) {
-    test(`History's foot with Friends, and Friends as a bottom sheet, in the ${scheme} theme`, async ({
+    test(`Who sent this? and Friends as bottom sheets, and History's foot, in the ${scheme} theme`, async ({
       page,
     }) => {
       await page.emulateMedia({ colorScheme: scheme });

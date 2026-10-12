@@ -31,6 +31,7 @@ import {
   StruckDialog,
   TechniquesDialog,
   WalkthroughDialog,
+  WhoSentDialog,
 } from './dialogs';
 import { Header } from './Header';
 import { HintBar } from './HintBar';
@@ -70,6 +71,10 @@ function boardContent(sudoku: Sudoku): BoardContent {
       ? { kind: 'failed', difficulty, onRetry: actions.retry }
       : { kind: 'loading', difficulty, daily };
   }
+  // The first link from someone new asks who sent it before its card shows,
+  // so the card arrives already naming them (see WhoSentDialog) — and a rude
+  // name in the link is not there to read through the scrim meanwhile.
+  if (sudoku.dialog?.kind === 'whoSent') return { kind: 'veiled' };
   if (phase === 'ready') {
     const challenge = record?.challenge ?? null;
     return {
@@ -591,6 +596,13 @@ export function App({ options }: AppProps = {}) {
               requestBoardFocus();
               actions.playFirst();
             }}
+            onClose={actions.closeDialog}
+          />
+        )}
+        {dialog?.kind === 'whoSent' && (
+          <WhoSentDialog
+            sharer={dialog.sharer}
+            onSave={actions.answerWhoSent}
             onClose={actions.closeDialog}
           />
         )}

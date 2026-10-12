@@ -1384,6 +1384,24 @@
   font-size: 0.875rem;
 }
 
+/* "Who sent this?": the message, then the name field, a field's own 16px
+   apart; the body's padding is the space below, so the field keeps no
+   margin of its own. */
+.who-sent {
+  display: grid;
+  gap: 16px;
+}
+
+.who-sent .field {
+  margin: 0;
+}
+
+/* A name from a link with no spaces to break at wraps in the field's hint,
+   rather than pushing the sheet wider than the screen. */
+.who-sent .field__hint {
+  overflow-wrap: anywhere;
+}
+
 /* ---- Help: the way into the technique guide ---- */
 .help__guide {
   margin-top: 10px;

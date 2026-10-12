@@ -1,4 +1,4 @@
-import { expect, type Locator, type Page } from '@playwright/test';
+import { expect, type Browser, type Locator, type Page } from '@playwright/test';
 import {
   appendMove,
   createGame,
@@ -141,10 +141,16 @@ export function toSeconds(time: string): number {
   return time.split(':').reduce((total, part) => total * 60 + Number(part), 0);
 }
 
+/** "Who sent this?": what the first link from a player ID not in the friends list yet asks. */
+export const whoSentDialog = (page: Page): Locator =>
+  page.getByRole('dialog', { name: 'Who sent this?' });
+
 /**
  * Open a share link to `givens`. A puzzle new to this browser waits behind
  * its Ready card; this resolves once the card (or, for a puzzle already in
- * progress here, the paused card) is up.
+ * progress here, the paused card) is up — or, for the first link from a
+ * player ID new here, the question of who sent it, which comes before either
+ * (see `answerWhoSent`).
  *
  * Waits for the page to render: `goto` resolves on the load event, and React
  * paints in a task of its own after that, so for a moment the page is an
@@ -156,7 +162,47 @@ export async function gotoPuzzle(
   options: { challenge?: LinkChallenge } = {},
 ): Promise<void> {
   await page.goto(puzzleLink(givens, options.challenge));
-  await expect(boardArea(page).getByRole('heading').or(grid(page)).first()).toBeVisible();
+  await expect(
+    boardArea(page).getByRole('heading').or(grid(page)).or(whoSentDialog(page)).first(),
+  ).toBeVisible();
+}
+
+/**
+ * Answer "Who sent this?", asked of the first link from someone new before
+ * anything it opens, and wait for it to go. With no answer, Skip: they go by
+ * their links' names. With one, Save — `name` typed over the link's name
+ * first, if given; else the link's name as it came.
+ */
+export async function answerWhoSent(page: Page, answer?: { name?: string }): Promise<void> {
+  const dialog = whoSentDialog(page);
+  await expect(dialog).toBeVisible();
+  if (answer === undefined) {
+    await dialog.getByRole('button', { name: 'Skip' }).click();
+  } else {
+    if (answer.name !== undefined) {
+      await dialog.getByRole('textbox', { name: 'Their name' }).fill(answer.name);
+    }
+    await dialog.getByRole('button', { name: 'Save' }).click();
+  }
+  await expect(dialog).toBeHidden();
+}
+
+/**
+ * Run `body` in a fresh browser — no storage, no history, so another player
+ * ID — as a friend's would be, on a clock the test can move.
+ */
+export async function elsewhere(
+  browser: Browser,
+  body: (page: Page) => Promise<void>,
+): Promise<void> {
+  const context = await browser.newContext();
+  try {
+    const page = await context.newPage();
+    await page.clock.install();
+    await body(page);
+  } finally {
+    await context.close();
+  }
 }
 
 /** Open a share link and press Start: the puzzle is on screen with the clock running. */

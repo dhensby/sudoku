@@ -1359,6 +1359,68 @@ test.describe('a 320×568 phone with friends in History', () => {
 });
 
 /*
+ * "Who sent this?", asked of the first link from someone new: a bottom sheet
+ * upright, a card on its side. The longest right-to-left name a link can
+ * carry, with nowhere to break, fills its field and is quoted in the field's
+ * hint, where upright it wraps inside the sheet rather than scrolling it
+ * sideways. The field, Save, Skip and the close button are each a finger's
+ * 44px, the field's text 16px so that focusing it does not zoom the page;
+ * upright, Save and Skip share the sheet's foot, Save first.
+ */
+for (const viewport of [
+  { width: 320, height: 568 },
+  { width: 568, height: 320 },
+]) {
+  test.describe(`a ${viewport.width}×${viewport.height} phone opening a link from someone new`, () => {
+    test.use({ viewport });
+
+    test('keeps a long right-to-left name inside the question of who sent it, and every control a 44px touch target, with nothing to scroll sideways', async ({
+      page,
+    }) => {
+      await gotoPuzzle(page, NEARLY_DONE.givens, {
+        challenge: { seconds: 200, name: LONG_RTL_NAME, playerId: 'k3x9q7za2m' },
+      });
+      const prompt = page.getByRole('dialog', { name: 'Who sent this?' });
+      const field = prompt.getByRole('textbox', { name: 'Their name' });
+      await expect(field).toBeFocused();
+      await expect(field).toHaveValue(LONG_RTL_NAME);
+      await settle(page);
+      await expectOnScreen(page, prompt);
+      expect((await overflow(page)).x).toBe(0);
+      const body = prompt.locator('.dialog__body');
+      expect(await body.evaluate((el) => el.scrollWidth - el.clientWidth)).toBe(0);
+      const quoted = prompt.locator('.field__hint bdi');
+      await expect(quoted).toHaveText(LONG_RTL_NAME);
+      await expectInsideBody(prompt, quoted);
+      if (viewport.width === 320) {
+        // Upright, the name really does wrap: the line boxes its text sits on.
+        const lines = await quoted.evaluate((el) => {
+          const range = document.createRange();
+          range.selectNodeContents(el);
+          return new Set(Array.from(range.getClientRects(), (rect) => Math.round(rect.top))).size;
+        });
+        expect(lines).toBeGreaterThanOrEqual(2);
+        const [save, skip] = await Promise.all(
+          ['Save', 'Skip'].map(
+            async (name) => (await prompt.getByRole('button', { name }).boundingBox())!,
+          ),
+        );
+        expect(save.y).toBe(skip.y);
+        expect(save.x).toBeLessThan(skip.x);
+      }
+
+      for (const target of [field, ...(await prompt.getByRole('button').all())]) {
+        const size = (await target.boundingBox())!;
+        const label = (await target.getAttribute('aria-label')) ?? (await target.innerText());
+        expect(size.height, label).toBeGreaterThanOrEqual(44);
+        expect(size.width, label).toBeGreaterThanOrEqual(44);
+      }
+      expect(await field.evaluate((el) => parseFloat(getComputedStyle(el).fontSize))).toBe(16);
+    });
+  });
+}
+
+/*
  * The shortest phone on its side, an iPhone SE at 568×320: the game still
  * fits, controls and all. (A two-line hint, under the controls, is the one
  * thing that can need a little scroll at this size.)

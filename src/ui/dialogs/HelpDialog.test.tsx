@@ -188,6 +188,16 @@ describe('HelpDialog', () => {
     expect(actions.indexOf('Friends')).toBe(actions.indexOf('History, share, settings, help') + 1);
   });
 
+  it('says the first link from someone new asks who sent it, and what Skip leaves', () => {
+    render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={vi.fn()} />);
+    const section = screen.getByRole('heading', { name: 'Racing friends' }).closest('section')!;
+    expect(within(section).getByText(/^The first link from someone new/)).toHaveTextContent(
+      "The first link from someone new asks who sent it, with the name from their link filled in. Skip it, and they go by their links' names until you name them in Friends.",
+    );
+    // Product text, not an example: no sample name.
+    expect(section).not.toHaveTextContent(/Dan/);
+  });
+
   it('says links carry your mistakes, compared beside the help, and explains the dash', () => {
     render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={vi.fn()} />);
     expect(screen.getByText(/any help you took, your mistakes/)).toBeInTheDocument();

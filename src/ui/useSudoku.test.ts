@@ -59,6 +59,7 @@ import {
   SAVE_DELAY_MS,
   useSudoku,
   type CalendarView,
+  type SudokuActions,
   type UseSudokuOptions,
 } from './useSudoku';
 
@@ -269,6 +270,10 @@ describe('useSudoku', () => {
       const { result, storage } = await started({ search });
 
       expect(result.current.phase).toBe('ready');
+      // A first link from its sender asks who sent it first: skipped.
+      expect(result.current.dialog).toMatchObject({ kind: 'whoSent' });
+      act(() => result.current.actions.closeDialog());
+      expect(result.current.phase).toBe('ready');
       expect(result.current.record).toMatchObject({
         source: 'shared',
         givens: near.givens,
@@ -357,6 +362,9 @@ describe('useSudoku', () => {
           source: fakeSource(other),
           search: linkFor(PUZZLE.givens, { t: '323', n: 'Dan', u: 'k3x9q7za2m' }),
         });
+        // A first link from its sender asks who sent it first: skipped, the
+        // offer it held back comes next.
+        act(() => view.result.current.actions.closeDialog());
         return { ...view, other };
       }
 
@@ -2402,6 +2410,8 @@ describe('useSudoku', () => {
       const { puzzle, encoded } = shortSolve();
       const search = linkFor(puzzle.givens, { t: '9', n: 'Rude', u: ALLY, s: encoded });
       const { result, storage } = await started({ search });
+      // Who sent this? first: skipped.
+      act(() => result.current.actions.closeDialog());
       expect(result.current.friendSolve).toEqual({ name: 'Rude' });
 
       act(() => result.current.actions.renameFriend(ALLY, '  Dan '));
@@ -2430,6 +2440,8 @@ describe('useSudoku', () => {
 
     it('opens Friends from History and goes back to it, the game paused until History closes', async () => {
       const { result } = await started({ search: LINK });
+      // Who sent this? first: skipped.
+      act(() => result.current.actions.closeDialog());
       act(() => result.current.actions.resume());
       expect(result.current.phase).toBe('playing');
       act(() => result.current.actions.openDialog('history'));
@@ -2476,6 +2488,154 @@ describe('useSudoku', () => {
       act(() => result.current.actions.renameFriend(ALLY, 'Ally'));
       expect(loadFriends(storage).map((friend) => friend.name ?? null)).toEqual(['Ally', null]);
       expect(result.current.friends).toStrictEqual(loadFriends(storage));
+    });
+  });
+
+  describe('who sent this?', () => {
+    const ALLY = 'k3x9q7za2m';
+    const LINK = linkFor(PUZZLE.givens, { t: '323', n: 'Rude', u: ALLY });
+    const SHARER = { id: ALLY, sentAs: 'Rude', at: NOW, isNew: true };
+    const TODAY = '2026-10-12';
+
+    it('asks of the first link from someone new before its card, the clock stopped and the sender noted', async () => {
+      const { result, storage } = await started({ search: LINK });
+      expect(result.current.dialog).toEqual({ kind: 'whoSent', sharer: SHARER, offer: null });
+      expect(result.current.phase).toBe('ready');
+      // Noted already, unnamed: closing the tab now is the same as Skip.
+      expect(loadFriends(storage)).toStrictEqual([
+        { devices: [{ id: ALLY, sentAs: 'Rude', lastAt: NOW }] },
+      ]);
+      advance(10_000);
+      expect(result.current.elapsedMs).toBe(0);
+    });
+
+    it('names them as saved, tidied, then goes on to the card, its clock still stopped', async () => {
+      const { result, storage } = await started({ search: LINK });
+      act(() => result.current.actions.answerWhoSent({ kind: 'name', name: '  Ally ' }));
+      expect(result.current.dialog).toBeNull();
+      expect(result.current.phase).toBe('ready');
+      expect(loadFriends(storage)).toStrictEqual([
+        { name: 'Ally', devices: [{ id: ALLY, sentAs: 'Rude', lastAt: NOW }] },
+      ]);
+      expect(result.current.friends).toStrictEqual(loadFriends(storage));
+      expect(result.current.friendIndex.get(ALLY)?.name).toBe('Ally');
+      // The race keeps the name its link gave: the one given is drawn in its place.
+      expect(result.current.record?.challenge?.name).toBe('Rude');
+      advance(10_000);
+      expect(result.current.elapsedMs).toBe(0);
+    });
+
+    it.each([
+      [
+        'saved empty',
+        (actions: SudokuActions) => actions.answerWhoSent({ kind: 'name', name: '' }),
+      ],
+      ['skipped', (actions: SudokuActions) => actions.closeDialog()],
+    ])(
+      'stores nothing more when %s: they go by their links, and are never asked again',
+      async (_, answer) => {
+        const { result, storage, unmount } = await started({ search: LINK });
+        const set = vi.spyOn(storage, 'setItem');
+        act(() => answer(result.current.actions));
+        expect(result.current.dialog).toBeNull();
+        expect(result.current.phase).toBe('ready');
+        expect(set.mock.calls.filter(([key]) => key === 'sudoku.friends')).toEqual([]);
+        expect(result.current.friends).toStrictEqual([
+          { devices: [{ id: ALLY, sentAs: 'Rude', lastAt: NOW }] },
+        ]);
+        unmount();
+
+        // Their next link, whatever it calls them, asks nothing.
+        const next = setup({
+          storage,
+          search: linkFor(PUZZLE.givens, { t: '200', n: 'Ruder', u: ALLY }),
+        });
+        expect(next.result.current.dialog).toBeNull();
+      },
+    );
+
+    it('holds back the offer to play a solved puzzle again, which follows it, the game behind still held', async () => {
+      const storage = memoryStorage();
+      upsertRecord(storage, solvedRecord(PUZZLE, 290_000));
+      const other = nearlySolved([4, 5, 6]);
+      const { result } = await started({ storage, source: fakeSource(other), search: LINK });
+      expect(result.current.dialog).toMatchObject({
+        kind: 'whoSent',
+        sharer: SHARER,
+        offer: {
+          previous: { id: 'old-0001' },
+          challenge: { name: 'Rude', seconds: 323, playerId: ALLY },
+        },
+      });
+      expect(result.current.pauseReason).toBe('dialog');
+      const { offer } = result.current.dialog as { offer: unknown };
+
+      act(() => result.current.actions.answerWhoSent({ kind: 'name', name: 'Ally' }));
+      expect(result.current.dialog).toEqual({ kind: 'challenge', offer });
+      expect(result.current.friends[0].name).toBe('Ally');
+      // Still behind a dialog: the game made behind it waits on.
+      expect(result.current.pauseReason).toBe('dialog');
+      act(() => result.current.actions.closeDialog());
+      expect(result.current.dialog).toBeNull();
+      expect(result.current.phase).toBe('playing');
+      expect(result.current.record?.givens).toBe(other.givens);
+    });
+
+    it('goes on to the offer it held back when skipped, too', async () => {
+      const storage = memoryStorage();
+      upsertRecord(storage, solvedRecord(PUZZLE, 290_000));
+      const { result } = await started({ storage, search: LINK });
+      act(() => result.current.actions.closeDialog());
+      expect(result.current.dialog).toMatchObject({
+        kind: 'challenge',
+        offer: { challenge: { name: 'Rude', playerId: ALLY } },
+      });
+      act(() => result.current.actions.playAgain());
+      expect(result.current.record).toMatchObject({
+        source: 'replay',
+        challenge: { name: 'Rude', playerId: ALLY },
+      });
+    });
+
+    it('reopens an unfinished attempt paused behind it, still paused once answered', async () => {
+      const storage = memoryStorage();
+      const first = await started({ storage });
+      enter(first.result, FIRST_EMPTY, answerAt(FIRST_EMPTY));
+      act(() => first.result.current.actions.pause());
+      const id = first.result.current.record?.id;
+      first.unmount();
+
+      const { result } = setup({ storage, search: LINK });
+      expect(result.current.record?.id).toBe(id);
+      expect(result.current.dialog).toEqual({ kind: 'whoSent', sharer: SHARER, offer: null });
+      expect(result.current.phase).toBe('paused');
+      act(() => result.current.actions.answerWhoSent({ kind: 'name', name: 'Ally' }));
+      expect(result.current.dialog).toBeNull();
+      expect(result.current.phase).toBe('paused');
+      expect(result.current.pauseReason).not.toBe('dialog');
+    });
+
+    it('names the daily in the offer it holds back, once the date checks out meanwhile', async () => {
+      const storage = memoryStorage();
+      upsertRecord(storage, solvedRecord(PUZZLE, 290_000));
+      const dailies = fakeDailies({ puzzles: { [`${TODAY}/hard`]: PUZZLE } });
+      const { result } = setup({ storage, dailies, search: `${LINK}&d=${TODAY}` });
+      // Not a daily until the date checks out, which it does as the question waits.
+      expect(result.current.dialog).toMatchObject({ kind: 'whoSent' });
+      expect(result.current.dialog).not.toHaveProperty('offer.daily');
+      await settle();
+      expect(result.current.dialog).toMatchObject({
+        kind: 'whoSent',
+        sharer: SHARER,
+        offer: { daily: TODAY, puzzle: { difficulty: 'hard' } },
+      });
+      act(() => result.current.actions.closeDialog());
+      expect(result.current.dialog).toMatchObject({
+        kind: 'challenge',
+        offer: { daily: TODAY, puzzle: { difficulty: 'hard' } },
+      });
+      act(() => result.current.actions.playAgain());
+      expect(result.current.record).toMatchObject({ source: 'replay', daily: TODAY });
     });
   });
 
@@ -3906,6 +4066,22 @@ describe('useSudoku', () => {
       const record = result.current.record;
       act(() => result.current.actions.playAgain());
       expect(result.current.record).toBe(record);
+    });
+
+    it('ignores an answer to Who sent this? with no question open', async () => {
+      const storage = memoryStorage();
+      const ALLY = 'k3x9q7za2m';
+      updateFriends(storage, (friends) => meetDevice(friends, { id: ALLY, sentAs: 'Al', at: 1 }));
+      // A friend heard from before: nothing to ask.
+      const { result } = await started({
+        storage,
+        search: linkFor(PUZZLE.givens, { t: '323', n: 'Rude', u: ALLY }),
+      });
+      expect(result.current.dialog).toBeNull();
+      const friends = result.current.friends;
+      act(() => result.current.actions.answerWhoSent({ kind: 'name', name: 'Bob' }));
+      expect(result.current.friends).toBe(friends);
+      expect(loadFriends(storage)[0]).not.toHaveProperty('name');
     });
 
     it('plays a linked puzzle again before any other game has arrived', async () => {

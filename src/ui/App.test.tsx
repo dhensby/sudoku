@@ -1017,6 +1017,12 @@ describe('App', () => {
       return storage;
     }
 
+    /** Skip "Who sent this?", which a first link from ALLY asks before its card. */
+    async function skipWhoSent(): Promise<void> {
+      const prompt = await screen.findByRole('dialog', { name: 'Who sent this?' });
+      fireEvent.click(within(prompt).getByRole('button', { name: 'Skip' }));
+    }
+
     /** Fill in the shared puzzle's three blanks from the keyboard. */
     function solveShared(): void {
       for (const index of [0, 40, 80]) {
@@ -1130,6 +1136,7 @@ describe('App', () => {
 
     it('renames a friend from History, every race of theirs following, focus back on Friends', async () => {
       const { storage } = renderApp({ search });
+      await skipWhoSent();
       await screen.findByRole('heading', { name: 'Ready?' });
       // Noted as the link opened, by the name it gave.
       expect(loadFriends(storage)).toEqual([
@@ -1165,6 +1172,7 @@ describe('App', () => {
 
     it('names the head-to-head a solve brings by a name given since its link was opened', async () => {
       renderApp({ search });
+      await skipWhoSent();
       await screen.findByRole('heading', { name: 'Ready?' });
       fireEvent.click(within(screen.getByRole('main')).getByRole('button', { name: 'Start' }));
       await screen.findByRole('grid');
@@ -1182,6 +1190,216 @@ describe('App', () => {
         /^You were 0:0\d faster than Bob!$/,
       );
       expect(within(solved).getByRole('button', { name: "Watch Bob's solve" })).toBeInTheDocument();
+    });
+
+    describe('who sent this?', () => {
+      const prompt = () => screen.getByRole('dialog', { name: 'Who sent this?' });
+      const field = () => within(prompt()).getByRole('textbox', { name: 'Their name' });
+      /** One of the card's own buttons — the header's timer is named Start or Resume too. */
+      const cardButton = (name: string) =>
+        within(document.querySelector<HTMLElement>('.board-overlay')!).getByRole('button', {
+          name,
+        });
+
+      /**
+       * Wait for the question, its field focused: by then its Escape is heard
+       * too, listened for from the same mount as the focus is given.
+       */
+      async function asked(): Promise<void> {
+        await screen.findByRole('dialog', { name: 'Who sent this?' });
+        await waitFor(() => expect(field()).toHaveFocus());
+      }
+
+      /** A solve of the shared puzzle, a day ago in a minute: the link's 0:09 is faster. */
+      function solvedBefore(storage: StorageLike): void {
+        upsertRecord(storage, {
+          id: 'mbx3k2f0-done',
+          givens: puzzle.givens,
+          difficulty: puzzle.difficulty,
+          source: 'generated',
+          createdAt: Date.now() - 86_400_000,
+          updatedAt: Date.now() - 86_400_000,
+          completedAt: Date.now() - 86_400_000,
+          status: 'solved',
+          elapsedMs: 60_000,
+          assists: { autoCandidates: false, hints: 0, checks: 0, reveals: 0 },
+          challenge: null,
+        });
+      }
+
+      it('asks of the first link from someone new before its card, the board’s place blank and the clock stopped', async () => {
+        let played = 1_000_000;
+        const { storage } = renderApp({ search, clock: () => played });
+        await asked();
+        expect(field()).toHaveValue('Rude');
+        // Nothing behind it: no card yet, and no name from the link to read through the scrim.
+        expect(screen.queryByRole('heading', { name: 'Ready?' })).toBeNull();
+        expect(document.querySelector('.board-overlay--veiled')).toBeInTheDocument();
+        expect(screen.getByRole('main')).not.toHaveTextContent(/Rude/);
+        // Noted as it opened, unnamed.
+        expect(loadFriends(storage)).toEqual([
+          { devices: [{ id: ALLY, sentAs: 'Rude', lastAt: expect.any(Number) }] },
+        ]);
+
+        // Ten seconds asking, and a P and a digit typed: the field's, not the game's.
+        played += 10_000;
+        expect(press('p', {}, field())).toBe(true);
+        expect(press('5', {}, field())).toBe(true);
+        fireEvent.change(field(), { target: { value: '  Ally ' } });
+        fireEvent.keyDown(field(), { key: 'Enter' });
+
+        expect(screen.queryByRole('dialog')).toBeNull();
+        expect(document.querySelector('.board-overlay__text')).toHaveTextContent(
+          'Ally solved this Easy puzzle in 0:09. Can you beat it?',
+        );
+        expect(cardButton("Watch Ally's solve")).toBeInTheDocument();
+        await waitFor(() => expect(cardButton('Start')).toHaveFocus());
+        // Never started: the timer waits on Start, at nothing.
+        expect(
+          within(screen.getByRole('banner')).getByRole('button', { name: 'Start' }),
+        ).toBeInTheDocument();
+        expect(document.querySelector('.timer__time')).toHaveTextContent('0:00');
+        expect(loadFriends(storage)[0].name).toBe('Ally');
+      });
+
+      it.each([
+        ['Skip', () => fireEvent.click(within(prompt()).getByRole('button', { name: 'Skip' }))],
+        ['Escape', () => fireEvent.keyDown(field(), { key: 'Escape' })],
+      ])(
+        'goes by the link’s name once skipped with %s, the sender noted all the same',
+        async (_, skip) => {
+          const { storage } = renderApp({ search });
+          await asked();
+          skip();
+          expect(screen.queryByRole('dialog')).toBeNull();
+          expect(document.querySelector('.board-overlay__text')).toHaveTextContent(
+            'Rude solved this Easy puzzle in 0:09. Can you beat it?',
+          );
+          await waitFor(() => expect(cardButton('Start')).toHaveFocus());
+          expect(loadFriends(storage)).toEqual([
+            { devices: [{ id: ALLY, sentAs: 'Rude', lastAt: expect.any(Number) }] },
+          ]);
+        },
+      );
+
+      it('asks nothing of a later link from the same sender, whatever it calls them', async () => {
+        const first = renderApp({ search });
+        await asked();
+        fireEvent.click(within(prompt()).getByRole('button', { name: 'Skip' }));
+        first.unmount();
+
+        const near = nearlySolved([0, 1, 2]);
+        renderApp({
+          storage: first.storage,
+          search: linkFor(near.givens, { t: '200', n: 'Ruder', u: ALLY }),
+        });
+        await screen.findByRole('heading', { name: 'Ready?' });
+        expect(screen.queryByRole('dialog')).toBeNull();
+        expect(document.querySelector('.board-overlay__text')).toHaveTextContent(
+          'Ruder solved this Easy puzzle in 3:20. Can you beat it?',
+        );
+      });
+
+      it.each([
+        [
+          'a link without an ID',
+          () => memoryStorage(),
+          linkFor(puzzle.givens, { t: '9', n: 'Rude' }),
+        ],
+        [
+          "this browser's own link",
+          () => {
+            const storage = memoryStorage();
+            storage.setItem('sudoku.prefs', JSON.stringify({ playerId: ALLY }));
+            return storage;
+          },
+          search,
+        ],
+        ['a broken link', () => memoryStorage(), `?p=!!!&t=9&n=Rude&u=${ALLY}`],
+        [
+          'a link from someone heard from before, still unnamed',
+          () => {
+            const storage = memoryStorage();
+            updateFriends(storage, (friends) =>
+              meetDevice(friends, { id: ALLY, sentAs: 'Al', at: 1 }),
+            );
+            return storage;
+          },
+          search,
+        ],
+      ])('asks nothing of %s', async (_, storage, link) => {
+        renderApp({ storage: storage(), search: link });
+        await settle();
+        expect(screen.queryByRole('dialog')).toBeNull();
+        expect(document.querySelector('.board-overlay--veiled')).toBeNull();
+      });
+
+      it('holds back the offer to play a puzzle solved already, which follows it under the name given', async () => {
+        const storage = memoryStorage();
+        solvedBefore(storage);
+        renderApp({ storage, search });
+        await asked();
+        expect(screen.queryByRole('dialog', { name: "You've solved this one" })).toBeNull();
+        fireEvent.change(field(), { target: { value: 'Ally' } });
+        fireEvent.click(within(prompt()).getByRole('button', { name: 'Save' }));
+
+        const offer = screen.getByRole('dialog', { name: "You've solved this one" });
+        expect(within(offer).getAllByRole('columnheader')[1]).toHaveTextContent('Ally');
+        expect(offer.querySelector('.comparison__verdict')).toHaveTextContent(
+          'Ally was 0:51 faster.',
+        );
+        expect(offer).not.toHaveTextContent(/Rude/);
+        await waitFor(() =>
+          expect(within(offer).getByRole('button', { name: 'Play again' })).toHaveFocus(),
+        );
+      });
+
+      it('reopens an unfinished attempt behind it, paused, on Resume once skipped', async () => {
+        const storage = memoryStorage();
+        const first = await startApp({ storage, source: fakeSource(puzzle) });
+        fireEvent.click(cells()[0]);
+        press(String(answerAt(0, puzzle)));
+        fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
+        first.unmount();
+
+        renderApp({ storage, search });
+        await asked();
+        expect(screen.queryByRole('heading', { name: 'Paused' })).toBeNull();
+        fireEvent.click(within(prompt()).getByRole('button', { name: 'Skip' }));
+        expect(screen.getByRole('heading', { name: 'Paused' })).toBeInTheDocument();
+        await waitFor(() => expect(cardButton('Resume')).toHaveFocus());
+        // Still paused: the board stays hidden until Resume.
+        expect(screen.queryByRole('grid')).toBeNull();
+      });
+
+      it('says, under the board, when a newer version recorded the solve', async () => {
+        renderApp({
+          search: linkFor(puzzle.givens, { t: '9', n: 'Rude', u: ALLY, s: 'zAAAAAAAA' }),
+        });
+        await asked();
+        expect(
+          screen.getByText('This solve needs a newer version of the game to watch.', {
+            selector: '.hint-bar span',
+          }),
+        ).toBeInTheDocument();
+      });
+
+      it('names the daily in the offer it holds back, its date checked meanwhile', async () => {
+        const NOON = new Date(2026, 9, 13, 12).getTime();
+        const TODAY = '2026-10-13';
+        const now = () => NOON;
+        const storage = memoryStorage();
+        solvedBefore(storage);
+        const dailies = fakeDailies({ now, held: true, puzzles: { [`${TODAY}/hard`]: puzzle } });
+        renderApp({ storage, now, dailies, search: `${search}&d=${TODAY}` });
+        await asked();
+        // The date checks out while the question waits.
+        dailies.release();
+        await settle();
+        fireEvent.click(within(prompt()).getByRole('button', { name: 'Skip' }));
+        const offer = screen.getByRole('dialog', { name: "You've solved this one" });
+        expect(offer).toHaveTextContent(/You solved the Hard daily for 13 Oct/);
+      });
     });
   });
 

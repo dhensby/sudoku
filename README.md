@@ -63,7 +63,8 @@ your browser.
   The link also carries a random ID for your browser, so your friend's game can tell your times
   apart from anyone else's, whatever name they come with. [Friends](#friends), at the foot of
   History, lists everyone who has sent you a time: the name you give someone replaces whatever
-  their links call them, on every race of theirs.
+  their links call them, on every race of theirs. The first link from someone new asks who sent
+  it.
 - **History and stats** — every game you play is kept: resume unfinished ones, play a solved
   puzzle again, [watch your solve](#watch-your-solve) of it, share it, or delete it. A game you only glanced at — nothing entered, no help
   taken — is dropped when you move on to another, so browsing the levels doesn't clutter the list
@@ -809,6 +810,10 @@ the game — there is no server and nothing is uploaded.
 
 Opening a link:
 
+- **A link from someone new** — an ID not in [Friends](#friends) yet — first asks _Who sent this?_,
+  the board's place blank and the clock stopped, before any of the below. Save names them (the
+  link's name is filled in), Skip goes by their links' names. A link without an ID, or from your own
+  browser, never asks.
 - **A puzzle you haven't played** opens behind a "Ready?" card showing the time to beat, and the
   clock only starts when you press **Start** — so both of you start the same way. Until you do, a
   reload or a second click on the link brings the same card back.
@@ -871,6 +876,18 @@ which shows again if you clear the name you gave (save it empty). Saving the nam
 keeps it too, whatever their later links call themselves. A race from before player IDs keeps its
 link's name for good, and so does a race of a device whose links came in before Friends existed,
 until its next link notes it. Other tabs pick a new name up as History or Friends next opens.
+
+The first link from an ID the list does not hold yet asks **Who sent this?** before anything the
+link opens — its Ready card, the game you were part-way through or the offer to play a solved
+puzzle again, each coming once it is answered — the board's place left blank meanwhile, so a rude
+name in the link is not on show behind it, and the clock never running. (Races already in History
+with that ID, imported ones, say, do not count: only the list does.) Its field holds the link's
+name, focused and selected: type over it, or keep it, and **Save** (or Enter) names them, just as
+**Rename** in Friends would — saving the link's own name keeps it whatever their later links say.
+Saved empty, or skipped (**Skip**, Escape, the close button or a tap outside), they go by their
+links' names until you name them in Friends. Either way they were noted as the link opened, so the
+question is never asked of them again — closing the tab before answering is the same as Skip. A
+link without an ID, from your own browser, or from anyone already in the list never asks.
 
 The list keeps up to 200 devices (some 41,000 characters at most, every name at its longest). Past
 that, the device heard from longest ago is forgotten — with the name you gave its friend, if it
@@ -1035,9 +1052,11 @@ of the logs here were shed, none of the file's logs are taken.
   comparing two solves between browsers (opened from the Solved dialog and from History, the
   cursor moved by keys and by a press, the readout and the board following it, focus back on
   Compare solves, and fitting a 320px phone and a phone on its side, opened at the top and, on its
-  side, the chart and the board both in view), friends (a sharer named in the list, kept
-  through a reload and a later link calling itself something else — every race, the head-to-head
-  and History following),
+  side, the chart and the board both in view), friends (a sharer named in the list, then at the
+  prompt, kept through a reload and a later link calling itself something else — every race, the
+  head-to-head and History following — the prompt's field typed over and Enter, then Enter again
+  starting the race, and a real sharer's two links carrying the one ID the prompt fills its name
+  from),
   watching a solve with a mistake played back from the Solved dialog and from History (stepped,
   scrubbed and played at 8× on Playwright's clock, its mistake marked and captioned, focus back on
   Watch as it closes, and fitting a 320px phone and a phone on its side) and the phone layout from
@@ -1049,17 +1068,17 @@ of the logs here were shed, none of the file's logs are taken.
   never clipped, measured to the sub-pixel — and help taken giving way to its counts and then its
   total, never cut, beside a counter with a candidate mistake; with neither shown, the board as
   large as with the setting off; help taken alone above a 375×667 phone's controls, and on a
-  320×568 phone beside a hint that keeps to two lines; Friends upright and on its side, a long
-  right-to-left name kept inside its rows and every control 44px, and History's foot giving Friends
-  a row of its own at 320px; and a desktop's header with a daily Medium and help at its widest). Help taken stays on show through a pause, its count the only one the
+  320×568 phone beside a hint that keeps to two lines; Friends and _Who sent this?_ upright and on
+  their sides, a long right-to-left name kept inside Friends' rows and the prompt's hint, every
+  control 44px, and History's foot giving Friends a row of its own at 320px; and a desktop's header with a daily Medium and help at its widest). Help taken stays on show through a pause, its count the only one the
   hidden board leaves beside the timer's. An accessibility pass (`a11y.spec.ts`) runs axe-core's WCAG 2.2 A and AA rules over the main states — the board with
   every kind of mark, the error counter and help taken in both their places, the Ready and Paused
   cards, the menus (the "…" menu's "Hint (1 used)" among them),
   every dialog (Show me's, the daily calendar's, a solve played back, the warning before watching
   a friend's solve, two solves compared, Share with the solve included, History with Friends at
-  its foot, and Friends with a name being changed among them), each guide entry and a step hint's
-  tinted houses — in both themes, and the board (its tint included), the dialogs, the menus and
-  the calendar in High contrast, both chosen in
+  its foot, Friends with a name being changed, and _Who sent this?_ among them), each guide entry
+  and a step hint's tinted houses — in both themes, and the board (its tint included), the
+  dialogs, the menus and the calendar in High contrast, both chosen in
   Settings on a dark device and from a dark system asking for more contrast, measuring its heavier
   lines and its same-number ring kept off the digits — and allows no violations. Three projects:
 
