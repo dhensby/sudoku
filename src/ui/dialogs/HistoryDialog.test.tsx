@@ -705,4 +705,77 @@ describe('HistoryDialog', () => {
       expect(new Set(canWatch.mock.calls.map(([entry]) => entry.id)).size).toBe(150);
     });
   });
+  describe("a solve after watching one, and the friend's solve", () => {
+    const watchedSolve = record('seen', {
+      createdAt: at(12, 14, 5),
+      status: 'solved',
+      completedAt: at(12, 14, 11),
+      elapsedMs: 120_000,
+      watched: true,
+      mistakes: { values: 1, candidates: 0, atMs: 120_000 },
+      challenge: { name: 'Dan', seconds: 323, assists: NONE, log: 'BBA' },
+    });
+
+    it('says a solve after watching one was solved, with no time — its mistakes still shown', () => {
+      renderHistory({ records: [watchedSolve], currentId: null });
+      expect(within(rows()[0]).getByText(/^Solved after watching a solve/)).toHaveTextContent(
+        'Solved after watching a solve · 1 mistake',
+      );
+      expect(rows()[0]).not.toHaveTextContent('2:00');
+      // The friend's time is still theirs.
+      expect(rows()[0]).toHaveTextContent('vs Dan 5:23');
+    });
+
+    it('says an unfinished attempt flagged as watched is in progress, as any other', () => {
+      renderHistory({ records: [record('open', { watched: true })], currentId: null });
+      expect(rows()[0]).toHaveTextContent('In progress · 2:10');
+    });
+
+    it("offers the friend's solve on the rows it is told can show it, by name, and nowhere by default", () => {
+      const { unmount } = renderHistory({ records: [watchedSolve], currentId: null });
+      expect(screen.queryByRole('button', { name: /Dan's solve/ })).toBeNull();
+      unmount();
+      const onWatchChallenge = vi.fn();
+      renderHistory({
+        records: [watchedSolve],
+        currentId: null,
+        canWatchChallenge: (entry) => entry.id === 'seen',
+        onWatchChallenge,
+      });
+      const watch = screen.getByRole('button', {
+        name: "Watch Dan's solve, Hard puzzle from Today 14:05",
+      });
+      expect(watch).toHaveTextContent("Watch Dan's solve");
+      expect(watch.querySelector('bdi')).toHaveTextContent('Dan');
+      fireEvent.click(watch);
+      expect(onWatchChallenge).toHaveBeenCalledWith('seen', {
+        filter: 'all',
+        limit: 100,
+        id: 'seen',
+        solve: 'friend',
+      });
+    });
+
+    it('names a friend whose link gave no name as your friend', () => {
+      renderHistory({
+        records: [{ ...watchedSolve, challenge: { ...watchedSolve.challenge!, name: null } }],
+        currentId: null,
+        canWatchChallenge: () => true,
+      });
+      expect(
+        screen.getByRole('button', { name: /^Watch your friend's solve, / }),
+      ).toHaveTextContent("Watch your friend's solve");
+    });
+
+    it("comes back with focus on the friend's Watch, not the row's own", () => {
+      renderHistory({
+        records: [watchedSolve],
+        currentId: null,
+        canWatch: () => true,
+        canWatchChallenge: () => true,
+        place: { filter: 'all', limit: 100, id: 'seen', solve: 'friend' },
+      });
+      expect(screen.getByRole('button', { name: /^Watch Dan's solve/ })).toHaveFocus();
+    });
+  });
 });

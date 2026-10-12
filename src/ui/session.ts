@@ -6,6 +6,7 @@ import {
   createGame,
   createMoveLog,
   dateKeyOf,
+  encodeMoveLog,
   deserialiseGame,
   elapsedMs,
   gridValues,
@@ -15,6 +16,7 @@ import {
   rate,
   reduce,
   serialiseGame,
+  sharedSolveRefusal,
   startClock,
   tallyMistakes,
   toSeconds,
@@ -33,7 +35,9 @@ import {
 import {
   createGameId,
   findAttempts,
+  hasRecordedTime,
   hasSeen,
+  hasWatched,
   loadCurrentId,
   loadGameBlob,
   loadHistory,
@@ -155,7 +159,9 @@ export type SessionStart =
 /**
  * What a share link or history entry offers to share: a puzzle, and a time to
  * beat once solved — unless the solve was a replay, whose time was set on a
- * board seen before and is no fair one to race.
+ * board seen before and is no fair one to race, or a solve after watching a
+ * friend's, which has no time at all — and with the time, the solve itself,
+ * for the sharer to include if they choose.
  */
 export interface ShareTarget {
   givens: GridString;
@@ -168,6 +174,13 @@ export interface ShareTarget {
   result: { seconds: number; assists: Assists; mistakes: MistakeTally | null } | null;
   /** The date of the daily the puzzle is, if it was played as one: the link and message name it. */
   daily: DateKey | null;
+  /**
+   * The solve that goes with the result, as its encoded move log, which the
+   * sharer may put in the link for a friend to watch: only one this build
+   * plays back to the solve at the result's time (see `sharedSolveRefusal`),
+   * and null without a result, or without such a log.
+   */
+  solve: string | null;
 }
 
 /**
@@ -216,6 +229,12 @@ export interface Startup {
   left: Session | null;
   /** A link's claim to be a daily, for the hook to check once mounted; null without one. */
   dailyHint: DailyHint | null;
+  /**
+   * The link carried a solve that a newer version of the game recorded, which
+   * this one cannot play back: the player is told, rather than left
+   * wondering why there is nothing to watch.
+   */
+  isSolveTooNew: boolean;
 }
 
 /** The phase a session is in. `isGenerating` wins: a new puzzle is on its way. */
@@ -255,6 +274,7 @@ export function createRecord(
   assists: Assists,
   daily?: DateKey,
   isStarted = true,
+  isWatched = false,
 ): GameRecord {
   return {
     id: createGameId(now),
@@ -271,6 +291,7 @@ export function createRecord(
     // Left off for every other game, as the history stores it (see `GameRecord.daily`).
     ...(daily === undefined ? {} : { daily }),
     ...(daily !== undefined && isStarted ? { startedOn: dateKeyOf(now) } : {}),
+    ...(isWatched ? { watched: true as const } : {}),
   };
 }
 
@@ -295,9 +316,25 @@ export function newSession(
     start: SessionStart;
     /** The date of the daily this is an attempt at, if it is one; `puzzle` carries its tier. */
     daily?: DateKey;
+    /**
+     * A shared solve of the puzzle was watched before the player solved it
+     * (see `hasWatched`): this attempt is recorded without a time. The
+     * history flags it as it is written anyway; this has the game on screen
+     * know it from the start.
+     */
+    isWatched?: boolean;
   },
 ): Session {
-  const { source, challenge, now, autoCandidates, checkGuesses = false, start, daily } = options;
+  const {
+    source,
+    challenge,
+    now,
+    autoCandidates,
+    checkGuesses = false,
+    start,
+    daily,
+    isWatched = false,
+  } = options;
   const game = createGame(puzzle, { autoCandidates });
   const session: Session = {
     record: createRecord(
@@ -308,6 +345,7 @@ export function newSession(
       game.assists,
       daily,
       start === 'running',
+      isWatched,
     ),
     game,
     clock: start === 'running' ? startClock(STOPPED_CLOCK, now.clock) : STOPPED_CLOCK,
@@ -670,9 +708,22 @@ export function puzzleOf(record: GameRecord): Puzzle | null {
 }
 
 /**
+ * The solve that may go in a link with a result of `seconds`: the encoded log,
+ * if it plays back to the solve of `givens` at that time — what the friend
+ * who opens the link will check it against (see `sharedSolveRefusal`), so a
+ * solve is never sent that would be ignored — else null.
+ */
+function sharedSolveOf(givens: GridString, encoded: string | null, seconds: number): string | null {
+  if (encoded === null) return null;
+  // As the link will carry the time (see `buildShareUrl`).
+  return sharedSolveRefusal(givens, encoded, Math.max(1, seconds)) === null ? encoded : null;
+}
+
+/**
  * What sharing the game on screen shares: the puzzle, plus the time once it
- * is solved — unless it was a replay, which shares the puzzle alone (see
- * `ShareTarget`).
+ * is solved — unless it was a replay, or solved after watching a shared
+ * solve, which share the puzzle alone (see `ShareTarget`) — and its solve,
+ * from its own log, for the player to include if they like.
  *
  * Its mistakes are the record's as saving it would leave it (see
  * `recordOf`): the session's own record is not kept up with them between
@@ -680,14 +731,16 @@ export function puzzleOf(record: GameRecord): Puzzle | null {
  * solve and this one agree.
  */
 export function shareTargetOf(session: Session): ShareTarget {
-  const { game, record, clock } = session;
-  const isRaceable = game.status === 'solved' && record.source !== 'replay';
+  const { game, record, clock, moves } = session;
+  const isRaceable =
+    game.status === 'solved' && record.source !== 'replay' && record.watched !== true;
+  const seconds = toSeconds(clock.bankedMs);
   return {
     givens: record.givens,
     difficulty: record.difficulty,
     result: isRaceable
       ? {
-          seconds: toSeconds(clock.bankedMs),
+          seconds,
           assists: { ...game.assists },
           mistakes: recordedMistakes(
             recordAt(session, Math.floor(clock.bankedMs), record.updatedAt),
@@ -695,27 +748,33 @@ export function shareTargetOf(session: Session): ShareTarget {
         }
       : null,
     daily: record.daily ?? null,
+    solve:
+      isRaceable && moves !== null
+        ? sharedSolveOf(record.givens, encodeMoveLog(moves), seconds)
+        : null,
   };
 }
 
 /**
  * What sharing a history entry shares, by the same rules — its mistakes as
  * `recordedMistakes` reads them, so only a count stamped at the solve goes in
- * a link.
+ * a link — with its solve from `encoded`, its stored log, if it has one.
  */
-export function shareTargetOfRecord(record: GameRecord): ShareTarget {
+export function shareTargetOfRecord(record: GameRecord, encoded: string | null): ShareTarget {
+  const isRaceable = hasRecordedTime(record) && record.source !== 'replay';
+  const seconds = toSeconds(record.elapsedMs);
   return {
     givens: record.givens,
     difficulty: record.difficulty,
-    result:
-      record.status === 'solved' && record.source !== 'replay'
-        ? {
-            seconds: toSeconds(record.elapsedMs),
-            assists: { ...record.assists },
-            mistakes: recordedMistakes(record),
-          }
-        : null,
+    result: isRaceable
+      ? {
+          seconds,
+          assists: { ...record.assists },
+          mistakes: recordedMistakes(record),
+        }
+      : null,
     daily: record.daily ?? null,
+    solve: isRaceable ? sharedSolveOf(record.givens, encoded, seconds) : null,
   };
 }
 
@@ -743,6 +802,12 @@ export function shareTargetOfRecord(record: GameRecord): ShareTarget {
  *
  * A link's daily date (`&d=`) is passed on as a hint for the hook to check
  * (`dailyHint`): until it has, the puzzle is opened as any shared puzzle is.
+ *
+ * A link's solve (`&s=`) goes with its challenge only if it plays back to the
+ * solve of this puzzle at the time the link claims (see
+ * `sharedSolveRefusal`). Any other is dropped without a word — the link
+ * opens as it would have without it — but for one a newer version recorded,
+ * which `isSolveTooNew` has the player told of.
  */
 export function planStartup(
   storage: StorageLike,
@@ -763,6 +828,7 @@ export function planStartup(
     isNewCurrent: false,
     left: null,
     dailyHint: null,
+    isSolveTooNew: false,
   };
 
   const link = readSharedLink(search);
@@ -776,12 +842,20 @@ export function planStartup(
     solution: check.solution,
     difficulty: rate(gridValues(link.givens)),
   };
+  // `readSharedLink` only reads a solve alongside a challenge.
+  const refusal =
+    link.solve === null
+      ? 'none'
+      : sharedSolveRefusal(puzzle.givens, link.solve, link.challenge!.seconds);
+  const challenge: Challenge | null =
+    refusal === null ? { ...link.challenge!, log: link.solve! } : link.challenge;
   const linked: Startup = {
     ...opened,
     dailyHint:
       link.daily === null
         ? null
         : { date: link.daily, givens: puzzle.givens, tier: puzzle.difficulty },
+    isSolveTooNew: refusal === 'newer',
   };
   const attempts = findAttempts(records, puzzle.givens);
 
@@ -794,29 +868,31 @@ export function planStartup(
     // An attempt whose saved state has been pruned can only be replayed, so
     // it does not count as one to reopen.
     if (session === null || session.game.status !== 'playing') continue;
-    const challenge = link.challenge ?? session.record.challenge;
+    const racing = challenge ?? session.record.challenge;
     return {
       ...linked,
-      session: { ...session, record: { ...session.record, challenge } },
+      session: { ...session, record: { ...session.record, challenge: racing } },
       isNewCurrent: true,
       left: session === restored ? null : restored,
     };
   }
 
   const solves = attempts.filter((attempt) => attempt.status === 'solved');
-  const previous = solves.find((attempt) => attempt.source !== 'replay') ?? solves[0];
+  const previous =
+    solves.find((attempt) => attempt.source !== 'replay' && hasRecordedTime(attempt)) ?? solves[0];
   if (previous !== undefined) {
-    return { ...linked, offer: { puzzle, previous, challenge: link.challenge } };
+    return { ...linked, offer: { puzzle, previous, challenge } };
   }
 
   return {
     ...linked,
     session: newSession(puzzle, {
       source: attemptSource(storage, records, puzzle.givens, 'shared'),
-      challenge: link.challenge,
+      challenge,
       now,
       autoCandidates,
       start: 'ready',
+      isWatched: hasWatched(storage, puzzle.givens),
     }),
     isNewCurrent: true,
     left: restored,

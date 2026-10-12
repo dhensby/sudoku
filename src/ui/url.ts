@@ -4,7 +4,7 @@ import { normaliseName } from '../storage/storage';
 import { decodeAssists, decodeMistakes } from './share';
 
 /** The parameters a share link may carry. */
-const SHARE_PARAMS = ['p', 'd', 't', 'n', 'a'] as const;
+const SHARE_PARAMS = ['p', 'd', 't', 'n', 'a', 's'] as const;
 
 /** What a share link asked for. */
 export interface SharedLink {
@@ -20,6 +20,13 @@ export interface SharedLink {
    * before recording the game as one.
    */
   daily: DateKey | null;
+  /**
+   * The sharer's solve, as its encoded move log (`&s=`), when the link
+   * carries one alongside a usable result — read as it came, still to be
+   * checked against the puzzle and the time (see `sharedSolveRefusal`)
+   * before it is offered to watch; null otherwise.
+   */
+  solve: string | null;
 }
 
 /**
@@ -35,10 +42,13 @@ export interface SharedLink {
  * were shared — or says them in a way no game could have counted leaves the
  * challenge's mistakes unset, not known, never none (see `decodeMistakes`).
  *
+ * A solve (`&s=`) only comes back with a result to go with it, as it is
+ * checked against the result's time.
+ *
  * Nothing from the link is trusted beyond the givens themselves: the caller
  * still validates them, re-grades the puzzle rather than taking a
- * difficulty label on faith, and checks a daily's date against that day's
- * puzzles.
+ * difficulty label on faith, checks a daily's date against that day's
+ * puzzles, and replays a solve before offering it.
  */
 export function readSharedLink(search: string): SharedLink | null {
   const params = new URLSearchParams(search);
@@ -63,7 +73,9 @@ export function readSharedLink(search: string): SharedLink | null {
   const date = params.get('d');
   const daily = isDateKey(date) ? date : null;
 
-  return { code, givens: decodeGivens(code), challenge, daily };
+  const solve = challenge === null ? null : params.get('s');
+
+  return { code, givens: decodeGivens(code), challenge, daily, solve: solve === '' ? null : solve };
 }
 
 /**

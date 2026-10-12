@@ -3,8 +3,11 @@ import { CloseIcon } from '../icons';
 import { FocusHomeContext, focusQuietly, isUsingKeyboard } from '../keepFocus';
 
 export interface DialogProps {
-  /** The heading, which also names the dialog for assistive technology. */
-  title: string;
+  /**
+   * The heading, which also names the dialog for assistive technology. Words,
+   * or words with a name from a link kept apart in a <bdi>.
+   */
+  title: ReactNode;
   onClose: () => void;
   children: ReactNode;
   /**

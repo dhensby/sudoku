@@ -12,7 +12,9 @@ import {
 import {
   INITIAL_CURSOR,
   LONGEST_PAUSE_MS,
+  MAX_SHARED_LOG_LENGTH,
   PLAYBACK_SPEEDS,
+  SHARED_TIME_SLACK_MS,
   SHORTEST_PAUSE_MS,
   clampPosition,
   frameAt,
@@ -21,6 +23,7 @@ import {
   pauseBefore,
   playTimeAt,
   preparePlayback,
+  sharedSolveRefusal,
   stateAt,
   steer,
   tickFraction,
@@ -358,6 +361,71 @@ describe('preparePlayback', () => {
 describe('isPlayable', () => {
   it('agrees with preparePlayback on a solve', () => {
     expect(isPlayable(PUZZLE.givens, ENCODED)).toBe(true);
+  });
+});
+
+describe('sharedSolveRefusal', () => {
+  // The solve's last move, and the time a link would carry for it.
+  const solvedAt = PLAYED.log.moves.at(-1)!.at;
+  const seconds = Math.floor(solvedAt / 1000);
+
+  it('takes a solve of these givens whose time agrees with the link’s', () => {
+    expect(sharedSolveRefusal(PUZZLE.givens, ENCODED, seconds)).toBeNull();
+  });
+
+  it('allows the link’s rounding either way, but not a second more', () => {
+    const slack = SHARED_TIME_SLACK_MS / 1000;
+    expect(sharedSolveRefusal(PUZZLE.givens, ENCODED, solvedAt / 1000 - slack)).toBeNull();
+    expect(sharedSolveRefusal(PUZZLE.givens, ENCODED, solvedAt / 1000 + slack)).toBeNull();
+    expect(sharedSolveRefusal(PUZZLE.givens, ENCODED, seconds + 2)).toBe('time');
+    expect(sharedSolveRefusal(PUZZLE.givens, ENCODED, seconds - 2)).toBe('time');
+  });
+
+  it('refuses a solve paired with another time altogether', () => {
+    expect(sharedSolveRefusal(PUZZLE.givens, ENCODED, 1)).toBe('time');
+    expect(sharedSolveRefusal(PUZZLE.givens, ENCODED, seconds * 10)).toBe('time');
+  });
+
+  it.each([
+    ['another puzzle’s givens', EASY_PUZZLE.givens, ENCODED, 'unsolved'],
+    ['givens that make no puzzle', '0'.repeat(81), ENCODED, 'puzzle'],
+    ['a log cut short', PUZZLE.givens, ENCODED.slice(0, -4), 'broken'],
+    ['no log at all', PUZZLE.givens, null, 'broken'],
+    ['a log from an older rules version', PUZZLE.givens, logFromAnotherBuild(0, 0), 'older'],
+    [
+      'a log from a newer rules version',
+      PUZZLE.givens,
+      logFromAnotherBuild(MOVES_VERSION + 1, 0),
+      'newer',
+    ],
+    ['a log in a later format', PUZZLE.givens, LOG_IN_A_LATER_FORMAT, 'newer'],
+    ['an empty log', PUZZLE.givens, encodeMoveLog(createMoveLog()), 'unsolved'],
+    [
+      'a log that stops short of the solve',
+      PUZZLE.givens,
+      encodeMoveLog(play(SCRIPT.slice(0, 5)).log),
+      'unsolved',
+    ],
+    [
+      'a log longer than a link carries',
+      PUZZLE.givens,
+      'A'.repeat(MAX_SHARED_LOG_LENGTH + 1),
+      'long',
+    ],
+  ] as const)('refuses %s, saying why', (_, givens, encoded, reason) => {
+    expect(sharedSolveRefusal(givens, encoded, seconds)).toBe(reason);
+  });
+
+  it('refuses a log that goes on after the solve', () => {
+    const after = encodeMoveLog(appendMove(PLAYED.log, { op: 'undo' }, solvedAt + 100));
+    expect(sharedSolveRefusal(PUZZLE.givens, after, seconds)).toBe('unsolved');
+  });
+
+  it('refuses a log cut off at its limit', () => {
+    let truncated = createMoveLog();
+    for (let i = 0; i <= MAX_MOVES; i++) truncated = appendMove(truncated, { op: 'undo' }, i);
+    // Too long for a link before anything else is asked of it.
+    expect(sharedSolveRefusal(PUZZLE.givens, encodeMoveLog(truncated), seconds)).toBe('long');
   });
 });
 

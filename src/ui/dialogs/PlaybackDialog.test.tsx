@@ -64,6 +64,24 @@ describe('PlaybackDialog', () => {
   it('heads the solve with whose it is and what it was', () => {
     renderPlayback();
     expect(dialog()).toHaveAccessibleDescription('Easy · 0:09');
+    expect(dialog().querySelector('bdi')).toBeNull();
+  });
+
+  it('keeps a friend’s name from a link apart from the words after it', () => {
+    render(
+      <PlaybackDialog
+        givens={SOLVE.puzzle.givens}
+        difficulty="easy"
+        log={SOLVE.encoded}
+        title="سارة 2's solve"
+        name="سارة 2"
+        subtitle="Easy · 0:09"
+        settings={SETTINGS}
+        onClose={vi.fn()}
+      />,
+    );
+    const heading = screen.getByRole('dialog', { name: "سارة 2's solve" });
+    expect(heading.querySelector('.dialog__title bdi')).toHaveTextContent(/^سارة 2$/);
   });
 
   it('opens at the start, on Play, with the givens on a board that cannot be played', () => {

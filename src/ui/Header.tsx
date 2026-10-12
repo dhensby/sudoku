@@ -24,6 +24,8 @@ export interface HeaderProps {
   elapsedMs: number;
   phase: Phase;
   showTimer: boolean;
+  /** The game was solved after watching a friend's solve: the timer shows no time (see `Timer`). */
+  isTimeless?: boolean;
   /** Today's dailies, for New game. */
   today: TodayDailies;
   onPause: () => void;
@@ -90,6 +92,7 @@ export function Header({
   elapsedMs,
   phase,
   showTimer,
+  isTimeless = false,
   today,
   onPause,
   onResume,
@@ -130,6 +133,7 @@ export function Header({
             elapsedMs={elapsedMs}
             phase={phase}
             showTimer={showTimer}
+            isTimeless={isTimeless}
             onPause={onPause}
             onResume={onResume}
           />

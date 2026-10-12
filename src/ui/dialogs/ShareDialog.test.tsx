@@ -390,3 +390,56 @@ describe('ShareDialog', () => {
     });
   });
 });
+
+describe('including the solve', () => {
+  const SOLVE = 'BBAxy-_z';
+  const solveSwitch = () =>
+    within(dialog()).getByRole('checkbox', { name: 'Include my solve' }) as HTMLInputElement;
+
+  it('is offered, off, beside a time with a solve to go with it — saying what it costs the friend', () => {
+    renderShare({ solve: SOLVE });
+    expect(solveSwitch().checked).toBe(false);
+    expect(solveSwitch()).toHaveAccessibleDescription(
+      "Your friend can watch how you did it. If they watch before solving it themselves, they won't get a time for it.",
+    );
+    // Off: the link and message are a race's, as ever.
+    expect(shownUrl()).toBe(linkFor('Dan'));
+    expect(document.querySelector('.share__text')?.textContent).toBe(RESULT_TEXT);
+  });
+
+  it('puts the solve in the link, and a line in the message, once switched on — and takes them out again', () => {
+    renderShare({ solve: SOLVE });
+    fireEvent.click(solveSwitch());
+    expect(solveSwitch().checked).toBe(true);
+    expect(shownUrl()).toBe(
+      buildShareUrl(shareBaseUrl(), GIVENS, { ...RESULT, name: 'Dan', log: SOLVE }),
+    );
+    expect(new URL(shownUrl()!).searchParams.get('s')).toBe(SOLVE);
+    expect(document.querySelector('.share__text')?.textContent).toBe(
+      buildShareText({ difficulty: 'hard', result: { ...RESULT, log: SOLVE } }),
+    );
+    fireEvent.click(solveSwitch());
+    expect(shownUrl()).toBe(linkFor('Dan'));
+  });
+
+  it('copies the link with the solve in it', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    stubNavigator('clipboard', { writeText });
+    renderShare({ solve: SOLVE });
+    fireEvent.click(solveSwitch());
+    await act(async () => fireEvent.click(button('Copy')));
+    expect(writeText.mock.calls[0][0]).toContain(`&s=${SOLVE}`);
+  });
+
+  it('is not offered without a solve', () => {
+    renderShare().unmount();
+    renderShare({ solve: null });
+    expect(within(dialog()).queryByRole('checkbox')).toBeNull();
+  });
+
+  it('is not offered for the puzzle alone, whatever it is given', () => {
+    renderShare({ result: null, solve: SOLVE });
+    expect(within(dialog()).queryByRole('checkbox')).toBeNull();
+    expect(new URL(shownUrl()!).searchParams.has('s')).toBe(false);
+  });
+});

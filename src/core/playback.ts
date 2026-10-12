@@ -286,16 +286,80 @@ export function preparePlayback(
  * the solve, which must be its last move.
  */
 export function isPlayable(givens: string, encoded: unknown): boolean {
+  return playableLog(givens, encoded).ok;
+}
+
+/**
+ * The log, decoded, if it would play back (as `isPlayable` asks) — or why
+ * not, as `preparePlayback` would say it, but for one that goes on after the
+ * solve, which reads here as one that does not end in it (`unsolved`).
+ */
+function playableLog(
+  givens: string,
+  encoded: unknown,
+): { ok: true; log: MoveLog } | { ok: false; reason: PlaybackRefusal } {
   const check = checkGivens(givens);
-  if (!check.ok) return false;
+  if (!check.ok) return { ok: false, reason: 'puzzle' };
   const log = decodeMoveLog(encoded);
-  if (log === null || log.truncated || log.moves.length === 0) return false;
+  if (log === null) return { ok: false, reason: refusalOf(encoded) };
+  if (log.truncated || log.moves.length === 0) return { ok: false, reason: 'unsolved' };
   // The tier decides nothing a replay does.
   const puzzle: Puzzle = { givens, solution: check.solution, difficulty: 'easy' };
   for (const { index, after } of replayMoveSteps(puzzle, log)) {
-    if (after.status === 'solved') return index === log.moves.length - 1;
+    if (after.status !== 'solved') continue;
+    return index === log.moves.length - 1 ? { ok: true, log } : { ok: false, reason: 'unsolved' };
   }
-  return false;
+  return { ok: false, reason: 'unsolved' };
+}
+
+/**
+ * The longest log a share link carries (see `sharedSolveRefusal`): some
+ * 4,000 characters, three or four times a solve that pencils in every
+ * candidate. Past that a link is long enough for a chat app to cut it short,
+ * and a link cut short opens nothing at all — so a solve that long is not
+ * offered, and one in a link is not taken.
+ */
+export const MAX_SHARED_LOG_LENGTH = 4000;
+
+/**
+ * How far the play time at a shared solve's last move may be from the time
+ * its link claims, in ms. A link's time is the solve's in whole seconds,
+ * rounded down, and the solving move is logged a moment before the clock
+ * stops, rounded down to a tenth: so the two are always within a second.
+ */
+export const SHARED_TIME_SLACK_MS = 1000;
+
+/**
+ * Why a solve that came in a link is not offered to watch: any reason a
+ * playback is refused (see `PlaybackRefusal`); `long`, a log longer than any
+ * link is sent with (`MAX_SHARED_LOG_LENGTH`); or `time`, a log whose solve
+ * came at another time from the one the link claims.
+ */
+export type SharedSolveRefusal = PlaybackRefusal | 'long' | 'time';
+
+/**
+ * Whether a solve from a link (or about to go in one) can be watched with the
+ * time it comes with, `seconds` (as a link carries it: whole seconds, at
+ * least 1) — null if so, or why not (see `SharedSolveRefusal`).
+ *
+ * Its log must play back to the solve of these givens, exactly as one of the
+ * player's own must (see `isPlayable`): a log of some other puzzle, or one
+ * from an older or a newer build, is no solve of this one to show. And the
+ * time at its last move must agree with the link's (see
+ * `SHARED_TIME_SLACK_MS`), so a link cannot pair one solve with another's
+ * time — a fast time, say, and the log of someone's slow but clean solve.
+ */
+export function sharedSolveRefusal(
+  givens: string,
+  encoded: unknown,
+  seconds: number,
+): SharedSolveRefusal | null {
+  if (typeof encoded === 'string' && encoded.length > MAX_SHARED_LOG_LENGTH) return 'long';
+  const playable = playableLog(givens, encoded);
+  if (!playable.ok) return playable.reason;
+  // A playable log has a last move: the solve.
+  const solvedAt = playable.log.moves.at(-1)!.at;
+  return Math.abs(solvedAt - seconds * 1000) <= SHARED_TIME_SLACK_MS ? null : 'time';
 }
 
 /** The number of moves: the last position, the solve. */

@@ -21,6 +21,7 @@ import {
   computeStats,
   exportHistory,
   hasSeen,
+  hasWatched,
   loadCurrentId,
   loadGameBlob,
   loadHistory,
@@ -43,6 +44,7 @@ import {
   fakeSource,
   linkFor,
   nearlySolved,
+  shortSolve,
 } from './testFixtures';
 import {
   CLOCK_SAVE_MS,
@@ -512,7 +514,13 @@ describe('useSudoku', () => {
       act(() => result.current.actions.openDialog('share'));
       expect(result.current.dialog).toEqual({
         kind: 'share',
-        target: { givens: PUZZLE.givens, difficulty: 'easy', result: null, daily: null },
+        target: {
+          givens: PUZZLE.givens,
+          difficulty: 'easy',
+          result: null,
+          daily: null,
+          solve: null,
+        },
         returnTo: null,
       });
     });
@@ -2725,6 +2733,30 @@ describe('useSudoku', () => {
       expect(result.current.record!.id).not.toBe(solved.id);
     });
 
+    it('offers a solved daily again by the solve that had a time, not a later one after watching', async () => {
+      const storage = memoryStorage();
+      const base = {
+        ...solvedRecord(NEAR_HARD, 200_000),
+        daily: TODAY,
+        difficulty: 'hard' as const,
+      };
+      upsertRecord(storage, { ...base, id: 'timed-0001' });
+      upsertRecord(storage, {
+        ...base,
+        id: 'seen-0001',
+        createdAt: base.createdAt + 1000,
+        elapsedMs: 50_000,
+        watched: true,
+      });
+      const dailies = fakeDailies({ puzzles: { [`${TODAY}/hard`]: NEAR_HARD } });
+      const { result } = await started({ storage, dailies });
+      act(() => result.current.actions.openDaily(TODAY, 'hard'));
+      expect(result.current.dialog).toMatchObject({
+        kind: 'challenge',
+        offer: { previous: { id: 'timed-0001' } },
+      });
+    });
+
     it('plays a solved daily again straight from the calendar', async () => {
       const dailies = fakeDailies({ puzzles: { [`${YESTERDAY}/easy`]: NEAR_HARD } });
       const { result } = await started({ dailies });
@@ -3408,6 +3440,341 @@ describe('useSudoku', () => {
         result.current.actions.watchRecord('nope-0000', { filter: 'all', limit: 100, id: 'x' }),
       );
       expect(result.current.dialog).toEqual({ kind: 'history' });
+    });
+  });
+  describe("watching a friend's solve", () => {
+    // Five moves, the last at 0:09: the link's time is 9 seconds.
+    const { puzzle: SHARED, encoded: THEIRS } = shortSolve();
+    const BLANKS = [0, 40, 80];
+    const LINK = linkFor(SHARED.givens, { t: '9', n: 'Dan', s: THEIRS });
+
+    /** Fill in every blank of the shared puzzle, 3 s of play apart. */
+    function solveShared(result: Hook): void {
+      for (const index of BLANKS) {
+        advance(3000);
+        enter(result, index, answerAt(index, SHARED));
+      }
+      advance(COMPLETION_DELAY_MS);
+    }
+
+    /** The link opened on its Ready card. */
+    async function linked(options: SetupOptions = {}) {
+      return started({ search: LINK, ...options });
+    }
+
+    it('offers it on the Ready card, and asks first for a puzzle not yet solved', async () => {
+      const { result, storage } = await linked();
+      expect(result.current.phase).toBe('ready');
+      expect(result.current.friendSolve).toEqual({ name: 'Dan' });
+      expect(result.current.record?.challenge?.log).toBe(THEIRS);
+
+      act(() => result.current.actions.watchFriendSolve());
+      expect(result.current.dialog).toMatchObject({
+        kind: 'spoiler',
+        solve: { givens: SHARED.givens, log: THEIRS, challenge: { name: 'Dan' } },
+      });
+      // Nothing is given up by being asked.
+      expect(hasWatched(storage, SHARED.givens)).toBe(false);
+      expect(result.current.record).not.toHaveProperty('watched');
+    });
+
+    it('watched anyway: the puzzle is watched, this attempt flagged, and the card says so', async () => {
+      const { result, storage } = await linked();
+      act(() => result.current.actions.watchFriendSolve());
+      act(() => result.current.actions.confirmWatch());
+      expect(result.current.dialog).toEqual({
+        kind: 'playback',
+        source: {
+          givens: SHARED.givens,
+          difficulty: SHARED.difficulty,
+          log: THEIRS,
+          title: "Dan's solve",
+          name: 'Dan',
+          subtitle: 'Easy · 0:09',
+        },
+        returnTo: { kind: 'game' },
+      });
+      expect(hasWatched(storage, SHARED.givens)).toBe(true);
+      expect(hasSeen(storage, [], SHARED.givens)).toBe(true);
+      expect(result.current.record?.watched).toBe(true);
+      expect(loadHistory(storage)[0].watched).toBe(true);
+      // Back to the card, the game still waiting for Start.
+      act(() => result.current.actions.closeDialog());
+      expect(result.current.dialog).toBeNull();
+      expect(result.current.phase).toBe('ready');
+    });
+
+    it('records the solve that follows without a time: no best, no time to share or race', async () => {
+      const storage = memoryStorage();
+      upsertRecord(storage, solvedRecord(another(SHARED), 600_000));
+      const { result } = await linked({ storage });
+      act(() => result.current.actions.watchFriendSolve());
+      act(() => result.current.actions.confirmWatch());
+      act(() => result.current.actions.closeDialog());
+      act(() => result.current.actions.resume());
+      solveShared(result);
+
+      expect(result.current.announcement?.text).toBe(
+        'Solved — no time recorded: you watched a solve of this puzzle first.',
+      );
+      expect(result.current.dialog).toMatchObject({
+        kind: 'completion',
+        result: { isWatched: true, isNewBest: false, stats: { solved: 2, bestMs: 600_000 } },
+      });
+      expect(loadHistory(storage)[0]).toMatchObject({ status: 'solved', watched: true });
+      act(() => result.current.actions.shareResult());
+      expect(result.current.dialog).toMatchObject({
+        kind: 'share',
+        target: { result: null, solve: null },
+      });
+    });
+
+    it('plays back the solve that follows with no time in its heading, from Solved and History', async () => {
+      const { result } = await linked();
+      act(() => result.current.actions.watchFriendSolve());
+      act(() => result.current.actions.confirmWatch());
+      act(() => result.current.actions.closeDialog());
+      act(() => result.current.actions.resume());
+      solveShared(result);
+
+      act(() => result.current.actions.watchSolve());
+      expect(result.current.dialog).toMatchObject({
+        kind: 'playback',
+        source: { title: 'Your solve', subtitle: 'Easy' },
+      });
+      act(() => result.current.actions.closeDialog());
+      act(() => result.current.actions.openDialog('history'));
+      const [record] = result.current.history.records;
+      act(() =>
+        result.current.actions.watchRecord(record.id, { filter: 'all', limit: 100, id: record.id }),
+      );
+      expect(result.current.dialog).toMatchObject({
+        kind: 'playback',
+        source: { title: 'Your solve', subtitle: 'Easy' },
+      });
+    });
+
+    it('played first: no time is given up, and the solve is free to watch from the Solved dialog', async () => {
+      const { result, storage } = await linked();
+      act(() => result.current.actions.watchFriendSolve());
+      act(() => result.current.actions.playFirst());
+      expect(result.current.dialog).toBeNull();
+      expect(result.current.phase).toBe('playing');
+      solveShared(result);
+      expect(result.current.dialog).toMatchObject({
+        kind: 'completion',
+        result: { isWatched: false },
+      });
+      expect(result.current.canWatchChallengeSolve).toBe(true);
+      // Solved: no card to offer it on any more.
+      expect(result.current.friendSolve).toBeNull();
+
+      const completion = result.current.dialog;
+      act(() => result.current.actions.watchChallengeSolve());
+      expect(result.current.dialog).toMatchObject({
+        kind: 'playback',
+        source: { title: "Dan's solve", log: THEIRS },
+        returnTo: { kind: 'completion', isFriend: true },
+      });
+      act(() => result.current.actions.closeDialog());
+      expect(result.current.dialog).toEqual({ ...completion, isBackFromFriend: true });
+      expect(hasWatched(storage, SHARED.givens)).toBe(false);
+      expect(loadHistory(storage)[0]).not.toHaveProperty('watched');
+    });
+
+    it('is free, with no warning, for a puzzle solved already', async () => {
+      const storage = memoryStorage();
+      upsertRecord(storage, solvedRecord(SHARED, 120_000));
+      const { result } = await linked({ storage });
+      expect(result.current.dialog?.kind).toBe('challenge');
+      expect(result.current.canWatchChallengeSolve).toBe(true);
+      const offer = result.current.dialog;
+      act(() => result.current.actions.watchChallengeSolve());
+      expect(result.current.dialog).toMatchObject({
+        kind: 'playback',
+        source: { title: "Dan's solve" },
+        returnTo: { kind: 'challenge' },
+      });
+      act(() => result.current.actions.closeDialog());
+      expect(result.current.dialog).toEqual({ ...offer, isBackFromWatch: true });
+      expect(hasWatched(storage, SHARED.givens)).toBe(false);
+    });
+
+    it('opens the player at once for an unfinished attempt with a solve of it already solved', async () => {
+      const storage = memoryStorage();
+      const first = await linked({ storage });
+      act(() => first.result.current.actions.resume());
+      enter(first.result, 0, answerAt(0, SHARED));
+      act(() => first.result.current.actions.pause());
+      // Solved in another attempt meanwhile — on another device, imported.
+      upsertRecord(storage, solvedRecord(SHARED, 120_000, 'elsewhere'));
+      first.unmount();
+      const { result } = setup({ storage, search: LINK });
+      expect(result.current.phase).toBe('paused');
+      expect(result.current.friendSolve).toEqual({ name: 'Dan' });
+      act(() => result.current.actions.watchFriendSolve());
+      expect(result.current.dialog).toMatchObject({ kind: 'playback', returnTo: { kind: 'game' } });
+      expect(hasWatched(storage, SHARED.givens)).toBe(false);
+    });
+
+    it('asks first from the Paused card too, for an attempt reopened from the link', async () => {
+      const storage = memoryStorage();
+      const first = await linked({ storage });
+      act(() => first.result.current.actions.resume());
+      enter(first.result, 0, answerAt(0, SHARED));
+      act(() => first.result.current.actions.pause());
+      first.unmount();
+      const { result } = setup({ storage, search: LINK });
+      act(() => result.current.actions.watchFriendSolve());
+      expect(result.current.dialog?.kind).toBe('spoiler');
+      act(() => result.current.actions.confirmWatch());
+      // The attempt in progress as they watched records no time either.
+      act(() => result.current.actions.closeDialog());
+      act(() => result.current.actions.resume());
+      for (const index of [40, 80]) enter(result, index, answerAt(index, SHARED));
+      advance(COMPLETION_DELAY_MS);
+      expect(result.current.dialog).toMatchObject({ result: { isWatched: true } });
+    });
+
+    it('asks nothing more once the solve has been watched, there being no time left to lose', async () => {
+      const { result } = await linked();
+      act(() => result.current.actions.watchFriendSolve());
+      act(() => result.current.actions.confirmWatch());
+      act(() => result.current.actions.closeDialog());
+      act(() => result.current.actions.watchFriendSolve());
+      expect(result.current.dialog).toMatchObject({ kind: 'playback', returnTo: { kind: 'game' } });
+    });
+
+    describe('no attempt at a watched puzzle records a time', () => {
+      /** The link opened, its solve watched, and the Ready card back. */
+      async function watched(options: SetupOptions = {}) {
+        const view = await linked(options);
+        act(() => view.result.current.actions.watchFriendSolve());
+        act(() => view.result.current.actions.confirmWatch());
+        act(() => view.result.current.actions.closeDialog());
+        return view;
+      }
+
+      it('reloaded mid-game', async () => {
+        const storage = memoryStorage();
+        const first = await watched({ storage });
+        act(() => first.result.current.actions.resume());
+        enter(first.result, 0, answerAt(0, SHARED));
+        act(() => {
+          window.dispatchEvent(new Event('pagehide'));
+        });
+        first.unmount();
+        const { result } = setup({ storage });
+        expect(result.current.record?.watched).toBe(true);
+        act(() => result.current.actions.resume());
+        for (const index of [40, 80]) enter(result, index, answerAt(index, SHARED));
+        advance(COMPLETION_DELAY_MS);
+        expect(result.current.dialog).toMatchObject({ result: { isWatched: true } });
+      });
+
+      it('played again once solved', async () => {
+        const { result, storage } = await watched();
+        act(() => result.current.actions.resume());
+        solveShared(result);
+        act(() => result.current.actions.closeDialog());
+        act(() => result.current.actions.openDialog('history'));
+        act(() => result.current.actions.replayRecord(result.current.record!.id));
+        expect(result.current.record?.watched).toBe(true);
+        solveShared(result);
+        expect(result.current.dialog).toMatchObject({ result: { isWatched: true } });
+        expect(loadHistory(storage).every((record) => record.watched === true)).toBe(true);
+      });
+
+      it('a new attempt the generator happens to deal', async () => {
+        const storage = memoryStorage();
+        const first = await watched({ storage });
+        first.unmount();
+        // Its record deleted: the puzzle is still watched.
+        storage.removeItem('sudoku.history');
+        storage.removeItem('sudoku.current');
+        const { result } = await started({ storage, source: fakeSource(SHARED) });
+        expect(result.current.record?.watched).toBe(true);
+        solveShared(result);
+        expect(result.current.dialog).toMatchObject({ result: { isWatched: true } });
+        expect(computeStats(loadHistory(storage)).easy.bestMs).toBeNull();
+      });
+
+      it('resumed from History', async () => {
+        const { result, storage } = await watched({ source: fakeSource(PUZZLE) });
+        const id = result.current.record!.id;
+        act(() => result.current.actions.newGame('easy'));
+        await settle();
+        expect(result.current.record?.id).not.toBe(id);
+        act(() => result.current.actions.openDialog('history'));
+        act(() => result.current.actions.resumeRecord(id));
+        expect(result.current.record?.id).toBe(id);
+        solveShared(result);
+        expect(result.current.dialog).toMatchObject({ result: { isWatched: true } });
+        expect(loadHistory(storage).find((record) => record.id === id)?.watched).toBe(true);
+      });
+
+      it('a daily, which does not count for the streak either', async () => {
+        const TODAY = dateKeyOf(NOW);
+        const dailies = fakeDailies({ puzzles: { [`${TODAY}/${SHARED.difficulty}`]: SHARED } });
+        const { result } = await started({ dailies, search: `${LINK}&d=${TODAY}` });
+        expect(result.current.record?.daily).toBe(TODAY);
+        act(() => result.current.actions.watchFriendSolve());
+        act(() => result.current.actions.confirmWatch());
+        act(() => result.current.actions.closeDialog());
+        act(() => result.current.actions.resume());
+        solveShared(result);
+        expect(result.current.dialog).toMatchObject({
+          result: { isWatched: true, daily: { date: TODAY, streak: { kind: 'watched' } } },
+        });
+      });
+    });
+
+    it('is offered on a solved History row raced against it, free', async () => {
+      const { result } = await linked();
+      act(() => result.current.actions.resume());
+      solveShared(result);
+      act(() => result.current.actions.closeDialog());
+      act(() => result.current.actions.openDialog('history'));
+      const [record] = result.current.history.records;
+      expect(result.current.actions.canWatchRecordChallenge(record)).toBe(true);
+      const place = { filter: 'all', limit: 100, id: record.id, solve: 'friend' } as const;
+      act(() => result.current.actions.watchRecordChallenge(record.id, place));
+      expect(result.current.dialog).toMatchObject({
+        kind: 'playback',
+        source: { title: "Dan's solve" },
+        returnTo: { kind: 'history', place },
+      });
+      act(() => result.current.actions.closeDialog());
+      expect(result.current.dialog).toEqual({ kind: 'history', place });
+      // Nothing for a row that is not solved, or one it cannot find.
+      expect(result.current.actions.canWatchRecordChallenge({ ...record, status: 'playing' })).toBe(
+        false,
+      );
+      act(() => result.current.actions.watchRecordChallenge('nope-0000', place));
+      expect(result.current.dialog).toEqual({ kind: 'history', place });
+    });
+
+    it('says a solve from a newer version cannot be watched here, and offers none', async () => {
+      const newer = linkFor(SHARED.givens, { t: '9', n: 'Dan', s: 'zAAAAAAAA' });
+      const { result } = await started({ search: newer });
+      expect(result.current.notice?.text).toBe(
+        'This solve needs a newer version of the game to watch.',
+      );
+      expect(result.current.friendSolve).toBeNull();
+      advance(0);
+      expect(result.current.announcement?.text).toBe(
+        'This solve needs a newer version of the game to watch.',
+      );
+    });
+
+    it('does nothing when there is nothing to watch or confirm', async () => {
+      const { result } = await started({ search: linkFor(SHARED.givens, { t: '9' }) });
+      expect(result.current.friendSolve).toBeNull();
+      expect(result.current.canWatchChallengeSolve).toBe(false);
+      act(() => result.current.actions.watchFriendSolve());
+      act(() => result.current.actions.confirmWatch());
+      act(() => result.current.actions.watchChallengeSolve());
+      expect(result.current.dialog).toBeNull();
     });
   });
 });

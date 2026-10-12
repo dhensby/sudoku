@@ -23,7 +23,7 @@ your browser.
   a **Random puzzle** of each tier, and a daily you have started carries on where you left off.
   The **calendar** (the calendar button in the header; on a phone, the ☰ menu) shows every day
   since Daily #1 — 7 October 2026, the day the dailies launched — with a mark for each tier — solid for solved on the day,
-  hatched for solved on another day, half filled for in progress, an empty square for not
+  hatched for solved on another day or after watching a solve (neither counts for a streak), half filled for in progress, an empty square for not
   started, Easy to Expert from left to right, so it reads without colour — and the day chosen
   with its four puzzles to play, carry on with or play again. It is a WAI-ARIA date grid: the arrow keys move a
   day or a week, Home and End to the week's ends, Page Up and Page Down a month, and each day's
@@ -58,7 +58,8 @@ your browser.
   help." — and your mistakes and candidate mistakes on rows of their own, so it reads straight
   across. The faster time wins, whatever the help or the mistakes; they are there so the
   comparison is fair. Plus a link of their own to send back. Nothing is uploaded; everything
-  travels in the link.
+  travels in the link — your solve too, if you choose: switch on **Include my solve** and your
+  friend can watch how you did it, once they've had a go (see [Sharing a solve](#sharing-a-solve)).
 - **History and stats** — every game you play is kept: resume unfinished ones, play a solved
   puzzle again, [watch your solve](#watch-your-solve) of it, share it, or delete it. A game you only glanced at — nothing entered, no help
   taken — is dropped when you move on to another, so browsing the levels doesn't clutter the list
@@ -113,7 +114,7 @@ your browser.
   went in outlined and a caption saying what it was ("5 in row 3, column 4 — a mistake"), with
   play and pause, a step either way, a scrubber marked with your mistakes, the slips you put right
   in time and the help you took, and speeds up to 8×. Watching changes nothing (see
-  [Watch your solve](#watch-your-solve)).
+  [Watch your solve](#watch-your-solve)). A friend's solve, from their link, plays the same way.
 - **A guide to the solving techniques** — every technique the grader knows, from a full house to
   the alternating chain: its other names, what it is, why it works, how to spot it, and a worked
   example from a real puzzle, drawn with the pattern ringed (and a chain's links traced), the
@@ -612,6 +613,60 @@ Watch.
   newer one (reload to update), damaged, or stopping short of the solve — `readMoveLogHeader`
   tells them apart.
 
+## Sharing a solve
+
+A solved game's time can carry the solve itself: the Share dialog — from the Solved dialog's
+Share your time, or History's Share — has a switch, **Include my solve** ("Your friend can watch
+how you did it. If they watch before solving it themselves, they won't get a time for it."),
+shown only when the game has a log this build plays back to its solve at the time being shared,
+no longer than 4,000 characters (`MAX_SHARED_LOG_LENGTH`; a chat app may cut a longer link short,
+and a link cut short opens nothing). It is **off** each time the dialog opens: a shared time is
+for racing, and its link stays short — the solve makes it several times longer (some 200–1,100
+characters more) and gives the puzzle away, so sending it is the sharer's choice, never something
+they find they did. Switched on, the link gains `&s=` and the message a last line, "You can watch
+my solve too, once you've had a go.", which says nothing of how the solve went. A replay's
+solve, or one after watching a friend's, has no time to go with, and is never sent.
+
+Opening a link with a solve, the log is decoded strictly and replayed against the link's givens
+(`sharedSolveRefusal` in `src/core/playback.ts`): it must play to their solve, and end there, at
+the time the link claims — within a second, the rounding a link's whole seconds and the log's
+tenths allow — so a link cannot pair one solve with another's time. A solve that fails any of it
+is dropped without a word and the link opens as it would have without it, but for one recorded
+by a newer version, which says so under the board: "This solve needs a newer version of the game
+to watch." A solve that checks out is kept with the challenge (`Challenge.log`).
+
+- **Watching before solving.** The Ready card offers **Watch Dan's solve** ("Watch your friend's
+  solve" for a link with no name) beside Start, and the Paused card beside Resume, for an attempt
+  reopened from the link. For a puzzle the player has not solved, it asks first, focus on the
+  safe choice: "Watch Dan's solve? — This shows every number Dan placed. You haven't solved this
+  puzzle yet: if you watch now, you won't be able to record a time for it, now or later." with
+  **Play it first** (which starts or resumes the game) and **Watch anyway**. Escape leaves it
+  as it was.
+- **The spoiler rule.** Watching anyway remembers the puzzle as watched (`sudoku.watched`, its
+  share code, up to 2,000 like the puzzles seen, outliving its records) and flags every
+  unfinished attempt at it (`GameRecord.watched`) — the game on screen and any in History — and
+  every attempt begun since, by any way back to the puzzle: a reload, Play again, the link
+  again, the generator or a daily dealing it, a game resumed from History, an import. The rule
+  lives where every record is written (`upsertRecord`), so no path can miss it. Such a solve is
+  recorded as solved, without a time: the Solved dialog says "Solved — no time recorded: you
+  watched a solve of this puzzle first." where the time would be, and the header's timer shows a
+  dash ("Solved, no time recorded"); it is no best and in no
+  average; a daily's counts for no streak ("You watched a solve of it first, so it doesn't count
+  towards your streak"), and its calendar mark is a solve that did not count; History says
+  "Solved after watching a solve"; sharing it shares the puzzle alone; and the head-to-head shows
+  a dash for your time ("no time recorded") and, in place of a verdict, "You watched a solve
+  first, so there's no time to compare." Its mistakes still show. The Ready card, once the solve
+  has been watched, says "You've watched a solve of this puzzle, so no time will be recorded."
+  in place of "The timer starts when you do.", and watching again asks nothing more.
+- **Watching once solved is free.** With any solve of the puzzle in the history, watching gives
+  nothing away: it opens at once, and remembers nothing. The link's offer to play a solved
+  puzzle again offers it in its head-to-head, as do the Solved dialog's head-to-head after a
+  solve of your own and the solved game's row in History — **Watch Dan's solve**, focus back on
+  it as the player closes.
+
+The player is the one your own solves play in (see [Watch your solve](#watch-your-solve)),
+headed "Dan's solve" over the puzzle's tier, or its daily, and their time.
+
 ## Racing friends
 
 A share link carries the puzzle itself, so it opens the same puzzle for anyone, on any version of
@@ -624,6 +679,7 @@ the game — there is no server and nothing is uploaded.
 | `&n=<name>`    | The sharer's name (optional; past 24 characters it is cut short with an ellipsis).                                                                          |
 | `&a=<assists>` | Help the sharer took: `c` auto candidates, `g` guesses checked as entered, `h<N>` hints, `k<N>` checks, `r<N>` reveals; mistakes: `m<N>`, candidate `x<N>`. |
 | `&d=<date>`    | A daily's date (`2026-10-13`): the opener checks it against that day's daily of the tier.                                                                   |
+| `&s=<solve>`   | The sharer's solve, its move log as stored (base64url), only with `t=`: see [Sharing a solve](#sharing-a-solve). Versions before it ignore it.              |
 
 Opening a link:
 
@@ -639,7 +695,9 @@ Opening a link:
 The difficulty is always re-graded from the puzzle itself rather than taken from the link, and
 the parameters are cleared from the address bar once read, so reloading never drags you back.
 A version of the game opens a link from a later one all the same: it skips a letter of `a=` it
-does not know (`g` came after the others), and reads the rest as written.
+does not know (`g` came after the others), and reads the rest as written. A version from before
+solves were shared skips `s=` too — it only stays in that version's address bar, which clears
+the parameters it knows and no others; harmless, as nothing there reads it.
 
 The mistakes ride in `a=` rather than a parameter of their own, after the help: `m<N>` is always
 there once the count is known — an unaided, mistake-free solve sends `a=m0` — so a link that says
@@ -671,9 +729,13 @@ it — the calendar and the streaks are worked out from it — and each game's
 [mistakes](#mistakes), stamped with the time they were counted at), what the dailies of games pruned from
 the history said (a few bytes a day, kept for good, so neither a best streak nor the calendar
 forgets them), the saved state of unfinished games (up to 50), every game's move log, the
-puzzles you have seen (up to 2,000, so a puzzle stays seen after its game is deleted) and the
-daily puzzles already dealt (the last 112, so they need not be dealt again). There are no accounts
-and no tracking.
+puzzles you have seen (up to 2,000, so a puzzle stays seen after its game is deleted), the
+puzzles whose shared solve you watched before solving them (`sudoku.watched`, up to 2,000 — see
+[Sharing a solve](#sharing-a-solve)) and the daily puzzles already dealt (the last 112, so they
+need not be dealt again). A game raced against a link that carried a solve keeps it with the
+challenge, inside its record, held on reading back to the shape and length of a log in a link (at
+most 4,000 characters; some 200–1,100 in practice). There are no
+accounts and no tracking.
 
 Every game in the history, finished or not, keeps its **move log** (see
 [The move log](#the-move-log)) under a key of its own, `sudoku.moves.<id>`, listed in
@@ -696,8 +758,9 @@ hosted there shares.
 When that space runs out, the game makes room, cheapest loss first, trying the write again after
 each step: the logs of games no longer in the history, then the oldest finished games' logs, about
 50,000 characters at a time (an eighth or so of a full history's), until the write fits — so no
-more than one such chunk beyond what the write needed is ever lost; and only once every finished
-game's log is gone, the saved boards of all but the 10 most recently played unfinished games, and
+more than one such chunk beyond what the write needed is ever lost; then friends' solves kept with
+their challenges (every game's but the one on screen, which keeps the name and time it was racing;
+only the button to watch the solve goes); and only once those are gone too, the saved boards of all but the 10 most recently played unfinished games, and
 finished games beyond the newest 300, with their logs. The game on screen, and the logs of
 unfinished games, are never shed. Finished games' logs go first because nothing needs them to
 carry on playing (a game whose log is shed keeps its record and its count of mistakes, but can no
@@ -711,12 +774,16 @@ A tab left open on an older version after an update carries on saving, so the ga
 does not recognise rather than wiping it: small fields a newer version added to a game's record,
 its saved board or the preferences (up to 8 per object, each at most 200 characters of JSON) are
 written back untouched, and a theme it does not know is applied as System, with none shown as
-chosen in Settings, but kept until you pick one.
+chosen in Settings, but kept until you pick one. (So a record's `watched` flag survives such a
+tab — though that tab, knowing nothing of it, would show and count the solve's time until it is
+reloaded; a challenge's solve longer than those 200 characters, as most are, is dropped by it.)
 
 Some browsers clear a site's storage after a while away (Safari does after seven days without a
 visit, unless the game has been added to the home screen). Use **Export** in History to keep a
 copy, and **Import** to bring it back or move it to another browser — imported games, the
-puzzles seen and the dailies' record are merged with what is already there. The file carries every
+puzzles seen, the puzzles watched and the dailies' record are merged with what is already
+there, and every unfinished attempt at a puzzle watched, here or in the file, is flagged as
+watched. The file carries every
 game's move log too; an import takes the log of each game it adds or replaces, leaving out (on its
 own) any log that does not read back exactly, and never makes room for one by deleting anything:
 logs go only into space that was free, and if the imported games themselves only fitted once some
@@ -759,7 +826,12 @@ of the logs here were shed, none of the file's logs are taken.
   an older or a newer build or a broken one; watching is checked to write nothing.
   Share links are held to the versions before them: a copy of the assists decoder every earlier
   version shipped must read a new link's help unchanged, skipping its mistakes, and an old link
-  must read as mistakes not recorded, never 0.
+  must read as mistakes not recorded, never 0. A solve in a link is held to its puzzle and its
+  time — another puzzle's log, a time a second or more off, an older version's log, a broken one
+  and a newer version's (which alone is said) — and the spoiler rule to every way back to a
+  watched puzzle: a reload mid-game, Play again, a new attempt from the generator, a game resumed
+  from History, a daily, an import, and the record pruned past 1,000 while the puzzle stays
+  watched.
   Coverage thresholds are enforced in CI, with the engine held to 100%.
 - **End-to-end** (`e2e/`, Playwright): full journeys against the built app — playing and solving,
   pausing and reloading, share links between two browsers (a solve with a mistake shared, opened in
@@ -769,6 +841,9 @@ of the logs here were shed, none of the file's logs are taken.
   link recognised), mistakes (an obvious slip put right at once, a wrong number where the answer
   was not obvious, Check guesses marking and counting one at once with "guesses checked as
   entered" beside the time, and the error counter waiting out a slip's 3 seconds of play),
+  sharing a solve between browsers (one plays first and then watches it for nothing, another
+  watches first and solves it with no time, one who has solved it watches without being asked,
+  and a daily's, watched first, kept out of the streak),
   watching a solve with a mistake played back from the Solved dialog and from History (stepped,
   scrubbed and played at 8× on Playwright's clock, its mistake marked and captioned, focus back on
   Watch as it closes, and fitting a 320px phone and a phone on its side) and the phone layout from
@@ -785,7 +860,8 @@ of the logs here were shed, none of the file's logs are taken.
   hidden board leaves beside the timer's. An accessibility pass (`a11y.spec.ts`) runs axe-core's WCAG 2.2 A and AA rules over the main states — the board with
   every kind of mark, the error counter and help taken in both their places, the Ready and Paused
   cards, the menus (the "…" menu's "Hint (1 used)" among them),
-  every dialog (Show me's, the daily calendar's and a solve played back included) and each guide entry — in both
+  every dialog (Show me's, the daily calendar's, a solve played back, the warning before watching
+  a friend's solve and Share with the solve included among them) and each guide entry — in both
   themes, and the board, the dialogs, the menus and the calendar in High contrast, both chosen in
   Settings on a dark device and from a dark system asking for more contrast, measuring its heavier
   lines and its same-number ring kept off the digits — and allows no violations. Three projects:

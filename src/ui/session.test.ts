@@ -6,11 +6,13 @@ import {
   createGame,
   createMoveLog,
   dateKeyOf,
+  decodeMoveLog,
   encodeMoveLog,
   findHint,
   gridValues,
   hintBoardOf,
   reduce,
+  replayMoves,
   serialiseGame,
   type Digit,
   type MoveLog,
@@ -21,6 +23,7 @@ import {
   loadGameBlob,
   loadHistory,
   markSeen,
+  markWatched,
   saveCurrentId,
   saveGameBlob,
   saveGameMoves,
@@ -56,7 +59,7 @@ import {
   type Session,
   type SessionStart,
 } from './session';
-import { FIRST_EMPTY, PUZZLE, answerAt, linkFor, nearlySolved } from './testFixtures';
+import { FIRST_EMPTY, PUZZLE, answerAt, linkFor, nearlySolved, shortSolve } from './testFixtures';
 
 const NOW = Date.UTC(2026, 9, 12, 12);
 const NO_HELP = { autoCandidates: false, hints: 0, checks: 0, reveals: 0 };
@@ -1190,6 +1193,7 @@ describe('share targets', () => {
       givens: session.record.givens,
       difficulty: session.record.difficulty,
       result: null,
+      solve: null,
     });
     const played = advance(
       session,
@@ -1249,24 +1253,27 @@ describe('share targets', () => {
         elapsedMs: 61_500,
       };
       const stamped = { ...record, mistakes: { values: 3, candidates: 2, atMs: 61_500 } };
-      expect(shareTargetOfRecord(stamped).result?.mistakes).toEqual({ values: 3, candidates: 2 });
+      expect(shareTargetOfRecord(stamped, null).result?.mistakes).toEqual({
+        values: 3,
+        candidates: 2,
+      });
       const stale = { ...record, mistakes: { values: 3, candidates: 2, atMs: 60_000 } };
-      expect(shareTargetOfRecord(stale).result?.mistakes).toBeNull();
-      expect(shareTargetOfRecord(record).result?.mistakes).toBeNull();
+      expect(shareTargetOfRecord(stale, null).result?.mistakes).toBeNull();
+      expect(shareTargetOfRecord(record, null).result?.mistakes).toBeNull();
     });
   });
 
   it('names the daily a game was played as, puzzle alone or with its time', () => {
     const session = asDaily(running(nearlySolved([0])), '2026-10-12', 'easy');
     expect(shareTargetOf(session).daily).toBe('2026-10-12');
-    expect(shareTargetOfRecord(session.record).daily).toBe('2026-10-12');
+    expect(shareTargetOfRecord(session.record, null).daily).toBe('2026-10-12');
   });
 
   it('shares a history entry the same way', () => {
     const record = createRecord(PUZZLE, 'generated', NOW, null, NO_HELP);
-    expect(shareTargetOfRecord(record).result).toBeNull();
+    expect(shareTargetOfRecord(record, null).result).toBeNull();
     const solved: GameRecord = { ...record, status: 'solved', elapsedMs: 61_500 };
-    expect(shareTargetOfRecord(solved).result).toEqual({
+    expect(shareTargetOfRecord(solved, null).result).toEqual({
       seconds: 61,
       assists: NO_HELP,
       mistakes: null,
@@ -1284,11 +1291,12 @@ describe('share targets', () => {
     };
     expect(shareTargetOf(replay).result).toBeNull();
     const record: GameRecord = { ...replay.record, status: 'solved', elapsedMs: 4000 };
-    expect(shareTargetOfRecord(record)).toEqual({
+    expect(shareTargetOfRecord(record, null)).toEqual({
       daily: null,
       givens: record.givens,
       difficulty: record.difficulty,
       result: null,
+      solve: null,
     });
   });
 });
@@ -1582,5 +1590,132 @@ describe('planStartup', () => {
     // A guard against the plan drifting from what createGame makes.
     const plan = planStartup(memoryStorage(), linkFor(PUZZLE.givens), at(NOW), false);
     expect(plan.session?.game.cells).toEqual(createGame(PUZZLE).cells);
+  });
+});
+
+describe('a solve in a share link', () => {
+  // A five-move solve whose last move is at 0:09.
+  const { puzzle, encoded } = shortSolve();
+  const link = (extra: Record<string, string> = {}) =>
+    linkFor(puzzle.givens, { t: '9', n: 'Dan', s: encoded, ...extra });
+
+  it('goes with the challenge when it plays to the solve at the link’s time', () => {
+    const plan = planStartup(memoryStorage(), link(), at(NOW), false);
+    expect(plan.session?.record.challenge).toMatchObject({ name: 'Dan', seconds: 9, log: encoded });
+    expect(plan.isSolveTooNew).toBe(false);
+    expect(plan.session?.pause).toBe('ready');
+  });
+
+  it.each([
+    ['paired with another time', { t: '300' }],
+    ['of another puzzle', { p: linkFor(PUZZLE.givens).slice(3) }],
+    ['broken', { s: encoded.slice(0, -2) }],
+    ['from an older version', { s: logFromAnotherBuild(0, 0) }],
+  ])('is dropped without a word when %s, the link opening as it would without', (_, extra) => {
+    const plan = planStartup(memoryStorage(), link(extra), at(NOW), false);
+    expect(plan.session?.record.challenge).not.toBeNull();
+    expect(plan.session?.record.challenge).not.toHaveProperty('log');
+    expect(plan.isSolveTooNew).toBe(false);
+    expect(plan.isBadLink).toBe(false);
+  });
+
+  it('is dropped, but said, when a newer version recorded it', () => {
+    for (const newer of [logFromAnotherBuild(MOVES_VERSION + 1, 0), LOG_IN_A_LATER_FORMAT]) {
+      const plan = planStartup(memoryStorage(), link({ s: newer }), at(NOW), false);
+      expect(plan.session?.record.challenge).not.toHaveProperty('log');
+      expect(plan.isSolveTooNew).toBe(true);
+    }
+  });
+
+  it('goes with the challenge of an unfinished attempt reopened, and of the offer for a solved one', () => {
+    const storage = memoryStorage();
+    const open = running(puzzle);
+    saveAsCurrent(storage, open);
+    const reopened = planStartup(storage, link(), at(NOW + 1000), false);
+    expect(reopened.session?.record.id).toBe(open.record.id);
+    expect(reopened.session?.record.challenge?.log).toBe(encoded);
+
+    const solved = memoryStorage();
+    upsertRecord(solved, { ...open.record, status: 'solved', elapsedMs: 20_000 });
+    const offered = planStartup(solved, link(), at(NOW + 1000), false);
+    expect(offered.offer?.challenge?.log).toBe(encoded);
+  });
+
+  it('makes a new attempt at a puzzle whose solve was watched one without a time', () => {
+    const storage = memoryStorage();
+    markWatched(storage, puzzle.givens);
+    expect(planStartup(storage, link(), at(NOW), false).session?.record.watched).toBe(true);
+    expect(planStartup(memoryStorage(), link(), at(NOW), false).session?.record).not.toHaveProperty(
+      'watched',
+    );
+  });
+
+  it('compares a solved puzzle with the solve that had a time, not one after watching', () => {
+    const storage = memoryStorage();
+    const base = running(puzzle).record;
+    // Solved with a time first; a later attempt, after watching a solve, has none.
+    upsertRecord(storage, { ...base, id: 'mbx3k2f0-time', status: 'solved', elapsedMs: 20_000 });
+    upsertRecord(storage, {
+      ...base,
+      id: 'mbx3k2f0-wtch',
+      createdAt: NOW + 10,
+      status: 'solved',
+      elapsedMs: 5000,
+      watched: true,
+    });
+    expect(planStartup(storage, link(), at(NOW + 1000), false).offer?.previous.id).toBe(
+      'mbx3k2f0-time',
+    );
+  });
+});
+
+describe('sharing a solve', () => {
+  const { puzzle, encoded } = shortSolve();
+  const solvedAt = 9000;
+
+  /** The game on screen, solved by the short solve's log, its clock stopped at `bankedMs`. */
+  function solvedSession(bankedMs = solvedAt + 50, overrides: Partial<GameRecord> = {}): Session {
+    const start = running(puzzle);
+    const log = decodeMoveLog(encoded)!;
+    return {
+      ...start,
+      game: replayMoves(puzzle, log),
+      moves: log,
+      clock: { bankedMs, runningSince: null },
+      record: { ...start.record, ...overrides },
+    };
+  }
+
+  it('offers the solve with the time, when its log plays to the solve then', () => {
+    const target = shareTargetOf(solvedSession());
+    expect(target.result?.seconds).toBe(9);
+    expect(target.solve).toBe(encoded);
+  });
+
+  it('offers none for a time the log does not agree with, nor for a game not recorded', () => {
+    expect(shareTargetOf(solvedSession(30_000)).solve).toBeNull();
+    expect(shareTargetOf({ ...solvedSession(), moves: null }).solve).toBeNull();
+  });
+
+  it('shares the puzzle alone, with no solve, after a replay or watching a solve', () => {
+    for (const overrides of [{ source: 'replay' as const }, { watched: true as const }]) {
+      const target = shareTargetOf(solvedSession(undefined, overrides));
+      expect(target.result).toBeNull();
+      expect(target.solve).toBeNull();
+    }
+  });
+
+  it('offers a history entry’s solve from its stored log by the same rules', () => {
+    const record: GameRecord = {
+      ...running(puzzle).record,
+      status: 'solved',
+      elapsedMs: solvedAt + 50,
+    };
+    expect(shareTargetOfRecord(record, encoded).solve).toBe(encoded);
+    expect(shareTargetOfRecord(record, null).solve).toBeNull();
+    expect(shareTargetOfRecord({ ...record, elapsedMs: 60_000 }, encoded).solve).toBeNull();
+    const watched = shareTargetOfRecord({ ...record, watched: true }, encoded);
+    expect(watched).toMatchObject({ result: null, solve: null });
+    expect(shareTargetOfRecord({ ...record, status: 'playing' }, encoded).solve).toBeNull();
   });
 });

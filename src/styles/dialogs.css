@@ -17,6 +17,8 @@
      .button--danger    destructive confirmations (red, solid)
      .button--ghost     low-emphasis (no fill or rule until hovered)
      .button--small     compact, for rows of actions in a list
+     .button--wraps     words that may not fit on one line (a friend's name
+                        from a link), held in a .button__label
    Boxes with the keys' small radius: the board's cells are square, so
    nothing here is mistaken for one. */
 .button {
@@ -82,6 +84,28 @@
 .button--small .icon {
   width: 16px;
   height: 16px;
+}
+
+/* A label of unknown length — "Watch <name>'s solve", the name up to 24
+   characters from a stranger's link — wraps rather than pushing its button
+   past the card, row or dialog it sits in: never wider than that box, its
+   words breaking onto a second line (a long name anywhere within it), and
+   a little padding above and below so wrapped lines keep off the rule.
+   One line is the height it always was: the minimum height is the taller. */
+.button--wraps {
+  max-width: 100%;
+  padding-block: 6px;
+}
+
+.button--wraps .icon {
+  flex-shrink: 0;
+}
+
+.button__label {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: center;
 }
 
 /* Hover only where there is a hover: on touch it sticks after the tap.
@@ -504,6 +528,17 @@
   line-height: 1.4;
 }
 
+/* A solve with no time — the player watched a friend's first — says so
+   where the time would be: in ink, the result's own news, and kept to a
+   measure that breaks it into even lines. */
+.result__note--watched {
+  max-width: 30ch;
+  margin-top: 6px;
+  color: var(--text);
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
 /* "Watch your solve": a look back, under the result rather than among the
    footer's next steps. */
 .result__watch {
@@ -668,6 +703,12 @@
   text-align: center;
 }
 
+/* "Watch Dan's solve", under the verdict it follows from. */
+.comparison__watch {
+  margin: 10px 0 0;
+  text-align: center;
+}
+
 /* ---- Stats: tiles and table ---- */
 .stats {
   margin: 0 0 4px;
@@ -788,6 +829,15 @@
 }
 
 /* ---- Share ---- */
+/* "Include my solve": Settings' own switch, between the name and the
+   preview, spaced as a field is and with no rule under it — the preview's
+   box below is edge enough. */
+.share__solve {
+  margin: 0 0 16px;
+  padding: 0;
+  border-bottom: 0;
+}
+
 .share__preview {
   margin: 0 0 16px;
   padding: 12px 14px;

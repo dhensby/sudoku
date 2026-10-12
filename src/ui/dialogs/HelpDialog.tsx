@@ -1,6 +1,6 @@
 import { Fragment, type ReactNode } from 'react';
 import { DailyMark } from '../DailyMark';
-import { STATUS_TEXT } from '../daily';
+import { KEY_TEXT } from '../daily';
 import { BookIcon } from '../icons';
 import type { DailyStatus } from '../../storage/streaks';
 import { Dialog } from './Dialog';
@@ -156,10 +156,10 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
               ringed, with a mark for each difficulty — Easy, Medium, Hard and Expert, left to
               right. Pick a day to play it, carry on, or play it again. The marks:
               <span className="help__marks">
-                {(Object.keys(STATUS_TEXT) as DailyStatus[]).map((status) => (
+                {(Object.keys(KEY_TEXT) as DailyStatus[]).map((status) => (
                   <span key={status} className="help__mark">
                     <DailyMark status={status} />
-                    {STATUS_TEXT[status]}
+                    {KEY_TEXT[status]}
                   </span>
                 ))}
               </span>
@@ -299,6 +299,28 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
             <li>
               Watching changes nothing: the clock stays stopped, and your time and record stay as
               they were. A game from before solves were recorded move by move can&apos;t be watched.
+            </li>
+          </ul>
+        </section>
+
+        <section className="help__section">
+          <h3 className="help__heading">Sharing a solve</h3>
+          <ul className="help__list">
+            <li>
+              When you share a time, turn on <strong>Include my solve</strong> and the link carries
+              your solve as well, so your friend can watch how you did it. It makes the link longer,
+              so it&apos;s off until you turn it on.
+            </li>
+            <li>
+              A link with a solve offers <strong>Watch your friend&apos;s solve</strong> (with their
+              name, if they gave one) beside <strong>Start</strong>. Once you&apos;ve solved the
+              puzzle yourself, watching is free: the Solved dialog and History offer it too.
+            </li>
+            <li>
+              Watch before you&apos;ve solved it, and you&apos;ve seen every number go in, so the
+              game asks first. If you watch anyway, that puzzle never records a time for you — not
+              the game you were playing, nor any later one. You can still solve it, and it counts as
+              solved, but with no time: no best, no average, no streak, and no time to share.
             </li>
           </ul>
         </section>

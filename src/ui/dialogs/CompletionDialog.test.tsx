@@ -241,12 +241,16 @@ describe('CompletionDialog', () => {
         { kind: 'early' } as const,
         "Started before its day began here, so it doesn't count towards your streak",
       ],
+      [
+        { kind: 'watched' } as const,
+        "You watched a solve of it first, so it doesn't count towards your streak",
+      ],
     ])('says what it did for the streak: %o', (streak, text) => {
       renderCompletion({ daily: daily(streak) });
       const line = within(dialog()).getByText(text);
       // Counted, it is led by the calendar's own mark for a day solved on it.
       expect(line.querySelector('.daily-mark--solved-on-the-day') !== null).toBe(
-        streak.kind !== 'later' && streak.kind !== 'early',
+        streak.kind !== 'later' && streak.kind !== 'early' && streak.kind !== 'watched',
       );
       // Read with the time as focus lands on Share.
       expect(within(dialog()).getByRole('button', { name: 'Share your time' })).toBeInTheDocument();
@@ -281,5 +285,62 @@ describe('CompletionDialog', () => {
   it('opens on Share when back from watching a solve it can no longer offer', () => {
     renderCompletion({ isBackFromWatch: true });
     expect(screen.getByRole('button', { name: 'Share your time' })).toHaveFocus();
+  });
+  describe('after watching a solve of the puzzle first', () => {
+    it('says there is no time, and why, where the time would be', () => {
+      renderCompletion({ isWatched: true, isNewBest: true, isReplay: true });
+      expect(within(dialog()).queryByText('5:23')).toBeNull();
+      expect(
+        within(dialog()).getByText(
+          'Solved — no time recorded: you watched a solve of this puzzle first.',
+        ),
+      ).toBeInTheDocument();
+      // Nothing else that only a time could earn, nor the replay's aside.
+      expect(screen.queryByText('New best!')).toBeNull();
+      expect(screen.queryByText(/played this puzzle before/)).toBeNull();
+      expect(dialog()).toHaveAccessibleDescription(/no time recorded/);
+    });
+
+    it('shares the puzzle alone, and still says how clean it was', () => {
+      renderCompletion({ isWatched: true, mistakes: { values: 1, candidates: 0 } });
+      expect(screen.getByRole('button', { name: 'Share puzzle' })).toHaveFocus();
+      expect(within(dialog()).getByText('1 mistake')).toBeInTheDocument();
+    });
+
+    it('sets no time of mine in the head-to-head, and gives no verdict', () => {
+      renderCompletion({ isWatched: true, challenge: challenger('Dan', 300) });
+      const region = screen.getByRole('region', { name: 'Head to head' });
+      expect(within(region).getByRole('row', { name: /^Time/ })).toHaveTextContent(
+        'Time—no time recorded5:00',
+      );
+      expect(region).toHaveTextContent("You watched a solve first, so there's no time to compare.");
+    });
+  });
+
+  describe("the friend's solve", () => {
+    it('is offered in the head-to-head when their link carried one', () => {
+      const onWatchFriend = vi.fn();
+      renderCompletion({ challenge: challenger('Dan', 300), onWatchFriend });
+      const region = screen.getByRole('region', { name: 'Head to head' });
+      fireEvent.click(within(region).getByRole('button', { name: "Watch Dan's solve" }));
+      expect(onWatchFriend).toHaveBeenCalledTimes(1);
+      // Focus still opens on Share.
+      expect(screen.getByRole('button', { name: 'Share your time' })).toHaveFocus();
+    });
+
+    it('takes focus back as the dialog comes back from watching it', () => {
+      renderCompletion({
+        challenge: challenger('Dan', 300),
+        onWatch: vi.fn(),
+        onWatchFriend: vi.fn(),
+        isBackFromFriend: true,
+      });
+      expect(screen.getByRole('button', { name: "Watch Dan's solve" })).toHaveFocus();
+    });
+
+    it('leaves focus on Share when there is no friend’s solve to go back to', () => {
+      renderCompletion({ challenge: challenger('Dan', 300), isBackFromFriend: true });
+      expect(screen.getByRole('button', { name: 'Share your time' })).toHaveFocus();
+    });
   });
 });

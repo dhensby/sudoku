@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import type { Assists, MistakeTally } from '../../core';
 import type { Challenge } from '../../storage/history';
 import { Comparison, compareTimes, type ComparisonProps, type TimeComparison } from './Comparison';
@@ -329,5 +329,61 @@ describe('Comparison', () => {
     expect(them).toHaveAttribute('title', 'אלכסנדרה בת־שבע');
     // The rows still line up: the name moves nothing out of its column.
     expect(cellsByRow()[2]).toEqual(['Hints', '0', '1']);
+  });
+  describe('with no time of mine — I watched a solve first', () => {
+    it('shows a dash a screen reader hears as "no time recorded", and marks neither time', () => {
+      renderComparison({ mySeconds: null });
+      const [mine, theirs] = times();
+      expect(mine).toHaveTextContent('—no time recorded');
+      expect(mine.querySelector('[aria-hidden="true"]')).toHaveTextContent('—');
+      expect(theirs).toHaveTextContent('5:23');
+      for (const time of times()) expect(time).not.toHaveClass('comparison__time--winner');
+    });
+
+    it('gives no verdict on time, saying why', () => {
+      renderComparison({ mySeconds: null, verdictId: 'v' });
+      expect(document.getElementById('v')).toHaveTextContent(
+        "You watched a solve first, so there's no time to compare.",
+      );
+    });
+
+    it('still sets the help and mistakes side by side', () => {
+      renderComparison({
+        mySeconds: null,
+        myMistakes: tally(1),
+        challenge: challenger('Dan', 323, NONE, tally(0)),
+      });
+      expect(within(table()).getByRole('row', { name: /^Mistakes/ })).toHaveTextContent(
+        'Mistakes10',
+      );
+    });
+  });
+
+  describe("the friend's solve", () => {
+    it('is offered under the verdict, by name, when their link carried one', () => {
+      const onWatch = vi.fn();
+      renderComparison({ onWatch });
+      const watch = within(region()).getByRole('button', { name: "Watch Dan's solve" });
+      expect(watch.querySelector('bdi')).toHaveTextContent('Dan');
+      fireEvent.click(watch);
+      expect(onWatch).toHaveBeenCalledTimes(1);
+    });
+
+    it('names a friend whose link gave no name as your friend', () => {
+      renderComparison({ onWatch: vi.fn(), challenge: challenger(null, 323) });
+      expect(
+        within(region()).getByRole('button', { name: "Watch your friend's solve" }),
+      ).toBeInTheDocument();
+    });
+
+    it('is not offered without one', () => {
+      renderComparison();
+      expect(within(region()).queryByRole('button')).toBeNull();
+    });
+
+    it('takes focus when asked, back from watching it', () => {
+      renderComparison({ onWatch: vi.fn(), isWatchFocused: true });
+      expect(within(region()).getByRole('button')).toHaveAttribute('data-autofocus');
+    });
   });
 });

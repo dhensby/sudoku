@@ -27,6 +27,14 @@ export { MAX_NAME_LENGTH } from '../storage/storage';
  * A solve's mistakes travel too, inside the assists parameter (see
  * `encodeMistakes`) rather than in one of their own, so a link stays as short
  * as it was and a version from before them opens it just the same.
+ *
+ * A solved game's link can carry the solve itself, too (`&s=`): its move log,
+ * base64url already, so a friend can watch how it was done (see
+ * `src/core/playback.ts`). Only with a time, which it must agree with (see
+ * `sharedSolveRefusal`), and only when the sharer chooses to: it makes the
+ * link several times longer, and it gives the puzzle away. A version from
+ * before solves were shared skips the parameter it does not know — it only
+ * stays in that version's address bar, as it does not clear it.
  */
 
 /** A result to put in a link: the time to beat, the help it came with and its mistakes. */
@@ -41,7 +49,21 @@ export interface ShareResult {
    * nothing about, as it is not the same as none.
    */
   mistakes?: MistakeTally | null;
+  /**
+   * The solve, as its encoded move log, for a friend to watch — only ever one
+   * this build plays back to the solve at this time (see
+   * `sharedSolveRefusal`) — or null (or left out) to send the time alone.
+   */
+  log?: string | null;
 }
+
+/**
+ * The line a message with a solve in its link adds, after the challenge:
+ * that it can be watched, and — as watching first costs the friend their
+ * time — that it is for after a go of their own. It says nothing of how the
+ * solve went, so it spoils nothing on its own.
+ */
+export const SOLVE_LINE = "You can watch my solve too, once you've had a go.";
 
 /**
  * Where links point: the app's own root, so they work from the `/sudoku/`
@@ -181,6 +203,8 @@ export function buildShareUrl(
     // Mistakes after the help, in the same parameter (see `encodeMistakes`).
     const assists = encodeAssists(result.assists) + encodeMistakes(result.mistakes);
     if (assists !== '') url.searchParams.set('a', assists);
+    // Last, as the longest by far: a chat preview cut short keeps the rest.
+    if (result.log !== undefined && result.log !== null) url.searchParams.set('s', result.log);
   }
   return url.href;
 }
@@ -197,7 +221,8 @@ export function buildShareUrl(
  * Under a time, a line says how it was earned, as the Ready card a friend
  * opens it on does (see `describeResult`): "No mistakes · with 2 hints",
  * "1 mistake", "With auto candidates" — the mistakes only when the count is
- * known, and nothing at all for an unaided solve whose count is not.
+ * known, and nothing at all for an unaided solve whose count is not. A link
+ * carrying the solve says so at the end (see `SOLVE_LINE`).
  */
 export function buildShareText({
   difficulty,
@@ -205,7 +230,7 @@ export function buildShareText({
   daily = null,
 }: {
   difficulty: Difficulty;
-  result?: Pick<ShareResult, 'seconds' | 'assists' | 'mistakes'>;
+  result?: Pick<ShareResult, 'seconds' | 'assists' | 'mistakes' | 'log'>;
   /** The date of the daily the puzzle is, if it is one. */
   daily?: DateKey | null;
 }): string {
@@ -219,6 +244,7 @@ export function buildShareText({
   const how = describeResult(result.assists, result.mistakes ?? null);
   if (how !== null) lines.push(how);
   lines.push('Can you beat my time?');
+  if (result.log !== undefined && result.log !== null) lines.push(SOLVE_LINE);
   return lines.join('\n');
 }
 

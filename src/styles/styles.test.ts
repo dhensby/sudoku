@@ -264,6 +264,30 @@ describe('the board', () => {
   });
 });
 
+describe("the cards' buttons", () => {
+  it('sets Start and a friend’s solve side by side, wrapping where the card is narrow', () => {
+    const actions = rule(BOARD, '.board-overlay__actions');
+    expect(actions).toMatch(/display:\s*flex/);
+    expect(actions).toMatch(/flex-wrap:\s*wrap/);
+    expect(actions).toMatch(/justify-content:\s*center/);
+  });
+
+  it('wraps a friend’s solve’s words rather than growing past the card, row or dialog', () => {
+    // `.button` keeps its words on one line; a name from a link may not fit.
+    expect(rule(DIALOGS, '.button')).toMatch(/white-space:\s*nowrap/);
+    expect(rule(DIALOGS, '.button--wraps')).toMatch(/max-width:\s*100%/);
+    const label = rule(DIALOGS, '.button__label');
+    expect(label).toMatch(/white-space:\s*normal/);
+    expect(label).toMatch(/overflow-wrap:\s*anywhere/);
+    expect(label).toMatch(/min-width:\s*0/);
+    expect(rule(DIALOGS, '.button--wraps .icon')).toMatch(/flex-shrink:\s*0/);
+    // Later than every padding it must win over, the small button's among them.
+    expect(DIALOGS.indexOf('.button--wraps {')).toBeGreaterThan(
+      DIALOGS.indexOf('.button--small {'),
+    );
+  });
+});
+
 describe('the controls', () => {
   it('rules every key round, so its shape holds 3:1 without its fill', () => {
     expect(rule(CONTROLS, '.numpad__key')).toMatch(/border:\s*1px solid var\(--key-border\)/);
@@ -540,11 +564,16 @@ describe('the dialogs', () => {
 
   it.each([
     ['.result__mistakes', 'text'],
+    ['.result__note--watched', 'text'],
     ['.challenge__mistakes', 'text-muted'],
   ])('sets %s in --%s, a pair the contrast guard holds on every dialog', (selector, token) => {
     // contrast.test.ts holds text and muted text at 4.5:1 on every surface;
     // a colour of its own would be a pair it never checks.
     expect(rule(DIALOGS, selector)).toMatch(new RegExp(`color:\\s*var\\(--${token}\\)`));
+  });
+
+  it('sets Share’s "Include my solve" as Settings’ switch, with no rule under it', () => {
+    expect(rule(DIALOGS, '.share__solve')).toMatch(/border-bottom:\s*0/);
   });
 
   it('puts every History row’s actions on a line of their own, however many it has', () => {

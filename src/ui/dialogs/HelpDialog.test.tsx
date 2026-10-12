@@ -17,6 +17,7 @@ describe('HelpDialog', () => {
       'Hints',
       'Mistakes',
       'Watching a solve',
+      'Sharing a solve',
       'Difficulty',
       'The clock',
       'Racing friends',
@@ -86,6 +87,23 @@ describe('HelpDialog', () => {
     expect(row).toHaveTextContent(
       'Space to play or pause, ← → a move, Home End to the start or the solve',
     );
+  });
+
+  it('says what sharing a solve does, and that watching one first costs the time', () => {
+    render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={vi.fn()} />);
+    const section = screen.getByRole('heading', { name: 'Sharing a solve' }).closest('section')!;
+    expect(section).toHaveTextContent(/turn on Include my solve and the link carries your solve/);
+    expect(section).toHaveTextContent(/it's off until you turn it on/);
+    // Product text, not an example: no sample name.
+    expect(section).toHaveTextContent(
+      /offers Watch your friend's solve \(with their name, if they gave one\) beside Start/,
+    );
+    expect(section).not.toHaveTextContent(/Dan/);
+    expect(section).toHaveTextContent(/Once you've solved the puzzle yourself, watching is free/);
+    expect(section).toHaveTextContent(
+      /that puzzle never records a time for you — not the game you were playing, nor any later one/,
+    );
+    expect(section).toHaveTextContent(/no best, no average, no streak, and no time to share/);
   });
 
   it('says where the menus are for what has no key', () => {
@@ -233,6 +251,7 @@ describe('HelpDialog', () => {
       expect(section).toHaveTextContent(/Easy, Medium, Hard and Expert, left to right/);
       expect(section).toHaveTextContent(/started on its own day/);
       expect(section).toHaveTextContent(/never adds to a streak/);
+      expect(section).toHaveTextContent(/Solved on another day, or after watching a solve/);
       for (const status of ['solved-on-the-day', 'solved-later', 'in-progress', 'not-started']) {
         expect(section.querySelector(`.daily-mark--${status}`)).not.toBeNull();
       }

@@ -39,7 +39,7 @@ import { Dialog } from './Dialog';
  * What to play back: a puzzle's givens and a solve's encoded move log, with
  * the words to head it. Nothing of the player's own — no record, no saved
  * board — so a solve from anywhere plays the same: from History, from the
- * game just solved, or (later) from a friend's link.
+ * game just solved, or from a friend's link.
  */
 export interface PlaybackSource {
   givens: string;
@@ -47,8 +47,14 @@ export interface PlaybackSource {
   difficulty: Difficulty;
   /** The move log, as `encodeMoveLog` writes it. */
   log: string;
-  /** Whose solve: "Your solve". */
+  /** Whose solve: "Your solve", "Dan's solve". */
   title: string;
+  /**
+   * The friend's name from a link that `title` begins with, if it does: kept
+   * apart from the words after it in a <bdi> as the heading is drawn, as
+   * everywhere a link's name is shown.
+   */
+  name?: string;
   /** What it was: "Hard · 5:23". */
   subtitle: string;
 }
@@ -315,6 +321,7 @@ export function PlaybackDialog({
   difficulty,
   log,
   title,
+  name,
   subtitle,
   settings,
   onClose,
@@ -326,7 +333,21 @@ export function PlaybackDialog({
   );
 
   return (
-    <Dialog title={title} onClose={onClose} className="dialog--playback" describedBy={subtitleId}>
+    <Dialog
+      title={
+        name !== undefined && title.startsWith(name) ? (
+          <>
+            <bdi>{name}</bdi>
+            {title.slice(name.length)}
+          </>
+        ) : (
+          title
+        )
+      }
+      onClose={onClose}
+      className="dialog--playback"
+      describedBy={subtitleId}
+    >
       <p className="playback__subtitle" id={subtitleId}>
         {subtitle}
       </p>

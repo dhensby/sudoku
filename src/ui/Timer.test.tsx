@@ -70,6 +70,37 @@ describe('Timer', () => {
     expect(screen.getByText(/3:42/)).toHaveTextContent('Solved in 3:42');
   });
 
+  it('shows a dash, not the time, for a solve after watching a friend’s, as none was recorded', () => {
+    render(
+      <Timer
+        elapsedMs={222_000}
+        phase="solved"
+        showTimer
+        isTimeless
+        onPause={vi.fn()}
+        onResume={vi.fn()}
+      />,
+    );
+    const time = document.querySelector('.timer__time')!;
+    expect(time).toHaveTextContent('Solved, no time recorded—');
+    expect(time).not.toHaveTextContent('3:42');
+    expect(time.querySelector('[aria-hidden="true"]')).toHaveTextContent('—');
+  });
+
+  it('ticks as ever while a game whose solve was watched is played', () => {
+    render(
+      <Timer
+        elapsedMs={222_000}
+        phase="playing"
+        showTimer
+        isTimeless
+        onPause={vi.fn()}
+        onResume={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'Pause' })).toHaveAccessibleDescription('3:42');
+  });
+
   it('shows nothing once solved with the timer turned off', () => {
     const { container } = render(
       <Timer

@@ -5,11 +5,22 @@ import { dailyName, dailyPhrase } from './daily';
 import { DIFFICULTY_LABEL, capitalise, describeResult, withArticle } from './format';
 import { PlayIcon } from './icons';
 import { focusQuietly } from './keepFocus';
+import { WatchFriendText } from './WatchFriendText';
 
 /** The daily a card's game is, for its wording: its date, and the player's. */
 export interface OverlayDaily {
   date: DateKey;
   today: DateKey;
+}
+
+/**
+ * A friend's solve a card offers to watch, beside its own button: whose it
+ * is (null for a link with no name), and what pressing it does — the app
+ * decides whether that asks first.
+ */
+export interface CardSolve {
+  name: string | null;
+  onWatch: () => void;
 }
 
 /** What the board's place holds while the board itself is not shown. */
@@ -30,6 +41,13 @@ export type BoardOverlayContent =
       challenge: Challenge | null;
       daily?: OverlayDaily | null;
       onStart: () => void;
+      /** The friend's solve the link carried, to watch instead of racing it. */
+      solve?: CardSolve | null;
+      /**
+       * A solve of this puzzle has been watched (see `GameRecord.watched`):
+       * the card says no time will be recorded, before Start is pressed.
+       */
+      isWatched?: boolean;
     }
   /** A paused game. */
   | {
@@ -39,6 +57,8 @@ export type BoardOverlayContent =
       showTimer: boolean;
       daily?: OverlayDaily | null;
       onResume: () => void;
+      /** The friend's solve the game's link carried, to give up and watch. */
+      solve?: CardSolve | null;
     }
   /** Paused behind a dialog: nothing to say, and nothing to press — the dialog has the floor. */
   | { kind: 'veiled' };
@@ -87,17 +107,23 @@ function lowerFirst(text: string): string {
  * describes because, sitting between the question and "The timer starts
  * when you do.", a bare "No mistakes." reads as a rule of the race, or as
  * the player's own count.
+ *
+ * Once the player has watched a solve of the puzzle (`isWatched`), no time of
+ * theirs will be recorded, so there is no race left to offer: the line stops
+ * at the friend's time, and the note under it says why.
  */
 function ChallengeText({
   difficulty,
   challenge,
   daily,
+  isWatched,
   textId,
   noteId,
 }: {
   difficulty: Difficulty;
   challenge: Challenge;
   daily: OverlayDaily | null | undefined;
+  isWatched: boolean;
   textId: string;
   noteId: string;
 }) {
@@ -108,8 +134,8 @@ function ChallengeText({
         {/* Names come from links anyone can write: <bdi> keeps a
             right-to-left one from pulling the sentence around it. */}
         {challenge.name === null ? 'Your friend' : <bdi>{challenge.name}</bdi>} solved{' '}
-        {puzzlePhrase(difficulty, daily)} in {formatDuration(challenge.seconds * 1000)}. Can you
-        beat it?
+        {puzzlePhrase(difficulty, daily)} in {formatDuration(challenge.seconds * 1000)}.
+        {!isWatched && ' Can you beat it?'}
       </p>
       {note !== null && (
         <p className="board-overlay__note" id={noteId}>
@@ -118,6 +144,32 @@ function ChallengeText({
         </p>
       )}
     </>
+  );
+}
+
+/**
+ * What a card says of a solve watched before Start: that the attempt about to
+ * begin will be recorded without a time — said before the clock starts, not
+ * discovered at the solve.
+ */
+export const WATCHED_CARD_TEXT =
+  "You've watched a solve of this puzzle, so no time will be recorded.";
+
+/**
+ * "Watch Dan's solve", the second button on a card: the name kept apart from
+ * the words around it, as everywhere a link's name is shown.
+ */
+function WatchSolveButton({ solve, describedBy }: { solve: CardSolve; describedBy?: string }) {
+  return (
+    <button
+      type="button"
+      className="button button--wraps board-overlay__button board-overlay__button--secondary"
+      aria-describedby={describedBy}
+      onClick={solve.onWatch}
+    >
+      <PlayIcon />
+      <WatchFriendText name={solve.name} />
+    </button>
   );
 }
 
@@ -131,6 +183,9 @@ function ChallengeText({
  * continues — and P, from anywhere. The button is described by the card's
  * title and text, so a screen reader landing on "Start" hears what it
  * starts.
+ *
+ * A game whose link carried the friend's solve offers it too, beside Start
+ * or Resume — the secondary choice, so focus and Enter stay with playing.
  */
 export function BoardOverlay(props: BoardOverlayProps) {
   const cardRef = useRef<HTMLDivElement>(null);
@@ -142,6 +197,7 @@ export function BoardOverlay(props: BoardOverlayProps) {
   const textId = `${ids}-text`;
   const noteId = `${ids}-note`;
   const timerNoteId = `${ids}-timer`;
+  const watchedNoteId = `${ids}-watched`;
 
   useLayoutEffect(() => {
     releaseRef.current = props.onReleaseFocus;
@@ -207,6 +263,7 @@ export function BoardOverlay(props: BoardOverlayProps) {
               difficulty={props.difficulty}
               challenge={props.challenge}
               daily={props.daily}
+              isWatched={props.isWatched === true}
               textId={textId}
               noteId={noteId}
             />
@@ -228,26 +285,40 @@ export function BoardOverlay(props: BoardOverlayProps) {
               is ready.
             </p>
           )}
-          <p className="board-overlay__note" id={timerNoteId}>
-            The timer starts when you do.
-          </p>
-          <button
-            type="button"
-            className="button button--primary board-overlay__button"
-            aria-describedby={[
-              titleId,
-              textId,
-              props.challenge !== null && challengeNote(props.challenge) !== null ? noteId : null,
-              timerNoteId,
-            ]
-              .filter((id) => id !== null)
-              .join(' ')}
-            ref={buttonRef}
-            onClick={props.onStart}
-          >
-            <PlayIcon />
-            Start
-          </button>
+          {props.isWatched === true ? (
+            <p className="board-overlay__note" id={watchedNoteId}>
+              {WATCHED_CARD_TEXT}
+            </p>
+          ) : (
+            <p className="board-overlay__note" id={timerNoteId}>
+              The timer starts when you do.
+            </p>
+          )}
+          <div className="board-overlay__actions">
+            <button
+              type="button"
+              className="button button--primary board-overlay__button"
+              aria-describedby={[
+                titleId,
+                textId,
+                props.challenge !== null && challengeNote(props.challenge) !== null ? noteId : null,
+                props.isWatched === true ? watchedNoteId : timerNoteId,
+              ]
+                .filter((id) => id !== null)
+                .join(' ')}
+              ref={buttonRef}
+              onClick={props.onStart}
+            >
+              <PlayIcon />
+              Start
+            </button>
+            {props.solve !== undefined && props.solve !== null && (
+              <WatchSolveButton
+                solve={props.solve}
+                describedBy={props.isWatched === true ? watchedNoteId : undefined}
+              />
+            )}
+          </div>
         </div>
       )}
       {props.kind === 'paused' && (
@@ -261,16 +332,21 @@ export function BoardOverlay(props: BoardOverlayProps) {
               : dailyName(props.daily.date, props.difficulty, props.daily.today)}
             {props.showTimer && <> · {formatDuration(props.elapsedMs)}</>}
           </p>
-          <button
-            type="button"
-            className="button button--primary board-overlay__button"
-            aria-describedby={`${titleId} ${textId}`}
-            ref={buttonRef}
-            onClick={props.onResume}
-          >
-            <PlayIcon />
-            Resume
-          </button>
+          <div className="board-overlay__actions">
+            <button
+              type="button"
+              className="button button--primary board-overlay__button"
+              aria-describedby={`${titleId} ${textId}`}
+              ref={buttonRef}
+              onClick={props.onResume}
+            >
+              <PlayIcon />
+              Resume
+            </button>
+            {props.solve !== undefined && props.solve !== null && (
+              <WatchSolveButton solve={props.solve} />
+            )}
+          </div>
         </div>
       )}
     </div>

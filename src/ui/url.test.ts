@@ -23,6 +23,7 @@ describe('readSharedLink', () => {
       givens: GIVENS,
       challenge: null,
       daily: null,
+      solve: null,
     });
   });
 
@@ -98,6 +99,33 @@ describe('readSharedLink', () => {
     });
   });
 
+  it('reads a solve that comes with a result, as it came, for the app to check', () => {
+    const url = buildShareUrl('https://x.test/', GIVENS, {
+      seconds: 60,
+      name: 'Dan',
+      assists: NONE,
+      log: 'BBAxy-_z',
+    });
+    expect(readSharedLink(searchOf(url))).toMatchObject({
+      challenge: { name: 'Dan', seconds: 60 },
+      solve: 'BBAxy-_z',
+    });
+    // No log on the challenge until it checks out.
+    expect(readSharedLink(searchOf(url))?.challenge).not.toHaveProperty('log');
+  });
+
+  it('ignores a solve with no time to go with it, and an empty one', () => {
+    expect(
+      readSharedLink(`${searchOf(buildShareUrl('https://x.test/', GIVENS))}&s=BBA`),
+    ).toMatchObject({ challenge: null, solve: null });
+    const timed = buildShareUrl('https://x.test/', GIVENS, {
+      seconds: 60,
+      name: '',
+      assists: NONE,
+    });
+    expect(readSharedLink(`${searchOf(timed)}&s=`)?.solve).toBeNull();
+  });
+
   it('keeps a challenge without a name', () => {
     const url = buildShareUrl('https://x.test/', GIVENS, { seconds: 60, name: '', assists: NONE });
     expect(readSharedLink(searchOf(url))?.challenge).toEqual({
@@ -113,8 +141,15 @@ describe('readSharedLink', () => {
       givens: null,
       challenge: null,
       daily: null,
+      solve: null,
     });
-    expect(readSharedLink('?p=')).toEqual({ code: '', givens: null, challenge: null, daily: null });
+    expect(readSharedLink('?p=')).toEqual({
+      code: '',
+      givens: null,
+      challenge: null,
+      daily: null,
+      solve: null,
+    });
   });
 
   it.each(['0', '-5', '1.5', 'abc', '', '99999999'])(
@@ -140,7 +175,7 @@ describe('clearShareParams', () => {
   afterEach(() => window.history.replaceState({}, '', '/'));
 
   it('removes the share parameters and keeps the rest of the URL', () => {
-    window.history.replaceState({}, '', '/?p=abc&d=2026-10-13&t=10&n=Dan&a=c&keep=1#here');
+    window.history.replaceState({}, '', '/?p=abc&d=2026-10-13&t=10&n=Dan&a=c&s=BBA&keep=1#here');
     clearShareParams();
     expect(window.location.search).toBe('?keep=1');
     expect(window.location.hash).toBe('#here');

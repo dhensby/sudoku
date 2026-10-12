@@ -1,12 +1,19 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 import {
+  appendMove,
+  createGame,
+  createMoveLog,
   encodeGivens,
+  encodeMoveLog,
   generatePuzzle,
   gridValues,
+  moveFor,
   mulberry32,
   rate,
+  reduce,
   solve,
   type Difficulty,
+  type Digit,
   type GridString,
   type Puzzle,
 } from '../src/core';
@@ -524,4 +531,28 @@ export async function settle(page: Page): Promise<void> {
         .map((animation) => animation.finished.catch(() => undefined)),
     ),
   );
+}
+
+/**
+ * A solve of `puzzle` as a friend's link would carry it: every blank placed
+ * in reading order, `gapMs` of play apart, recorded by the real engine's move
+ * log — and the whole seconds its link gives as the time it agrees with.
+ */
+export function placedSolve(puzzle: Puzzle, gapMs = 1000): { log: string; seconds: number } {
+  let game = createGame(puzzle);
+  let log = createMoveLog();
+  let at = 0;
+  for (const index of emptyCells(puzzle.givens)) {
+    at += gapMs;
+    const action = {
+      type: 'enter',
+      digit: Number(puzzle.solution[index]) as Digit,
+      index,
+      mode: 'normal',
+    } as const;
+    const next = reduce(game, action);
+    log = appendMove(log, moveFor(game, action, next)!, at);
+    game = next;
+  }
+  return { log: encodeMoveLog(log), seconds: Math.floor(at / 1000) };
 }

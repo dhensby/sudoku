@@ -269,6 +269,36 @@ describe('DailyDialog', () => {
     delete (HTMLElement.prototype as Partial<HTMLElement>).scrollIntoView;
   });
 
+  it('says a daily solved after watching a solve was solved with no time, and plays it again', () => {
+    const { props } = renderCalendar({
+      records: [
+        attempt('2026-10-12', 'easy', '2026-10-12', { watched: true }),
+        attempt('2026-10-12', 'hard', '2026-10-12', { status: 'playing', watched: true }),
+      ],
+    });
+    fireEvent.click(day('2026-10-12'));
+    const rows = within(screen.getByRole('region', { name: 'Monday 12 October' })).getAllByRole(
+      'listitem',
+    );
+    // Marked as a solve that does not count; an unfinished one as any other.
+    expect(rows.map((row) => row.textContent)).toEqual([
+      'EasySolved after watching a solvePlay again',
+      'MediumNot startedPlay',
+      'HardIn progress · 5:23Resume',
+      'ExpertNot startedPlay',
+    ]);
+    // The day's name says why too, never that it was solved on another day.
+    expect(day('2026-10-12')).toHaveAccessibleName(
+      'Monday 12 October: Easy solved after watching a solve, Medium and Expert not started, Hard in progress',
+    );
+    // And the key's hatched mark covers it.
+    expect(screen.getByText('Solved on another day, or after watching a solve')).toBeVisible();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Play again, Easy daily for Monday 12 October' }),
+    );
+    expect(props.onReplay).toHaveBeenCalledWith('2026-10-12', 'easy');
+  });
+
   it('shows the day chosen with its daily number, and today as today', () => {
     renderCalendar();
     expect(screen.getByText('Today · Daily #7')).toBeVisible();

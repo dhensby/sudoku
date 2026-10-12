@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   MAX_MOVES,
+  MAX_SHARED_LOG_LENGTH,
   MOVES_VERSION,
   addDays,
   appendMove,
@@ -17,7 +18,12 @@ import {
   MAX_RECORDS,
   MAX_SAVED_GAMES,
   MAX_SEEN,
+  MAX_WATCHED,
   computeStats,
+  hasRecordedTime,
+  hasSolved,
+  hasWatched,
+  markWatched,
   recordedMistakes,
   repairMistakeCounts,
   createGameId,
@@ -996,6 +1002,7 @@ describe('exportHistory', () => {
       games: { b: { v: 1, values: PUZZLE } },
       moves: {},
       seen: [],
+      watched: [],
       dailyLedger: {},
     });
     // Indented, for anyone who opens the file.
@@ -2798,6 +2805,377 @@ describe('mistakes', () => {
       storage.sets.length = 0;
       repairMistakeCounts(storage);
       expect(storage.sets).toEqual([]);
+    });
+  });
+});
+
+describe('shared solves and puzzles watched', () => {
+  const WATCHED = 'sudoku.watched';
+  const challenge = { name: 'Dan', seconds: 323, assists: NO_ASSISTS };
+
+  describe("a challenge's solve", () => {
+    it('is kept when shaped like a log a link carries', () => {
+      const storage = memoryStorage();
+      upsertRecord(storage, playing('a', 1, { challenge: { ...challenge, log: 'BBA_x-9z' } }));
+      expect(loadHistory(storage)[0].challenge).toEqual({ ...challenge, log: 'BBA_x-9z' });
+    });
+
+    it.each([
+      ['longer than any link carries', 'A'.repeat(MAX_SHARED_LOG_LENGTH + 1)],
+      ['not base64url', 'not a log!'],
+      ['empty', ''],
+      ['not a string', 42],
+    ])('is dropped on its own when %s, the challenge kept', (_, log) => {
+      const storage = memoryStorage();
+      seed(storage, [playing('a', 1, { challenge: { ...challenge, log } as never })]);
+      expect(loadHistory(storage)[0].challenge).toEqual(challenge);
+    });
+
+    it('takes a log of the longest a link carries', () => {
+      const storage = memoryStorage();
+      const log = 'A'.repeat(MAX_SHARED_LOG_LENGTH);
+      seed(storage, [playing('a', 1, { challenge: { ...challenge, log } })]);
+      expect(loadHistory(storage)[0].challenge?.log).toBe(log);
+    });
+  });
+
+  describe("friends' solves in a full storage", () => {
+    const LOG = 'B'.repeat(2000);
+
+    /** 400 finished games with a friend's solve, 20 unfinished ones with saved boards, p19 on screen. */
+    function fullStorage(): ReturnType<typeof quotaStorage> {
+      const storage = quotaStorage();
+      const records: GameRecord[] = [];
+      for (let i = 0; i < 400; i++) {
+        records.push(solved(`s${i}`, i * 10, 60_000, { challenge: { ...challenge, log: LOG } }));
+      }
+      for (let i = 0; i < 20; i++) {
+        const log = i === 19 ? LOG : undefined;
+        records.push(
+          playing(`p${i}`, 10_000 + i, {
+            updatedAt: 20_000 + i,
+            challenge: { ...challenge, ...(log === undefined ? {} : { log }) },
+          }),
+        );
+        saveGameBlob(storage, `p${i}`, { state: 'x'.repeat(2000) });
+      }
+      seed(storage, records);
+      saveCurrentId(storage, 'p19');
+      storage.capacity = storage.used() + 100;
+      return storage;
+    }
+
+    it('are shed before any saved board or record, but the game on screen keeps its own', () => {
+      const storage = fullStorage();
+      const after = upsertRecord(storage, playing('new', 50_000, { updatedAt: 50_000 }));
+      expect(loadHistory(storage)).toEqual(after);
+      expect(after).toHaveLength(421);
+      expect(
+        after.filter((record) => record.challenge?.log !== undefined).map((r) => r.id),
+      ).toEqual(['p19']);
+      // Each challenge keeps its name and time: only the solve to watch went.
+      expect(after.find((record) => record.id === 's0')?.challenge).toEqual(challenge);
+      expect(savedGameIds(storage).size).toBe(20);
+    });
+
+    it('are shed before any saved board or record for some other write', () => {
+      const storage = fullStorage();
+      saveGameBlob(storage, 'p0', { state: 'y'.repeat(4000) });
+      expect(loadGameBlob(storage, 'p0')).toEqual({ state: 'y'.repeat(4000) });
+      const records = loadHistory(storage);
+      expect(records).toHaveLength(420);
+      expect(records.filter((record) => record.challenge?.log !== undefined)).toHaveLength(1);
+      expect(savedGameIds(storage).size).toBe(20);
+    });
+
+    it('still sheds records when dropping them is not enough', () => {
+      const storage = fullStorage();
+      // Short of even the list without them, by a few thousand characters.
+      storage.capacity = storage.used() - 400 * LOG.length - 5000;
+      const after = upsertRecord(storage, playing('new', 50_000, { updatedAt: 50_000 }));
+      expect(after.filter((record) => record.status === 'solved')).toHaveLength(300);
+      expect(
+        after.filter((record) => record.challenge?.log !== undefined).map((r) => r.id),
+      ).toEqual(['p19']);
+    });
+  });
+
+  describe('the watched flag on a record', () => {
+    it('is kept only as true', () => {
+      const storage = memoryStorage();
+      seed(storage, [
+        solved('a', 1, 5000, { watched: true }),
+        { ...solved('b', 2), watched: false },
+        { ...solved('c', 3), watched: 'yes' },
+      ]);
+      const byId = new Map(loadHistory(storage).map((record) => [record.id, record]));
+      expect(byId.get('a')?.watched).toBe(true);
+      expect(byId.get('b')).not.toHaveProperty('watched');
+      expect(byId.get('c')).not.toHaveProperty('watched');
+    });
+
+    it('takes a solve’s time away: no recorded time, though it is still solved', () => {
+      expect(hasRecordedTime(solved('a', 1))).toBe(true);
+      expect(hasRecordedTime(solved('a', 1, 5000, { watched: true }))).toBe(false);
+      expect(hasRecordedTime(playing('a', 1))).toBe(false);
+    });
+
+    it('leaves a watched solve out of best and average, but not out of played and solved', () => {
+      const stats = computeStats([
+        solved('slow', 1, 90_000),
+        solved('fast', 2, 10_000, { watched: true }),
+        playing('open', 3, { watched: true }),
+      ]).easy;
+      expect(stats).toEqual({ played: 3, solved: 2, bestMs: 90_000, averageMs: 90_000 });
+    });
+
+    it('gives no best or average when every solve was watched', () => {
+      expect(computeStats([solved('a', 1, 10_000, { watched: true })]).easy).toMatchObject({
+        solved: 1,
+        bestMs: null,
+        averageMs: null,
+      });
+    });
+  });
+
+  describe('markWatched', () => {
+    it('remembers the puzzle, by its share code, and the puzzle is seen', () => {
+      const storage = memoryStorage();
+      expect(hasWatched(storage, PUZZLE)).toBe(false);
+      markWatched(storage, PUZZLE);
+      expect(hasWatched(storage, PUZZLE)).toBe(true);
+      expect(hasWatched(storage, OTHER_PUZZLE)).toBe(false);
+      expect(JSON.parse(storage.getItem(WATCHED)!)).toEqual([encodeGivens(PUZZLE)]);
+      expect(hasSeen(storage, [], PUZZLE)).toBe(true);
+    });
+
+    it('flags every unfinished attempt at the puzzle, and nothing else', () => {
+      const storage = memoryStorage();
+      upsertRecord(storage, playing('open', 1));
+      upsertRecord(storage, playing('pruned-board', 2));
+      upsertRecord(storage, playing('other', 3, { givens: OTHER_PUZZLE }));
+      const after = markWatched(storage, PUZZLE);
+      const byId = new Map(loadHistory(storage).map((record) => [record.id, record]));
+      expect(byId.get('open')?.watched).toBe(true);
+      expect(byId.get('pruned-board')?.watched).toBe(true);
+      expect(byId.get('other')).not.toHaveProperty('watched');
+      expect(after).toEqual(loadHistory(storage));
+    });
+
+    it('writes no history when there is nothing to flag, and the list once', () => {
+      const storage = countingStorage();
+      markWatched(storage, PUZZLE);
+      markWatched(storage, PUZZLE);
+      expect(storage.sets.filter((key) => key === HISTORY)).toEqual([]);
+      expect(storage.sets.filter((key) => key === WATCHED)).toHaveLength(1);
+    });
+
+    it('moves a puzzle watched again to the most recent place', () => {
+      const storage = memoryStorage();
+      markWatched(storage, PUZZLE);
+      markWatched(storage, OTHER_PUZZLE);
+      markWatched(storage, PUZZLE);
+      expect(JSON.parse(storage.getItem(WATCHED)!)).toEqual([
+        encodeGivens(OTHER_PUZZLE),
+        encodeGivens(PUZZLE),
+      ]);
+    });
+
+    it('forgets the puzzles watched longest ago beyond MAX_WATCHED, as many as are seen', () => {
+      expect(MAX_WATCHED).toBe(MAX_SEEN);
+      const storage = memoryStorage();
+      const codes = Array.from({ length: MAX_WATCHED }, (_, i) => `b${i.toString(36)}`);
+      storage.setItem(WATCHED, JSON.stringify(codes));
+      markWatched(storage, PUZZLE);
+      const kept = JSON.parse(storage.getItem(WATCHED)!) as string[];
+      expect(kept).toHaveLength(MAX_WATCHED);
+      expect(kept[0]).toBe(codes[1]);
+      expect(kept.at(-1)).toBe(encodeGivens(PUZZLE));
+    });
+
+    it('reads junk in the list as nothing, costing only itself', () => {
+      const storage = memoryStorage();
+      storage.setItem(WATCHED, JSON.stringify([42, 'not a code!', encodeGivens(PUZZLE)]));
+      expect(hasWatched(storage, PUZZLE)).toBe(true);
+      storage.setItem(WATCHED, '{"not": "a list"}');
+      expect(hasWatched(storage, PUZZLE)).toBe(false);
+    });
+
+    it('reads the list again once another tab has changed it', () => {
+      const storage = memoryStorage();
+      markWatched(storage, PUZZLE);
+      expect(hasWatched(storage, OTHER_PUZZLE)).toBe(false);
+      storage.setItem(WATCHED, JSON.stringify([encodeGivens(OTHER_PUZZLE)]));
+      expect(hasWatched(storage, OTHER_PUZZLE)).toBe(true);
+      expect(hasWatched(storage, PUZZLE)).toBe(false);
+    });
+  });
+
+  describe('hasSolved', () => {
+    it('is any solve of the puzzle, watched or not', () => {
+      expect(hasSolved([playing('a', 1)], PUZZLE)).toBe(false);
+      expect(hasSolved([solved('a', 1, 5000, { watched: true })], PUZZLE)).toBe(true);
+      expect(hasSolved([solved('a', 1, 5000, { givens: OTHER_PUZZLE })], PUZZLE)).toBe(false);
+    });
+  });
+
+  describe('no attempt at a watched puzzle records a time', () => {
+    it('flags a new attempt as it is first written', () => {
+      const storage = memoryStorage();
+      markWatched(storage, PUZZLE);
+      upsertRecord(storage, playing('later', 5));
+      expect(loadHistory(storage)[0].watched).toBe(true);
+    });
+
+    it('flags a game whose first write is its solve', () => {
+      const storage = memoryStorage();
+      markWatched(storage, PUZZLE);
+      upsertRecord(storage, solved('quick', 5, 4000));
+      const [record] = loadHistory(storage);
+      expect(record.watched).toBe(true);
+      expect(computeStats([record]).easy.bestMs).toBeNull();
+    });
+
+    it('keeps the flag through a write of the record without it — the page’s copy, from before', () => {
+      const storage = memoryStorage();
+      upsertRecord(storage, playing('open', 1));
+      markWatched(storage, PUZZLE);
+      // The page saves the solve from the record it loaded, unflagged.
+      upsertRecord(storage, solved('open', 1, 5000));
+      expect(loadHistory(storage)[0]).toMatchObject({ status: 'solved', watched: true });
+    });
+
+    it('flags an unfinished attempt as it is next written, though the flag missed it', () => {
+      const storage = memoryStorage();
+      upsertRecord(storage, playing('open', 1));
+      // As a list written by another tab, which flagged nothing here.
+      storage.setItem(WATCHED, JSON.stringify([encodeGivens(PUZZLE)]));
+      upsertRecord(storage, solved('open', 1, 5000));
+      expect(loadHistory(storage)[0].watched).toBe(true);
+    });
+
+    it('leaves a game solved before the solve was watched as it was', () => {
+      const storage = memoryStorage();
+      upsertRecord(storage, solved('done', 1, 5000));
+      storage.setItem(WATCHED, JSON.stringify([encodeGivens(PUZZLE)]));
+      upsertRecord(storage, solved('done', 1, 5000, { updatedAt: 9000 }));
+      expect(loadHistory(storage)[0]).not.toHaveProperty('watched');
+    });
+
+    it('takes a flagged attempt as proof the puzzle was watched, though the list lost it', () => {
+      const storage = memoryStorage();
+      // As when the list was refused for space while the flags were written.
+      seed(storage, [playing('open', 1, { watched: true })]);
+      expect(hasWatched(storage, PUZZLE)).toBe(true);
+      expect(hasWatched(storage, OTHER_PUZZLE)).toBe(false);
+      upsertRecord(storage, solved('again', 5, 3000));
+      const again = loadHistory(storage).find((record) => record.id === 'again')!;
+      expect(again.watched).toBe(true);
+    });
+
+    it('outlasts the records: deleting or pruning every attempt leaves the puzzle watched', () => {
+      const storage = memoryStorage();
+      upsertRecord(storage, playing('open', 1));
+      markWatched(storage, PUZZLE);
+      deleteRecord(storage, 'open');
+      expect(loadHistory(storage)).toEqual([]);
+      upsertRecord(storage, playing('again', 2));
+      expect(loadHistory(storage)[0].watched).toBe(true);
+    });
+
+    it('outlasts the record pruned past MAX_RECORDS', () => {
+      const storage = memoryStorage();
+      const records = [solved('watched', 0, 5000, { watched: true })];
+      for (let i = 1; i < MAX_RECORDS; i++) {
+        records.push(solved(`s${i}`, i, 5000, { givens: OTHER_PUZZLE }));
+      }
+      seed(storage, records);
+      storage.setItem(WATCHED, JSON.stringify([encodeGivens(PUZZLE)]));
+      upsertRecord(storage, playing('new', 5000, { givens: OTHER_PUZZLE }));
+      expect(ids(loadHistory(storage))).not.toContain('watched');
+      // A fresh attempt at it after that is no fresh puzzle.
+      upsertRecord(storage, solved('fresh', 6000, 3000));
+      const fresh = loadHistory(storage).find((record) => record.id === 'fresh')!;
+      expect(fresh.watched).toBe(true);
+    });
+  });
+
+  describe('export and import', () => {
+    it('carries the puzzles watched in the file, and adds them to the ones here', () => {
+      const source = memoryStorage();
+      upsertRecord(source, solved('a', 1));
+      markWatched(source, OTHER_PUZZLE);
+      const exported = JSON.parse(exportHistory(source, 0)) as { watched: string[] };
+      expect(exported.watched).toEqual([encodeGivens(OTHER_PUZZLE)]);
+
+      const target = memoryStorage();
+      markWatched(target, firstGivens(25));
+      importHistory(target, exportHistory(source, 0));
+      expect(hasWatched(target, OTHER_PUZZLE)).toBe(true);
+      expect(hasWatched(target, firstGivens(25))).toBe(true);
+    });
+
+    it('flags an imported unfinished attempt at a puzzle watched here, or in the file', () => {
+      const source = memoryStorage();
+      upsertRecord(source, playing('theirs', 1));
+      upsertRecord(source, playing('other', 2, { givens: OTHER_PUZZLE }));
+      markWatched(source, OTHER_PUZZLE);
+      const target = memoryStorage();
+      // Watched here only after the other browser's attempt was begun.
+      target.setItem(WATCHED, JSON.stringify([encodeGivens(PUZZLE)]));
+      upsertRecord(target, playing('mine', 3, { givens: firstGivens(25) }));
+      importHistory(target, exportHistory(source, 0));
+      const byId = new Map(loadHistory(target).map((record) => [record.id, record]));
+      expect(byId.get('theirs')?.watched).toBe(true);
+      expect(byId.get('other')?.watched).toBe(true);
+      expect(byId.get('mine')).not.toHaveProperty('watched');
+    });
+
+    it("keeps a file record's own flag, and makes its puzzle a watched one here", () => {
+      const target = memoryStorage();
+      // As exported from a tab of an older version: the flag, but no list.
+      const file = JSON.stringify({
+        app: 'sudoku',
+        version: 1,
+        exportedAt: 0,
+        records: [
+          solved('a', 1, 5000, { watched: true }),
+          solved('b', 2, 5000, { givens: OTHER_PUZZLE }),
+        ],
+      });
+      importHistory(target, file);
+      const byId = new Map(loadHistory(target).map((record) => [record.id, record]));
+      expect(byId.get('a')?.watched).toBe(true);
+      expect(byId.get('b')).not.toHaveProperty('watched');
+      expect(JSON.parse(target.getItem(WATCHED)!)).toEqual([encodeGivens(PUZZLE)]);
+      // So a later attempt at it records no time either.
+      upsertRecord(target, solved('later', 10_000, 3000));
+      const later = loadHistory(target).find((record) => record.id === 'later')!;
+      expect(later.watched).toBe(true);
+      expect(hasRecordedTime(later)).toBe(false);
+    });
+
+    it('keeps the flag on a record replaced by a newer copy finished where no one watched', () => {
+      const phone = memoryStorage();
+      upsertRecord(phone, playing('g1', 1));
+      const laptop = memoryStorage();
+      importHistory(laptop, exportHistory(phone, 0));
+      markWatched(phone, PUZZLE);
+      // Finished on the laptop, which knows nothing of the watch.
+      upsertRecord(laptop, solved('g1', 1, 60_000));
+      importHistory(phone, exportHistory(laptop, 0));
+      const [g1] = loadHistory(phone);
+      expect(g1).toMatchObject({ id: 'g1', status: 'solved', watched: true });
+      expect(hasRecordedTime(g1)).toBe(false);
+      expect(computeStats(loadHistory(phone)).easy.bestMs).toBeNull();
+    });
+
+    it("carries a challenge's solve through an export", () => {
+      const source = memoryStorage();
+      upsertRecord(source, solved('a', 1, 5000, { challenge: { ...challenge, log: 'BBAxyz' } }));
+      const target = memoryStorage();
+      importHistory(target, exportHistory(source, 0));
+      expect(loadHistory(target)[0].challenge?.log).toBe('BBAxyz');
     });
   });
 });
