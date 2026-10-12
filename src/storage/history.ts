@@ -1400,6 +1400,36 @@ export function repairMistakeCounts(storage: StorageLike): void {
   if (isRepaired) saveRecords(storage, records, keep);
 }
 
+/**
+ * A record raced against the player's own link — its challenge carrying
+ * `playerId`, this browser's own player ID — with the race taken off, as if
+ * the link had carried no time: the player's own time is never one to beat
+ * (see `planStartup`). Any other record comes back as it was, every record
+ * included when this browser has no ID, having shared no time to race.
+ */
+export function withoutOwnRace(record: GameRecord, playerId: string | null): GameRecord {
+  return record.challenge?.playerId === playerId ? { ...record, challenge: null } : record;
+}
+
+/**
+ * Take the race off every record raced against this browser's own link (see
+ * `withoutOwnRace`): once a visit, and again after an import. A version that
+ * put this browser's ID in its links, but did not yet tell its own link from
+ * a friend's, recorded the player's own time, from a link they shared and
+ * then followed, as a friend's to beat — a head-to-head against themselves in
+ * History, and their own solve offered to watch and compare as someone
+ * else's — and an import can bring such a record in from a file. A race from
+ * a link older than IDs carries none, so it cannot be told from a friend's,
+ * and stays. Written only when there is one to repair. The game on screen is
+ * no exception: the startup plan reads the history through the same rule, so
+ * the page holds it repaired too and never writes the race back.
+ */
+export function repairOwnRaces(storage: StorageLike, playerId: string | null): void {
+  const records = loadHistory(storage);
+  const repaired = records.map((record) => withoutOwnRace(record, playerId));
+  if (repaired.some((record, i) => record !== records[i])) saveRecords(storage, repaired);
+}
+
 /** The mistakes in a solved record's log, if it holds the whole game (see `repairMistakeCounts`); else null. */
 function solvedLogMistakes(storage: StorageLike, record: GameRecord): MistakeTally | null {
   const log = decodeMoveLog(loadEncodedMoveLog(storage, record.id));

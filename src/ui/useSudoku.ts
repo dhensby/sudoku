@@ -67,6 +67,7 @@ import {
   markWatched,
   recordedMistakes,
   repairMistakeCounts,
+  repairOwnRaces,
   saveCurrentId,
   savedGameIds,
   sweepMoveLogs,
@@ -1627,6 +1628,9 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     sweepMoveLogs(storage);
     // And the mistakes of games solved before they were counted, from their logs.
     repairMistakeCounts(storage);
+    // And races against the player's own link, which the plan already read
+    // without (see `planStartup`), so the game on screen agrees with History.
+    repairOwnRaces(storage, prefs.playerId ?? null);
     // A link's game takes the place of the one on screen, which goes the way
     // a New game would leave it.
     if (startup.left !== null && isGlimpse(startup.left)) discard(startup.left);
@@ -2404,6 +2408,9 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     importHistory: (json) => {
       const result = importHistory(storage, json);
       if (result.ok) {
+        // A file can bring races against this browser's own link: they race
+        // no one here either.
+        repairOwnRaces(storage, prefs.playerId ?? null);
         setHistory(readHistory(now()));
         // Its friends name its races, and may give History a Friends to open.
         setFriends(loadFriends(storage));

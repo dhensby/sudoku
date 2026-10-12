@@ -1725,6 +1725,29 @@ describe('planStartup and the friends', () => {
       expect(plan.session?.record.challenge).toEqual(DAN);
     });
 
+    it('reads a race recorded against it as none, the game on screen too, writing nothing', () => {
+      // Recorded by a version before own links raced no one.
+      const storage = memoryStorage();
+      const mine: Challenge = { name: 'Me', seconds: 9, assists: NO_HELP, playerId: ALLY };
+      const raced = newSession(puzzle, {
+        source: 'shared',
+        challenge: mine,
+        now: at(NOW),
+        autoCandidates: false,
+        start: 'running',
+      });
+      saveAsCurrent(storage, raced);
+      const plan = planStartup(storage, '', at(NOW + 1000), false, ALLY);
+      expect(plan.session?.record.id).toBe(raced.record.id);
+      expect(plan.session?.record.challenge).toBeNull();
+      expect(plan.records.map((record) => record.challenge)).toEqual([null]);
+      // Repairing storage is the hook's to do, once mounted.
+      expect(loadHistory(storage)[0].challenge).toEqual(mine);
+      // A friend's browser keeps the race: the ID is not its own.
+      const theirs = planStartup(storage, '', at(NOW + 1000), false, STRANGER);
+      expect(theirs.session?.record.challenge).toEqual(mine);
+    });
+
     it("is only the link whose ID is this browser's: another's still races, solve and all", () => {
       const theirs = linkFor(puzzle.givens, { t: '9', n: 'Dan', u: STRANGER, s: encoded });
       const plan = planStartup(memoryStorage(), theirs, at(NOW), false, ALLY);

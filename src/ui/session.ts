@@ -47,6 +47,7 @@ import {
   saveGameBlob,
   saveGameMoves,
   upsertRecord,
+  withoutOwnRace,
   type Challenge,
   type GameRecord,
   type GameSource,
@@ -845,6 +846,8 @@ export function shareTargetOfRecord(record: GameRecord, encoded: string | null):
  * its time, its solve and its ID are set aside, and it opens as a link
  * without a time would (its daily's date still checked), so a puzzle solved
  * here offers to be played again with no head-to-head against themselves.
+ * The history is read the same way: a record raced against the player's own
+ * link, from before such a link raced no one, comes without its race.
  */
 export function planStartup(
   storage: StorageLike,
@@ -853,7 +856,10 @@ export function planStartup(
   autoCandidates: boolean,
   playerId: string | null = null,
 ): Startup {
-  const records = loadHistory(storage);
+  // Read as the hook repairs them once mounted (see `repairOwnRaces`): a race
+  // against the player's own link, from before such a link raced no one, is
+  // no race, the game on screen's included, so it is never written back.
+  const records = loadHistory(storage).map((record) => withoutOwnRace(record, playerId));
   const friends = loadFriends(storage);
   const currentId = loadCurrentId(storage);
   const restored =

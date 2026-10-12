@@ -27,6 +27,8 @@ import {
   markWatched,
   recordedMistakes,
   repairMistakeCounts,
+  repairOwnRaces,
+  withoutOwnRace,
   createGameId,
   createPlayerId,
   deleteGameBlob,
@@ -3099,6 +3101,62 @@ describe('shared solves and puzzles watched', () => {
       // What that tab knew of a challenge: everything but the ID.
       const before = ['name', 'seconds', 'assists', 'mistakes', 'log'];
       expect(newerFields({ ...challenge, playerId: ID }, before)).toEqual({ playerId: ID });
+    });
+  });
+
+  describe("races against the player's own link", () => {
+    // ME is this browser's own player ID; DAN is a friend's.
+    const ME = 'm3own1d0zz';
+    const DAN = 'k3x9q7za2m';
+    const race = (playerId?: string) => ({
+      name: 'Me',
+      seconds: 12,
+      assists: NO_ASSISTS,
+      ...(playerId === undefined ? {} : { playerId }),
+    });
+
+    it('takes the race off a record raced against the own ID, and no other', () => {
+      const own = solved('own', 1, 60_000, { challenge: race(ME) });
+      expect(withoutOwnRace(own, ME)).toEqual({ ...own, challenge: null });
+      for (const record of [
+        solved('friend', 1, 60_000, { challenge: race(DAN) }),
+        solved('before-ids', 1, 60_000, { challenge: race() }),
+        solved('alone', 1),
+      ]) {
+        expect(withoutOwnRace(record, ME)).toBe(record);
+      }
+      // A browser with no ID has shared no time to race.
+      expect(withoutOwnRace(own, null)).toBe(own);
+    });
+
+    it('repairs the stored history, the current game included, and writes nothing more after', () => {
+      const storage = countingStorage();
+      seed(storage, [
+        playing('now', 4, { challenge: race(ME) }),
+        solved('own', 3, 60_000, { challenge: race(ME) }),
+        solved('friend', 2, 60_000, { challenge: race(DAN) }),
+        solved('alone', 1),
+      ]);
+      saveCurrentId(storage, 'now');
+      repairOwnRaces(storage, ME);
+      expect(loadHistory(storage).map((record) => [record.id, record.challenge])).toEqual([
+        ['now', null],
+        ['own', null],
+        ['friend', race(DAN)],
+        ['alone', null],
+      ]);
+      storage.sets.length = 0;
+      repairOwnRaces(storage, ME);
+      expect(storage.sets).toEqual([]);
+    });
+
+    it('writes nothing for a browser with no ID, or a history with no race of its own', () => {
+      const storage = countingStorage();
+      seed(storage, [solved('friend', 1, 60_000, { challenge: race(DAN) })]);
+      storage.sets.length = 0;
+      repairOwnRaces(storage, null);
+      repairOwnRaces(storage, ME);
+      expect(storage.sets).toEqual([]);
     });
   });
 

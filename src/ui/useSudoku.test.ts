@@ -2539,6 +2539,51 @@ describe('useSudoku', () => {
       const imported = result.current.history.records.find((record) => record.id === 'imp-0001');
       expect(challengerName(result.current.friendIndex, imported!.challenge!)).toBe('Ally');
     });
+
+    describe("races against this browser's own link", () => {
+      // Recorded by a version before such a link raced no one.
+      const mine = { name: 'Me', seconds: 323, assists: NO_HELP, playerId: ALLY };
+
+      it('takes them off as the visit starts, the game on screen never writing its race back', async () => {
+        const storage = memoryStorage();
+        const first = await started({ storage });
+        enter(first.result, FIRST_EMPTY, answerAt(FIRST_EMPTY));
+        act(() => {
+          window.dispatchEvent(new Event('pagehide'));
+        });
+        first.unmount();
+        const [current] = loadHistory(storage);
+        upsertRecord(storage, { ...current, challenge: mine });
+        upsertRecord(storage, { ...solvedRecord(another(PUZZLE), 290_000), challenge: mine });
+        storage.setItem('sudoku.prefs', JSON.stringify({ playerId: ALLY }));
+
+        const { result } = await started({ storage });
+        expect(result.current.record?.id).toBe(current.id);
+        expect(result.current.record?.challenge).toBeNull();
+        expect(loadHistory(storage).map((record) => record.challenge)).toEqual([null, null]);
+        // Played on and saved, it stays repaired.
+        act(() => result.current.actions.resume());
+        enter(result, EMPTIES[1], answerAt(EMPTIES[1]));
+        advance(SAVE_DELAY_MS);
+        expect(
+          loadHistory(storage).find((record) => record.id === current.id)?.challenge,
+        ).toBeNull();
+      });
+
+      it('takes them off an import at once', async () => {
+        const storage = memoryStorage();
+        storage.setItem('sudoku.prefs', JSON.stringify({ playerId: ALLY }));
+        const { result } = await started({ storage });
+        const other = memoryStorage();
+        upsertRecord(other, { ...solvedRecord(PUZZLE, 290_000, 'imp-0001'), challenge: mine });
+        act(() => result.current.actions.openDialog('history'));
+        act(() => {
+          result.current.actions.importHistory(exportHistory(other, NOW));
+        });
+        const imported = result.current.history.records.find((record) => record.id === 'imp-0001');
+        expect(imported?.challenge).toBeNull();
+      });
+    });
   });
 
   describe('who sent this?', () => {
