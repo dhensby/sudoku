@@ -878,16 +878,16 @@ link's name for good, and so does a race of a device whose links came in before 
 until its next link notes it. Other tabs pick a new name up as History or Friends next opens.
 
 The first link from an ID the list does not hold yet asks **Who sent this?** before anything the
-link opens — its Ready card, the game you were part-way through or the offer to play a solved
-puzzle again, each coming once it is answered — the board's place left blank meanwhile, so a rude
-name in the link is not on show behind it, and the clock never running. (Races already in History
-with that ID, imported ones, say, do not count: only the list does.) Its field holds the link's
-name, focused and selected: type over it, or keep it, and **Save** (or Enter) names them, just as
-**Rename** in Friends would — saving the link's own name keeps it whatever their later links say.
-Saved empty, or skipped (**Skip**, Escape, the close button or a tap outside), they go by their
-links' names until you name them in Friends. Either way they were noted as the link opened, so the
-question is never asked of them again — closing the tab before answering is the same as Skip. A
-link without an ID, from your own browser, or from anyone already in the list never asks.
+link opens — its Ready card, the game you were part-way through or the offer to play a solved puzzle
+again, each coming once it is answered — the board's place left blank meanwhile, so a rude name in
+the link is not on show behind it, and the clock never running. (Races already in History with that
+ID do not count on their own: only the list does — which History's import fills too, see below.) Its
+field holds the link's name, focused and selected: type over it, or keep it, and **Save** (or Enter)
+names them, just as **Rename** in Friends would — saving the link's own name keeps it whatever their
+later links say. Saved empty, or skipped (**Skip**, Escape, the close button or a tap outside), they
+go by their links' names until you name them in Friends. Either way they were noted as the link
+opened, so the question is never asked of them again — closing the tab before answering is the same
+as Skip. A link without an ID, from your own browser, or from anyone already in the list never asks.
 
 An ID belongs to a browser, not a person, so someone who shares from their phone and their laptop
 arrives as two friends. Once anyone else is in the list, _Who sent this?_ asks below its field
@@ -907,6 +907,11 @@ The list keeps up to 200 devices (some 41,000 characters with every name at its 
 that, the device heard from longest ago is forgotten — with the name you gave its friend, if it
 was their last — and its next link is noted as someone new; never the device whose link is being
 opened. The list is never shed to make room for anything else.
+
+History's **Export** carries the list to another browser, whose **Import** adds the devices it has
+never had a link from, into whatever room is left of its 200 — each joining whichever of its friends
+holds a device the file groups it with, or else a new friend under the file's name — and never
+renames, merges or splits a friend it has (see [Your data](#your-data)).
 
 An ID proves nothing, as a time proves nothing: anyone holding one of your links can copy its
 `u=`, and their links would then show under the name a friend gave you. It is the honour system,
@@ -981,7 +986,11 @@ visit, unless the game has been added to the home screen). Use **Export** in His
 copy, and **Import** to bring it back or move it to another browser — imported games, the
 puzzles seen, the puzzles watched and the dailies' record are merged with what is already
 there, and every unfinished attempt at a puzzle watched, here or in the file, is flagged as
-watched. The file carries every
+watched. The friends list is merged too: a device this browser has never had a link from joins
+the friend the file has it with — one of yours, if the file groups it with a device you know, or
+else a new friend under the file's name — into the room left under the cap. A friend you already
+have is never renamed, merged or split by an import, so importing the same file twice adds
+nothing. Your own player ID is not exported: each browser keeps its own. The file carries every
 game's move log too; an import takes the log of each game it adds or replaces, leaving out (on its
 own) any log that does not read back exactly, and never makes room for one by deleting anything:
 logs go only into space that was free, and if the imported games themselves only fitted once some
@@ -1045,8 +1054,9 @@ of the logs here were shed, none of the file's logs are taken.
   version shipped must read a new link's help unchanged, skipping its mistakes, and an old link
   must read as mistakes not recorded, never 0; a link without `u=` reads as no ID, a garbled `u=`
   costs only the ID, and `u=` changes no other parameter; the friends list's operations — noting,
-  renaming, merging, splitting, the cap — read back exactly what they wrote, and a device merged
-  in and split off again is on its own as it was. A solve in a link is held to its puzzle
+  renaming, merging, splitting, the cap — read back exactly what they wrote, a device merged
+  in and split off again is on its own as it was, and an import never undoes a merge, split or
+  rename. A solve in a link is held to its puzzle
   and its time — another puzzle's log, a time a second or more off, an older version's log, a broken
   one and a newer version's (which alone is said) — and the spoiler rule to every way back to a
   watched puzzle: a reload mid-game, Play again, a new attempt from the generator, a game resumed
@@ -1071,8 +1081,9 @@ of the logs here were shed, none of the file's logs are taken.
   prompt, kept through a reload and a later link calling itself something else — every race, the
   head-to-head and History following — the prompt's field typed over and Enter, then Enter again
   starting the race, a real sharer's two links carrying the one ID the prompt fills its name from,
-  and two devices taken for one friend at the prompt, split off and merged again in Friends —
-  every race in History following, through a reload),
+  two devices taken for one friend at the prompt, split off and merged again in Friends — every
+  race in History following, through a reload — and a name given carried by History's export to
+  another browser, naming the race it imports and asking nothing of the sender's next link there),
   watching a solve with a mistake played back from the Solved dialog and from History (stepped,
   scrubbed and played at 8× on Playwright's clock, its mistake marked and captioned, focus back on
   Watch as it closes, and fitting a 320px phone and a phone on its side) and the phone layout from

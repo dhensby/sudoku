@@ -670,9 +670,9 @@ export interface Sudoku {
    */
   canCompareSolves: boolean;
   /**
-   * The friends whose links have been opened here (see `friends.ts`), as
-   * last read: at startup, as History or Friends opens, and after each
-   * change made here.
+   * The friends whose links have been opened here, or brought by an import
+   * (see `friends.ts`), as last read: at startup, as History or Friends
+   * opens, after an import, and after each change made here.
    */
   friends: readonly Friend[];
   /**
@@ -2403,7 +2403,11 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     exportHistory: () => exportHistory(storage, now()),
     importHistory: (json) => {
       const result = importHistory(storage, json);
-      if (result.ok) setHistory(readHistory(now()));
+      if (result.ok) {
+        setHistory(readHistory(now()));
+        // Its friends name its races, and may give History a Friends to open.
+        setFriends(loadFriends(storage));
+      }
       return result;
     },
 

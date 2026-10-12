@@ -3,7 +3,7 @@ import { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { encodeGivens, type Puzzle } from '../core';
 import { meetDevice, renameFriend } from '../storage/friends';
-import { loadFriends, updateFriends, upsertRecord } from '../storage/history';
+import { exportHistory, loadFriends, updateFriends, upsertRecord } from '../storage/history';
 import { loadPreferences } from '../storage/prefs';
 import { memoryStorage, type StorageLike } from '../storage/storage';
 import { App } from './App';
@@ -1259,6 +1259,47 @@ describe('App', () => {
       history = screen.getByRole('dialog', { name: 'History' });
       expect(history.querySelector('.history-item__challenge')).toHaveTextContent(/^vs Rude 0:09/);
       expect(loadFriends(storage).map((friend) => friend.name ?? null)).toEqual(['Dan', null]);
+    });
+
+    it('names the races an imported file brings by the names given where it came from', async () => {
+      // Another browser, which raced the link and named its sender Dan.
+      const other = named('Dan');
+      const noHelp = { autoCandidates: false, hints: 0, checks: 0, reveals: 0 };
+      upsertRecord(other, {
+        id: 'mbx3k2f0-race',
+        givens: puzzle.givens,
+        difficulty: puzzle.difficulty,
+        source: 'shared',
+        createdAt: 1,
+        updatedAt: 2,
+        completedAt: 2,
+        status: 'solved',
+        elapsedMs: 8000,
+        assists: noHelp,
+        challenge: { name: 'Rude', seconds: 9, assists: noHelp, playerId: ALLY },
+      });
+      const file = new File([exportHistory(other, 2)], 'history.json', {
+        type: 'application/json',
+      });
+
+      await startApp();
+      fireEvent.click(screen.getByRole('button', { name: 'History' }));
+      const history = screen.getByRole('dialog', { name: 'History' });
+      expect(within(history).queryByRole('button', { name: 'Friends' })).toBeNull();
+      await act(async () => {
+        fireEvent.change(history.querySelector('input[type="file"]')!, {
+          target: { files: [file] },
+        });
+      });
+      expect(within(history).getByRole('status')).toHaveTextContent(
+        'Imported 1 new game, updated 0.',
+      );
+      expect(history.querySelector('.history-item__challenge')).toHaveTextContent(/^vs Dan 0:09/);
+      expect(history).not.toHaveTextContent(/Rude/);
+      // And Friends, with someone in it now, to rename them in.
+      fireEvent.click(within(history).getByRole('button', { name: 'Friends' }));
+      const friends = screen.getByRole('dialog', { name: 'Friends' });
+      expect(within(friends).getByRole('listitem')).toHaveTextContent(/^Dan/);
     });
 
     describe('who sent this?', () => {

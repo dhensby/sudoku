@@ -3,7 +3,8 @@ import type { Challenge, GameRecord } from './history';
 import { isObject, isPlayerId, normaliseName } from './storage';
 
 /*
- * The friends whose links have been opened here, and the names given them.
+ * The friends whose links have been opened here, or in a browser whose
+ * History was imported here, and the names given them.
  *
  * A link with a time carries the player ID of the browser it came from (see
  * `Challenge.playerId`), whatever name it gives — and a link's name is free
@@ -34,11 +35,12 @@ import { isObject, isPlayerId, normaliseName } from './storage';
  *
  * Pure: the I/O lives in `history.ts` (`loadFriends`, `updateFriends`),
  * beside the other small stores (the puzzles seen and watched, the dailies'
- * ledger). Every operation here returns the list it was given when nothing
- * changes, which is how `updateFriends` knows to write nothing; and every
- * object it changes is spread rather than rebuilt, so the small fields a
- * newer version added (see `newerFields`) survive a rename, a merge or a
- * split.
+ * ledger), and so does History's export, which carries the list to another
+ * browser (see `mergeFriendLists`). Every operation here returns the list it
+ * was given when nothing changes, which is how `updateFriends` knows to write
+ * nothing; and every object it changes is spread rather than rebuilt, so the
+ * small fields a newer version added (see `newerFields`) survive a rename, a
+ * merge, a split or an import.
  */
 
 /** The most devices kept. Past it, the one heard from longest ago is forgotten (see `meetDevice`). */
@@ -49,7 +51,10 @@ export interface FriendDevice {
   id: string;
   /** The latest name its links gave, tidied; left off while none has. A link with no name keeps the one before. */
   sentAs?: string;
-  /** When a link from it was last opened here (epoch ms, wall clock). */
+  /**
+   * When a link from it was last opened here — or, for a device an import
+   * brought, in the browser it came from (epoch ms, wall clock).
+   */
   lastAt: number;
 }
 
@@ -101,15 +106,15 @@ function normaliseDevice(value: unknown): FriendDevice | null {
 }
 
 /**
- * The friends list as storage (or, later, a file) held it. Junk costs only
- * its own entry: a friend that is not an object, or has no list of devices,
- * is dropped, as is a device that cannot be kept (see `normaliseDevice`), and
- * then a friend left with none. A name is tidied (see `normaliseName`), and
- * left off if nothing is left of it. One rule crosses entries: a device
- * whose ID a device kept earlier in the list already has is dropped, so no
- * device is ever two friends'. Never capped here (see `meetDevice`): a
- * newer version may keep more, and its list is not this one's to trim on
- * every read.
+ * The friends list as storage, or a file exported from History, held it.
+ * Junk costs only its own entry: a friend that is not an object, or has no
+ * list of devices, is dropped, as is a device that cannot be kept (see
+ * `normaliseDevice`), and then a friend left with none. A name is tidied
+ * (see `normaliseName`), and left off if nothing is left of it. One rule
+ * crosses entries: a device whose ID a device kept earlier in the list
+ * already has is dropped, so no device is ever two friends'. Never capped
+ * here (see `meetDevice`): a newer version may keep more, and its list is
+ * not this one's to trim on every read.
  */
 export function normaliseFriends(value: unknown): Friend[] {
   if (!Array.isArray(value)) return [];
@@ -295,6 +300,62 @@ export function splitDevice(friends: readonly Friend[], deviceId: string): reado
   return [...friends.slice(0, f), left, { devices: [friend.devices[d]] }, ...friends.slice(f + 1)];
 }
 
+/**
+ * The friends a file exported from History brings (see `importHistory`),
+ * added to these — where every decision made here stands. Nothing records
+ * when a friend was named, merged or split, so there is no telling whose
+ * decision is the newer, and an import never undoes one: a device already
+ * here stays just as it is — its friend, the name given them, the name its
+ * links last gave and when.
+ *
+ * Only the file's devices new here are added, into the room left under
+ * MAX_FRIEND_DEVICES, the most recently heard from first (a tie in the file's
+ * order): none here is forgotten to make room for them. Each file friend's
+ * new devices join the friend here holding the first of its devices — in
+ * the file's order — that this list knows, as the file has them together;
+ * one with none known here joins the end of the list as a friend of its own,
+ * under the name the file gives it, its newer fields and all.
+ *
+ * The same list back when the file adds nothing: importing the same file
+ * twice, or this browser's own export.
+ */
+export function mergeFriendLists(
+  local: readonly Friend[],
+  incoming: readonly Friend[],
+): readonly Friend[] {
+  const known = indexFriends(local);
+  // None when a newer version's longer list is over the cap already.
+  const room = Math.max(0, MAX_FRIEND_DEVICES - known.size);
+  const taken = new Set(
+    incoming
+      .flatMap((friend) => friend.devices)
+      .filter((device) => !known.has(device.id))
+      // Stable, so a tie goes to the device earlier in the file.
+      .sort((a, b) => b.lastAt - a.lastAt)
+      .slice(0, room)
+      .map((device) => device.id),
+  );
+  if (taken.size === 0) return local;
+  const joining = new Map<Friend, FriendDevice[]>();
+  const added: Friend[] = [];
+  for (const friend of incoming) {
+    const devices = friend.devices.filter((device) => taken.has(device.id));
+    if (devices.length === 0) continue;
+    const into = friend.devices
+      .map((device) => known.get(device.id))
+      .find((found) => found !== undefined);
+    if (into === undefined) added.push({ ...friend, devices });
+    else joining.set(into, [...(joining.get(into) ?? []), ...devices]);
+  }
+  return [
+    ...local.map((friend) => {
+      const more = joining.get(friend);
+      return more === undefined ? friend : { ...friend, devices: [...friend.devices, ...more] };
+    }),
+    ...added,
+  ];
+}
+
 // ---------------------------------------------------------------------------
 // Names, resolved as they are drawn
 // ---------------------------------------------------------------------------
@@ -342,7 +403,7 @@ export function friendKey(friend: Friend): string {
   return friend.devices[0].id;
 }
 
-/** When a link from any of their devices was last opened here. */
+/** When a link from any of their devices was last opened — here, or where an import brought it from. */
 export function lastLinkAt(friend: Friend): number {
   return Math.max(...friend.devices.map((device) => device.lastAt));
 }

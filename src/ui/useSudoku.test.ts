@@ -2518,6 +2518,26 @@ describe('useSudoku', () => {
       // The race kept its link's name throughout.
       expect(loadHistory(storage)[0].challenge?.name).toBe('Rude');
     });
+
+    it('reads the friends afresh after an import, which name the races it brought', async () => {
+      const { result, storage } = await started();
+      expect(result.current.friends).toEqual([]);
+      // Another browser, which raced a link from ALLY and named them.
+      const other = memoryStorage();
+      const challenge = { name: 'Rude', seconds: 323, assists: NO_HELP, playerId: ALLY };
+      upsertRecord(other, { ...solvedRecord(PUZZLE, 290_000, 'imp-0001'), challenge });
+      updateFriends(other, (friends) =>
+        renameFriend(meetDevice(friends, { id: ALLY, sentAs: 'Rude', at: NOW - 1 }), ALLY, 'Ally'),
+      );
+      act(() => result.current.actions.openDialog('history'));
+      act(() => {
+        result.current.actions.importHistory(exportHistory(other, NOW));
+      });
+      expect(result.current.friends).toStrictEqual(loadFriends(storage));
+      expect(result.current.friends).toStrictEqual(loadFriends(other));
+      const imported = result.current.history.records.find((record) => record.id === 'imp-0001');
+      expect(challengerName(result.current.friendIndex, imported!.challenge!)).toBe('Ally');
+    });
   });
 
   describe('who sent this?', () => {

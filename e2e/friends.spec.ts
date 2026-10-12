@@ -28,7 +28,9 @@ import type { Puzzle } from '../src/core';
  * alike, through a reload. The first link from someone new asks who sent it
  * before anything else, the name it gives ready to keep or type over — or
  * says it is a friend already known, on another device, and the two are
- * one; Friends splits them apart again, and merges them back.
+ * one; Friends splits them apart again, and merges them back. History's
+ * export carries the names given to another browser, whose import names
+ * the races it brings by them.
  *
  * Runs on Chromium (desktop layout).
  */
@@ -333,5 +335,53 @@ test.describe('friends', () => {
     friends = page.getByRole('dialog', { name: 'Friends' });
     await expect(friendRows(friends)).toHaveCount(1);
     await expect(friendRows(friends)).toContainText('2 devices');
+  });
+
+  test("a name given goes with History's export, naming the race in the browser that imports it, whose next link from them asks nothing", async ({
+    page,
+    browser,
+  }, testInfo) => {
+    await page.clock.install();
+    await openTheirLink(page, NEARLY_DONE, { seconds: 200, name: 'Rude Name' });
+    await answerWhoSent(page, { name: 'Bob' });
+    const solved = await race(page, NEARLY_DONE);
+    await page.keyboard.press('Escape');
+    await expect(solved).toBeHidden();
+    await openHeaderDialog(page, 'History');
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      historyDialog(page).getByRole('button', { name: 'Export' }).click(),
+    ]);
+    const file = testInfo.outputPath(download.suggestedFilename());
+    await download.saveAs(file);
+
+    await elsewhere(browser, async (other) => {
+      await other.goto('/');
+      await waitForPlaying(other);
+      await openHeaderDialog(other, 'History');
+      // No one here has sent a time yet.
+      await expect(historyDialog(other).getByRole('button', { name: 'Friends' })).toHaveCount(0);
+      const [chooser] = await Promise.all([
+        other.waitForEvent('filechooser'),
+        historyDialog(other).getByRole('button', { name: 'Import' }).click(),
+      ]);
+      await chooser.setFiles(file);
+      await expect(historyDialog(other).getByRole('status')).toHaveText(
+        'Imported 1 new game, updated 0.',
+      );
+      await expect(historyRows(other).filter({ hasText: 'vs Bob 3:20' })).toHaveCount(1);
+      await expect(historyDialog(other)).not.toContainText('Rude Name');
+      await historyDialog(other).getByRole('button', { name: 'Friends' }).click();
+      const friends = other.getByRole('dialog', { name: 'Friends' });
+      await expect(friendRows(friends)).toHaveCount(1);
+      await expect(friendRows(friends)).toContainText('Bob');
+
+      // Known here now: their next link asks nothing, and goes by the name given.
+      await openTheirLink(other, NEARLY_DONE_2, { seconds: 300, name: 'Ruder' });
+      await expect(whoSentDialog(other)).toHaveCount(0);
+      await expect(boardArea(other)).toContainText(
+        'Bob solved this Easy puzzle in 5:00. Can you beat it?',
+      );
+    });
   });
 });

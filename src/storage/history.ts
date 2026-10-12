@@ -55,7 +55,7 @@ import {
   saveMoveLog,
   storeMoveLogs,
 } from './moveLogs';
-import { normaliseFriends, type Friend } from './friends';
+import { mergeFriendLists, normaliseFriends, type Friend } from './friends';
 import {
   EMPTY_LEDGER,
   addToLedger,
@@ -1676,9 +1676,12 @@ export function updateFriends(
  * other side; every game's move log, as stored (`moves`, by id — a file from
  * before logs were kept has none, and still imports); the puzzles seen, so one
  * played and deleted here is no fresh puzzle there either; the puzzles whose
- * shared solve was watched, so none of them sets a time there; and the daily
- * ledger, so streaks travel whole. Safari deletes the storage of a site not
- * visited for seven days, so this file is the only backup there is.
+ * shared solve was watched, so none of them sets a time there; the daily
+ * ledger, so streaks travel whole; and the friends list, so the names given
+ * friends here name their races there. Not this browser's own player ID,
+ * which is in the preferences, not the file: two browsers with one ID could
+ * never be told apart. Safari deletes the storage of a site not visited for
+ * seven days, so this file is the only backup there is.
  */
 export function exportHistory(storage: StorageLike, now: number): string {
   const records = loadHistory(storage);
@@ -1701,6 +1704,7 @@ export function exportHistory(storage: StorageLike, now: number): string {
   const seen = readSeen(storage);
   const watched = readWatched(storage);
   const dailyLedger = encodeLedger(loadDailyLedger(storage));
+  const friends = loadFriends(storage);
   return JSON.stringify(
     {
       app: EXPORT_APP,
@@ -1712,6 +1716,7 @@ export function exportHistory(storage: StorageLike, now: number): string {
       seen,
       watched,
       dailyLedger,
+      friends,
     },
     null,
     2,
@@ -1742,7 +1747,10 @@ export function exportHistory(storage: StorageLike, now: number): string {
  * after which every unfinished attempt at a puzzle watched, here or there, is
  * flagged as watched (see `markWatched`), the file's own among them. Flags are
  * kept on both sides: a record replaced by the file's newer copy keeps its
- * own, as the flag is never taken off.
+ * own, as the flag is never taken off. Its friends' devices new here are
+ * added to the friends list too (see `mergeFriendLists`), never renaming,
+ * merging or splitting a friend here; a file from before the list was
+ * exported has none, which costs only the names given there.
  */
 export function importHistory(storage: StorageLike, json: string): ImportResult {
   let data: unknown;
@@ -1764,6 +1772,7 @@ export function importHistory(storage: StorageLike, json: string): ImportResult 
   mergeSeen(storage, data.seen);
   mergeLedger(storage, data.dailyLedger);
   mergeWatched(storage, data.watched);
+  updateFriends(storage, (local) => mergeFriendLists(local, normaliseFriends(data.friends)));
 
   const current = loadCurrentId(storage);
   const records = loadHistory(storage);

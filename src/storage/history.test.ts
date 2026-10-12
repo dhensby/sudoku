@@ -53,7 +53,7 @@ import {
   upsertRecord,
   type GameRecord,
 } from './history';
-import { meetDevice, renameFriend, type Friend } from './friends';
+import { meetDevice, mergeFriends, renameFriend, splitDevice, type Friend } from './friends';
 import {
   loadEncodedMoveLog,
   loadMoveLog,
@@ -897,6 +897,126 @@ describe('the friends list', () => {
     expect(changed).toStrictEqual([{ devices: [{ id: ALLY, sentAs: 'Al', lastAt: 5 }] }]);
     expect(loadFriends(storage)).toEqual([]);
   });
+
+  describe('export and import', () => {
+    const AL = 'p0d4wq81xe';
+    const challenge = { name: 'Rude', seconds: 323, assists: NO_ASSISTS, playerId: ALLY };
+
+    /** A browser that raced a link from ALLY, and named them `name`. */
+    function racedAgainst(name: string): StorageLike {
+      const storage = memoryStorage();
+      upsertRecord(storage, solved('a', 1, 5000, { challenge }));
+      updateFriends(storage, (friends) => renameFriend(met(friends), ALLY, name));
+      return storage;
+    }
+
+    /** An export file built by hand, with `friends` as given. */
+    function file(friends: unknown): string {
+      return JSON.stringify({
+        app: 'sudoku',
+        version: 1,
+        exportedAt: 0,
+        records: [solved('b', 2)],
+        friends,
+      });
+    }
+
+    it('carries the friends list, which names the races it brings in another browser', () => {
+      const source = racedAgainst('Ally');
+      const exported = JSON.parse(exportHistory(source, 0)) as { friends: unknown };
+      expect(exported.friends).toStrictEqual([
+        { name: 'Ally', devices: [{ id: ALLY, sentAs: 'Al', lastAt: 5 }] },
+      ]);
+
+      const target = memoryStorage();
+      importHistory(target, exportHistory(source, 0));
+      expect(loadFriends(target)).toStrictEqual(loadFriends(source));
+      // The race keeps its link's name: the one given is drawn in its place.
+      expect(loadHistory(target)[0].challenge).toEqual(challenge);
+    });
+
+    it("never carries this browser's own player ID", () => {
+      const source = racedAgainst('Ally');
+      source.setItem('sudoku.prefs', JSON.stringify({ playerId: 'm3m3m3m3m3' }));
+      expect(exportHistory(source, 0)).not.toContain('m3m3m3m3m3');
+    });
+
+    it("adds the file's friends to the ones here, even with no record new", () => {
+      const target = racedAgainst('Ally');
+      const source = memoryStorage();
+      upsertRecord(source, solved('a', 1, 5000, { challenge }));
+      updateFriends(source, (friends) =>
+        renameFriend(meetDevice(friends, { id: ZED, sentAs: null, at: 6 }), ZED, 'Zed'),
+      );
+      expect(importHistory(target, exportHistory(source, 0))).toEqual({
+        ok: true,
+        added: 0,
+        updated: 0,
+      });
+      expect(loadFriends(target).map((friend) => friend.name)).toEqual(['Ally', 'Zed']);
+    });
+
+    it.each([
+      ['no friends at all', undefined],
+      ['friends that are not a list', { [ALLY]: { name: 'Ally' } }],
+      ['nothing but junk among them', [42, { name: 'No devices' }]],
+    ])('imports a file with %s, the friends here left alone', (_label, friends) => {
+      const storage = racedAgainst('Ally');
+      const before = storage.getItem(FRIENDS);
+      expect(importHistory(storage, file(friends))).toEqual({ ok: true, added: 1, updated: 0 });
+      expect(storage.getItem(FRIENDS)).toBe(before);
+      // Nor is an empty list written where there was none.
+      const empty = memoryStorage();
+      expect(importHistory(empty, file(friends))).toEqual({ ok: true, added: 1, updated: 0 });
+      expect(empty.getItem(FRIENDS)).toBeNull();
+    });
+
+    it('writes no friends for the same file imported again', () => {
+      const json = exportHistory(racedAgainst('Ally'), 0);
+      const storage = countingStorage();
+      importHistory(storage, json);
+      expect(storage.sets.filter((key) => key === FRIENDS)).toHaveLength(1);
+      importHistory(storage, json);
+      expect(storage.sets.filter((key) => key === FRIENDS)).toHaveLength(1);
+    });
+
+    it('never renames, merges or splits a friend here', () => {
+      // Here: Ally named, and a second device merged into her, then split off again.
+      const storage = racedAgainst('Ally');
+      updateFriends(storage, (friends) =>
+        splitDevice(
+          mergeFriends(meetDevice(friends, { id: AL, sentAs: 'Al', at: 7 }), AL, ALLY),
+          AL,
+        ),
+      );
+      // There: the two devices one friend, under another name, heard from
+      // since, and a third device with them that is new here.
+      importHistory(
+        storage,
+        file([
+          {
+            name: 'Someone',
+            devices: [
+              { id: AL, sentAs: 'Ruder', lastAt: 9 },
+              { id: ALLY, lastAt: 9 },
+              { id: ZED, lastAt: 9 },
+            ],
+          },
+        ]),
+      );
+      // Only the new device is taken, to the friend here of the first the
+      // file lists — still unnamed, and still apart from Ally.
+      expect(loadFriends(storage)).toStrictEqual([
+        { name: 'Ally', devices: [{ id: ALLY, sentAs: 'Al', lastAt: 5 }] },
+        {
+          devices: [
+            { id: AL, sentAs: 'Al', lastAt: 7 },
+            { id: ZED, lastAt: 9 },
+          ],
+        },
+      ]);
+    });
+  });
 });
 
 describe('saved games', () => {
@@ -1121,6 +1241,7 @@ describe('exportHistory', () => {
       seen: [],
       watched: [],
       dailyLedger: {},
+      friends: [],
     });
     // Indented, for anyone who opens the file.
     expect(json).toContain('\n  "records"');

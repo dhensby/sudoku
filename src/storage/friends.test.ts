@@ -10,6 +10,7 @@ import {
   lastLinkAt,
   latestSentAs,
   meetDevice,
+  mergeFriendLists,
   mergeFriends,
   namedChallenge,
   namedRecord,
@@ -25,6 +26,7 @@ const ALLY = 'k3x9q7za2m';
 const AL = 'p0d4wq81xe';
 const ZED = 'z8c2m5r1to';
 const NOBODY = 'n0b0dyh3re';
+const QUINN = 'q1w2e3r4t5';
 const NO_HELP = { autoCandidates: false, hints: 0, checks: 0, reveals: 0 };
 
 /**
@@ -551,6 +553,160 @@ describe('splitDevice', () => {
   });
 });
 
+describe('mergeFriendLists', () => {
+  it('brings every friend in the file to a browser that has none', () => {
+    expect(mergeFriendLists([], FRIENDS)).toStrictEqual(FRIENDS);
+  });
+
+  it('gives back the same list for its own export, or a file with no friends in it', () => {
+    expect(mergeFriendLists(FRIENDS, FRIENDS)).toBe(FRIENDS);
+    expect(mergeFriendLists(FRIENDS, roundTrip(FRIENDS))).toBe(FRIENDS);
+    expect(mergeFriendLists(FRIENDS, [])).toBe(FRIENDS);
+  });
+
+  it('leaves every device here as it is: its friend, their name, and its own name and time', () => {
+    // Another browser that grouped and named them otherwise, heard from them
+    // since, and met someone new.
+    const file = normaliseFriends([
+      {
+        name: 'Someone else',
+        devices: [
+          { id: ZED, sentAs: 'Zed', lastAt: 1_900_000_000_000 },
+          { id: ALLY, sentAs: 'Newer', lastAt: 1_900_000_000_000 },
+          { id: NOBODY, lastAt: 1 },
+        ],
+      },
+      { name: 'Al', devices: [{ id: AL, lastAt: 1_900_000_000_000 }] },
+    ]);
+    const merged = mergeFriendLists(FRIENDS, file);
+    // Only the new device is taken, to Zed's friend — still unnamed — as Zed
+    // comes first in the file.
+    expect(merged).toStrictEqual([
+      FRIENDS[0],
+      { devices: [...FRIENDS[1].devices, { id: NOBODY, lastAt: 1 }] },
+    ]);
+    expect(merged[0]).toBe(FRIENDS[0]);
+  });
+
+  it("adds a new device to the friend here holding the first of its friend's devices, in the file's order", () => {
+    const met = { id: NOBODY, sentAs: 'New', lastAt: 1_800_000_000_000 };
+    const merged = mergeFriendLists(FRIENDS, [
+      {
+        name: 'Whoever',
+        devices: [met, { id: ZED, lastAt: 1 }, { id: ALLY, lastAt: 2 }],
+      },
+    ]);
+    // Zed's, as Zed comes before Ally in the file; the name the file gives
+    // them is not the one given here — which is none.
+    expect(merged).toStrictEqual([FRIENDS[0], { devices: [...FRIENDS[1].devices, met] }]);
+    expect(merged[0]).toBe(FRIENDS[0]);
+    expect(friendKey(merged[1])).toBe(ZED);
+    expect(challengerName(indexFriends(merged), challenge('New', NOBODY))).toBe('New');
+  });
+
+  it("adds a friend with no device known here at the end, under the file's name, newer fields and all", () => {
+    const file = normaliseFriends([
+      {
+        name: 'Quinn',
+        colour: 'teal',
+        devices: [
+          { id: QUINN, sentAs: 'Q', lastAt: 3, platform: 'phone' },
+          { id: NOBODY, lastAt: 4 },
+        ],
+      },
+    ]);
+    const merged = mergeFriendLists(FRIENDS, file);
+    expect(merged).toStrictEqual([...FRIENDS, file[0]]);
+    expect(merged[1]).toBe(FRIENDS[1]);
+    const index = indexFriends(merged);
+    expect(challengerName(index, challenge('Rude', NOBODY))).toBe('Quinn');
+    expect(challengerName(index, challenge('Rude', ALLY))).toBe('Ally');
+  });
+
+  it('keeps a split made here, against a file that has the devices together', () => {
+    const split = splitDevice(FRIENDS, AL);
+    expect(mergeFriendLists(split, FRIENDS)).toBe(split);
+    // A device new here goes with the first of them the file lists, and no further.
+    const merged = mergeFriendLists(split, [
+      { name: 'Ally', devices: [...FRIENDS[0].devices, { id: NOBODY, lastAt: 5 }] },
+    ]);
+    expect(merged.map((friend) => friend.devices.map((device) => device.id))).toEqual([
+      [ALLY, NOBODY],
+      [AL],
+      [ZED],
+    ]);
+    expect(merged[1]).not.toHaveProperty('name');
+  });
+
+  it('keeps a merge made here, against a file that has the devices apart', () => {
+    const merged = mergeFriends(FRIENDS, ZED, ALLY);
+    expect(mergeFriendLists(merged, FRIENDS)).toBe(merged);
+    // Each of the file's two brings a device new here: both join the one
+    // friend here, in the file's order, under the name given here.
+    const grown = mergeFriendLists(merged, [
+      {
+        devices: [
+          { id: ALLY, lastAt: 1 },
+          { id: NOBODY, lastAt: 2 },
+        ],
+      },
+      {
+        name: 'Zed',
+        devices: [
+          { id: ZED, lastAt: 1 },
+          { id: QUINN, lastAt: 3 },
+        ],
+      },
+    ]);
+    expect(grown.map((friend) => friend.devices.map((device) => device.id))).toEqual([
+      [ALLY, AL, ZED, NOBODY, QUINN],
+    ]);
+    expect(grown[0].name).toBe('Ally');
+  });
+
+  describe(`up to ${MAX_FRIEND_DEVICES} devices`, () => {
+    it('fills only the room left, the most recently heard from first, forgetting none here', () => {
+      // Two of them one friend, so the room left is counted in devices, not friends.
+      const crowded = crowd(MAX_FRIEND_DEVICES - 2);
+      const here = mergeFriends(crowded, friendKey(crowded[1]), friendKey(crowded[0]));
+      const merged = mergeFriendLists(here, [
+        {
+          name: 'Ally',
+          devices: [
+            { id: ALLY, lastAt: 10 },
+            { id: AL, lastAt: 30 },
+          ],
+        },
+        { devices: [{ id: ZED, lastAt: 20 }] },
+      ]);
+      expect(deviceCount(merged)).toBe(MAX_FRIEND_DEVICES);
+      expect(merged.slice(0, here.length)).toStrictEqual(here);
+      // The oldest of the three is left out, and its friend comes without it.
+      expect(merged.slice(here.length)).toStrictEqual([
+        { name: 'Ally', devices: [{ id: AL, lastAt: 30 }] },
+        { devices: [{ id: ZED, lastAt: 20 }] },
+      ]);
+    });
+
+    it("breaks a tie by the file's order, the earlier device first", () => {
+      const here = crowd(MAX_FRIEND_DEVICES - 1);
+      const merged = mergeFriendLists(here, [
+        { devices: [{ id: ZED, lastAt: 7 }] },
+        { devices: [{ id: ALLY, lastAt: 7 }] },
+      ]);
+      expect(merged.at(-1)).toStrictEqual({ devices: [{ id: ZED, lastAt: 7 }] });
+      expect(deviceCount(merged)).toBe(MAX_FRIEND_DEVICES);
+    });
+
+    it("adds nothing to a full list, nor to a newer version's longer one", () => {
+      const full = crowd(MAX_FRIEND_DEVICES);
+      expect(mergeFriendLists(full, FRIENDS)).toBe(full);
+      const longer = crowd(MAX_FRIEND_DEVICES + 5);
+      expect(mergeFriendLists(longer, FRIENDS)).toBe(longer);
+    });
+  });
+});
+
 describe('names, resolved as they are drawn', () => {
   const index = indexFriends(FRIENDS);
 
@@ -644,6 +800,16 @@ describe('every change reads back exactly as it was written', () => {
     ['with a friend merged into one with no name', mergeFriends(STORED, ALLY, ZED)],
     ['with a device split off', splitDevice(STORED, AL)],
     ['with a merge split apart again', splitDevice(mergeFriends(STORED, ZED, AL), ZED)],
+    [
+      "with a file's friends added",
+      mergeFriendLists(
+        STORED,
+        normaliseFriends([
+          { name: 'File', mood: 'sunny', devices: [{ id: NOBODY, lastAt: 3, platform: 'tablet' }] },
+          { devices: [{ ...FRIENDS[1].devices[0] }, { id: QUINN, sentAs: 'Q', lastAt: 5 }] },
+        ]),
+      ),
+    ],
   ])('%s', (_, friends) => {
     expect(roundTrip(friends)).toStrictEqual(friends);
   });

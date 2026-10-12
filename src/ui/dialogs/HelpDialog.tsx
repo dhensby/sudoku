@@ -499,7 +499,9 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
               your time carries a random ID for this browser, made the first time you share a time:
               the ID says nothing else about you.
             </li>
-            <li>The names you give friends never leave this browser.</li>
+            <li>
+              The names you give friends never leave this browser, except in History&apos;s export.
+            </li>
             <li>
               Some browsers clear a site's data after a while away. Export your history from the
               History screen to keep it safe.

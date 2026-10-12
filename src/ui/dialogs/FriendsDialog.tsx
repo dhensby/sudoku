@@ -14,7 +14,10 @@ import { Dialog } from './Dialog';
 import { NAME_INPUT_MAX, friendOption } from './text';
 
 export interface FriendsDialogProps {
-  /** Everyone whose links have been opened here (see `friends.ts`), in the order stored. */
+  /**
+   * Everyone whose links have been opened here, or brought by an import (see
+   * `friends.ts`), in the order stored.
+   */
   friends: readonly Friend[];
   /** The time to date links against ("Today 14:05"). */
   now: number;

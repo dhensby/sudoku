@@ -180,7 +180,6 @@ describe('HelpDialog', () => {
     );
     // Product text, not an example: no sample name.
     expect(section).not.toHaveTextContent(/Dan/);
-    expect(screen.getByText('The names you give friends never leave this browser.')).toBeVisible();
     // After History's row, where it is found.
     const actions = within(screen.getByRole('table'))
       .getAllByRole('rowheader')
@@ -196,6 +195,14 @@ describe('HelpDialog', () => {
     );
     // Product text, not an example: no sample name.
     expect(section).not.toHaveTextContent(/Dan/);
+  });
+
+  it("says the names given friends leave this browser only in History's export", () => {
+    render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={vi.fn()} />);
+    const section = screen.getByRole('heading', { name: 'Privacy' }).closest('section')!;
+    expect(within(section).getByText(/^The names you give friends/)).toHaveTextContent(
+      "The names you give friends never leave this browser, except in History's export.",
+    );
   });
 
   it('says a friend on two devices can be merged into one, and split apart again', () => {
