@@ -64,7 +64,10 @@ export interface CellProps {
    * toggle (see Board's `isReadOnly`).
    */
   isReadOnly?: boolean;
-  /** The cell the move on show acted on, in a playback: outlined. */
+  /**
+   * The cell the move on show acted on, in a playback, or the next move's
+   * while it is cued: outlined.
+   */
   isCurrent?: boolean;
   /** On a read-only board, what to draw in place of the cell's own state (see `CellOverlay`). */
   overlay?: CellOverlay;

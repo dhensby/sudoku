@@ -10,8 +10,8 @@ import {
 import {
   PLAYBACK_SPEEDS,
   formatDuration,
-  frameAt,
   lengthOf,
+  outlinedCell,
   playTimeAt,
   preparePlayback,
   stateAt,
@@ -80,7 +80,9 @@ interface Spoken {
  * The player: the board as it stood after the move on show, that move's
  * cell outlined and its caption under it, and the controls — a scrubber with
  * the solve's mistakes, slips and help marked along it, the play time, the
- * speed, and Play with a step either way and a jump to either end.
+ * speed, and Play with a step either way and a jump to either end. While it
+ * plays, the next move's cell is outlined a moment before that move is
+ * shown, all else still at the move on show: where, then what.
  *
  * The keys, anywhere in the dialog: Space plays and pauses, Left and Right
  * step a move, Home and End jump to the start and the solve — each left to
@@ -106,7 +108,6 @@ function Player({ playback, settings }: { playback: Playback; settings: BoardSet
   const ids = useId();
   const { position, isPlaying, speed } = cursor;
   const length = lengthOf(playback);
-  const frame = frameAt(playback, position);
   const caption = captionAt(playback, position);
 
   /** A move taken by hand: made, and its caption spoken. */
@@ -174,7 +175,7 @@ function Player({ playback, settings }: { playback: Playback; settings: BoardSet
             onSelect={ignore}
             onToggleCandidate={ignore}
             isReadOnly
-            current={frame?.cell ?? null}
+            current={outlinedCell(playback, cursor)}
           />
         </div>
       </div>

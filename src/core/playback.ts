@@ -37,8 +37,13 @@ import { showMeRoute, stepId, type StepNumber } from './walkthrough';
  * viewer watching a board that does nothing, so a pause is shortened to at
  * most `LONGEST_PAUSE_MS` (at 1×), and a burst of moves within one tick of
  * the log is spread to `SHORTEST_PAUSE_MS` apart, so that each still shows.
- * The play clock shown beside the board is always the real one: the time the
- * player had taken when they made the move on show.
+ * While it plays, the cell of the move to come is outlined a moment before
+ * the move is shown, as the player chose the cell before making the move
+ * (which the log does not keep): the viewer sees where, then what. That
+ * moment, the cue, is taken out of the pause rather than added to it
+ * (`cueBefore`), so the rhythm and the length of the solve hold. The play
+ * clock shown beside the board is always the real one: the time the player
+ * had taken when they made the move on show.
  *
  * Offered only for a log this build can replay — its own format and rules
  * version — and only one that replays to the solve and ends there: a playback
@@ -48,9 +53,9 @@ import { showMeRoute, stepId, type StepNumber } from './walkthrough';
  * only be captioned as moves that changed nothing. A log it refuses says why (`PlaybackRefusal`), so that one
  * from an older or a newer build can be told from one that is broken.
  *
- * The cursor (where the playback is, whether it is playing and how fast) is a
- * plain value moved by `steer`, so that the UI's hook only has to keep it and
- * wait out `pauseBefore`.
+ * The cursor (where the playback is, whether it is playing and how fast, and
+ * whether the next move is cued) is a plain value moved by `steer`, so that
+ * the UI's hook only has to keep it and wait out `waitBeforeAdvance`.
  */
 
 /** The speeds a playback can run at, as multiples of the solve's own pace. */
@@ -63,6 +68,12 @@ export const LONGEST_PAUSE_MS = 1500;
 
 /** The shortest it waits at 1×, so that moves made within one tick each still show. */
 export const SHORTEST_PAUSE_MS = 150;
+
+/**
+ * The longest a playback outlines the next move's cell before showing the
+ * move, while it plays: time to see where before seeing what.
+ */
+export const LONGEST_CUE_MS = 400;
 
 /**
  * Why a log cannot be played back:
@@ -124,7 +135,8 @@ export interface PlaybackFrame {
   /** The game just after the move. */
   readonly state: GameState;
   /**
-   * The cell the move acted on, outlined while it is on show: where a digit
+   * The cell the move acted on, outlined while it is on show (and, while the
+   * playback plays, a moment before: see `cueBefore`): where a digit
    * or note went, the cell erased, checked, revealed or hinted at, the cell
    * Show me (or a page of it) solved, the cell an Undo or Redo changed. Null for a move about
    * no one cell — checking the puzzle, switching a setting or auto
@@ -448,16 +460,32 @@ export function pauseBefore(playback: Playback, position: number, speed: Playbac
   return Math.min(Math.max(gap, SHORTEST_PAUSE_MS), LONGEST_PAUSE_MS) / speed;
 }
 
+/**
+ * How long a playback at `speed` outlines `position`'s cell before showing
+ * it, in ms: `LONGEST_CUE_MS`, or half the pause before it (`pauseBefore`)
+ * if that is shorter, so that the move before is still on show by itself for
+ * the other half. Taken out of that pause, not added to it: each move is
+ * still shown when it would be, and a playback lasts no longer.
+ */
+export function cueBefore(playback: Playback, position: number, speed: PlaybackSpeed): number {
+  return Math.min(LONGEST_CUE_MS, pauseBefore(playback, position, speed) / 2);
+}
+
 /** Where a tick sits along the scrubber, from 0 (the start) to 1 (the solve). */
 export function tickFraction(playback: Playback, tick: PlaybackTick): number {
   return tick.position / lengthOf(playback);
 }
 
-/** Where a playback is, whether it is playing, and how fast. */
+/** Where a playback is, whether it is playing, how fast, and whether the next move is cued. */
 export interface PlaybackCursor {
   readonly position: number;
   readonly isPlaying: boolean;
   readonly speed: PlaybackSpeed;
+  /**
+   * The next move is cued: its cell outlined, the move not yet shown (see
+   * `cueBefore`). Only ever while playing.
+   */
+  readonly isCued: boolean;
 }
 
 /**
@@ -468,8 +496,12 @@ export interface PlaybackCursor {
  *   - `seek` to a position (the scrubber), which keeps playing if it was,
  *     unless it lands on the solve;
  *   - `speed`;
- *   - `advance`: the pause before the next move is over, so show it — and
- *     stop at the solve.
+ *   - `advance`: a wait before the next move is over, so cue it — outline
+ *     its cell — or, once it is cued, show it, and stop at the solve.
+ *
+ * Every command but `speed` and `advance` drops a cue, showing the move on
+ * show's cell again: a pause leaves the board as the caption says it is,
+ * and a move taken by hand is shown at once.
  */
 export type PlaybackCommand =
   | { readonly type: 'play' | 'pause' | 'toggle' | 'start' | 'end' | 'advance' }
@@ -482,6 +514,7 @@ export const INITIAL_CURSOR: PlaybackCursor = Object.freeze({
   position: 0,
   isPlaying: false,
   speed: 1,
+  isCued: false,
 });
 
 /** The cursor after `command`, within `playback`. */
@@ -493,13 +526,18 @@ export function steer(
   const length = lengthOf(playback);
   const at = (position: number, isPlaying: boolean): PlaybackCursor => {
     const clamped = clampPosition(playback, position);
-    return { ...cursor, position: clamped, isPlaying: isPlaying && clamped < length };
+    return {
+      ...cursor,
+      position: clamped,
+      isPlaying: isPlaying && clamped < length,
+      isCued: false,
+    };
   };
   switch (command.type) {
     case 'play':
       return at(cursor.position >= length ? 0 : cursor.position, true);
     case 'pause':
-      return { ...cursor, isPlaying: false };
+      return { ...cursor, isPlaying: false, isCued: false };
     case 'toggle':
       return steer(playback, cursor, { type: cursor.isPlaying ? 'pause' : 'play' });
     case 'step':
@@ -511,8 +549,29 @@ export function steer(
     case 'seek':
       return at(command.position, cursor.isPlaying);
     case 'advance':
-      return cursor.isPlaying ? at(cursor.position + 1, true) : cursor;
+      if (!cursor.isPlaying) return cursor;
+      return cursor.isCued ? at(cursor.position + 1, true) : { ...cursor, isCued: true };
     case 'speed':
       return { ...cursor, speed: command.speed };
   }
+}
+
+/**
+ * How long a playing `cursor` waits before its next `advance`, in ms: the
+ * pause before the next move less its cue, and then the cue — the whole
+ * pause between them (see `cueBefore`).
+ */
+export function waitBeforeAdvance(playback: Playback, cursor: PlaybackCursor): number {
+  const next = cursor.position + 1;
+  const cue = cueBefore(playback, next, cursor.speed);
+  return cursor.isCued ? cue : pauseBefore(playback, next, cursor.speed) - cue;
+}
+
+/**
+ * The cell outlined at `cursor`: the move on show's, or, while the next move
+ * is cued, that move's. Null before the first move, and for a move about no
+ * one cell.
+ */
+export function outlinedCell(playback: Playback, cursor: PlaybackCursor): number | null {
+  return frameAt(playback, cursor.isCued ? cursor.position + 1 : cursor.position)?.cell ?? null;
 }

@@ -261,7 +261,8 @@
 }
 
 /*
- * The cell the move on show acted on, in a solve played back: a ring in the
+ * The cell the move on show acted on, in a solve played back (or, as it
+ * plays, the next move's, a moment before that move is shown): a ring in the
  * accent just inside its edge — the colour that marks where to look
  * everywhere else, and a different line from the box lines' ink. Drawn as
  * an outline so forced colours keep it (it becomes Highlight).

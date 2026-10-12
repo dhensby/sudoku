@@ -147,7 +147,8 @@ your browser.
   entered** on as well, a mistake counts, and shows, the moment it goes in.
 - **Watch your solve** — the Solved dialog, and a solved game's row in History, play the solve
   back move by move on a board of its own: every number, note, hint, check and undo, the cell it
-  went in outlined and a caption saying what it was ("5 in row 3, column 4 — a mistake"), with
+  went in outlined a moment before it goes in and a caption saying what it was ("5 in row 3,
+  column 4 — a mistake"), with
   play and pause, a step either way, a scrubber marked with your mistakes, the slips you put right
   in time and the help you took, and speeds up to 8×. Watching changes nothing (see
   [Watch your solve](#watch-your-solve)). A friend's solve, from their link, plays the same way.
@@ -631,7 +632,10 @@ Watch.
   candidates on", "Check guesses off", "Reset"; a candidate entered over a number says what it
   cleared ("Cleared 6, struck 5 in row 3, column 4"). A move that made a mistake that counted says so
   ("— a mistake", "— a candidate mistake"), as does a slip forgiven ("— a slip, put right in
-  time"), and the solving move ("— solved").
+  time"), and the solving move ("— solved"). While it plays, the next move's cell is outlined a
+  moment before the move is shown, so you see where before what: the board, caption, scrubber
+  and time stay on the move on show until then (before a move about no one cell, the outline
+  goes instead).
 - **The controls:** Play and Pause (Watch again at the solve), a move back or forward, to the
   start or the solve, speeds of 1×, 2×, 4× and 8×, and a scrubber — a native range, which a
   screen reader hears as "Move 42 of 310, 4:12". Marks along it show each mistake that counted
@@ -640,14 +644,18 @@ Watch.
   anywhere in the dialog — <kbd>Space</kbd> plays and pauses, <kbd>←</kbd> and <kbd>→</kbd> step,
   <kbd>Home</kbd> and <kbd>End</kbd> jump — except where a control has a use of its own for one
   (Space presses a button, the arrows move the scrubber or the speeds); the game's own keys stand
-  down while any dialog is open, and a held Space counts once. A move taken by hand has its
-  caption spoken; a playback running by itself speaks only where it stops — the move on show when
+  down while any dialog is open, and a held Space counts once. A step, a jump or the scrubber
+  shows its move with no outline going ahead of it, and pausing takes the outline back to the move on show. A move taken by
+  hand has its caption spoken; a playback running by itself speaks only where it stops — the move on show when
   paused, the solve when it gets there — and with less motion asked for it still steps, with
   nothing animated.
 - **Time:** each move comes after the pause the player took before it, divided by the speed, but
   a long think is shortened to 1.5 s (at 1×), and moves made within a tenth of a second of each
-  other are spread 0.15 s apart so each shows. The time beside the board is the real play time
-  at the move on show, against the solve's.
+  other are spread 0.15 s apart so each shows. While it plays, a move's cell is outlined 0.4 s
+  before the move is shown — or half the pause before it, if that is shorter — and that moment
+  is taken out of the pause, not added to it: each move still comes when it would, and the
+  playback is no longer. The time beside the board is the real play time at the move on show,
+  against the solve's.
 - **What it is played from:** the puzzle's givens and the encoded move log, nothing else — the
   solution is worked out from the givens, and neither the record nor the saved board (which a
   finished game loses once off screen) is read — so a solve that came from somewhere else plays
@@ -659,8 +667,9 @@ Watch.
   solution and numbered on from the cell's last step hint, as Show me did), and its mistakes
   (`analyseMistakes`), and
   places the scrubber's marks; the
-  timing and the cursor (`steer`: play, pause, step, seek, speed) are pure functions of it, and
-  `usePlayback` only waits out each pause on the browser's timers. The captions are the UI's
+  timing and the cursor (`steer`: play, pause, step, seek, speed, and the cue before each move)
+  are pure functions of it, and `usePlayback` only waits out each pause, in its two parts, on the
+  browser's timers. The captions are the UI's
   (`src/ui/playbackText.ts`), as the engine speaks no English.
 - **What can be watched:** a solved game whose log decodes under this build's format and rules
   version and replays to the solve at its last move (`isPlayable`, asked only of the History rows
