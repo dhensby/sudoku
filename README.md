@@ -825,7 +825,11 @@ Opening a link:
 - **Your own link** — one whose `u=` is this browser's own ID — races no one: its time, solve and
   ID are set aside and it opens as a link without a time would, so a puzzle you have solved here
   shows your time and offers to play it again, with no head-to-head against yourself and no
-  solve of your own to watch as a friend's.
+  solve of your own to watch as a friend's. A game raced against your own link by a version from
+  before such a link raced no one — one whose link carried this browser's ID — has that race taken
+  off as a visit starts (`repairOwnRaces`), the game on screen included, and so does one an import
+  brings in: History lists it as a game of your own. A race from a link older than IDs carries
+  none, so it cannot be told from a friend's, and stays; Delete in History removes the game.
 
 The difficulty is always re-graded from the puzzle itself rather than taken from the link, and
 the parameters are cleared from the address bar once read, so reloading never drags you back.

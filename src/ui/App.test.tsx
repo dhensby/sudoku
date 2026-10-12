@@ -885,6 +885,35 @@ describe('App', () => {
     expect(storage.getItem('sudoku.friends')).toBeNull();
   });
 
+  it("lists a game raced against the player's own link, by a version before, with no race", async () => {
+    const ME = 'm3own1d0zz';
+    const storage = memoryStorage();
+    storage.setItem('sudoku.prefs', JSON.stringify({ playerId: ME }));
+    upsertRecord(storage, {
+      id: 'old-0001',
+      givens: PUZZLE.givens,
+      difficulty: PUZZLE.difficulty,
+      source: 'shared',
+      createdAt: Date.now() - 86_400_000,
+      updatedAt: Date.now() - 86_400_000,
+      completedAt: Date.now() - 86_400_000,
+      status: 'solved',
+      elapsedMs: 12_000,
+      assists: { autoCandidates: false, hints: 0, checks: 0, reveals: 0 },
+      challenge: {
+        name: 'Me',
+        seconds: 12,
+        assists: { autoCandidates: false, hints: 0, checks: 0, reveals: 0 },
+        playerId: ME,
+      },
+    });
+    await startApp({ storage });
+    fireEvent.click(screen.getByRole('button', { name: 'History' }));
+    const history = screen.getByRole('dialog', { name: 'History' });
+    expect(within(history).getAllByText(/^Solved in 0:12/)).toHaveLength(1);
+    expect(history).not.toHaveTextContent(/vs Me/);
+  });
+
   describe("a friend's solve", () => {
     const { puzzle, encoded } = shortSolve();
     const search = linkFor(puzzle.givens, { t: '9', n: 'Dan', s: encoded });
