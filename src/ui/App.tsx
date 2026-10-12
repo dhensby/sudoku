@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useEffectEvent, useId, useRef } from 'react';
+import { useCallback, useEffect, useEffectEvent, useId, useMemo, useRef } from 'react';
 import {
   digitCounts,
   isEditable,
@@ -7,6 +7,8 @@ import {
   type Difficulty,
   type GameState,
 } from '../core';
+import { challengerName, namedChallenge, namedRecord } from '../storage/friends';
+import type { Challenge } from '../storage/history';
 import { Board } from './Board';
 import { BoardOverlay, type BoardOverlayContent } from './BoardOverlay';
 import { Controls } from './Controls';
@@ -19,6 +21,7 @@ import {
   CompletionDialog,
   ConfirmDialog,
   DailyDialog,
+  FriendsDialog,
   HelpDialog,
   HistoryDialog,
   PlaybackDialog,
@@ -68,11 +71,13 @@ function boardContent(sudoku: Sudoku): BoardContent {
       : { kind: 'loading', difficulty, daily };
   }
   if (phase === 'ready') {
+    const challenge = record?.challenge ?? null;
     return {
       kind: 'ready',
       difficulty,
       isShared: record?.source === 'shared',
-      challenge: record?.challenge ?? null,
+      // Under the name the friend was given here, if any (see `challengerName`).
+      challenge: challenge === null ? null : namedChallenge(sudoku.friendIndex, challenge),
       daily,
       onStart: actions.resume,
       solve,
@@ -109,6 +114,22 @@ export function App({ options }: AppProps = {}) {
   const { phase, game, settings, dialog, actions } = sudoku;
   useTheme(settings.theme);
   const hintTextId = useId();
+
+  /*
+   * Every challenger is drawn under the name the friend was given here, if
+   * any (see `challengerName`) — resolved where it is drawn, never stored, so
+   * the snapshots the dialogs hold (a solve's result, an offer, a friend's
+   * solve) follow a rename wherever they come back.
+   */
+  const named = (challenge: Challenge | null): Challenge | null =>
+    challenge === null ? null : namedChallenge(sudoku.friendIndex, challenge);
+  // History's rows are memoised: a record is copied only when its name
+  // changes, so a rename draws again only the rows it renames. Its actions
+  // find the stored records by id, so no copy is ever written back.
+  const historyRecords = useMemo(
+    () => sudoku.history.records.map((record) => namedRecord(sudoku.friendIndex, record)),
+    [sudoku.history.records, sudoku.friendIndex],
+  );
 
   useEffect(() => trackInputModality(), []);
 
@@ -426,6 +447,7 @@ export function App({ options }: AppProps = {}) {
         {dialog?.kind === 'completion' && (
           <CompletionDialog
             {...dialog.result}
+            challenge={named(dialog.result.challenge)}
             onShare={actions.shareResult}
             onWatch={sudoku.canWatchSolve ? actions.watchSolve : undefined}
             isBackFromWatch={dialog.isBackFromWatch}
@@ -452,7 +474,7 @@ export function App({ options }: AppProps = {}) {
         )}
         {dialog?.kind === 'history' && (
           <HistoryDialog
-            records={sudoku.history.records}
+            records={historyRecords}
             currentId={gameId}
             resumableIds={sudoku.history.resumableIds}
             now={sudoku.history.now}
@@ -469,6 +491,17 @@ export function App({ options }: AppProps = {}) {
             onDelete={actions.deleteRecord}
             onExport={actions.exportHistory}
             onImport={actions.importHistory}
+            onOpenFriends={sudoku.friends.length > 0 ? actions.openFriends : undefined}
+            isBackFromFriends={dialog.isBackFromFriends}
+            onClose={actions.closeDialog}
+          />
+        )}
+        {dialog?.kind === 'friends' && (
+          <FriendsDialog
+            friends={sudoku.friends}
+            // Set as History opened, just before: Friends dates links as it did.
+            now={sudoku.history.now}
+            onRename={actions.renameFriend}
             onClose={actions.closeDialog}
           />
         )}
@@ -537,7 +570,7 @@ export function App({ options }: AppProps = {}) {
           <ChallengeDialog
             difficulty={dialog.offer.puzzle.difficulty}
             previous={dialog.offer.previous}
-            challenge={dialog.offer.challenge}
+            challenge={named(dialog.offer.challenge)}
             daily={dialog.offer.daily ?? null}
             onPlayAgain={() => {
               requestBoardFocus();
@@ -552,7 +585,7 @@ export function App({ options }: AppProps = {}) {
         )}
         {dialog?.kind === 'spoiler' && (
           <SpoilerDialog
-            name={dialog.solve.challenge.name}
+            name={challengerName(sudoku.friendIndex, dialog.solve.challenge)}
             onWatch={actions.confirmWatch}
             onPlay={() => {
               requestBoardFocus();

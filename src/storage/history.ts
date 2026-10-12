@@ -55,6 +55,7 @@ import {
   saveMoveLog,
   storeMoveLogs,
 } from './moveLogs';
+import { normaliseFriends, type Friend } from './friends';
 import {
   EMPTY_LEDGER,
   addToLedger,
@@ -67,7 +68,7 @@ import {
  * The history of every game played, the saved state of unfinished ones, and
  * the puzzles the player has seen.
  *
- * Six kinds of key here, and the move logs' two (see `moveLogs.ts`):
+ * Eight kinds of key here, and the move logs' two (see `moveLogs.ts`):
  *   sudoku.history      the list of `GameRecord`s, newest first
  *   sudoku.game.<id>    one game's saved state, opaque here (the game module
  *                       validates it on the way back in)
@@ -80,6 +81,9 @@ import {
  *   sudoku.watched      the share codes of puzzles whose shared solve was
  *                       watched before they were solved, least recently
  *                       watched first (see `markWatched`)
+ *   sudoku.friends      the friends whose links were opened: their devices, by the
+ *                       player ID each one's links carry, and the name given each
+ *                       friend (see friends.ts)
  *   sudoku.moves.<id>   one game's move log
  *   sudoku.moveLogs     the ids that have a `sudoku.moves.<id>` key
  *
@@ -127,7 +131,11 @@ import {
 
 /** Someone else's result that a shared link carried, to compare against. */
 export interface Challenge {
-  /** The challenger's display name from the link, or null. */
+  /**
+   * The challenger's display name from the link, or null. Never rewritten: a
+   * name the player gives the friend is drawn in its place (see
+   * `challengerName`), and taking that name off brings this one back.
+   */
   name: string | null;
   /** Their time in whole seconds. */
   seconds: number;
@@ -159,10 +167,10 @@ export interface Challenge {
   log?: string;
   /**
    * The player ID of the browser the link came from (`u=`, see `Preferences.playerId`):
-   * what tells this challenger's times from anyone else's, whatever name each link
-   * gives. Absent for a link without one — from a version before IDs, with a garbled
-   * one, or a bare name — whose challenger is known only by the name it gave. Like
-   * `name`, never updated here.
+   * what the friends list knows the challenger by (see `friends.ts`), whatever name
+   * each link gives. Absent for a link without one — from a version before IDs, with
+   * a garbled one, or a bare name — whose challenger is known only by the name it
+   * gave. Like `name`, never updated here.
    */
   playerId?: string;
 }
@@ -311,6 +319,7 @@ const GAME_KEY_PREFIX = 'sudoku.game.';
 const SEEN_KEY = 'sudoku.seen';
 const LEDGER_KEY = 'sudoku.dailyLedger';
 const WATCHED_KEY = 'sudoku.watched';
+const FRIENDS_KEY = 'sudoku.friends';
 
 /** What a log in a link is made of (see `src/core/moves.ts`): base64url. */
 const SHARED_LOG_PATTERN = /^[A-Za-z0-9_-]+$/;
@@ -1621,6 +1630,40 @@ function mergeWatched(storage: StorageLike, incoming: unknown): void {
   );
   if (added.length === 0) return;
   writeWatched(storage, [...new Set(added), ...local]);
+}
+
+// ---------------------------------------------------------------------------
+// Friends
+// ---------------------------------------------------------------------------
+
+/*
+ * The friends whose links have been opened, and the names given them: what
+ * they are, and every change to them, is `friends.ts`'s business. Here they
+ * are only read and written.
+ */
+
+/** The friends list (see `friends.ts`). Junk costs only itself. */
+export function loadFriends(storage: StorageLike): Friend[] {
+  return normaliseFriends(readJson(storage, FRIENDS_KEY));
+}
+
+/**
+ * Apply `change` to the list as stored now (another tab may have changed it
+ * since this one read it), and write the result with MAKE_ROOM unless it is the
+ * same list. Returns the list as changed, whether or not the write went through.
+ *
+ * Making room never sheds the list itself: it is small (see
+ * `MAX_FRIEND_DEVICES`), and a name lost would be a friend gone back to
+ * whatever their links call them.
+ */
+export function updateFriends(
+  storage: StorageLike,
+  change: (friends: readonly Friend[]) => readonly Friend[],
+): readonly Friend[] {
+  const friends = loadFriends(storage);
+  const changed = change(friends);
+  if (changed !== friends) writeItem(storage, FRIENDS_KEY, JSON.stringify(changed), MAKE_ROOM);
+  return changed;
 }
 
 // ---------------------------------------------------------------------------

@@ -214,7 +214,7 @@ export function buildShareUrl(
     url.searchParams.set('t', String(sharedSeconds(result.seconds)));
     const name = normaliseName(result.name);
     if (name !== '') url.searchParams.set('n', name);
-    // Beside the name: what the friend's game knows the sharer by (see `Challenge.playerId`).
+    // Beside the name: what the friend's game knows the sharer by (see `friends.ts`).
     if (result.playerId !== undefined && result.playerId !== null) {
       url.searchParams.set('u', result.playerId);
     }

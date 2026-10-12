@@ -19,6 +19,7 @@ import {
   openHeaderDialog,
   placedSolve,
   puzzleLink,
+  seedFriends,
   seedHistory,
   selectCell,
   solveFromKeyboard,
@@ -34,11 +35,11 @@ import {
  * Accessibility, checked by machine: axe-core runs its WCAG 2.2 A and AA
  * rules over the states a player meets — the board in play with every kind
  * of mark on it, the Ready and Paused cards, the "…" menu, every dialog (each
- * step of Show me, and the Show me of a missing candidate, among them),
- * each entry of the technique guide, and a step hint with its houses tinted
- * on the board — in the light theme and the dark (and the main ones, the
- * tint among them, in High contrast), and each must come back with no
- * violations at all, with no rule switched off.
+ * step of Show me, the Show me of a missing candidate, and Friends with a
+ * name being changed, among them), each entry of the technique guide, and
+ * a step hint with its houses tinted on the board — in the light theme and
+ * the dark (and the main ones, the tint among them, in High contrast), and
+ * each must come back with no violations at all, with no rule switched off.
  * Contrast is the rule that a palette change is likeliest to break:
  * contrast.test.ts holds the tokens to their targets pair by pair, and this
  * is the check that the rendered page, every colour composed, agrees.
@@ -267,6 +268,52 @@ async function compareSolves(page: Page, before?: () => Promise<void>): Promise<
   await compare.getByRole('button', { name: 'Show as table' }).click();
   await expect(compare.getByRole('table', { name: 'Cells solved, of 3' })).toBeVisible();
   await expectAccessible(page, 'two solves compared, shown as a table');
+}
+
+/**
+ * Friends as a browser that has had their links holds them: one named here
+ * on two devices (so their row counts them), one going by their link's name,
+ * and one whose links give none.
+ */
+const SEEDED_FRIENDS = [
+  {
+    name: 'Ally',
+    devices: [
+      { id: 'k3x9q7za2m', sentAs: 'Rude McRudeface', lastAt: Date.UTC(2026, 9, 1, 9) },
+      { id: 'p0d4wq81xe', sentAs: 'Al', lastAt: Date.UTC(2026, 9, 2, 9) },
+    ],
+  },
+  { devices: [{ id: 'q1w2e3r4t5', sentAs: 'Alexandra', lastAt: Date.UTC(2026, 9, 3, 9) }] },
+  { devices: [{ id: 'z8c2m5r1to', lastAt: Date.UTC(2026, 9, 4, 9) }] },
+];
+
+/**
+ * A link from someone new, noted as it opens, then History with Friends at
+ * its foot, Friends — the new sender and the seeded three, every kind of row
+ * — and Friends with a name being changed. `before` runs once the link is
+ * open (to choose High contrast, say).
+ */
+async function friendsList(page: Page, before?: () => Promise<void>): Promise<void> {
+  await seedFriends(page, SEEDED_FRIENDS);
+  await gotoPuzzle(page, NEARLY_DONE.givens, {
+    challenge: { seconds: 90, name: 'Newcomer', playerId: 'n3wc0m3r42' },
+  });
+  await expect(startButton(page)).toBeVisible();
+  await before?.();
+  await openHeaderDialog(page, 'History');
+  const open = dialog(page, 'History').getByRole('button', { name: 'Friends' });
+  await expect(open).toBeVisible();
+  await expectAccessible(page, 'History with Friends at its foot');
+
+  await open.click();
+  const friends = dialog(page, 'Friends');
+  await expect(friends.getByRole('listitem')).toHaveCount(4);
+  await expect(friends.getByRole('listitem').first()).toContainText('Newcomer');
+  await expectAccessible(page, 'the Friends dialog');
+
+  await friends.getByRole('button', { name: /^Rename Ally,/ }).click();
+  await expect(friends.getByRole('textbox', { name: 'Their name' })).toBeFocused();
+  await expectAccessible(page, 'Friends with a name being changed');
 }
 
 /** London noon on a date of October 2026, in epoch ms. */
@@ -554,6 +601,11 @@ for (const scheme of ['light', 'dark'] as const) {
     test('two solves compared: the chart, its table and the overlaid board', async ({ page }) => {
       await compareSolves(page);
     });
+
+    test('a link from someone new, and the friends list', async ({ page }) => {
+      await friendsList(page);
+      await expectScheme(page, scheme);
+    });
   });
 }
 
@@ -712,6 +764,14 @@ for (const { way, isChosen, media } of HIGH_CONTRAST_WAYS) {
     test('two solves compared: the chart, its table and the overlaid board', async ({ page }) => {
       await page.emulateMedia(media);
       await compareSolves(page, async () => {
+        if (isChosen) await chooseHighContrast(page);
+        await expectHighContrast(page, isChosen);
+      });
+    });
+
+    test('History with Friends at its foot, and the friends list', async ({ page }) => {
+      await page.emulateMedia(media);
+      await friendsList(page, async () => {
         if (isChosen) await chooseHighContrast(page);
         await expectHighContrast(page, isChosen);
       });
@@ -933,6 +993,16 @@ test.describe('on a phone', () => {
       await sheet.getByRole('combobox', { name: 'Technique' }).selectOption({ label: 'X-Wing' });
       await expect(sheet.getByRole('heading', { level: 3 })).toHaveText('X-Wing');
       await expectAccessible(page, 'the guide as a bottom sheet');
+    });
+  }
+
+  for (const scheme of ['light', 'dark'] as const) {
+    test(`History's foot with Friends, and Friends as a bottom sheet, in the ${scheme} theme`, async ({
+      page,
+    }) => {
+      await page.emulateMedia({ colorScheme: scheme });
+      await friendsList(page);
+      await expectScheme(page, scheme);
     });
   }
 

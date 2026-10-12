@@ -97,7 +97,7 @@ describe('HelpDialog', () => {
     expect(section).toHaveTextContent(/it's off until you turn it on/);
     // Product text, not an example: no sample name.
     expect(section).toHaveTextContent(
-      /offers Watch your friend's solve \(with their name, if they gave one\) beside Start/,
+      /offers Watch your friend's solve \(with their name, if you or their link gave one\) beside Start/,
     );
     expect(section).not.toHaveTextContent(/Dan/);
     expect(section).toHaveTextContent(/Once you've solved the puzzle yourself, watching is free/);
@@ -132,6 +132,7 @@ describe('HelpDialog', () => {
       ['Show me how to solve a cell', 'Show me, after a hint'],
       ['New game', 'The + button'],
       ['History, share, settings, help', 'on a phone, the ☰ menu'],
+      ['Friends', 'Friends, at the foot of History'],
       ['Solving techniques', 'The header, or the question after a hint'],
     ];
     for (const [action, pointer] of rows) {
@@ -169,6 +170,22 @@ describe('HelpDialog', () => {
     expect(within(section).getByText(/^A share link carries/)).toHaveTextContent(
       "A share link carries the puzzle itself — and, once you have solved it, your time, your name, any help you took, your mistakes and a random ID for this browser, so a friend's game can tell your times from anyone else's.",
     );
+  });
+
+  it('says where Friends is, and that a name given there shows on every time, past ones too', () => {
+    render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={vi.fn()} />);
+    const section = screen.getByRole('heading', { name: 'Racing friends' }).closest('section')!;
+    expect(within(section).getByText(/at the foot of History, lists everyone/)).toHaveTextContent(
+      "Friends, at the foot of History, lists everyone who has sent you a time. Give someone a name there and it's the one you'll see on all their times, past ones too, whatever their links call them; until you do, each time shows the name its link gave.",
+    );
+    // Product text, not an example: no sample name.
+    expect(section).not.toHaveTextContent(/Dan/);
+    expect(screen.getByText('The names you give friends never leave this browser.')).toBeVisible();
+    // After History's row, where it is found.
+    const actions = within(screen.getByRole('table'))
+      .getAllByRole('rowheader')
+      .map((cell) => cell.textContent);
+    expect(actions.indexOf('Friends')).toBe(actions.indexOf('History, share, settings, help') + 1);
   });
 
   it('says links carry your mistakes, compared beside the help, and explains the dash', () => {

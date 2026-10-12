@@ -12,6 +12,7 @@ import {
 } from '../share';
 import { CopyIcon, ShareIcon } from '../icons';
 import { Dialog } from './Dialog';
+import { NAME_INPUT_MAX } from './text';
 
 export interface ShareDialogProps {
   givens: GridString;
@@ -46,15 +47,6 @@ export interface ShareDialogProps {
   onPlayerNameChange: (name: string) => void;
   onClose: () => void;
 }
-
-/**
- * How much the name field takes while typing. Generous on purpose: the name
- * is tidied and, past 24 characters, cut short with an ellipsis on the way out
- * (`normaliseName`), and a
- * field that stops accepting keys mid-emoji, or mid-paste of a name with
- * stray spaces, feels broken. This matches the tidier's own UTF-16 ceiling.
- */
-const NAME_INPUT_MAX = 64;
 
 interface Status {
   text: string;
@@ -266,7 +258,10 @@ export function ShareDialog({
               onChange={(event) => setName(event.target.value)}
               onBlur={commitName}
             />
-            <p className="field__hint">Shown next to your time when a friend opens the link.</p>
+            <p className="field__hint">
+              Shown next to your time when a friend opens the link, unless they&apos;ve given you a
+              name of their own.
+            </p>
           </div>
         )}
 

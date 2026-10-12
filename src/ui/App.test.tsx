@@ -2,7 +2,8 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { encodeGivens, type Puzzle } from '../core';
-import { upsertRecord } from '../storage/history';
+import { meetDevice, renameFriend } from '../storage/friends';
+import { loadFriends, updateFriends, upsertRecord } from '../storage/history';
 import { loadPreferences } from '../storage/prefs';
 import { memoryStorage, type StorageLike } from '../storage/storage';
 import { App } from './App';
@@ -998,6 +999,189 @@ describe('App', () => {
         }),
       ).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: /Watch/ })).toBeNull();
+    });
+  });
+
+  describe('friends', () => {
+    const ALLY = 'k3x9q7za2m';
+    // Five moves, the last at 0:09: the link's time is 9 seconds.
+    const { puzzle, encoded } = shortSolve();
+    const search = linkFor(puzzle.givens, { t: '9', n: 'Rude', u: ALLY, s: encoded });
+
+    /** A browser that has had a link from ALLY before, and named them `name`. */
+    function named(name: string): StorageLike {
+      const storage = memoryStorage();
+      updateFriends(storage, (friends) =>
+        renameFriend(meetDevice(friends, { id: ALLY, sentAs: 'Al', at: 1 }), ALLY, name),
+      );
+      return storage;
+    }
+
+    /** Fill in the shared puzzle's three blanks from the keyboard. */
+    function solveShared(): void {
+      for (const index of [0, 40, 80]) {
+        fireEvent.click(cells()[index]);
+        press(String(answerAt(index, puzzle)));
+      }
+    }
+
+    /** Open History from the header, and Friends from its foot. */
+    function openFriends(): HTMLElement {
+      fireEvent.click(screen.getByRole('button', { name: 'History' }));
+      const history = screen.getByRole('dialog', { name: 'History' });
+      fireEvent.click(within(history).getByRole('button', { name: 'Friends' }));
+      return screen.getByRole('dialog', { name: 'Friends' });
+    }
+
+    /** In Friends, rename the one friend there, from the keyboard, then close it. */
+    async function renameTo(friends: HTMLElement, name: string): Promise<void> {
+      fireEvent.click(within(friends).getByRole('button', { name: /^Rename/ }));
+      const field = within(friends).getByRole('textbox', { name: 'Their name' });
+      await waitFor(() => expect(field).toHaveFocus());
+      fireEvent.change(field, { target: { value: name } });
+      fireEvent.keyDown(field, { key: 'Enter' });
+      expect(friends.querySelector('[role="status"]')).toHaveTextContent(
+        `Renamed: you'll see them as ${name}.`,
+      );
+      fireEvent.click(within(friends).getByRole('button', { name: 'Close' }));
+    }
+
+    it('draws a friend named here by that name everywhere, whatever their link calls them', async () => {
+      renderApp({ storage: named('Dan'), search });
+      await screen.findByRole('heading', { name: 'Ready?' });
+      expect(document.querySelector('.board-overlay__text')).toHaveTextContent(
+        'Dan solved this Easy puzzle in 0:09. Can you beat it?',
+      );
+      expect(screen.getByRole('main')).not.toHaveTextContent(/Rude/);
+
+      fireEvent.click(screen.getByRole('button', { name: "Watch Dan's solve" }));
+      const spoiler = screen.getByRole('dialog', { name: "Watch Dan's solve?" });
+      expect(spoiler).toHaveTextContent('This shows every number Dan placed.');
+      fireEvent.click(within(spoiler).getByRole('button', { name: 'Play it first' }));
+      await screen.findByRole('grid');
+      solveShared();
+
+      const solved = await screen.findByRole('dialog', { name: 'Solved!' });
+      const versus = within(solved).getByRole('region', { name: 'Head to head' });
+      expect(
+        within(versus)
+          .getAllByRole('columnheader')
+          .map((th) => th.textContent),
+      ).toEqual(['You', 'Dan']);
+      expect(versus.querySelector('.comparison__verdict')).toHaveTextContent(
+        /^You were 0:0\d faster than Dan!$/,
+      );
+      fireEvent.click(within(solved).getByRole('button', { name: "Watch Dan's solve" }));
+      expect(screen.getByRole('dialog', { name: "Dan's solve" })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+      fireEvent.click(
+        within(screen.getByRole('dialog', { name: 'Solved!' })).getByRole('button', {
+          name: 'Compare solves',
+        }),
+      );
+      const compared = screen.getByRole('dialog', { name: 'You vs Dan' });
+      expect(compared).not.toHaveTextContent(/Rude/);
+      fireEvent.click(within(compared).getByRole('button', { name: 'Close' }));
+      fireEvent.click(
+        within(screen.getByRole('dialog', { name: 'Solved!' })).getByRole('button', {
+          name: 'Close',
+        }),
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'History' }));
+      const history = screen.getByRole('dialog', { name: 'History' });
+      expect(history.querySelector('.history-item__challenge')).toHaveTextContent(/^vs Dan 0:09/);
+      expect(
+        within(history).getByRole('button', { name: /^Watch Dan's solve, Easy puzzle from / }),
+      ).toBeInTheDocument();
+      expect(history).not.toHaveTextContent(/Rude/);
+      fireEvent.click(within(history).getByRole('button', { name: /^Compare solves, Easy/ }));
+      expect(screen.getByRole('dialog', { name: 'You vs Dan' })).not.toHaveTextContent(/Rude/);
+    });
+
+    it('names them in the offer to play a puzzle solved already', async () => {
+      const storage = named('Dan');
+      upsertRecord(storage, {
+        id: 'mbx3k2f0-done',
+        givens: puzzle.givens,
+        difficulty: puzzle.difficulty,
+        source: 'generated',
+        createdAt: 1,
+        updatedAt: 2,
+        completedAt: 2,
+        status: 'solved',
+        elapsedMs: 60_000,
+        assists: { autoCandidates: false, hints: 0, checks: 0, reveals: 0 },
+        challenge: null,
+      });
+      renderApp({ storage, search });
+      const offer = await screen.findByRole('dialog', { name: "You've solved this one" });
+      expect(within(offer).getAllByRole('columnheader')[1]).toHaveTextContent('Dan');
+      expect(offer.querySelector('.comparison__verdict')).toHaveTextContent('Dan was 0:51 faster.');
+      expect(within(offer).getByRole('button', { name: "Watch Dan's solve" })).toBeInTheDocument();
+      expect(offer).not.toHaveTextContent(/Rude/);
+    });
+
+    it('offers Friends in History only once a link with an ID has been opened', async () => {
+      await startApp();
+      fireEvent.click(screen.getByRole('button', { name: 'History' }));
+      expect(screen.queryByRole('button', { name: 'Friends' })).toBeNull();
+    });
+
+    it('renames a friend from History, every race of theirs following, focus back on Friends', async () => {
+      const { storage } = renderApp({ search });
+      await screen.findByRole('heading', { name: 'Ready?' });
+      // Noted as the link opened, by the name it gave.
+      expect(loadFriends(storage)).toEqual([
+        { devices: [{ id: ALLY, sentAs: 'Rude', lastAt: expect.any(Number) }] },
+      ]);
+      fireEvent.click(within(screen.getByRole('main')).getByRole('button', { name: 'Start' }));
+      await screen.findByRole('grid');
+      solveShared();
+      fireEvent.click(
+        within(await screen.findByRole('dialog', { name: 'Solved!' })).getByRole('button', {
+          name: 'Close',
+        }),
+      );
+
+      const friends = openFriends();
+      expect(within(friends).getByRole('listitem')).toHaveTextContent(
+        /^Rude.*Name from their latest link/,
+      );
+      await renameTo(friends, 'Bob');
+
+      const history = screen.getByRole('dialog', { name: 'History' });
+      await waitFor(() =>
+        expect(within(history).getByRole('button', { name: 'Friends' })).toHaveFocus(),
+      );
+      expect(history.querySelector('.history-item__challenge')).toHaveTextContent(/^vs Bob 0:09/);
+      expect(loadFriends(storage)[0].name).toBe('Bob');
+      // And its solve, watched from History, is headed with it.
+      fireEvent.click(
+        within(history).getByRole('button', { name: /^Watch Bob's solve, Easy puzzle from / }),
+      );
+      expect(screen.getByRole('dialog', { name: "Bob's solve" })).toBeInTheDocument();
+    });
+
+    it('names the head-to-head a solve brings by a name given since its link was opened', async () => {
+      renderApp({ search });
+      await screen.findByRole('heading', { name: 'Ready?' });
+      fireEvent.click(within(screen.getByRole('main')).getByRole('button', { name: 'Start' }));
+      await screen.findByRole('grid');
+      // Named mid-game: the race's record still holds the link's "Rude".
+      await renameTo(openFriends(), 'Bob');
+      fireEvent.click(
+        within(screen.getByRole('dialog', { name: 'History' })).getByRole('button', {
+          name: 'Close',
+        }),
+      );
+      solveShared();
+      const solved = await screen.findByRole('dialog', { name: 'Solved!' });
+      expect(within(solved).getAllByRole('columnheader')[1]).toHaveTextContent('Bob');
+      expect(solved.querySelector('.comparison__verdict')).toHaveTextContent(
+        /^You were 0:0\d faster than Bob!$/,
+      );
+      expect(within(solved).getByRole('button', { name: "Watch Bob's solve" })).toBeInTheDocument();
     });
   });
 

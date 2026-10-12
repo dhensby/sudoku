@@ -40,6 +40,7 @@ import {
   importHistory,
   loadDailyLedger,
   loadCurrentId,
+  loadFriends,
   loadGameBlob,
   loadHistory,
   markSeen,
@@ -48,9 +49,11 @@ import {
   saveGameMoves,
   savedGameIds,
   sweepMoveLogs,
+  updateFriends,
   upsertRecord,
   type GameRecord,
 } from './history';
+import { meetDevice, renameFriend, type Friend } from './friends';
 import {
   loadEncodedMoveLog,
   loadMoveLog,
@@ -799,6 +802,100 @@ describe('puzzles seen', () => {
     const storage = throwingStorage({ set: true });
     expect(() => markSeen(storage, PUZZLE)).not.toThrow();
     expect(hasSeen(storage, [], PUZZLE)).toBe(false);
+  });
+});
+
+describe('the friends list', () => {
+  const FRIENDS = 'sudoku.friends';
+  const ALLY = 'k3x9q7za2m';
+  const ZED = 'z8c2m5r1to';
+  const met = (friends: readonly Friend[]) =>
+    meetDevice(friends, { id: ALLY, sentAs: 'Al', at: 5 });
+
+  it('reads nothing stored as no friends', () => {
+    expect(loadFriends(memoryStorage())).toEqual([]);
+  });
+
+  it.each([
+    ['not JSON', '['],
+    ['not a list', '{"k3x9q7za2m":{"name":"Ally"}}'],
+  ])('reads a stored list that is %s as no friends', (_label, raw) => {
+    const storage = memoryStorage();
+    storage.setItem(FRIENDS, raw);
+    expect(loadFriends(storage)).toEqual([]);
+  });
+
+  it('skips junk in the stored list one entry at a time', () => {
+    const storage = memoryStorage();
+    storage.setItem(
+      FRIENDS,
+      JSON.stringify([
+        42,
+        { devices: [{ id: 'BAD ID', lastAt: 1 }] },
+        { devices: [{ id: ALLY, lastAt: 5 }] },
+      ]),
+    );
+    expect(loadFriends(storage)).toStrictEqual([{ devices: [{ id: ALLY, lastAt: 5 }] }]);
+  });
+
+  it('writes a change, and reads back what it wrote', () => {
+    const storage = memoryStorage();
+    const changed = updateFriends(storage, met);
+    expect(changed).toStrictEqual([{ devices: [{ id: ALLY, sentAs: 'Al', lastAt: 5 }] }]);
+    expect(loadFriends(storage)).toStrictEqual(changed);
+  });
+
+  it('writes nothing for a change that changes nothing', () => {
+    const storage = countingStorage();
+    updateFriends(storage, met);
+    expect(storage.sets).toEqual([FRIENDS]);
+    // The same link again, and a rename of nobody: the same list back.
+    updateFriends(storage, met);
+    updateFriends(storage, (friends) => renameFriend(friends, ZED, 'Zed'));
+    expect(storage.sets).toEqual([FRIENDS]);
+  });
+
+  it('applies a change to the list as stored now, keeping what another tab wrote since', () => {
+    const storage = memoryStorage();
+    const read = updateFriends(storage, met);
+    // Another tab notes a second friend, and names the first.
+    storage.setItem(
+      FRIENDS,
+      JSON.stringify(
+        renameFriend(meetDevice(read, { id: ZED, sentAs: null, at: 6 }), ALLY, 'Ally'),
+      ),
+    );
+    const changed = updateFriends(storage, (friends) => renameFriend(friends, ZED, 'Zed'));
+    expect(changed).toStrictEqual([
+      { name: 'Ally', devices: [{ id: ALLY, sentAs: 'Al', lastAt: 5 }] },
+      { name: 'Zed', devices: [{ id: ZED, lastAt: 6 }] },
+    ]);
+    expect(loadFriends(storage)).toStrictEqual(changed);
+  });
+
+  it('makes room in a full storage, then writes', () => {
+    const storage = quotaStorage();
+    const records: GameRecord[] = [];
+    for (let i = 0; i < 15; i++) {
+      records.push(playing(`p${i}`, i, { updatedAt: 100 + i }));
+      saveGameBlob(storage, `p${i}`, 'x'.repeat(1000));
+    }
+    seed(storage, records);
+    storage.capacity = storage.used() + 20;
+    updateFriends(storage, met);
+    // Saved games of the least recently played went to make room.
+    expect(hasGameBlob(storage, 'p0')).toBe(false);
+    expect(loadFriends(storage)).toHaveLength(1);
+  });
+
+  it('gives up quietly when the storage refuses every write, still giving back the change', () => {
+    const storage = throwingStorage({ set: true });
+    let changed: readonly Friend[] = [];
+    expect(() => {
+      changed = updateFriends(storage, met);
+    }).not.toThrow();
+    expect(changed).toStrictEqual([{ devices: [{ id: ALLY, sentAs: 'Al', lastAt: 5 }] }]);
+    expect(loadFriends(storage)).toEqual([]);
   });
 });
 

@@ -20,15 +20,18 @@ import {
   type Puzzle,
 } from '../core';
 import { ArchiveUnavailableError, dailies as appDailies } from '../daily/dailies';
+import { meetDevice, renameFriend } from '../storage/friends';
 import {
   computeStats,
   exportHistory,
   hasSeen,
   hasWatched,
   loadCurrentId,
+  loadFriends,
   loadGameBlob,
   loadHistory,
   recordedMistakes,
+  updateFriends,
   upsertRecord,
   type GameRecord,
 } from '../storage/history';
@@ -2347,6 +2350,135 @@ describe('useSudoku', () => {
     });
   });
 
+  describe('friends', () => {
+    const ALLY = 'k3x9q7za2m';
+    const LINK = linkFor(PUZZLE.givens, { t: '323', n: 'Rude', u: ALLY });
+
+    it('notes the sender of a link as it opens, by its ID and the name it gave', async () => {
+      const { result, storage } = await started({ search: LINK });
+      expect(loadFriends(storage)).toStrictEqual([
+        { devices: [{ id: ALLY, sentAs: 'Rude', lastAt: NOW }] },
+      ]);
+      expect(result.current.friends).toStrictEqual(loadFriends(storage));
+      expect(result.current.friendIndex.get(ALLY)).toBe(result.current.friends[0]);
+    });
+
+    it('notes a sender heard from again, keeping the name given them', async () => {
+      const storage = memoryStorage();
+      updateFriends(storage, (friends) =>
+        renameFriend(
+          meetDevice(friends, { id: ALLY, sentAs: 'Al', at: NOW - 86_400_000 }),
+          ALLY,
+          'Ally',
+        ),
+      );
+      const { result } = await started({ storage, search: LINK });
+      expect(loadFriends(storage)).toStrictEqual([
+        { name: 'Ally', devices: [{ id: ALLY, sentAs: 'Rude', lastAt: NOW }] },
+      ]);
+      expect(result.current.friends).toStrictEqual(loadFriends(storage));
+      // The race keeps the name its link gave.
+      expect(result.current.record?.challenge).toMatchObject({ name: 'Rude', playerId: ALLY });
+    });
+
+    it.each([
+      ['a link without an ID', linkFor(PUZZLE.givens, { t: '323', n: 'Dan' })],
+      ['no link at all', ''],
+    ])('notes no one for %s', async (_, search) => {
+      const { result, storage } = await started({ search });
+      expect(storage.getItem('sudoku.friends')).toBeNull();
+      expect(result.current.friends).toEqual([]);
+    });
+
+    it("notes no one for a link from this browser's own ID", async () => {
+      const storage = memoryStorage();
+      storage.setItem('sudoku.prefs', JSON.stringify({ playerId: ALLY }));
+      const { result } = await started({ storage, search: LINK });
+      expect(storage.getItem('sudoku.friends')).toBeNull();
+      expect(result.current.record?.challenge).toMatchObject({ name: 'Rude', playerId: ALLY });
+    });
+
+    it('names the friend whose solve the card offers, and heads its playback, as renamed', async () => {
+      const { puzzle, encoded } = shortSolve();
+      const search = linkFor(puzzle.givens, { t: '9', n: 'Rude', u: ALLY, s: encoded });
+      const { result, storage } = await started({ search });
+      expect(result.current.friendSolve).toEqual({ name: 'Rude' });
+
+      act(() => result.current.actions.renameFriend(ALLY, '  Dan '));
+      expect(result.current.friends).toStrictEqual([
+        { name: 'Dan', devices: [{ id: ALLY, sentAs: 'Rude', lastAt: NOW }] },
+      ]);
+      expect(loadFriends(storage)).toStrictEqual(result.current.friends);
+      expect(result.current.friendSolve).toEqual({ name: 'Dan' });
+      // The record keeps its link's name: the name given is drawn in its place.
+      expect(result.current.record?.challenge?.name).toBe('Rude');
+      expect(loadHistory(storage)[0].challenge?.name).toBe('Rude');
+
+      act(() => result.current.actions.watchFriendSolve());
+      act(() => result.current.actions.confirmWatch());
+      expect(result.current.dialog).toMatchObject({
+        kind: 'playback',
+        source: { title: "Dan's solve", name: 'Dan' },
+      });
+      act(() => result.current.actions.closeDialog());
+
+      // Taking the name off gives the link's own back.
+      act(() => result.current.actions.renameFriend(ALLY, ''));
+      expect(result.current.friendSolve).toEqual({ name: 'Rude' });
+      expect(loadFriends(storage)[0]).not.toHaveProperty('name');
+    });
+
+    it('opens Friends from History and goes back to it, the game paused until History closes', async () => {
+      const { result } = await started({ search: LINK });
+      act(() => result.current.actions.resume());
+      expect(result.current.phase).toBe('playing');
+      act(() => result.current.actions.openDialog('history'));
+      expect(result.current.phase).toBe('paused');
+
+      act(() => result.current.actions.openFriends());
+      expect(result.current.dialog).toEqual({ kind: 'friends' });
+      expect(result.current.phase).toBe('paused');
+      // A minute in Friends: History, back again, is read afresh, dated now.
+      advance(60_000);
+      act(() => result.current.actions.closeDialog());
+      expect(result.current.dialog).toEqual({ kind: 'history', isBackFromFriends: true });
+      expect(result.current.phase).toBe('paused');
+      expect(result.current.history.now).toBe(Date.now());
+
+      act(() => result.current.actions.closeDialog());
+      expect(result.current.dialog).toBeNull();
+      expect(result.current.phase).toBe('playing');
+    });
+
+    it('reads the friends afresh as History and Friends open, for names another tab gave', async () => {
+      const { result, storage, rerender } = await started({ search: LINK });
+      const index = result.current.friendIndex;
+      rerender();
+      // A render that changes no friend keeps the same index, so nothing drawn from it draws again.
+      expect(result.current.friendIndex).toBe(index);
+
+      updateFriends(storage, (friends) => renameFriend(friends, ALLY, 'Ally'));
+      expect(result.current.friends[0]).not.toHaveProperty('name');
+      act(() => result.current.actions.openDialog('history'));
+      expect(result.current.friends[0].name).toBe('Ally');
+      expect(result.current.friendIndex.get(ALLY)?.name).toBe('Ally');
+
+      updateFriends(storage, (friends) => renameFriend(friends, ALLY, 'Al'));
+      act(() => result.current.actions.openFriends());
+      expect(result.current.friends[0].name).toBe('Al');
+    });
+
+    it("renames over another tab's list as it stands, losing none of its friends", async () => {
+      const { result, storage } = await started({ search: LINK });
+      updateFriends(storage, (friends) =>
+        meetDevice(friends, { id: 'z8c2m5r1to', sentAs: 'Zed', at: NOW + 1 }),
+      );
+      act(() => result.current.actions.renameFriend(ALLY, 'Ally'));
+      expect(loadFriends(storage).map((friend) => friend.name ?? null)).toEqual(['Ally', null]);
+      expect(result.current.friends).toStrictEqual(loadFriends(storage));
+    });
+  });
+
   describe('reset', () => {
     it('asks first, holding the clock while it asks', async () => {
       const { result } = await started();
@@ -4373,6 +4505,44 @@ describe('useSudoku', () => {
         );
         act(() => result.current.actions.compareRecord('nope-0000', place));
         expect(result.current.dialog).toEqual({ kind: 'history', place });
+      });
+
+      it('compares under the name given the friend, from the Solved dialog and from History', async () => {
+        const ALLY = 'k3x9q7za2m';
+        const storage = memoryStorage();
+        // Known here already, and named: their link opens as any other.
+        updateFriends(storage, (friends) =>
+          renameFriend(
+            meetDevice(friends, { id: ALLY, sentAs: 'Dan', at: NOW - 86_400_000 }),
+            ALLY,
+            'Ally',
+          ),
+        );
+        const search = linkFor(SHARED.givens, { t: '9', n: 'Dan', u: ALLY, s: THEIRS });
+        const { result } = await started({ storage, search });
+        act(() => result.current.actions.resume());
+        solveShared(result);
+        act(() => result.current.actions.compareSolves());
+        expect(result.current.dialog).toMatchObject({
+          kind: 'compare',
+          source: { theirs: { log: THEIRS, name: 'Ally', seconds: 9 } },
+        });
+        act(() => result.current.actions.closeDialog());
+        // The record keeps its link's name: the one given is drawn in its place.
+        expect(result.current.record?.challenge?.name).toBe('Dan');
+
+        // Renamed since: History's Compare solves follows.
+        act(() => result.current.actions.renameFriend(ALLY, 'Al'));
+        act(() => result.current.actions.closeDialog());
+        act(() => result.current.actions.openDialog('history'));
+        const [record] = result.current.history.records;
+        expect(record.challenge?.name).toBe('Dan');
+        const place = { filter: 'all', limit: 100, id: record.id, solve: 'compare' } as const;
+        act(() => result.current.actions.compareRecord(record.id, place));
+        expect(result.current.dialog).toMatchObject({
+          kind: 'compare',
+          source: { theirs: { log: THEIRS, name: 'Al' } },
+        });
       });
 
       it('offers no comparison for a solve whose link carried no solve of the friend’s', async () => {

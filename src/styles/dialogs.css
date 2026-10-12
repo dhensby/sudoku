@@ -1105,6 +1105,51 @@
   margin-bottom: 10px;
 }
 
+/* Friends comes first in the footer, set apart on the left from the file
+   buttons: it is about people, not this history's safekeeping. */
+.history__friends {
+  margin-right: auto;
+}
+
+@media (max-width: 499px) {
+  /* On a phone, a row of its own: three icon buttons do not fit 320px. Named
+     through the footer to match the sheet's full-width button rule, at the
+     same weight and after it, so it wins. Its bottom margin is the footer's
+     8px gap between rows, which History's footer drops for its status line. */
+  .dialog__footer .history__friends {
+    flex-basis: 100%;
+    margin: 0 0 8px;
+  }
+}
+
+/* ---- Friends ----
+   Laid out as History's rows are (`history-item`): what a friend goes by and
+   when they last sent a time, with Rename on a line beneath. */
+.friends__intro {
+  margin: 0;
+}
+
+/* A name from a link, or one given here: a long one, with no spaces to break
+   at, wraps rather than pushing the row wider than the sheet. */
+.friends-item__name {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+/* The same for the name a named friend's latest link gives, in the line under
+   it: past the row's edge it would not scroll but be cut off, the row's
+   `content-visibility` clipping it. On the line, not the row, so the buttons'
+   own words never break to fit. */
+.friends-item .history-item__status {
+  overflow-wrap: anywhere;
+}
+
+/* Renaming: the field takes the row, Save and Cancel beneath it. */
+.friends-item__edit .field {
+  flex-basis: 100%;
+  margin: 0;
+}
+
 /* ---- Settings ---- */
 .settings__group {
   min-width: 0;

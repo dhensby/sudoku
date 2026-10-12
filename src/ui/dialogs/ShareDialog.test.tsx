@@ -120,6 +120,13 @@ describe('ShareDialog', () => {
       expect(nameField().value).toBe('Dan');
     });
 
+    it('says where the name shows, and that a name a friend gives you shows instead', () => {
+      renderShare();
+      expect(nameField().closest('.field')!.querySelector('.field__hint')).toHaveTextContent(
+        "Shown next to your time when a friend opens the link, unless they've given you a name of their own.",
+      );
+    });
+
     it('updates the link as the name is typed, tidied as it will be sent', () => {
       const { props } = renderShare({ playerName: '' });
       fireEvent.change(nameField(), { target: { value: 'Ann ' } });

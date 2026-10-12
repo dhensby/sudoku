@@ -130,6 +130,22 @@ export function HistoryIcon(props: IconProps) {
   );
 }
 
+/**
+ * Two people, one a step behind the other: head and shoulders in front, and
+ * behind it the edge of a second head and shoulder — the friends who send
+ * times, and the names given them.
+ */
+export function FriendsIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="9" cy="8" r="3.5" />
+      <path d="M2.5 20.5v-1a5 5 0 0 1 5-5h3a5 5 0 0 1 5 5v1" />
+      <path d="M15.5 4.6a3.5 3.5 0 0 1 0 6.8" />
+      <path d="M18.5 14.6a5 5 0 0 1 3 4.4v1.5" />
+    </Icon>
+  );
+}
+
 /** An arrow rising out of a tray: send this somewhere. */
 export function ShareIcon(props: IconProps) {
   return (

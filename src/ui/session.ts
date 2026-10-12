@@ -32,6 +32,7 @@ import {
   type MoveLog,
   type Puzzle,
 } from '../core';
+import type { Friend, Sighting } from '../storage/friends';
 import {
   createGameId,
   findAttempts,
@@ -39,6 +40,7 @@ import {
   hasSeen,
   hasWatched,
   loadCurrentId,
+  loadFriends,
   loadGameBlob,
   loadHistory,
   recordedMistakes,
@@ -212,6 +214,8 @@ export interface DailyHint {
 export interface Startup {
   /** The history as it stood at startup. */
   records: GameRecord[];
+  /** The friends list as it stood at startup (see `friends.ts`). */
+  friends: readonly Friend[];
   /** The game to show, or null to generate one. */
   session: Session | null;
   /** A link to a puzzle already solved, offering a fresh attempt. */
@@ -235,6 +239,15 @@ export interface Startup {
    * wondering why there is nothing to watch.
    */
   isSolveTooNew: boolean;
+  /**
+   * Who a link came from, by the player ID it carried with its time (see
+   * `Challenge.playerId`), with the name it gave and when it was opened: for
+   * the hook to note among the friends once mounted (see `meetDevice`), as it
+   * does every such link, whatever it opens. Null for no link, a broken one,
+   * one without a time or an ID — and one from this browser's own ID, whose
+   * sharer is the player.
+   */
+  sharer: Sighting | null;
 }
 
 /** The phase a session is in. `isGenerating` wins: a new puzzle is on its way. */
@@ -808,19 +821,27 @@ export function shareTargetOfRecord(record: GameRecord, encoded: string | null):
  * `sharedSolveRefusal`). Any other is dropped without a word — the link
  * opens as it would have without it — but for one a newer version recorded,
  * which `isSolveTooNew` has the player told of.
+ *
+ * A link's player ID (`&u=`) goes with its challenge, whichever of the three
+ * it opens, and names its sender for the hook to note among the friends
+ * (`sharer`) — unless it is `playerId`, this browser's own: the player's own
+ * link, opened here, is no friend's.
  */
 export function planStartup(
   storage: StorageLike,
   search: string,
   now: Moment,
   autoCandidates: boolean,
+  playerId: string | null = null,
 ): Startup {
   const records = loadHistory(storage);
+  const friends = loadFriends(storage);
   const currentId = loadCurrentId(storage);
   const restored =
     currentId === null ? null : restoreSession(storage, records, currentId, now.wall);
   const plain: Startup = {
     records,
+    friends,
     session: restored,
     offer: null,
     isBadLink: false,
@@ -829,6 +850,7 @@ export function planStartup(
     left: null,
     dailyHint: null,
     isSolveTooNew: false,
+    sharer: null,
   };
 
   const link = readSharedLink(search);
@@ -856,6 +878,10 @@ export function planStartup(
         ? null
         : { date: link.daily, givens: puzzle.givens, tier: puzzle.difficulty },
     isSolveTooNew: refusal === 'newer',
+    sharer:
+      link.challenge?.playerId === undefined || link.challenge.playerId === playerId
+        ? null
+        : { id: link.challenge.playerId, sentAs: link.challenge.name, at: now.wall },
   };
   const attempts = findAttempts(records, puzzle.givens);
 

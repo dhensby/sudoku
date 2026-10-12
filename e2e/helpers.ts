@@ -353,6 +353,19 @@ export async function seedHistory(page: Page, records: readonly unknown[]): Prom
   }, records);
 }
 
+/**
+ * Put friends in the list before the page loads (see `src/storage/friends.ts`),
+ * as a browser that has had their links holds them — once, so a reload does
+ * not put them back over a name given since.
+ */
+export async function seedFriends(page: Page, friends: readonly unknown[]): Promise<void> {
+  await page.addInitScript((seeded) => {
+    if (localStorage.getItem('e2e.seededFriends') !== null) return;
+    localStorage.setItem('sudoku.friends', JSON.stringify(seeded));
+    localStorage.setItem('e2e.seededFriends', '1');
+  }, friends);
+}
+
 /** A solved or unfinished daily attempt, as the history stores one, begun at `createdAt`. */
 export function dailyRecord(
   id: string,
@@ -402,6 +415,22 @@ export async function openHeaderDialog(
   }
   await page.getByRole('banner').getByRole('button', { name: 'Menu' }).click();
   await page.getByRole('menu', { name: 'Menu' }).getByRole('menuitem', { name: label }).click();
+}
+
+/**
+ * Open History from the header, then Friends from its foot, and wait for it:
+ * the list of everyone who has sent a time. There must be someone in it, or
+ * History offers no Friends to open.
+ */
+export async function openFriends(page: Page): Promise<Locator> {
+  await openHeaderDialog(page, 'History');
+  await page
+    .getByRole('dialog', { name: 'History' })
+    .getByRole('button', { name: 'Friends' })
+    .click();
+  const friends = page.getByRole('dialog', { name: 'Friends' });
+  await expect(friends).toBeVisible();
+  return friends;
 }
 
 /**

@@ -18,6 +18,7 @@ describe('icons', () => {
         'CopyIcon',
         'DownloadIcon',
         'EraseIcon',
+        'FriendsIcon',
         'HelpIcon',
         'HintIcon',
         'HistoryIcon',

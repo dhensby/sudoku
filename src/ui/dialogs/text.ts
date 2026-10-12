@@ -7,6 +7,15 @@ import { assistPartText, assistParts, describeAssists } from '../format';
  * the dialog-specific turns of phrase built on it.
  */
 
+/**
+ * How much a name field takes while typing — the player's own in Share, and
+ * a friend's in Friends. Generous on purpose: the name is tidied and, past 24
+ * characters, cut short with an ellipsis on the way out (`normaliseName`), and a
+ * field that stops accepting keys mid-emoji, or mid-paste of a name with
+ * stray spaces, feels broken. This matches the tidier's own UTF-16 ceiling.
+ */
+export const NAME_INPUT_MAX = 64;
+
 /** "With auto candidates, 2 hints" — or null for a time earned unaided. */
 export function assistsSentence(assists: Assists): string | null {
   const list = describeAssists(assists);

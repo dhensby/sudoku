@@ -12,6 +12,7 @@ import {
   openTodaysDaily,
   padKey,
   resumeButton,
+  seedFriends,
   settle,
   solveFromKeyboard,
   startButton,
@@ -1184,6 +1185,178 @@ for (const viewport of [
     });
   });
 }
+
+/**
+ * A right-to-left name as long as a name is kept (24 characters), with no
+ * space to break it at, and wider than a row on the narrowest phone: sad and
+ * dad, two of the widest Arabic letters, run past 320px at the rows' 15px,
+ * where a row has under 280px, so the name has to wrap there.
+ */
+const LONG_RTL_NAME = 'صض'.repeat(12);
+
+/**
+ * Friends with that name everywhere a Friends row draws a name: given one
+ * friend (whose latest link says something short), sent by another who has
+ * not been named, and said by the latest link of a third, beside a count of
+ * their devices.
+ */
+const LONG_NAMED_FRIENDS = [
+  {
+    name: LONG_RTL_NAME,
+    devices: [{ id: 'k3x9q7za2m', sentAs: 'Al', lastAt: Date.UTC(2026, 9, 3, 9) }],
+  },
+  { devices: [{ id: 'z8c2m5r1to', sentAs: LONG_RTL_NAME, lastAt: Date.UTC(2026, 9, 2, 9) }] },
+  {
+    name: 'Ally',
+    devices: [
+      { id: 'p0d4wq81xe', sentAs: 'Al', lastAt: Date.UTC(2026, 9, 1, 8) },
+      { id: 'q1w2e3r4t5', sentAs: LONG_RTL_NAME, lastAt: Date.UTC(2026, 9, 1, 9) },
+    ],
+  },
+];
+
+/** Every box `targets` draws lies across the dialog's body, inside its padding. */
+async function expectInsideBody(dialog: Locator, targets: Locator): Promise<void> {
+  const inner = await dialog.locator('.dialog__body').evaluate((el) => {
+    const box = el.getBoundingClientRect();
+    const style = getComputedStyle(el);
+    return {
+      left: box.left + parseFloat(style.paddingLeft),
+      right: box.right - parseFloat(style.paddingRight),
+    };
+  });
+  for (const target of await targets.all()) {
+    const box = (await target.boundingBox())!;
+    expect(box.x, 'its left edge').toBeGreaterThanOrEqual(inner.left - 4.5);
+    expect(box.x + box.width, 'its right edge').toBeLessThanOrEqual(inner.right + 4.5);
+  }
+}
+
+/*
+ * Friends, from History's foot: a bottom sheet upright, a card on its side.
+ * The longest right-to-left name a link can carry, with nowhere to break, is
+ * wider than a row on the narrow phone upright, and wraps inside its row
+ * there wherever a row draws it — the name itself, and what a named friend's
+ * latest link says — rather than scrolling the dialog sideways or being cut
+ * off at the row's edge; on its side the name fits a line, and nothing
+ * scrolls sideways either. Every control, Rename and the field, Save and
+ * Cancel it opens, is a finger's 44px, the field's text 16px so that
+ * focusing it does not zoom the page.
+ */
+for (const viewport of [
+  { width: 320, height: 568 },
+  { width: 568, height: 320 },
+]) {
+  test.describe(`a ${viewport.width}×${viewport.height} phone with friends`, () => {
+    test.use({ viewport });
+
+    test('keeps a long right-to-left name inside its Friends row, and every control a 44px touch target, with nothing to scroll sideways', async ({
+      page,
+    }) => {
+      expect([...LONG_RTL_NAME]).toHaveLength(24);
+      await seedFriends(page, LONG_NAMED_FRIENDS);
+      await tapStart(page);
+      const history = await openFromMenu(page, 'History');
+      await history.getByRole('button', { name: 'Friends' }).tap();
+      const friends = page.getByRole('dialog', { name: 'Friends' });
+      await expect(friends.getByRole('listitem')).toHaveCount(3);
+      await settle(page);
+      await expectOnScreen(page, friends);
+      const body = friends.locator('.dialog__body');
+      expect((await overflow(page)).x).toBe(0);
+      expect(await body.evaluate((el) => el.scrollWidth - el.clientWidth)).toBe(0);
+      const names = friends.locator('bdi', { hasText: LONG_RTL_NAME });
+      await expect(names).toHaveCount(3);
+      await expectInsideBody(friends, names);
+      if (viewport.width === 320) {
+        // Upright, the name really does wrap, to two lines or more, each
+        // time a row draws it: the line boxes its text sits on.
+        const lineCounts = await names.evaluateAll((elements) =>
+          elements.map((el) => {
+            const range = document.createRange();
+            range.selectNodeContents(el);
+            return new Set(Array.from(range.getClientRects(), (rect) => Math.round(rect.top))).size;
+          }),
+        );
+        expect(lineCounts.map((lines) => lines >= 2)).toEqual([true, true, true]);
+      }
+
+      for (const button of await friends.getByRole('button').all()) {
+        await button.scrollIntoViewIfNeeded();
+        const size = (await button.boundingBox())!;
+        const label = (await button.getAttribute('aria-label')) ?? '';
+        expect(size.height, label).toBeGreaterThanOrEqual(44);
+        expect(size.width, label).toBeGreaterThanOrEqual(44);
+      }
+
+      // Renaming the friend given the long name, the latest to send a link
+      // and so first: the field holds it, and it, Save and Cancel are
+      // finger-sized, all inside the row.
+      await friends
+        .getByRole('button', { name: new RegExp(`^Rename ${LONG_RTL_NAME}`) })
+        .first()
+        .tap();
+      const field = friends.getByRole('textbox', { name: 'Their name' });
+      await expect(field).toHaveValue(LONG_RTL_NAME);
+      const edit = friends.getByRole('group', { name: new RegExp(`^Rename ${LONG_RTL_NAME}`) });
+      for (const target of [
+        field,
+        edit.getByRole('button', { name: /^Save name/ }),
+        edit.getByRole('button', { name: /^Cancel renaming/ }),
+      ]) {
+        await target.scrollIntoViewIfNeeded();
+        const size = (await target.boundingBox())!;
+        expect(size.height).toBeGreaterThanOrEqual(44);
+        expect(size.width).toBeGreaterThanOrEqual(44);
+      }
+      expect(await field.evaluate((el) => parseFloat(getComputedStyle(el).fontSize))).toBe(16);
+      await expectInsideBody(friends, edit);
+      expect((await overflow(page)).x).toBe(0);
+      expect(await body.evaluate((el) => el.scrollWidth - el.clientWidth)).toBe(0);
+    });
+  });
+}
+
+/*
+ * History's foot on the narrowest phone: Friends, Export and Import are too
+ * many icon buttons for one row at 320px, so Friends takes a row of its own
+ * above the other two, 8px apart as the two are side by side, each a
+ * finger's 44px, nothing scrolling sideways.
+ */
+test.describe('a 320×568 phone with friends in History', () => {
+  test.use({ viewport: { width: 320, height: 568 } });
+
+  test("gives Friends a row of its own at History's foot, above Export and Import", async ({
+    page,
+  }) => {
+    await seedFriends(page, LONG_NAMED_FRIENDS);
+    await tapStart(page);
+    const history = await openFromMenu(page, 'History');
+    await settle(page);
+    const footer = history.locator('.dialog__footer');
+    const [friends, exported, imported] = await Promise.all(
+      ['Friends', 'Export', 'Import'].map(
+        async (name) => (await footer.getByRole('button', { name }).boundingBox())!,
+      ),
+    );
+    const inner = await footer.evaluate((el) => {
+      const box = el.getBoundingClientRect();
+      const style = getComputedStyle(el);
+      return box.width - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+    });
+    expect(friends.width).toBeGreaterThanOrEqual(inner - 1);
+    expect(exported.y - (friends.y + friends.height)).toBeCloseTo(8, 0);
+    // Export and Import share the row beneath, the same 8px apart.
+    expect(exported.y).toBe(imported.y);
+    expect(imported.x - (exported.x + exported.width)).toBeCloseTo(8, 0);
+    for (const box of [friends, exported, imported]) {
+      expect(box.height).toBeGreaterThanOrEqual(44);
+      expect(box.width).toBeGreaterThanOrEqual(44);
+    }
+    await expectOnScreen(page, footer);
+    expect((await overflow(page)).x).toBe(0);
+  });
+});
 
 /*
  * The shortest phone on its side, an iPhone SE at 568×320: the game still
