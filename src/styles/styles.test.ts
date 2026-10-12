@@ -790,6 +790,115 @@ describe('Watch your solve', () => {
   });
 });
 
+describe('Compare solves', () => {
+  it('draws the overlaid board with the game’s own geometry, from a size of its own', () => {
+    const board = rule(DIALOGS, '.compare__board');
+    for (const name of ['--frame', '--thick', '--thin', '--lines', '--board-outer']) {
+      const own = new RegExp(`${name}:\\s*([^;]+);`).exec(rule(LAYOUT, '.app'))![1];
+      expect(board, name).toContain(`${name}: ${own};`);
+    }
+    expect(DIALOGS).toMatch(
+      /@supports \(width: round\(down, 10\.5px, 1px\)\) \{\s*\.compare__board \{\s*--cell: round\(down/,
+    );
+  });
+
+  it('tells the two lines apart by more than colour: solid against dashed, filled marks against open', () => {
+    expect(rule(DIALOGS, '.compare-chart__line--mine')).toMatch(/stroke:\s*var\(--series-you\)/);
+    expect(rule(DIALOGS, '.compare-chart__line--mine')).not.toMatch(/dasharray/);
+    const theirs = rule(DIALOGS, '.compare-chart__line--theirs');
+    expect(theirs).toMatch(/stroke:\s*var\(--series-friend\)/);
+    expect(theirs).toMatch(/stroke-dasharray:\s*6 4/);
+    expect(rule(DIALOGS, '.compare-chart__shape--mine')).toMatch(/fill:\s*var\(--series-you\)/);
+    // Open: an outline with no fill of its own, over a halo of the surface,
+    // so a filled mark of the player's in the same spot shows through it.
+    const open = rule(DIALOGS, '.compare-chart__shape--theirs');
+    expect(open).toMatch(/fill:\s*none/);
+    expect(open).toMatch(/stroke:\s*var\(--series-friend\)/);
+    expect(rule(DIALOGS, '.compare-chart__halo')).toMatch(/fill:\s*var\(--surface-raised\)/);
+  });
+
+  it('draws 2px lines, a pixel heavier in High contrast, and rings marks in the surface', () => {
+    expect(rule(DIALOGS, '.compare-chart__line')).toMatch(
+      /stroke-width:\s*calc\(2px \+ var\(--line-boost\)\)/,
+    );
+    const filled = rule(DIALOGS, '.compare-chart__shape--mine');
+    expect(filled).toMatch(/stroke:\s*var\(--surface-raised\)/);
+    expect(filled).toMatch(/paint-order:\s*stroke/);
+    expect(rule(DIALOGS, '.compare-chart__halo')).toMatch(/stroke-width:\s*6px/);
+  });
+
+  it('keeps the grid and axes recessive, as solid hairlines', () => {
+    const grid = rule(DIALOGS, '.compare-chart__grid line');
+    expect(grid).toMatch(/stroke:\s*var\(--border\)/);
+    expect(grid).toMatch(/stroke-width:\s*1px/);
+    expect(grid).not.toMatch(/dasharray/);
+    expect(rule(DIALOGS, '.compare-chart__ticks text')).toMatch(/fill:\s*var\(--text-muted\)/);
+  });
+
+  it('never sets text in a series colour', () => {
+    expect(DIALOGS).not.toMatch(/(^|[^-])color:\s*var\(--series-/m);
+    const label = rule(DIALOGS, '.compare-chart__label text');
+    expect(label).toMatch(/fill:\s*var\(--text\)/);
+    // Haloed in the surface, never outlined in a series colour.
+    expect(label).toMatch(/stroke:\s*var\(--surface-raised\)/);
+    expect(label).toMatch(/paint-order:\s*stroke/);
+    expect(rule(DIALOGS, '.compare-legend__mark')).toMatch(/fill:\s*var\(--text-muted\)/);
+  });
+
+  it('tells whose a number is by more than colour: upright over a solid rule, italic over a dashed one', () => {
+    expect(rule(DIALOGS, '.compare-digit--mine')).toMatch(/color:\s*var\(--ink-you\)/);
+    const theirs = rule(DIALOGS, '.compare-digit--theirs');
+    expect(theirs).toMatch(/color:\s*var\(--ink-friend\)/);
+    expect(theirs).toMatch(/font-style:\s*italic/);
+    expect(rule(DIALOGS, '.compare-digit--mine::after')).toMatch(/background:\s*currentColor/);
+    expect(rule(DIALOGS, '.compare-digit--theirs::after')).toMatch(
+      /repeating-linear-gradient\(to right, currentColor 0 3px, transparent 3px 5px\)/,
+    );
+    expect(rule(DIALOGS, '.compare-digit--both')).toMatch(/color:\s*var\(--ink-both\)/);
+    // Drawn as given in forced colours, where the tokens are system colours.
+    expect(rule(DIALOGS, '.compare-digit')).toMatch(/forced-color-adjust:\s*none/);
+  });
+
+  it('puts the two numbers where they differ in fixed corners, never under 10px', () => {
+    expect(rule(DIALOGS, '.compare-split')).toMatch(
+      /font-size:\s*max\(10px, calc\(var\(--cell\) \* 0\.36\)\)/,
+    );
+    expect(rule(DIALOGS, '.compare-split .compare-digit--mine')).toMatch(/grid-area:\s*1 \/ 1/);
+    expect(rule(DIALOGS, '.compare-split .compare-digit--theirs')).toMatch(/grid-area:\s*2 \/ 2/);
+  });
+
+  it('lets a finger scrub the chart sideways and still scroll the body up and down', () => {
+    expect(rule(DIALOGS, '.compare-chart__plot')).toMatch(/touch-action:\s*pan-y/);
+  });
+
+  it('puts the board beside the chart on a phone on its side', () => {
+    const short = DIALOGS.slice(
+      DIALOGS.indexOf(
+        '@media (max-height: 500px) and (min-width: 500px)',
+        DIALOGS.indexOf('Compare solves'),
+      ),
+    );
+    // Sized from the body's real height, as the walkthrough is.
+    expect(short).toMatch(
+      /\.dialog--compare \.dialog__body\s*\{\s*container:\s*compare-body \/ size/,
+    );
+    expect(short).toMatch(/\.compare\s*\{\s*display:\s*grid/);
+    expect(short).toMatch(/\.compare__chart\s*\{\s*grid-area:\s*chart;\s*height:\s*100cqh/);
+    expect(short).toMatch(/--chart-height:\s*100%/);
+    // The board that high less its key, set in two rows of two to keep it short.
+    expect(short).toMatch(/--board-size:\s*clamp\(150px, calc\(100cqh - 56px\), 360px\)/);
+    expect(short).toMatch(
+      /\.compare-key\s*\{\s*display:\s*grid;\s*grid-template-columns:\s*repeat\(2, auto\)/,
+    );
+  });
+
+  it('sets Watch and Compare solves side by side under the head-to-head, wrapping where narrow', () => {
+    const watch = rule(DIALOGS, '.comparison__watch');
+    expect(watch).toMatch(/display:\s*flex/);
+    expect(watch).toMatch(/flex-wrap:\s*wrap/);
+  });
+});
+
 describe('the daily calendar', () => {
   it('draws a daily’s marks in ink, the empty one muted', () => {
     expect(rule(DIALOGS, '.daily-mark')).toMatch(/color:\s*var\(--text\)/);

@@ -4190,6 +4190,131 @@ describe('useSudoku', () => {
       expect(result.current.dialog).toEqual({ kind: 'history', place });
     });
 
+    describe('comparing the two solves', () => {
+      it('compares a solve with the friend’s from the Solved dialog, writing nothing', async () => {
+        const { result, storage } = await linked();
+        act(() => result.current.actions.resume());
+        solveShared(result);
+        expect(result.current.canCompareSolves).toBe(true);
+        const completion = result.current.dialog;
+        const before = JSON.stringify(loadHistory(storage));
+        act(() => result.current.actions.compareSolves());
+        expect(result.current.dialog).toMatchObject({
+          kind: 'compare',
+          source: {
+            givens: SHARED.givens,
+            difficulty: SHARED.difficulty,
+            puzzleName: 'Easy',
+            mine: { log: expect.any(String), seconds: 9 },
+            theirs: { log: THEIRS, name: 'Dan', seconds: 9 },
+          },
+          returnTo: { kind: 'completion' },
+        });
+        // Back to the Solved dialog, focus on its Compare solves.
+        act(() => result.current.actions.closeDialog());
+        expect(result.current.dialog).toEqual({ ...completion, isBackFromCompare: true });
+        expect(JSON.stringify(loadHistory(storage))).toBe(before);
+        expect(hasWatched(storage, SHARED.givens)).toBe(false);
+      });
+
+      it('compares a solve recorded with no time, after watching first, with none', async () => {
+        const { result } = await linked();
+        act(() => result.current.actions.watchFriendSolve());
+        act(() => result.current.actions.confirmWatch());
+        act(() => result.current.actions.closeDialog());
+        act(() => result.current.actions.resume());
+        solveShared(result);
+        expect(result.current.canCompareSolves).toBe(true);
+        act(() => result.current.actions.compareSolves());
+        expect(result.current.dialog).toMatchObject({
+          kind: 'compare',
+          source: { mine: { seconds: null }, theirs: { seconds: 9 } },
+        });
+      });
+
+      it('compares an earlier solve, from the offer to play a solved puzzle again', async () => {
+        const storage = memoryStorage();
+        // Solved in 0:09 by the very moves the friend made (a log is kept
+        // only with a record whose time it ends at).
+        upsertRecord(storage, solvedRecord(SHARED, 9_000));
+        storeMoveLog(storage, 'old-0001', THEIRS);
+        const { result } = await linked({ storage });
+        const offer = result.current.dialog;
+        expect(offer?.kind).toBe('challenge');
+        expect(result.current.canCompareSolves).toBe(true);
+        act(() => result.current.actions.compareSolves());
+        expect(result.current.dialog).toMatchObject({
+          kind: 'compare',
+          source: { mine: { log: THEIRS, seconds: 9 }, theirs: { name: 'Dan' } },
+          returnTo: { kind: 'challenge' },
+        });
+        act(() => result.current.actions.closeDialog());
+        expect(result.current.dialog).toEqual({ ...offer, isBackFromCompare: true });
+      });
+
+      it('offers nothing to compare for an earlier solve with no log to play back', async () => {
+        const storage = memoryStorage();
+        upsertRecord(storage, solvedRecord(SHARED, 120_000));
+        const { result } = await linked({ storage });
+        expect(result.current.dialog?.kind).toBe('challenge');
+        expect(result.current.canWatchChallengeSolve).toBe(true);
+        expect(result.current.canCompareSolves).toBe(false);
+        act(() => result.current.actions.compareSolves());
+        expect(result.current.dialog?.kind).toBe('challenge');
+      });
+
+      it('offers nothing to compare for an earlier solve whose stored log will not play back', async () => {
+        const storage = memoryStorage();
+        upsertRecord(storage, solvedRecord(SHARED, 120_000));
+        // A newer version's log: kept for that version (a broken one would be
+        // swept as the game starts), but not one this version plays back.
+        storeMoveLog(storage, 'old-0001', 'zAAAAAAAA');
+        const { result } = await linked({ storage });
+        expect(result.current.dialog?.kind).toBe('challenge');
+        expect(result.current.canWatchChallengeSolve).toBe(true);
+        expect(result.current.canCompareSolves).toBe(false);
+        act(() => result.current.actions.compareSolves());
+        expect(result.current.dialog?.kind).toBe('challenge');
+      });
+
+      it('is offered on a solved History row raced against it, and goes back to the list', async () => {
+        const { result } = await linked();
+        act(() => result.current.actions.resume());
+        solveShared(result);
+        act(() => result.current.actions.closeDialog());
+        act(() => result.current.actions.openDialog('history'));
+        const [record] = result.current.history.records;
+        expect(result.current.actions.canCompareRecord(record)).toBe(true);
+        const place = { filter: 'all', limit: 100, id: record.id, solve: 'compare' } as const;
+        act(() => result.current.actions.compareRecord(record.id, place));
+        expect(result.current.dialog).toMatchObject({
+          kind: 'compare',
+          source: { mine: { seconds: 9 }, theirs: { log: THEIRS } },
+          returnTo: { kind: 'history', place },
+        });
+        act(() => result.current.actions.closeDialog());
+        expect(result.current.dialog).toEqual({ kind: 'history', place });
+        // Nothing for a row not solved, or one it cannot find.
+        expect(result.current.actions.canCompareRecord({ ...record, status: 'playing' })).toBe(
+          false,
+        );
+        act(() => result.current.actions.compareRecord('nope-0000', place));
+        expect(result.current.dialog).toEqual({ kind: 'history', place });
+      });
+
+      it('offers no comparison for a solve whose link carried no solve of the friend’s', async () => {
+        const { result } = await started({ search: linkFor(SHARED.givens, { t: '9' }) });
+        act(() => result.current.actions.resume());
+        solveShared(result);
+        expect(result.current.dialog?.kind).toBe('completion');
+        expect(result.current.canWatchSolve).toBe(true);
+        expect(result.current.canCompareSolves).toBe(false);
+        const completion = result.current.dialog;
+        act(() => result.current.actions.compareSolves());
+        expect(result.current.dialog).toBe(completion);
+      });
+    });
+
     it('says a solve from a newer version cannot be watched here, and offers none', async () => {
       const newer = linkFor(SHARED.givens, { t: '9', n: 'Dan', s: 'zAAAAAAAA' });
       const { result } = await started({ search: newer });

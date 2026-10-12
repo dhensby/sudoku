@@ -14,6 +14,7 @@ describe('icons', () => {
         'ChevronLeftIcon',
         'ChevronRightIcon',
         'CloseIcon',
+        'CompareIcon',
         'CopyIcon',
         'DownloadIcon',
         'EraseIcon',

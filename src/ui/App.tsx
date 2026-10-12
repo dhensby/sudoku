@@ -15,6 +15,7 @@ import { hasAssists } from './format';
 import { HelpTaken } from './HelpTaken';
 import {
   ChallengeDialog,
+  CompareDialog,
   CompletionDialog,
   ConfirmDialog,
   DailyDialog,
@@ -430,6 +431,8 @@ export function App({ options }: AppProps = {}) {
             isBackFromWatch={dialog.isBackFromWatch}
             onWatchFriend={sudoku.canWatchChallengeSolve ? actions.watchChallengeSolve : undefined}
             isBackFromFriend={dialog.isBackFromFriend}
+            onCompare={sudoku.canCompareSolves ? actions.compareSolves : undefined}
+            isBackFromCompare={dialog.isBackFromCompare}
             onNewGame={() => handleNewGame(dialog.result.difficulty)}
             onClose={actions.closeDialog}
           />
@@ -459,6 +462,8 @@ export function App({ options }: AppProps = {}) {
             onWatch={actions.watchRecord}
             canWatchChallenge={actions.canWatchRecordChallenge}
             onWatchChallenge={actions.watchRecordChallenge}
+            canCompare={actions.canCompareRecord}
+            onCompare={actions.compareRecord}
             place={dialog.place}
             onDelete={actions.deleteRecord}
             onExport={actions.exportHistory}
@@ -468,6 +473,9 @@ export function App({ options }: AppProps = {}) {
         )}
         {dialog?.kind === 'playback' && (
           <PlaybackDialog {...dialog.source} settings={settings} onClose={actions.closeDialog} />
+        )}
+        {dialog?.kind === 'compare' && (
+          <CompareDialog {...dialog.source} onClose={actions.closeDialog} />
         )}
         {dialog?.kind === 'settings' && (
           <SettingsDialog
@@ -536,6 +544,8 @@ export function App({ options }: AppProps = {}) {
             }}
             onWatch={sudoku.canWatchChallengeSolve ? actions.watchChallengeSolve : undefined}
             isBackFromWatch={dialog.isBackFromWatch}
+            onCompare={sudoku.canCompareSolves ? actions.compareSolves : undefined}
+            isBackFromCompare={dialog.isBackFromCompare}
             onClose={actions.closeDialog}
           />
         )}

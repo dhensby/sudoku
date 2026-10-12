@@ -2,7 +2,8 @@ import type { ReactNode } from 'react';
 import { formatDuration, type Assists, type MistakeTally } from '../../core';
 import type { Challenge } from '../../storage/history';
 import { CHECK_GUESSES_LABEL } from '../format';
-import { PlayIcon } from '../icons';
+import { COMPARE_LABEL } from '../compareText';
+import { CompareIcon, PlayIcon } from '../icons';
 import { WatchFriendText } from '../WatchFriendText';
 
 /** How one time compares with another. */
@@ -192,6 +193,14 @@ export interface ComparisonProps {
   onWatch?: () => void;
   /** Focus goes to that button as the dialog opens: back from the playback it opened. */
   isWatchFocused?: boolean;
+  /**
+   * Compare the player's solve with the friend's: a button beside Watch,
+   * given only when both solves play back — the player's own log, and the
+   * one the friend's link carried.
+   */
+  onCompare?: () => void;
+  /** Focus goes to that button as the dialog opens: back from the comparison it opened. */
+  isCompareFocused?: boolean;
 }
 
 /** Who won, in words; `name` is null for a challenger whose link gave none. */
@@ -234,6 +243,8 @@ export function Comparison({
   verdictId,
   onWatch,
   isWatchFocused = false,
+  onCompare,
+  isCompareFocused = false,
 }: ComparisonProps) {
   const comparison = mySeconds === null ? null : compareTimes(mySeconds, challenge.seconds);
   const result = comparison?.result ?? null;
@@ -313,17 +324,30 @@ export function Comparison({
       <p className="comparison__verdict" id={verdictId}>
         {comparison === null ? NO_VERDICT : verdictFor(comparison, name)}
       </p>
-      {onWatch !== undefined && (
+      {(onWatch !== undefined || onCompare !== undefined) && (
         <p className="comparison__watch">
-          <button
-            type="button"
-            className="button button--small button--wraps"
-            data-autofocus={isWatchFocused || undefined}
-            onClick={onWatch}
-          >
-            <PlayIcon />
-            <WatchFriendText name={challenge.name} />
-          </button>
+          {onWatch !== undefined && (
+            <button
+              type="button"
+              className="button button--small button--wraps"
+              data-autofocus={isWatchFocused || undefined}
+              onClick={onWatch}
+            >
+              <PlayIcon />
+              <WatchFriendText name={challenge.name} />
+            </button>
+          )}
+          {onCompare !== undefined && (
+            <button
+              type="button"
+              className="button button--small"
+              data-autofocus={isCompareFocused || undefined}
+              onClick={onCompare}
+            >
+              <CompareIcon />
+              {COMPARE_LABEL}
+            </button>
+          )}
         </p>
       )}
     </section>

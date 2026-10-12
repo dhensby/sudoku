@@ -301,3 +301,14 @@ export function ResetIcon(props: IconProps) {
     </Icon>
   );
 }
+
+/** Two lines climbing side by side, one stepping ahead: compare two solves. */
+export function CompareIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M4 19.5h16" />
+      <path d="M5 16h4v-5h4V6h6" />
+      <path d="M5 16.5h7V13h3V9h4" strokeDasharray="2 2.5" />
+    </Icon>
+  );
+}

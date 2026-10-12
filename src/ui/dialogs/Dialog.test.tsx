@@ -114,6 +114,32 @@ describe('Dialog focus management', () => {
     expect(screen.getByRole('button', { name: 'Nominated' })).toHaveFocus();
   });
 
+  it('opens on a nominee marked to keep the body’s scroll without scrolling to it', () => {
+    const focus = vi.spyOn(HTMLElement.prototype, 'focus');
+    renderDialog(
+      <>
+        <button type="button">First in order</button>
+        <button type="button" data-autofocus="keep-scroll">
+          Below
+        </button>
+      </>,
+    );
+    expect(screen.getByRole('button', { name: 'Below' })).toHaveFocus();
+    expect(focus).toHaveBeenCalledWith(expect.objectContaining({ preventScroll: true }));
+    focus.mockRestore();
+  });
+
+  it('scrolls to an ordinary nominee as focus does', () => {
+    const focus = vi.spyOn(HTMLElement.prototype, 'focus');
+    renderDialog(
+      <button type="button" data-autofocus>
+        Nominated
+      </button>,
+    );
+    expect(focus).not.toHaveBeenCalledWith(expect.objectContaining({ preventScroll: true }));
+    focus.mockRestore();
+  });
+
   it('selects a nominated text field, so typing replaces what is there', () => {
     renderDialog(<input aria-label="Name" defaultValue="Dan" data-autofocus />);
     const field = screen.getByRole('textbox', { name: 'Name' }) as HTMLInputElement;

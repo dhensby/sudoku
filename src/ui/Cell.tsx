@@ -1,4 +1,4 @@
-import { memo, useRef, type CSSProperties } from 'react';
+import { memo, useRef, type CSSProperties, type ReactNode } from 'react';
 import { COL, ROW, hasDigit, type CellMark, type Digit } from '../core';
 import { cellLabel } from './announce';
 
@@ -9,6 +9,20 @@ import { cellLabel } from './announce';
 export type Highlight = 'selected' | 'same' | 'step' | 'peer' | 'none';
 
 const DIGITS: readonly Digit[] = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+
+/**
+ * A read-only cell drawn its own way rather than from the game's state: on
+ * the board that overlays two solves (see `CompareDialog`), what each player
+ * had in it. It replaces what the cell would draw, and its name.
+ */
+export interface CellOverlay {
+  /** What the cell draws in place of its digit or candidates. */
+  content: ReactNode;
+  /** The cell's accessible name in place of the one its state gives it. */
+  label: string;
+  /** A class for the stylesheet, on the cell. */
+  className?: string;
+}
 
 export interface CellProps {
   index: number;
@@ -52,10 +66,21 @@ export interface CellProps {
   isReadOnly?: boolean;
   /** The cell the move on show acted on, in a playback: outlined. */
   isCurrent?: boolean;
+  /** On a read-only board, what to draw in place of the cell's own state (see `CellOverlay`). */
+  overlay?: CellOverlay;
 }
 
-function className({ value, given, mark, highlight, conflict, isCurrent }: CellProps): string {
+function className({
+  value,
+  given,
+  mark,
+  highlight,
+  conflict,
+  isCurrent,
+  overlay,
+}: CellProps): string {
   const classes = ['cell'];
+  if (overlay?.className !== undefined) classes.push(overlay.className);
   if (given) classes.push('cell--given');
   else if (value !== 0) classes.push('cell--player');
   if (highlight !== 'none') classes.push(`cell--${highlight}`);
@@ -113,6 +138,7 @@ function CellComponent(props: CellProps) {
     onToggleCandidate,
     registerRef,
     isReadOnly = false,
+    overlay,
   } = props;
   // How the press that led to the coming click began: only a mouse toggles a
   // candidate by its spot. A finger cannot see the ghosts before it lands,
@@ -137,10 +163,10 @@ function CellComponent(props: CellProps) {
         className={className(props)}
         aria-rowindex={ROW[index] + 1}
         aria-colindex={COL[index] + 1}
-        aria-label={label}
+        aria-label={overlay?.label ?? label}
         data-index={index}
       >
-        {cellContent(value, candidates, sameCandidate)}
+        {overlay === undefined ? cellContent(value, candidates, sameCandidate) : overlay.content}
         {marks}
       </div>
     );

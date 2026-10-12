@@ -94,6 +94,13 @@ export interface CompletionDialogProps {
   onWatchFriend?: () => void;
   /** Focus opens on the friend's Watch: back from the playback it opened. */
   isBackFromFriend?: boolean;
+  /**
+   * Compare the solve with the friend's, from the head-to-head; given only
+   * when both play back (see `Comparison`).
+   */
+  onCompare?: () => void;
+  /** Focus opens on Compare solves: back from the comparison it opened. */
+  isBackFromCompare?: boolean;
   onNewGame: () => void;
   onClose: () => void;
 }
@@ -110,7 +117,7 @@ export interface CompletionDialogProps {
  * over. Under the time, how clean the solve was: its mistakes, when known.
  * "Watch your solve" plays the game back, move by move, and brings the
  * dialog back as it closes; the head-to-head offers the friend's solve the
- * same way, when their link carried it.
+ * same way, when their link carried it, and the two solves compared.
  *
  * A solve after watching a friend's has no time: the dialog says so where
  * the time would be, and why, and shares the puzzle alone.
@@ -131,6 +138,8 @@ export function CompletionDialog({
   isBackFromWatch = false,
   onWatchFriend,
   isBackFromFriend = false,
+  onCompare,
+  isBackFromCompare = false,
   onNewGame,
   onClose,
 }: CompletionDialogProps) {
@@ -142,6 +151,7 @@ export function CompletionDialog({
   const help = assistsSentence(assists);
   const isWatchFocused = isBackFromWatch && onWatch !== undefined;
   const isFriendFocused = isBackFromFriend && onWatchFriend !== undefined;
+  const isCompareFocused = isBackFromCompare && onCompare !== undefined && challenge !== null;
   // Only a time can be raced: without one, Share shares the puzzle.
   const isRaceable = !isReplay && !isWatched;
 
@@ -159,7 +169,9 @@ export function CompletionDialog({
           <button
             type="button"
             className="button button--primary"
-            data-autofocus={isWatchFocused || isFriendFocused ? undefined : true}
+            data-autofocus={
+              isWatchFocused || isFriendFocused || isCompareFocused ? undefined : true
+            }
             onClick={onShare}
           >
             {isRaceable ? 'Share your time' : 'Share puzzle'}
@@ -225,6 +237,8 @@ export function CompletionDialog({
           verdictId={verdictId}
           onWatch={onWatchFriend}
           isWatchFocused={isFriendFocused}
+          onCompare={onCompare}
+          isCompareFocused={isCompareFocused}
         />
       )}
 

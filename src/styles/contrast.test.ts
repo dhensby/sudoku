@@ -4,6 +4,7 @@ import {
   DEFICIENCIES,
   LIGHT,
   contrast,
+  deltaE,
   luminance,
   mix,
   parseHex,
@@ -370,6 +371,25 @@ const PAIRS: Pair[] = [
   ['a solve with no time, said where its time would be', 'text', 'surface-raised', TEXT],
   ['a card saying no time will be recorded', 'text-muted', 'surface-raised', TEXT],
   ['the card’s Watch, an outlined button, on the card', 'text', 'surface-raised', TEXT],
+
+  // ---- Compare solves ----
+  // The chart sits on the dialog: its lines and marks in the two series
+  // colours, which are never text; the cursor in ink; the axes' figures, the
+  // legend's marks and the leaders to moved labels muted; the labels, the
+  // legend's words and the readout in the text's ink.
+  ['your line and marks against the chart', 'series-you', 'surface-raised', NON_TEXT],
+  ['your friend’s line and marks against the chart', 'series-friend', 'surface-raised', NON_TEXT],
+  ['the chart’s cursor', 'text', 'surface-raised', NON_TEXT],
+  ['the chart’s baseline', 'key-border', 'surface-raised', NON_TEXT],
+  ['the chart’s axis figures', 'text-muted', 'surface-raised', TEXT],
+  ['the legend’s marks, and a leader to a moved label', 'text-muted', 'surface-raised', NON_TEXT],
+  ['a line’s end label, the legend and the readout', 'text', 'surface-raised', TEXT],
+  // The overlaid board's numbers, and the key's sample cells: on plain cells,
+  // as a played-back board has no highlights. Each held at 7:1, as a
+  // player's own digit is; the rule under one is drawn in its ink.
+  ['your number on the overlaid board', 'ink-you', 'cell-bg', AAA],
+  ['your friend’s number on the overlaid board', 'ink-friend', 'cell-bg', AAA],
+  ['a number you both had, on the overlaid board', 'ink-both', 'cell-bg', AAA],
 ];
 
 /*
@@ -410,6 +430,30 @@ describe.each([
   it.each(pairs)('holds %s', (what, foreground, background, minimum) => {
     const ratio = contrast(resolve(tokens, foreground), resolve(tokens, background));
     expect(ratio).toBeGreaterThanOrEqual(textMinimum(tokens, what, minimum));
+  });
+
+  /*
+   * Compare solves' two series colours: told apart at a glance (15 apart in
+   * OKLab, ×100, the chart palette's floor for neighbours) and under each
+   * colour-blindness the matrices simulate at full severity (8 apart) — the
+   * checks the chart palette was validated by. Identity never rests on them
+   * alone (solid and dashed lines, filled and open marks, upright and italic
+   * digits), but they must still do their part.
+   */
+  it('tells your series colour from your friend’s, in normal vision and simulated colour-blindness', () => {
+    const [you, friend] = [resolve(tokens, 'series-you'), resolve(tokens, 'series-friend')];
+    expect(deltaE(you, friend)).toBeGreaterThanOrEqual(15);
+    for (const deficiency of DEFICIENCIES) {
+      expect(
+        deltaE(simulate(you, deficiency), simulate(friend, deficiency)),
+        deficiency,
+      ).toBeGreaterThanOrEqual(8);
+    }
+    // And the board's two inks from each other, and a number you both had
+    // from a given, which share its plain upright figures.
+    const ink = (name: string) => resolve(tokens, name);
+    expect(deltaE(ink('ink-you'), ink('ink-friend'))).toBeGreaterThanOrEqual(15);
+    expect(deltaE(ink('ink-both'), ink('digit-given'))).toBeGreaterThanOrEqual(15);
   });
 
   /*

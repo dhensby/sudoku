@@ -234,6 +234,41 @@ async function friendsSolve(page: Page, before?: () => Promise<void>): Promise<v
   await expectAccessible(page, 'the Share dialog with the solve included');
 }
 
+/**
+ * Two solves compared: a friend's from a link, against the player's own,
+ * played first — from the Solved dialog, at the moment it opens on, at the
+ * start, and at the end with the chart's table shown. `before` runs once the
+ * link is open (to choose High contrast, say).
+ */
+async function compareSolves(page: Page, before?: () => Promise<void>): Promise<void> {
+  await page.clock.install();
+  // The friend's three cells at 0:04, 0:08 and 0:12; the player's all at 0:05.
+  const { log, seconds } = placedSolve(NEARLY_DONE, 4000);
+  await page.goto(`${puzzleLink(NEARLY_DONE.givens, { seconds, name: 'Alice' })}&s=${log}`);
+  await expect(startButton(page)).toBeVisible();
+  await before?.();
+  await startButton(page).click();
+  await waitForPlaying(page);
+  await page.clock.fastForward('00:05');
+  await solveFromKeyboard(page, NEARLY_DONE);
+  await dialog(page, 'Solved!').getByRole('button', { name: 'Compare solves' }).click();
+  const compare = dialog(page, 'You vs Alice');
+  const chart = compare.getByRole('slider', { name: 'Time' });
+  await expect(chart).toBeFocused();
+  // It opens at 0:05: a cell both of you had, and two only the player had.
+  await expect(compare.locator('.cell--compare-both')).toHaveCount(1);
+  await expect(compare.locator('.cell--compare-mine')).toHaveCount(2);
+  await expectAccessible(page, 'two solves compared');
+  // At 0:04 the friend has a cell and the player none: the friend's ink.
+  await page.keyboard.press('ArrowLeft');
+  await expect(compare.locator('.cell--compare-theirs')).toHaveCount(1);
+  await expectAccessible(page, 'two solves compared, the friend ahead');
+  await page.keyboard.press('End');
+  await compare.getByRole('button', { name: 'Show as table' }).click();
+  await expect(compare.getByRole('table', { name: 'Cells solved, of 3' })).toBeVisible();
+  await expectAccessible(page, 'two solves compared, shown as a table');
+}
+
 /** London noon on a date of October 2026, in epoch ms. */
 const octoberNoon = (day: number) =>
   new Date(`2026-10-${String(day).padStart(2, '0')}T12:00:00+01:00`).getTime();
@@ -515,6 +550,10 @@ for (const scheme of ['light', 'dark'] as const) {
     }) => {
       await friendsSolve(page);
     });
+
+    test('two solves compared: the chart, its table and the overlaid board', async ({ page }) => {
+      await compareSolves(page);
+    });
   });
 }
 
@@ -665,6 +704,14 @@ for (const { way, isChosen, media } of HIGH_CONTRAST_WAYS) {
     }) => {
       await page.emulateMedia(media);
       await friendsSolve(page, async () => {
+        if (isChosen) await chooseHighContrast(page);
+        await expectHighContrast(page, isChosen);
+      });
+    });
+
+    test('two solves compared: the chart, its table and the overlaid board', async ({ page }) => {
+      await page.emulateMedia(media);
+      await compareSolves(page, async () => {
         if (isChosen) await chooseHighContrast(page);
         await expectHighContrast(page, isChosen);
       });

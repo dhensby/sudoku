@@ -71,7 +71,8 @@ function isUsable(element: Element | null): element is HTMLElement {
  * 500px wide it becomes a bottom sheet (see dialogs.css).
  *
  * Behaviour is minesweeper's: focus moves in on open (to the element marked
- * `data-autofocus`, else the first focusable one), Tab and Shift+Tab wrap
+ * `data-autofocus`, else the first focusable one — without scrolling the
+ * body for `data-autofocus="keep-scroll"`), Tab and Shift+Tab wrap
  * inside, Escape closes, pressing the scrim closes, and focus goes back to
  * whatever opened the dialog when it unmounts. The App decides whether it is
  * open by rendering it or not.
@@ -117,7 +118,10 @@ export function Dialog({ title, onClose, children, footer, className, describedB
     // Enter on its safe choice and the solved dialog on "Share your time".
     // Failing a nominee, the first stop — there is always one, the close button.
     const first = node.querySelector<HTMLElement>('[data-autofocus]') ?? tabStops(node)[0];
-    focusQuietly(first);
+    // A nominee marked "keep-scroll" sits below what the dialog opens on —
+    // Compare solves' chart, under the times it compares — so the body stays
+    // at its top rather than scrolling to bring the whole control into view.
+    focusQuietly(first, { preventScroll: first.dataset.autofocus === 'keep-scroll' });
     // Selected, not just focused: typing should replace the old text rather
     // than append to it.
     if (first instanceof HTMLInputElement) first.select();

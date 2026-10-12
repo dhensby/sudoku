@@ -116,14 +116,17 @@ import {
 import { clearShareParams } from './url';
 import { useElapsed } from './useElapsed';
 import { useStableActions } from './useStableActions';
+import type { CompareSource } from './dialogs/CompareDialog';
 import type { HistoryPlace } from './dialogs/HistoryDialog';
 import type { PlaybackSource } from './dialogs/PlaybackDialog';
 import {
   WATCHED_SOLVE_TEXT,
+  compareSource,
   friendSolveSource,
   isWatchable,
   ownSolveSource,
   type FriendSolve,
+  type SolvedGame,
 } from './watch';
 
 export type { ChallengeOffer, PauseReason, Phase, ShareTarget } from './session';
@@ -273,17 +276,35 @@ export interface PlaybackView {
     | { kind: 'game' };
 }
 
+/**
+ * "Compare solves" (see `CompareDialog`): the player's solve against the
+ * friend's it was raced against. `returnTo` is the dialog it was opened
+ * from — the Solved dialog, the offer to play a solved puzzle again, or
+ * History as it was — which takes its place again as it closes, focus back
+ * on its Compare solves.
+ */
+export interface CompareView {
+  kind: 'compare';
+  source: CompareSource;
+  returnTo:
+    | { kind: 'completion'; result: CompletionResult }
+    | { kind: 'history'; place: HistoryPlace }
+    | { kind: 'challenge'; offer: ChallengeOffer };
+}
+
 /** The dialog on show — one at a time. */
 export type DialogState =
   /**
    * `isBackFromWatch`: back from watching the solve, so focus goes back to
-   * Watch; `isBackFromFriend`, from watching the friend's, to its Watch.
+   * Watch; `isBackFromFriend`, from watching the friend's, to its Watch;
+   * `isBackFromCompare`, from comparing the two, to Compare solves.
    */
   | {
       kind: 'completion';
       result: CompletionResult;
       isBackFromWatch?: boolean;
       isBackFromFriend?: boolean;
+      isBackFromCompare?: boolean;
     }
   /** `returnTo` reopens History when the share was started from it. */
   | { kind: 'share'; target: ShareTarget; returnTo: 'history' | null }
@@ -299,8 +320,17 @@ export type DialogState =
   | { kind: 'techniques'; initial: GuideId | null; returnTo?: WalkthroughView }
   | WalkthroughView
   | StruckView
-  /** `isBackFromWatch`: back from watching the link's solve, so focus goes back to its Watch. */
-  | { kind: 'challenge'; offer: ChallengeOffer; isBackFromWatch?: boolean }
+  /**
+   * `isBackFromWatch`: back from watching the link's solve, so focus goes
+   * back to its Watch; `isBackFromCompare`, from comparing it, to Compare
+   * solves.
+   */
+  | {
+      kind: 'challenge';
+      offer: ChallengeOffer;
+      isBackFromWatch?: boolean;
+      isBackFromCompare?: boolean;
+    }
   /**
    * The warning before watching a friend's solve of a puzzle the player has
    * not solved: doing so costs every attempt at it its time.
@@ -309,7 +339,8 @@ export type DialogState =
   | { kind: 'confirmReset' }
   /** The daily calendar and streaks. */
   | { kind: 'daily'; calendar: CalendarView }
-  | PlaybackView;
+  | PlaybackView
+  | CompareView;
 
 /** The dialogs the header opens. */
 export type HeaderDialog = 'daily' | 'history' | 'settings' | 'techniques' | 'help' | 'share';
@@ -434,6 +465,19 @@ export interface SudokuActions {
   canWatchRecordChallenge: (record: GameRecord) => boolean;
   /** From History: watch the friend's solve a solved game was raced against — free. */
   watchRecordChallenge: (id: string, place: HistoryPlace) => void;
+  /**
+   * From the Solved dialog's head-to-head, or the offer to play a solved
+   * puzzle again: compare the player's solve with the friend's. Changes
+   * nothing.
+   */
+  compareSolves: () => void;
+  /**
+   * Whether a History row offers its solve compared with the friend's it
+   * was raced against: solved, and both logs play back.
+   */
+  canCompareRecord: (record: GameRecord) => boolean;
+  /** From History: compare a solved game with the friend's it was raced against. */
+  compareRecord: (id: string, place: HistoryPlace) => void;
   deleteRecord: (id: string) => void;
   exportHistory: () => string;
   importHistory: (json: string) => ImportResult;
@@ -554,6 +598,12 @@ export interface Sudoku {
    * friend's solve to watch: its head-to-head offers it.
    */
   canWatchChallengeSolve: boolean;
+  /**
+   * The Solved dialog, or the offer to play a solved puzzle again, has both
+   * the player's solve and the friend's to play back: its head-to-head
+   * offers "Compare solves".
+   */
+  canCompareSolves: boolean;
   actions: SudokuActions;
 }
 
@@ -1028,6 +1078,38 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       source: friendSolveSource(solve, dateKeyOf(now())),
       returnTo,
     });
+  };
+
+  /**
+   * The player's own solve the dialog on show can compare: the game just
+   * solved, in the Solved dialog, or the earlier solve the offer to play a
+   * solved puzzle again is about — with its log, when it plays back. Null
+   * for any other dialog, or a solve without a log this build plays.
+   */
+  const dialogOwnSolve = (): { game: SolvedGame; encoded: string; today: DateKey } | null => {
+    if (dialog?.kind === 'completion' && session !== null && canWatchSolve) {
+      const { result } = dialog;
+      return {
+        game: {
+          givens: session.record.givens,
+          difficulty: result.difficulty,
+          daily: result.daily?.date,
+          elapsedMs: result.elapsedMs,
+          watched: result.isWatched,
+        },
+        // `canWatchSolve` says the log is there.
+        encoded: solvedEncoded!,
+        today: result.daily?.today ?? dateKeyOf(now()),
+      };
+    }
+    if (dialog?.kind === 'challenge') {
+      const { previous } = dialog.offer;
+      const encoded = watchedLogOf(previous.id);
+      if (previous.status !== 'solved' || encoded === null) return null;
+      if (!isWatchable(previous.givens, encoded)) return null;
+      return { game: previous, encoded, today: dateKeyOf(now()) };
+    }
+    return null;
   };
 
   /**
@@ -1946,6 +2028,16 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
         setDialog({ kind: 'history' });
         return;
       }
+      if (dialog?.kind === 'compare') {
+        const { returnTo } = dialog;
+        if (returnTo.kind === 'history') {
+          setHistory(readHistory(now()));
+          setDialog({ kind: 'history', place: returnTo.place });
+        } else {
+          setDialog({ ...returnTo, isBackFromCompare: true });
+        }
+        return;
+      }
       if (dialog?.kind === 'playback') {
         const { returnTo } = dialog;
         switch (returnTo.kind) {
@@ -2101,6 +2193,34 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       // Solved, so free; the game behind stays paused, for History.
       showFriendSolve(solve, { kind: 'history', place });
     },
+    compareSolves: () => {
+      const own = dialogOwnSolve();
+      if (own === null || dialogSolve === null) return;
+      if (dialog?.kind !== 'completion' && dialog?.kind !== 'challenge') return;
+      setDialog({
+        kind: 'compare',
+        source: compareSource(own.game, own.encoded, dialogSolve.solve, own.today),
+        returnTo:
+          dialog.kind === 'completion'
+            ? { kind: 'completion', result: dialog.result }
+            : { kind: 'challenge', offer: dialog.offer },
+      });
+    },
+    canCompareRecord: (record: GameRecord): boolean =>
+      actions.canWatchRecord(record) && actions.canWatchRecordChallenge(record),
+    compareRecord: (id, place) => {
+      const record = history.records.find((entry) => entry.id === id);
+      if (record === undefined || !actions.canCompareRecord(record)) return;
+      // Both play back, as just asked.
+      const encoded = watchedLogOf(id)!;
+      const solve = friendSolveOf(record)!;
+      // The game behind stays paused, for History, and nothing is written.
+      setDialog({
+        kind: 'compare',
+        source: compareSource(record, encoded, solve, dateKeyOf(now())),
+        returnTo: { kind: 'history', place },
+      });
+    },
     deleteRecord: (id) => {
       deleteRecord(storage, id);
       if (currentIdRef.current === id) currentIdRef.current = null;
@@ -2182,6 +2302,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     canWatchSolve,
     friendSolve: cardSolve === null ? null : { name: cardSolve.challenge.name },
     canWatchChallengeSolve: dialogSolve !== null,
+    canCompareSolves: dialogSolve !== null && dialogOwnSolve() !== null,
     actions,
   };
 }

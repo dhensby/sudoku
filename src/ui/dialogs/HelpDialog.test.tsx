@@ -18,6 +18,7 @@ describe('HelpDialog', () => {
       'Mistakes',
       'Watching a solve',
       'Sharing a solve',
+      'Comparing solves',
       'Difficulty',
       'The clock',
       'Racing friends',
@@ -104,6 +105,22 @@ describe('HelpDialog', () => {
       /that puzzle never records a time for you — not the game you were playing, nor any later one/,
     );
     expect(section).toHaveTextContent(/no best, no average, no streak, and no time to share/);
+  });
+
+  it('says where to compare solves, what the chart and the board show, and that it changes nothing', () => {
+    render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={vi.fn()} />);
+    const section = screen.getByRole('heading', { name: 'Comparing solves' }).closest('section')!;
+    expect(section).toHaveTextContent(
+      /Compare solves — beside Watch your friend's solve in the Solved dialog and in History/,
+    );
+    expect(section).toHaveTextContent(/yours a solid line, theirs dashed/);
+    expect(section).toHaveTextContent(/Tap or drag along it, or use the arrow keys/);
+    expect(section).toHaveTextContent(/only you had \(upright, underlined\)/);
+    expect(section).toHaveTextContent(/Comparing changes nothing/);
+    const row = within(screen.getByRole('table')).getByRole('row', { name: /^Compare solves/ });
+    expect(row).toHaveTextContent(
+      '← → a second, Page Up Page Down ten, Home End to the start or the end',
+    );
   });
 
   it('says where the menus are for what has no key', () => {

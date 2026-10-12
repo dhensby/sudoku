@@ -204,4 +204,31 @@ describe('ChallengeDialog', () => {
       expect(screen.getByRole('button', { name: 'Play again' })).toHaveFocus();
     });
   });
+
+  describe('comparing the two solves', () => {
+    const dan = { name: 'Dan', seconds: 323, assists: NONE };
+
+    it('is offered beside Watch, focus opening on Play again', () => {
+      const onCompare = vi.fn();
+      renderChallenge({ challenge: dan, onWatch: vi.fn(), onCompare });
+      expect(screen.getByRole('button', { name: 'Play again' })).toHaveFocus();
+      fireEvent.click(screen.getByRole('button', { name: 'Compare solves' }));
+      expect(onCompare).toHaveBeenCalledTimes(1);
+    });
+
+    it('puts focus back on it, back from the comparison', () => {
+      renderChallenge({
+        challenge: dan,
+        onWatch: vi.fn(),
+        onCompare: vi.fn(),
+        isBackFromCompare: true,
+      });
+      expect(screen.getByRole('button', { name: 'Compare solves' })).toHaveFocus();
+    });
+
+    it('opens on Play again when there is nothing to go back to', () => {
+      renderChallenge({ challenge: dan, isBackFromCompare: true });
+      expect(screen.getByRole('button', { name: 'Play again' })).toHaveFocus();
+    });
+  });
 });

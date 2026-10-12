@@ -64,9 +64,17 @@ export function isUsingKeyboard(): boolean {
  * that appears around Start as the page loads, or follows a tap onto a cell,
  * is noise to a player who is not using the keyboard. Browsers that do not
  * know the option ignore it, and decide for themselves.
+ *
+ * With `preventScroll`, the page is left where it is rather than scrolled to
+ * bring the element into view: for a dialog that opens on a control below
+ * something the player should see first (see `Dialog`).
  */
-export function focusQuietly(element: HTMLElement | null | undefined): void {
-  element?.focus(lastInput === 'key' ? undefined : { focusVisible: false });
+export function focusQuietly(
+  element: HTMLElement | null | undefined,
+  { preventScroll = false }: { preventScroll?: boolean } = {},
+): void {
+  const quiet = lastInput === 'key' ? undefined : { focusVisible: false };
+  element?.focus(preventScroll ? { ...quiet, preventScroll } : quiet);
 }
 
 /**
