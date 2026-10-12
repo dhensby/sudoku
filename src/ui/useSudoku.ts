@@ -43,8 +43,10 @@ import {
   challengerName,
   indexFriends,
   meetDevice,
+  mergeFriends,
   namedChallenge,
   renameFriend,
+  splitDevice,
   type Friend,
   type FriendIndex,
 } from '../storage/friends';
@@ -516,10 +518,23 @@ export interface SudokuActions {
    */
   renameFriend: (deviceId: string, name: string) => void;
   /**
-   * From "Who sent this?": the name to know the link's sender by (see
-   * `WhoSentAnswer`), then on to whatever the link opens — its card, or the
-   * offer it held back. Their device was noted as the link opened, so an
-   * empty name, like Skip, leaves them going by their links' names.
+   * From Friends: the friend holding `fromId` is the friend holding `intoId`,
+   * on another device — one friend from now on, under into's name, or else
+   * from's, and into's key (see `mergeFriends`).
+   */
+  mergeFriends: (fromId: string, intoId: string) => void;
+  /**
+   * From Friends: `deviceId` leaves the friend it was merged with, to be a
+   * friend of its own, unnamed, keyed by its own ID; its races show the name
+   * each link gave again (see `splitDevice`).
+   */
+  splitFriend: (deviceId: string) => void;
+  /**
+   * From "Who sent this?": the name to know the link's sender by, or the
+   * friend they already are, on another device (see `WhoSentAnswer`), then
+   * on to whatever the link opens — its card, or the offer it held back.
+   * Their device was noted as the link opened, so an empty name, like Skip,
+   * leaves them going by their links' names.
    */
   answerWhoSent: (answer: WhoSentAnswer) => void;
   deleteRecord: (id: string) => void;
@@ -2354,10 +2369,21 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     },
     renameFriend: (deviceId, name) =>
       setFriends(updateFriends(storage, (list) => renameFriend(list, deviceId, name))),
+    mergeFriends: (fromId, intoId) =>
+      setFriends(updateFriends(storage, (list) => mergeFriends(list, fromId, intoId))),
+    splitFriend: (deviceId) =>
+      setFriends(updateFriends(storage, (list) => splitDevice(list, deviceId))),
     answerWhoSent: (answer) => {
       if (dialog?.kind !== 'whoSent') return;
       const { id } = dialog.sharer;
-      setFriends(updateFriends(storage, (list) => renameFriend(list, id, answer.name)));
+      // Named, or one with the friend chosen, whose name then stands.
+      setFriends(
+        updateFriends(storage, (list) =>
+          answer.kind === 'name'
+            ? renameFriend(list, id, answer.name)
+            : mergeFriends(list, id, answer.friendId),
+        ),
+      );
       actions.closeDialog();
     },
     deleteRecord: (id) => {

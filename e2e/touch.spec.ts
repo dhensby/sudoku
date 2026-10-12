@@ -1198,7 +1198,8 @@ const LONG_RTL_NAME = 'صض'.repeat(12);
  * Friends with that name everywhere a Friends row draws a name: given one
  * friend (whose latest link says something short), sent by another who has
  * not been named, and said by the latest link of a third, beside a count of
- * their devices.
+ * their devices — and by that one of the third's two devices, in the list of
+ * them their row draws.
  */
 const LONG_NAMED_FRIENDS = [
   {
@@ -1236,12 +1237,13 @@ async function expectInsideBody(dialog: Locator, targets: Locator): Promise<void
  * Friends, from History's foot: a bottom sheet upright, a card on its side.
  * The longest right-to-left name a link can carry, with nowhere to break, is
  * wider than a row on the narrow phone upright, and wraps inside its row
- * there wherever a row draws it — the name itself, and what a named friend's
- * latest link says — rather than scrolling the dialog sideways or being cut
- * off at the row's edge; on its side the name fits a line, and nothing
- * scrolls sideways either. Every control, Rename and the field, Save and
- * Cancel it opens, is a finger's 44px, the field's text 16px so that
- * focusing it does not zoom the page.
+ * there wherever a row draws it — the name itself, what a named friend's
+ * latest link says, and a merged friend's device — rather than scrolling the
+ * dialog sideways or being cut off at the row's edge; on its side the name
+ * fits a line, and nothing scrolls sideways either. Every control — Rename,
+ * Merge… and Split off, the field, Save and Cancel a rename opens, and the
+ * picker, Merge and Cancel a merge opens — is a finger's 44px, the field's
+ * and the picker's text 16px so that focusing them does not zoom the page.
  */
 for (const viewport of [
   { width: 320, height: 568 },
@@ -1259,14 +1261,16 @@ for (const viewport of [
       const history = await openFromMenu(page, 'History');
       await history.getByRole('button', { name: 'Friends' }).tap();
       const friends = page.getByRole('dialog', { name: 'Friends' });
-      await expect(friends.getByRole('listitem')).toHaveCount(3);
+      await expect(
+        friends.getByRole('list', { name: 'Friends, latest first' }).locator(':scope > li'),
+      ).toHaveCount(3);
       await settle(page);
       await expectOnScreen(page, friends);
       const body = friends.locator('.dialog__body');
       expect((await overflow(page)).x).toBe(0);
       expect(await body.evaluate((el) => el.scrollWidth - el.clientWidth)).toBe(0);
       const names = friends.locator('bdi', { hasText: LONG_RTL_NAME });
-      await expect(names).toHaveCount(3);
+      await expect(names).toHaveCount(4);
       await expectInsideBody(friends, names);
       if (viewport.width === 320) {
         // Upright, the name really does wrap, to two lines or more, each
@@ -1278,7 +1282,7 @@ for (const viewport of [
             return new Set(Array.from(range.getClientRects(), (rect) => Math.round(rect.top))).size;
           }),
         );
-        expect(lineCounts.map((lines) => lines >= 2)).toEqual([true, true, true]);
+        expect(lineCounts.map((lines) => lines >= 2)).toEqual([true, true, true, true]);
       }
 
       for (const button of await friends.getByRole('button').all()) {
@@ -1311,6 +1315,31 @@ for (const viewport of [
       }
       expect(await field.evaluate((el) => parseFloat(getComputedStyle(el).fontSize))).toBe(16);
       await expectInsideBody(friends, edit);
+      expect((await overflow(page)).x).toBe(0);
+      expect(await body.evaluate((el) => el.scrollWidth - el.clientWidth)).toBe(0);
+      await edit.getByRole('button', { name: /^Cancel renaming/ }).tap();
+
+      // Merging the same friend: everyone else to choose from, the long name
+      // among them, in a picker no wider than the row.
+      await friends
+        .getByRole('button', { name: new RegExp(`^Merge ${LONG_RTL_NAME}`) })
+        .first()
+        .tap();
+      const picker = friends.getByRole('combobox', { name: 'Same person as' });
+      await expect(picker).toBeFocused();
+      const merging = friends.getByRole('group', { name: new RegExp(`^Merge ${LONG_RTL_NAME}`) });
+      for (const target of [
+        picker,
+        merging.getByRole('button', { name: /^Confirm merge/ }),
+        merging.getByRole('button', { name: /^Cancel merging/ }),
+      ]) {
+        await target.scrollIntoViewIfNeeded();
+        const size = (await target.boundingBox())!;
+        expect(size.height).toBeGreaterThanOrEqual(44);
+        expect(size.width).toBeGreaterThanOrEqual(44);
+      }
+      expect(await picker.evaluate((el) => parseFloat(getComputedStyle(el).fontSize))).toBe(16);
+      await expectInsideBody(friends, merging);
       expect((await overflow(page)).x).toBe(0);
       expect(await body.evaluate((el) => el.scrollWidth - el.clientWidth)).toBe(0);
     });
@@ -1363,9 +1392,11 @@ test.describe('a 320×568 phone with friends in History', () => {
  * upright, a card on its side. The longest right-to-left name a link can
  * carry, with nowhere to break, fills its field and is quoted in the field's
  * hint, where upright it wraps inside the sheet rather than scrolling it
- * sideways. The field, Save, Skip and the close button are each a finger's
- * 44px, the field's text 16px so that focusing it does not zoom the page;
- * upright, Save and Skip share the sheet's foot, Save first.
+ * sideways — and names friends already here, offered in the picker below it,
+ * which keeps to the sheet's width. The field, the picker, Save, Skip and
+ * the close button are each a finger's 44px, the field's and the picker's
+ * text 16px so that focusing them does not zoom the page; upright, Save and
+ * Skip share the sheet's foot, Save first.
  */
 for (const viewport of [
   { width: 320, height: 568 },
@@ -1377,11 +1408,16 @@ for (const viewport of [
     test('keeps a long right-to-left name inside the question of who sent it, and every control a 44px touch target, with nothing to scroll sideways', async ({
       page,
     }) => {
+      await seedFriends(page, LONG_NAMED_FRIENDS);
       await gotoPuzzle(page, NEARLY_DONE.givens, {
-        challenge: { seconds: 200, name: LONG_RTL_NAME, playerId: 'k3x9q7za2m' },
+        challenge: { seconds: 200, name: LONG_RTL_NAME, playerId: 'n3wc0m3r42' },
       });
       const prompt = page.getByRole('dialog', { name: 'Who sent this?' });
       const field = prompt.getByRole('textbox', { name: 'Their name' });
+      const picker = prompt.getByRole('combobox', {
+        name: 'Or is it a friend you have already, on another device?',
+      });
+      await expect(picker.getByRole('option')).toHaveCount(4);
       await expect(field).toBeFocused();
       await expect(field).toHaveValue(LONG_RTL_NAME);
       await settle(page);
@@ -1409,13 +1445,16 @@ for (const viewport of [
         expect(save.x).toBeLessThan(skip.x);
       }
 
-      for (const target of [field, ...(await prompt.getByRole('button').all())]) {
+      await expectInsideBody(prompt, picker);
+      for (const target of [field, picker, ...(await prompt.getByRole('button').all())]) {
         const size = (await target.boundingBox())!;
         const label = (await target.getAttribute('aria-label')) ?? (await target.innerText());
         expect(size.height, label).toBeGreaterThanOrEqual(44);
         expect(size.width, label).toBeGreaterThanOrEqual(44);
       }
-      expect(await field.evaluate((el) => parseFloat(getComputedStyle(el).fontSize))).toBe(16);
+      for (const target of [field, picker]) {
+        expect(await target.evaluate((el) => parseFloat(getComputedStyle(el).fontSize))).toBe(16);
+      }
     });
   });
 }

@@ -171,9 +171,14 @@ export async function gotoPuzzle(
  * Answer "Who sent this?", asked of the first link from someone new before
  * anything it opens, and wait for it to go. With no answer, Skip: they go by
  * their links' names. With one, Save — `name` typed over the link's name
- * first, if given; else the link's name as it came.
+ * first, if given; `sameAs`, a friend's key (their first device's ID),
+ * chosen as the sender on another device, if given; else the link's name as
+ * it came.
  */
-export async function answerWhoSent(page: Page, answer?: { name?: string }): Promise<void> {
+export async function answerWhoSent(
+  page: Page,
+  answer?: { name?: string; sameAs?: string },
+): Promise<void> {
   const dialog = whoSentDialog(page);
   await expect(dialog).toBeVisible();
   if (answer === undefined) {
@@ -181,6 +186,11 @@ export async function answerWhoSent(page: Page, answer?: { name?: string }): Pro
   } else {
     if (answer.name !== undefined) {
       await dialog.getByRole('textbox', { name: 'Their name' }).fill(answer.name);
+    }
+    if (answer.sameAs !== undefined) {
+      await dialog
+        .getByRole('combobox', { name: 'Or is it a friend you have already, on another device?' })
+        .selectOption(answer.sameAs);
     }
     await dialog.getByRole('button', { name: 'Save' }).click();
   }

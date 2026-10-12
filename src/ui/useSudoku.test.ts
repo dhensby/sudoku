@@ -20,7 +20,7 @@ import {
   type Puzzle,
 } from '../core';
 import { ArchiveUnavailableError, dailies as appDailies } from '../daily/dailies';
-import { meetDevice, renameFriend } from '../storage/friends';
+import { challengerName, meetDevice, renameFriend } from '../storage/friends';
 import {
   computeStats,
   exportHistory,
@@ -2489,6 +2489,35 @@ describe('useSudoku', () => {
       expect(loadFriends(storage).map((friend) => friend.name ?? null)).toEqual(['Ally', null]);
       expect(result.current.friends).toStrictEqual(loadFriends(storage));
     });
+
+    it('merges a friend into another, and splits them apart again, every race following', async () => {
+      const DAN = 'p0d4wq81xe';
+      const storage = memoryStorage();
+      updateFriends(storage, (friends) =>
+        renameFriend(meetDevice(friends, { id: DAN, sentAs: 'D', at: NOW - 1 }), DAN, 'Dan'),
+      );
+      const { result } = await started({ storage, search: LINK });
+      // Who sent this? first: skipped.
+      act(() => result.current.actions.closeDialog());
+      const dan = { id: DAN, sentAs: 'D', lastAt: NOW - 1 };
+      const ally = { id: ALLY, sentAs: 'Rude', lastAt: NOW };
+
+      act(() => result.current.actions.mergeFriends(ALLY, DAN));
+      expect(result.current.friends).toStrictEqual([{ name: 'Dan', devices: [dan, ally] }]);
+      expect(loadFriends(storage)).toStrictEqual(result.current.friends);
+      const { challenge } = result.current.record!;
+      expect(challengerName(result.current.friendIndex, challenge!)).toBe('Dan');
+
+      act(() => result.current.actions.splitFriend(ALLY));
+      expect(result.current.friends).toStrictEqual([
+        { name: 'Dan', devices: [dan] },
+        { devices: [ally] },
+      ]);
+      expect(loadFriends(storage)).toStrictEqual(result.current.friends);
+      expect(challengerName(result.current.friendIndex, challenge!)).toBe('Rude');
+      // The race kept its link's name throughout.
+      expect(loadHistory(storage)[0].challenge?.name).toBe('Rude');
+    });
   });
 
   describe('who sent this?', () => {
@@ -2523,6 +2552,34 @@ describe('useSudoku', () => {
       expect(result.current.record?.challenge?.name).toBe('Rude');
       advance(10_000);
       expect(result.current.elapsedMs).toBe(0);
+    });
+
+    it('makes them one with a friend chosen, on another device, under that friend’s name', async () => {
+      const storage = memoryStorage();
+      updateFriends(storage, (friends) =>
+        renameFriend(
+          meetDevice(friends, { id: 'p0d4wq81xe', sentAs: 'Al', at: NOW - 86_400_000 }),
+          'p0d4wq81xe',
+          'Ally',
+        ),
+      );
+      const { result } = await started({ storage, search: LINK });
+      act(() => result.current.actions.answerWhoSent({ kind: 'sameAs', friendId: 'p0d4wq81xe' }));
+      expect(result.current.dialog).toBeNull();
+      expect(result.current.phase).toBe('ready');
+      expect(loadFriends(storage)).toStrictEqual([
+        {
+          name: 'Ally',
+          devices: [
+            { id: 'p0d4wq81xe', sentAs: 'Al', lastAt: NOW - 86_400_000 },
+            { id: ALLY, sentAs: 'Rude', lastAt: NOW },
+          ],
+        },
+      ]);
+      expect(result.current.friends).toStrictEqual(loadFriends(storage));
+      expect(result.current.friendIndex.get(ALLY)?.name).toBe('Ally');
+      // The race keeps the name its link gave: the friend's is drawn in its place.
+      expect(result.current.record?.challenge?.name).toBe('Rude');
     });
 
     it.each([

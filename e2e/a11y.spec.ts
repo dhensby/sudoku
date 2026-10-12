@@ -36,10 +36,11 @@ import {
  * rules over the states a player meets — the board in play with every kind
  * of mark on it, the Ready and Paused cards, the "…" menu, every dialog (each
  * step of Show me, the Show me of a missing candidate, Friends with a name
- * being changed, and "Who sent this?", among them), each entry of the
- * technique guide, and a step hint with its houses tinted on the board — in
- * the light theme and the dark (and the main ones, the tint among them, in
- * High contrast), and each must come back with no violations at all, with no
+ * being changed and with two friends being merged, and "Who sent this?"
+ * with friends to choose from, among them), each entry of the technique
+ * guide, and a step hint with its houses tinted on the board — in the light
+ * theme and the dark (and the main ones, the tint among them, in High
+ * contrast), and each must come back with no violations at all, with no
  * rule switched off.
  * Contrast is the rule that a palette change is likeliest to break:
  * contrast.test.ts holds the tokens to their targets pair by pair, and this
@@ -290,11 +291,13 @@ const SEEDED_FRIENDS = [
 
 /**
  * A link from someone new, noted as it opens: "Who sent this?" first, its
- * field focused on the name the link gave, then skipped; then History with
- * Friends at its foot, Friends — the new sender and the seeded three, every
- * kind of row — and Friends with a name being changed. `before` runs first,
- * on a puzzle of its own (to choose High contrast, say): the question comes
- * before anything the link opens, the header's menus with it.
+ * field focused on the name the link gave and the seeded friends offered
+ * below it, then skipped; then History with Friends at its foot, Friends —
+ * the new sender and the seeded three, every kind of row, a merged friend's
+ * devices among them — and Friends with a name being changed, and with a
+ * merge open. `before` runs first, on a puzzle of its own (to choose High
+ * contrast, say): the question comes before anything the link opens, the
+ * header's menus with it.
  */
 async function friendsList(page: Page, before?: () => Promise<void>): Promise<void> {
   await seedFriends(page, SEEDED_FRIENDS);
@@ -308,6 +311,11 @@ async function friendsList(page: Page, before?: () => Promise<void>): Promise<vo
   const whoSent = dialog(page, 'Who sent this?');
   await expect(whoSent.getByRole('textbox', { name: 'Their name' })).toBeFocused();
   await expect(whoSent.getByRole('textbox', { name: 'Their name' })).toHaveValue('Newcomer');
+  await expect(
+    whoSent.getByRole('combobox', {
+      name: 'Or is it a friend you have already, on another device?',
+    }),
+  ).toBeVisible();
   await expectAccessible(page, 'Who sent this?');
   await whoSent.getByRole('button', { name: 'Skip' }).click();
   await expect(startButton(page)).toBeVisible();
@@ -318,13 +326,20 @@ async function friendsList(page: Page, before?: () => Promise<void>): Promise<vo
 
   await open.click();
   const friends = dialog(page, 'Friends');
-  await expect(friends.getByRole('listitem')).toHaveCount(4);
-  await expect(friends.getByRole('listitem').first()).toContainText('Newcomer');
+  const rows = friends.getByRole('list', { name: 'Friends, latest first' }).locator(':scope > li');
+  await expect(rows).toHaveCount(4);
+  await expect(rows.first()).toContainText('Newcomer');
+  await expect(friends.getByRole('list', { name: /^Devices, Ally,/ })).toBeVisible();
   await expectAccessible(page, 'the Friends dialog');
 
   await friends.getByRole('button', { name: /^Rename Ally,/ }).click();
   await expect(friends.getByRole('textbox', { name: 'Their name' })).toBeFocused();
   await expectAccessible(page, 'Friends with a name being changed');
+
+  await page.keyboard.press('Escape');
+  await friends.getByRole('button', { name: /^Merge Ally,/ }).click();
+  await expect(friends.getByRole('combobox', { name: 'Same person as' })).toBeFocused();
+  await expectAccessible(page, 'Friends with two friends being merged');
 }
 
 /** London noon on a date of October 2026, in epoch ms. */

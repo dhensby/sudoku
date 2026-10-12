@@ -1,19 +1,23 @@
 import { useId, useState } from 'react';
+import { byRecency, friendKey, type Friend } from '../../storage/friends';
 import { normaliseName } from '../../storage/storage';
 import type { LinkSharer } from '../session';
 import { Dialog } from './Dialog';
-import { NAME_INPUT_MAX } from './text';
+import { NAME_INPUT_MAX, friendOption } from './text';
 
 /**
- * What "Who sent this?" was answered with: Save, with the field's raw text,
+ * What "Who sent this?" was answered with, on Save: the field's raw text,
  * which the parent tidies — '' leaves the sender unnamed, going by their
- * links' names, as Skip does.
+ * links' names, as Skip does — or, with a friend chosen, that friend's key:
+ * the sender is them, on another device.
  */
-export type WhoSentAnswer = { kind: 'name'; name: string };
+export type WhoSentAnswer = { kind: 'name'; name: string } | { kind: 'sameAs'; friendId: string };
 
 export interface WhoSentDialogProps {
   /** Who the link came from: a device no friend here holds, and the name its link gave. */
   sharer: LinkSharer;
+  /** Every friend known here: those not holding `sharer.id` are offered as the sender, on another device. */
+  friends: readonly Friend[];
   onSave: (answer: WhoSentAnswer) => void;
   /** Skip, Escape, × or the scrim: nothing more is stored, and nothing asked again. */
   onClose: () => void;
@@ -32,14 +36,29 @@ export interface WhoSentDialogProps {
  * themselves; left empty, or skipped, they go by their links' names until
  * they are named in Friends. Their device was noted as the link opened, so
  * the question is never asked again either way.
+ *
+ * Someone who shares from two devices arrives as two friends, so once there
+ * are other friends here the player can say the sender is one of them
+ * instead: chosen below the field, the two become one friend, under the name
+ * already given them. Never chosen for them, however alike the names: a name
+ * is exactly what a stranger can copy. Choosing one disables the field rather
+ * than hiding it, so nothing shifts under the pointer.
  */
-export function WhoSentDialog({ sharer, onSave, onClose }: WhoSentDialogProps) {
+export function WhoSentDialog({ sharer, friends, onSave, onClose }: WhoSentDialogProps) {
   const ids = useId();
   // The field's own copy, tidied only when it loses focus, as Share's is: on
   // every keystroke it would eat the space between a first and last name.
   const [name, setName] = useState(sharer.sentAs ?? '');
+  // The friend chosen as the sender, by key; '' for someone new.
+  const [choice, setChoice] = useState('');
+  // Everyone else: the sender's own device is noted as the link opens, so
+  // its friend — the sender, as yet unnamed — is in the list too.
+  const others = byRecency(
+    friends.filter((friend) => !friend.devices.some((device) => device.id === sharer.id)),
+  );
 
-  const save = () => onSave({ kind: 'name', name });
+  const save = () =>
+    onSave(choice === '' ? { kind: 'name', name } : { kind: 'sameAs', friendId: choice });
 
   const handleFieldKey = (event: React.KeyboardEvent<HTMLInputElement>) => {
     // Enter while composing picks the candidate a keyboard offers, and no more.
@@ -51,6 +70,8 @@ export function WhoSentDialog({ sharer, onSave, onClose }: WhoSentDialogProps) {
   const messageId = `${ids}-message`;
   const inputId = `${ids}-name`;
   const hintId = `${ids}-hint`;
+  const selectId = `${ids}-friend`;
+  const selectHintId = `${ids}-friend-hint`;
   return (
     <Dialog
       title="Who sent this?"
@@ -92,6 +113,8 @@ export function WhoSentDialog({ sharer, onSave, onClose }: WhoSentDialogProps) {
             aria-describedby={hintId}
             // Focused and selected as the dialog opens (see Dialog).
             data-autofocus
+            // A friend chosen below names them: the field has no say.
+            disabled={choice !== ''}
             onChange={(event) => setName(event.target.value)}
             onBlur={() => setName(normaliseName(name))}
             onKeyDown={handleFieldKey}
@@ -108,6 +131,33 @@ export function WhoSentDialog({ sharer, onSave, onClose }: WhoSentDialogProps) {
             Leave it empty to go by their links.
           </p>
         </div>
+        {others.length > 0 && (
+          <div className="field">
+            <label className="field__label" htmlFor={selectId}>
+              Or is it a friend you have already, on another device?
+            </label>
+            <div className="friends__picker">
+              <select
+                id={selectId}
+                className="friends__select"
+                value={choice}
+                aria-describedby={selectHintId}
+                onChange={(event) => setChoice(event.target.value)}
+              >
+                <option value="">No — someone new</option>
+                {/* Dated against the link's opening, just now. */}
+                {others.map((friend) => (
+                  <option key={friendKey(friend)} value={friendKey(friend)}>
+                    {friendOption(friend, sharer.at)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <p className="field__hint" id={selectHintId}>
+              Choose them, and both devices become one friend, under the name you gave them.
+            </p>
+          </div>
+        )}
       </div>
     </Dialog>
   );

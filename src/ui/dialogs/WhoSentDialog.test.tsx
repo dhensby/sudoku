@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
+import type { Friend } from '../../storage/friends';
 import type { LinkSharer } from '../session';
 import { WhoSentDialog, type WhoSentDialogProps } from './WhoSentDialog';
 
@@ -9,9 +10,31 @@ const SHARER: LinkSharer = {
   isNew: true,
 };
 
+/** The sender, noted as their link opened: a friend of their own, unnamed. */
+const SENDER: Friend = {
+  devices: [{ id: SHARER.id, sentAs: 'Rude McRudeface', lastAt: SHARER.at }],
+};
+
+const at = (day: number, hour: number, minute: number) =>
+  new Date(2026, 9, day, hour, minute).getTime();
+
+/** Friends from before, as stored: oldest first. */
+const FRIENDS: readonly Friend[] = [
+  { devices: [{ id: 'z8c2m5r1to', lastAt: at(3, 18, 0) }] },
+  {
+    name: 'Ally',
+    devices: [
+      { id: 'p0d4wq81xe', sentAs: 'Al', lastAt: at(11, 9, 0) },
+      { id: 'q1w2e3r4t5', lastAt: at(10, 9, 0) },
+    ],
+  },
+  SENDER,
+];
+
 function renderWhoSent(overrides: Partial<WhoSentDialogProps> = {}) {
   const props: WhoSentDialogProps = {
     sharer: SHARER,
+    friends: [SENDER],
     onSave: vi.fn(),
     onClose: vi.fn(),
     ...overrides,
@@ -22,6 +45,8 @@ function renderWhoSent(overrides: Partial<WhoSentDialogProps> = {}) {
 
 const dialog = () => screen.getByRole('dialog', { name: 'Who sent this?' });
 const field = () => screen.getByRole('textbox', { name: 'Their name' }) as HTMLInputElement;
+const picker = () =>
+  screen.getByRole('combobox', { name: 'Or is it a friend you have already, on another device?' });
 
 describe('WhoSentDialog', () => {
   it('says why it asks, read with its name as focus moves in', () => {
@@ -118,5 +143,68 @@ describe('WhoSentDialog', () => {
     fireEvent.pointerDown(document.querySelector('.dialog-overlay')!);
     expect(props.onClose).toHaveBeenCalledTimes(4);
     expect(props.onSave).not.toHaveBeenCalled();
+  });
+
+  describe('a friend already, on another device', () => {
+    it('is not asked while the sender is the only friend here', () => {
+      renderWhoSent();
+      expect(screen.queryByRole('combobox')).toBeNull();
+    });
+
+    it('offers everyone else, latest first and dated, below the field, someone new to begin with', () => {
+      renderWhoSent({ friends: FRIENDS });
+      expect(
+        within(picker())
+          .getAllByRole('option')
+          .map((option) => [option.getAttribute('value'), option.textContent]),
+      ).toEqual([
+        ['', 'No — someone new'],
+        ['p0d4wq81xe', 'Ally · Yesterday 09:00'],
+        ['z8c2m5r1to', 'No name · 3 Oct'],
+      ]);
+      expect(picker()).toHaveValue('');
+      expect(picker()).toHaveAccessibleDescription(
+        'Choose them, and both devices become one friend, under the name you gave them.',
+      );
+      // Below the field, which keeps the focus.
+      expect(field().compareDocumentPosition(picker())).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+      expect(field()).toHaveFocus();
+      expect(field()).toBeEnabled();
+    });
+
+    it('never chooses one for them, however alike the names', () => {
+      const twin: Friend = {
+        name: 'Rude McRudeface',
+        devices: [{ id: 'z8c2m5r1to', sentAs: 'Rude McRudeface', lastAt: at(3, 18, 0) }],
+      };
+      renderWhoSent({ friends: [twin, SENDER] });
+      expect(picker()).toHaveValue('');
+      expect(within(picker()).getAllByRole('option')).toHaveLength(2);
+    });
+
+    it('saves the friend chosen, the field set aside while one is', () => {
+      const { props } = renderWhoSent({ friends: FRIENDS });
+      fireEvent.change(picker(), { target: { value: 'p0d4wq81xe' } });
+      expect(field()).toBeDisabled();
+      // Disabled, not hidden: nothing moves under the pointer.
+      expect(field()).toHaveValue('Rude McRudeface');
+      fireEvent.click(within(dialog()).getByRole('button', { name: 'Save' }));
+      expect(props.onSave).toHaveBeenCalledExactlyOnceWith({
+        kind: 'sameAs',
+        friendId: 'p0d4wq81xe',
+      });
+    });
+
+    it('takes the field again once someone new is chosen back', () => {
+      const { props } = renderWhoSent({ friends: FRIENDS });
+      fireEvent.change(picker(), { target: { value: 'z8c2m5r1to' } });
+      fireEvent.change(picker(), { target: { value: '' } });
+      expect(field()).toBeEnabled();
+      fireEvent.click(within(dialog()).getByRole('button', { name: 'Save' }));
+      expect(props.onSave).toHaveBeenCalledExactlyOnceWith({
+        kind: 'name',
+        name: 'Rude McRudeface',
+      });
+    });
   });
 });

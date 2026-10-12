@@ -507,6 +507,8 @@ export function App({ options }: AppProps = {}) {
             // Set as History opened, just before: Friends dates links as it did.
             now={sudoku.history.now}
             onRename={actions.renameFriend}
+            onMerge={actions.mergeFriends}
+            onSplit={actions.splitFriend}
             onClose={actions.closeDialog}
           />
         )}
@@ -602,6 +604,7 @@ export function App({ options }: AppProps = {}) {
         {dialog?.kind === 'whoSent' && (
           <WhoSentDialog
             sharer={dialog.sharer}
+            friends={sudoku.friends}
             onSave={actions.answerWhoSent}
             onClose={actions.closeDialog}
           />

@@ -10,10 +10,12 @@ import {
   lastLinkAt,
   latestSentAs,
   meetDevice,
+  mergeFriends,
   namedChallenge,
   namedRecord,
   normaliseFriends,
   renameFriend,
+  splitDevice,
   type Friend,
   type FriendDevice,
 } from './friends';
@@ -416,6 +418,139 @@ describe('renameFriend', () => {
   });
 });
 
+describe('mergeFriends', () => {
+  /** Someone else, unnamed, heard from last of all. */
+  const NEWCOMER: Friend = {
+    devices: [{ id: NOBODY, sentAs: 'Newbie', lastAt: 1_800_000_000_000 }],
+  };
+  const THREE: readonly Friend[] = [...FRIENDS, NEWCOMER];
+
+  it("gathers both friends' devices into the one chosen, its own first, in its place", () => {
+    const merged = mergeFriends(THREE, ZED, ALLY);
+    expect(merged).toStrictEqual([
+      { name: 'Ally', devices: [...FRIENDS[0].devices, ...FRIENDS[1].devices] },
+      NEWCOMER,
+    ]);
+    // The chosen friend keeps their key, and the rest are untouched.
+    expect(friendKey(merged[0])).toBe(ALLY);
+    expect(merged[1]).toBe(NEWCOMER);
+    expect(deviceCount(merged)).toBe(deviceCount(THREE));
+  });
+
+  it('takes the place of the friend chosen, wherever the other was', () => {
+    const merged = mergeFriends(THREE, AL, NOBODY);
+    expect(merged).toStrictEqual([
+      FRIENDS[1],
+      { name: 'Ally', devices: [...NEWCOMER.devices, ...FRIENDS[0].devices] },
+    ]);
+    expect(merged[0]).toBe(FRIENDS[1]);
+    expect(friendKey(merged[1])).toBe(NOBODY);
+  });
+
+  it('keeps the name given the friend chosen, or else the other’s, and makes none up', () => {
+    const bothNamed = renameFriend(THREE, ZED, 'Zed');
+    expect(mergeFriends(bothNamed, ZED, ALLY)[0].name).toBe('Ally');
+    expect(mergeFriends(bothNamed, ALLY, ZED)[0].name).toBe('Zed');
+    // Chosen unnamed: the other's name is kept.
+    expect(mergeFriends(THREE, ALLY, ZED)[0].name).toBe('Ally');
+    // Neither named: their links' names show, as before.
+    const unnamed = mergeFriends(THREE, NOBODY, ZED);
+    expect(unnamed[1]).not.toHaveProperty('name');
+    expect(friendLabel(unnamed[1])).toBe('Newbie');
+  });
+
+  it("keeps the chosen friend's newer fields, and each device's own", () => {
+    const stored = normaliseFriends([
+      { colour: 'teal', devices: [{ id: ALLY, lastAt: 1 }] },
+      { mood: 'sunny', devices: [{ id: ZED, lastAt: 2, platform: 'phone' }] },
+    ]);
+    expect(mergeFriends(stored, ZED, ALLY)).toStrictEqual([
+      {
+        colour: 'teal',
+        devices: [
+          { id: ALLY, lastAt: 1 },
+          { id: ZED, lastAt: 2, platform: 'phone' },
+        ],
+      },
+    ]);
+  });
+
+  it('draws every race of either under the one name', () => {
+    const index = indexFriends(mergeFriends(THREE, NOBODY, ALLY));
+    expect(challengerName(index, challenge('Newbie', NOBODY))).toBe('Ally');
+    expect(challengerName(index, challenge('Rude', ALLY))).toBe('Ally');
+  });
+
+  it.each([
+    ['a device and itself', ALLY, ALLY],
+    ["two of one friend's devices", AL, ALLY],
+    ['a device not in the list', NOBODY, ALLY],
+    ['a friend chosen who is not in the list', ZED, NOBODY],
+  ])('gives back the same list for %s', (_, fromId, intoId) => {
+    expect(mergeFriends(FRIENDS, fromId, intoId)).toBe(FRIENDS);
+  });
+});
+
+describe('splitDevice', () => {
+  it('makes a device a friend of its own, unnamed, straight after the friend it leaves', () => {
+    const split = splitDevice(FRIENDS, AL);
+    expect(split).toStrictEqual([
+      { name: 'Ally', devices: [FRIENDS[0].devices[0]] },
+      { devices: [FRIENDS[0].devices[1]] },
+      FRIENDS[1],
+    ]);
+    expect(split[2]).toBe(FRIENDS[1]);
+    // Its races show the name their own links gave again; the friend's keep theirs.
+    const index = indexFriends(split);
+    expect(challengerName(index, challenge('Al', AL))).toBe('Al');
+    expect(challengerName(index, challenge('Rude', ALLY))).toBe('Ally');
+  });
+
+  it('gives the friend a new key when their first device is the one split off', () => {
+    const split = splitDevice(FRIENDS, ALLY);
+    expect(split.map(friendKey)).toEqual([AL, ALLY, ZED]);
+    expect(split[0]).toStrictEqual({ name: 'Ally', devices: [FRIENDS[0].devices[1]] });
+  });
+
+  it("takes the device's own fields with it, and leaves the friend's", () => {
+    const stored = normaliseFriends([
+      {
+        name: 'Ally',
+        colour: 'teal',
+        devices: [
+          { id: ALLY, lastAt: 1 },
+          { id: AL, sentAs: 'Al', lastAt: 2, platform: 'phone' },
+        ],
+      },
+    ]);
+    expect(splitDevice(stored, AL)).toStrictEqual([
+      { name: 'Ally', colour: 'teal', devices: [{ id: ALLY, lastAt: 1 }] },
+      { devices: [{ id: AL, sentAs: 'Al', lastAt: 2, platform: 'phone' }] },
+    ]);
+  });
+
+  it('gives back the same list for a device on its own already, or not in the list', () => {
+    expect(splitDevice(FRIENDS, ZED)).toBe(FRIENDS);
+    expect(splitDevice(FRIENDS, NOBODY)).toBe(FRIENDS);
+  });
+
+  it('undoes a merge: each device merged in, split off again, is on its own as it was', () => {
+    // Back exactly as it was, when the friend merged in had one device.
+    expect(splitDevice(mergeFriends(FRIENDS, ZED, ALLY), ZED)).toStrictEqual(FRIENDS);
+
+    // Who is with whom, whatever the order, for three merged one by one.
+    const groups = (friends: readonly Friend[]) =>
+      friends.map((friend) => friend.devices.map((device) => device.id).sort()).sort();
+    const three = crowd(3);
+    const [first, second, third] = three.map(friendKey);
+    const merged = mergeFriends(mergeFriends(three, second, first), third, first);
+    expect(merged).toHaveLength(1);
+    const split = splitDevice(splitDevice(merged, second), third);
+    expect(groups(split)).toEqual(groups(three));
+    expect(friendKey(split[0])).toBe(first);
+  });
+});
+
 describe('names, resolved as they are drawn', () => {
   const index = indexFriends(FRIENDS);
 
@@ -505,6 +640,10 @@ describe('every change reads back exactly as it was written', () => {
     ],
     ['with a friend renamed', renameFriend(STORED, ZED, 'Zed')],
     ['with a name taken off', renameFriend(STORED, ALLY, '')],
+    ['with two friends merged', mergeFriends(STORED, ZED, ALLY)],
+    ['with a friend merged into one with no name', mergeFriends(STORED, ALLY, ZED)],
+    ['with a device split off', splitDevice(STORED, AL)],
+    ['with a merge split apart again', splitDevice(mergeFriends(STORED, ZED, AL), ZED)],
   ])('%s', (_, friends) => {
     expect(roundTrip(friends)).toStrictEqual(friends);
   });

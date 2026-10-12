@@ -198,6 +198,14 @@ describe('HelpDialog', () => {
     expect(section).not.toHaveTextContent(/Dan/);
   });
 
+  it('says a friend on two devices can be merged into one, and split apart again', () => {
+    render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={vi.fn()} />);
+    const section = screen.getByRole('heading', { name: 'Racing friends' }).closest('section')!;
+    expect(within(section).getByText(/^Someone who shares from two devices/)).toHaveTextContent(
+      "Someone who shares from two devices arrives as two friends: say so when the second one's first link asks who sent it, or merge them in Friends. A merged friend lists their devices, and any of them can be split off again.",
+    );
+  });
+
   it('says links carry your mistakes, compared beside the help, and explains the dash', () => {
     render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={vi.fn()} />);
     expect(screen.getByText(/any help you took, your mistakes/)).toBeInTheDocument();

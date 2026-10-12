@@ -10,7 +10,10 @@ import { isObject, isPlayerId, normaliseName } from './storage';
  * text anyone can type, so the same friend can send "Dan" one day and "Rude
  * McRudeface" the next. What the player calls them is kept here instead: a
  * friend is a name given them here, if one has been, and the devices (the
- * browsers, each known by its player ID) they share from.
+ * browsers, each known by its player ID) they share from. Each device
+ * arrives as a friend of its own — a phone and a laptop are two friends
+ * until the player says they are one (see `mergeFriends`) — and any device
+ * can be split off again (see `splitDevice`).
  *
  *   sudoku.friends  [ { "name": "Ally", "devices": [
  *                       { "id": "k3x9q7za2m", "sentAs": "Rude McRudeface", "lastAt": 1791763200000 },
@@ -34,7 +37,8 @@ import { isObject, isPlayerId, normaliseName } from './storage';
  * ledger). Every operation here returns the list it was given when nothing
  * changes, which is how `updateFriends` knows to write nothing; and every
  * object it changes is spread rather than rebuilt, so the small fields a
- * newer version added (see `newerFields`) survive a rename.
+ * newer version added (see `newerFields`) survive a rename, a merge or a
+ * split.
  */
 
 /** The most devices kept. Past it, the one heard from longest ago is forgotten (see `meetDevice`). */
@@ -238,6 +242,57 @@ export function renameFriend(
   if ((friend.name ?? '') === tidy) return friends;
   const { name: _previous, ...unnamed } = friend;
   return replaced(friends, f, tidy === '' ? unnamed : { ...unnamed, name: tidy });
+}
+
+/**
+ * The friend holding `fromId` is the friend holding `intoId`, on another
+ * device: from's devices join into's, after into's own — so into keeps its
+ * key (see `friendKey`), and its place in the list — and from leaves the
+ * list. The name given into stands, or else the one given from: a merge
+ * never makes a name up, and never loses the one name given. Into's newer
+ * fields are kept, and from's go with it.
+ *
+ * The same list back for a device not in it, or for two devices that are
+ * one friend's already.
+ */
+export function mergeFriends(
+  friends: readonly Friend[],
+  fromId: string,
+  intoId: string,
+): readonly Friend[] {
+  const from = findDevice(friends, fromId);
+  const into = findDevice(friends, intoId);
+  if (from === null || into === null || from[0] === into[0]) return friends;
+  const source = friends[from[0]];
+  const target = friends[into[0]];
+  const name = target.name ?? source.name;
+  const merged: Friend = {
+    ...target,
+    ...(name === undefined ? {} : { name }),
+    devices: [...target.devices, ...source.devices],
+  };
+  return friends.flatMap((friend, i) => (i === from[0] ? [] : [i === into[0] ? merged : friend]));
+}
+
+/**
+ * `deviceId` is not the friend it was with after all: it leaves them, to be
+ * a friend of its own, unnamed — so each of its races shows the name its own
+ * link gave again — straight after them in the list. It takes its own fields
+ * with it (the name its links gave, when it was last heard from, a newer
+ * version's); the friend keeps their name, their other devices and their
+ * newer fields, and their key unless it was the device split off.
+ *
+ * The same list back for a device not in it, or one that is a friend on its
+ * own already.
+ */
+export function splitDevice(friends: readonly Friend[], deviceId: string): readonly Friend[] {
+  const found = findDevice(friends, deviceId);
+  if (found === null) return friends;
+  const [f, d] = found;
+  const friend = friends[f];
+  if (friend.devices.length === 1) return friends;
+  const left: Friend = { ...friend, devices: friend.devices.filter((_, i) => i !== d) };
+  return [...friends.slice(0, f), left, { devices: [friend.devices[d]] }, ...friends.slice(f + 1)];
 }
 
 // ---------------------------------------------------------------------------

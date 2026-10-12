@@ -1192,6 +1192,75 @@ describe('App', () => {
       expect(within(solved).getByRole('button', { name: "Watch Bob's solve" })).toBeInTheDocument();
     });
 
+    it('merges two friends in Friends, and splits them apart again, History following each', async () => {
+      const DAN = 'p0d4wq81xe';
+      const storage = memoryStorage();
+      updateFriends(storage, (friends) =>
+        renameFriend(meetDevice(friends, { id: DAN, sentAs: 'D', at: 1 }), DAN, 'Dan'),
+      );
+      renderApp({ storage, search });
+      await skipWhoSent();
+      await screen.findByRole('heading', { name: 'Ready?' });
+      fireEvent.click(within(screen.getByRole('main')).getByRole('button', { name: 'Start' }));
+      await screen.findByRole('grid');
+      solveShared();
+      fireEvent.click(
+        within(await screen.findByRole('dialog', { name: 'Solved!' })).getByRole('button', {
+          name: 'Close',
+        }),
+      );
+
+      // Rude, from the link just raced, is Dan on another device.
+      let friends = openFriends();
+      fireEvent.click(
+        within(friends).getByRole('button', {
+          name: /^Merge Rude, latest link .* with another friend$/,
+        }),
+      );
+      const picker = within(friends).getByRole('combobox', { name: 'Same person as' });
+      await waitFor(() => expect(picker).toHaveFocus());
+      expect(picker).toHaveValue(DAN);
+      fireEvent.click(within(friends).getByRole('button', { name: /^Confirm merge, Rude/ }));
+      await waitFor(() =>
+        expect(within(friends).getByRole('button', { name: /^Rename Dan,/ })).toHaveFocus(),
+      );
+      expect(friends.querySelector('[role="status"]')).toHaveTextContent(
+        'Merged into one friend, on 2 devices.',
+      );
+      fireEvent.click(within(friends).getByRole('button', { name: 'Close' }));
+      let history = screen.getByRole('dialog', { name: 'History' });
+      expect(history.querySelector('.history-item__challenge')).toHaveTextContent(/^vs Dan 0:09/);
+      expect(loadFriends(storage)).toEqual([
+        {
+          name: 'Dan',
+          devices: [
+            { id: DAN, sentAs: 'D', lastAt: 1 },
+            { id: ALLY, sentAs: 'Rude', lastAt: expect.any(Number) },
+          ],
+        },
+      ]);
+
+      // Not Dan after all: split off, the race goes by its link's name again.
+      fireEvent.click(within(history).getByRole('button', { name: 'Friends' }));
+      friends = screen.getByRole('dialog', { name: 'Friends' });
+      expect(within(friends).getByRole('list', { name: /^Devices, Dan,/ })).toHaveTextContent(
+        /^D · latest link .*Rude · latest link /,
+      );
+      fireEvent.click(
+        within(friends).getByRole('button', { name: /^Split off Rude, .* from Dan$/ }),
+      );
+      await waitFor(() =>
+        expect(within(friends).getByRole('button', { name: /^Rename Rude,/ })).toHaveFocus(),
+      );
+      expect(friends.querySelector('[role="status"]')).toHaveTextContent(
+        'Split off: a friend of their own now.',
+      );
+      fireEvent.click(within(friends).getByRole('button', { name: 'Close' }));
+      history = screen.getByRole('dialog', { name: 'History' });
+      expect(history.querySelector('.history-item__challenge')).toHaveTextContent(/^vs Rude 0:09/);
+      expect(loadFriends(storage).map((friend) => friend.name ?? null)).toEqual(['Dan', null]);
+    });
+
     describe('who sent this?', () => {
       const prompt = () => screen.getByRole('dialog', { name: 'Who sent this?' });
       const field = () => within(prompt()).getByRole('textbox', { name: 'Their name' });
@@ -1332,6 +1401,39 @@ describe('App', () => {
         await settle();
         expect(screen.queryByRole('dialog')).toBeNull();
         expect(document.querySelector('.board-overlay--veiled')).toBeNull();
+      });
+
+      it('makes them one with a friend chosen as on another device, the card naming that friend', async () => {
+        const DAN = 'p0d4wq81xe';
+        const storage = memoryStorage();
+        updateFriends(storage, (friends) =>
+          renameFriend(meetDevice(friends, { id: DAN, sentAs: 'D', at: 1 }), DAN, 'Dan'),
+        );
+        renderApp({ storage, search });
+        await asked();
+        const choice = within(prompt()).getByRole('combobox', {
+          name: 'Or is it a friend you have already, on another device?',
+        });
+        expect(choice).toHaveValue('');
+        fireEvent.change(choice, { target: { value: DAN } });
+        expect(field()).toBeDisabled();
+        fireEvent.click(within(prompt()).getByRole('button', { name: 'Save' }));
+
+        expect(screen.queryByRole('dialog')).toBeNull();
+        expect(document.querySelector('.board-overlay__text')).toHaveTextContent(
+          'Dan solved this Easy puzzle in 0:09. Can you beat it?',
+        );
+        expect(cardButton("Watch Dan's solve")).toBeInTheDocument();
+        await waitFor(() => expect(cardButton('Start')).toHaveFocus());
+        expect(loadFriends(storage)).toEqual([
+          {
+            name: 'Dan',
+            devices: [
+              { id: DAN, sentAs: 'D', lastAt: 1 },
+              { id: ALLY, sentAs: 'Rude', lastAt: expect.any(Number) },
+            ],
+          },
+        ]);
       });
 
       it('holds back the offer to play a puzzle solved already, which follows it under the name given', async () => {

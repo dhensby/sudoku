@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
-import type { Friend } from '../../storage/friends';
+import { useState } from 'react';
+import { mergeFriends, splitDevice, type Friend } from '../../storage/friends';
 import { FriendsDialog, type FriendsDialogProps } from './FriendsDialog';
 
 /** 14:30 local on 12 Oct 2026 — local, because the dialog dates links in local time. */
@@ -30,6 +31,8 @@ function renderFriends(overrides: Partial<FriendsDialogProps> = {}) {
     friends: FRIENDS,
     now: NOW,
     onRename: vi.fn(),
+    onMerge: vi.fn(),
+    onSplit: vi.fn(),
     onClose: vi.fn(),
     ...overrides,
   };
@@ -37,9 +40,41 @@ function renderFriends(overrides: Partial<FriendsDialogProps> = {}) {
   return { ...view, props };
 }
 
+/**
+ * Friends as the app holds it: a merge or a split changes the list it is
+ * given, in the same render as the dialog's own — so the rows have moved by
+ * the time focus follows them.
+ */
+function renderLive(overrides: Partial<FriendsDialogProps> = {}) {
+  const onMerge = vi.fn();
+  const onSplit = vi.fn();
+  function Live() {
+    const [friends, setFriends] = useState(overrides.friends ?? FRIENDS);
+    return (
+      <FriendsDialog
+        now={NOW}
+        onRename={vi.fn()}
+        onClose={vi.fn()}
+        friends={friends}
+        onMerge={(fromId, intoId) => {
+          onMerge(fromId, intoId);
+          setFriends((list) => mergeFriends(list, fromId, intoId));
+        }}
+        onSplit={(deviceId) => {
+          onSplit(deviceId);
+          setFriends((list) => splitDevice(list, deviceId));
+        }}
+      />
+    );
+  }
+  render(<Live />);
+  return { onMerge, onSplit };
+}
+
 const dialog = () => screen.getByRole('dialog', { name: 'Friends' });
 const list = () => screen.getByRole('list', { name: 'Friends, latest first' });
-const rows = () => within(list()).getAllByRole('listitem');
+/** The friends' rows — not the devices listed inside a merged friend's. */
+const rows = () => Array.from(list().querySelectorAll<HTMLElement>(':scope > li'));
 const row = (name: string) =>
   rows().find((item) => item.querySelector('.friends-item__name')?.textContent === name)!;
 const status = () => dialog().querySelector('[role="status"]')!;
@@ -93,7 +128,7 @@ describe('FriendsDialog', () => {
     expect(row('Dan').querySelector('.history-item__status')).toBeNull();
   });
 
-  it('names every Rename after its friend, so a list of buttons makes sense alone', () => {
+  it('names every button after its friend, so a list of buttons makes sense alone', () => {
     renderFriends();
     expect(
       within(list())
@@ -101,10 +136,24 @@ describe('FriendsDialog', () => {
         .map((button) => button.getAttribute('aria-label')),
     ).toEqual([
       'Rename אלכסנדרה, latest link Today 14:05',
+      'Merge אלכסנדרה, latest link Today 14:05 with another friend',
+      'Split off Rude McRudeface, latest link Yesterday 09:12, from Ally',
+      'Split off Al, latest link Today 13:00, from Ally',
       'Rename Ally, latest link Today 13:00',
+      'Merge Ally, latest link Today 13:00 with another friend',
       'Rename friend with no name, latest link 10 Oct',
+      'Merge friend with no name, latest link 10 Oct with another friend',
       'Rename Dan, latest link 1 Oct',
+      'Merge Dan, latest link 1 Oct with another friend',
     ]);
+    // Visible labels never hold a name, so none needs room to wrap.
+    expect([
+      ...new Set(
+        within(list())
+          .getAllByRole('button')
+          .map((button) => button.textContent),
+      ),
+    ]).toEqual(['Rename', 'Merge…', 'Split off']);
   });
 
   it('opens on the first Rename', () => {
@@ -263,6 +312,196 @@ describe('FriendsDialog', () => {
       rerender(<FriendsDialog {...props} friends={renamed} />);
       expect(rows()[2].querySelector('.friends-item__name')).toHaveTextContent('Zed');
       expect(within(rows()[2]).getByRole('button', { name: /^Rename Zed/ })).toHaveFocus();
+    });
+  });
+
+  describe("a merged friend's devices", () => {
+    it('lists them, once there are two, each by the name its links gave and dated', () => {
+      renderFriends();
+      const devices = within(row('Ally')).getByRole('list', {
+        name: 'Devices, Ally, latest link Today 13:00',
+      });
+      expect(
+        within(devices)
+          .getAllByRole('listitem')
+          .map((item) => item.querySelector('span')?.textContent),
+      ).toEqual(['Rude McRudeface · latest link Yesterday 09:12', 'Al · latest link Today 13:00']);
+      // Names from links anyone can write, kept in their own direction.
+      expect(within(devices).getByText('Rude McRudeface').tagName).toBe('BDI');
+      // One device: nothing to split off.
+      for (const name of ['אלכסנדרה', 'No name', 'Dan']) {
+        expect(within(row(name)).queryByRole('list')).toBeNull();
+        expect(within(row(name)).queryByRole('button', { name: /^Split off/ })).toBeNull();
+      }
+    });
+
+    it('says "No name" plainly for a device whose links give none', () => {
+      renderFriends({
+        friends: [
+          {
+            devices: [
+              { id: 'z8c2m5r1to', lastAt: at(10, 18, 0) },
+              { id: 'q1w2e3r4t5', lastAt: at(12, 14, 5) },
+            ],
+          },
+        ],
+      });
+      const devices = within(rows()[0]).getByRole('list', {
+        name: /^Devices, friend with no name/,
+      });
+      expect(devices.querySelector('bdi')).toBeNull();
+      expect(devices).toHaveTextContent('No name · latest link 10 Oct');
+      expect(
+        within(devices).getByRole('button', {
+          name: 'Split off the device with no name, latest link Today 14:05, from friend with no name',
+        }),
+      ).toBeVisible();
+    });
+
+    it('splits one off on Split off, focus on the Rename of the friend it now is, and says so', () => {
+      const { onSplit } = renderLive();
+      fireEvent.click(within(row('Ally')).getByRole('button', { name: /^Split off Al,/ }));
+      expect(onSplit).toHaveBeenCalledExactlyOnceWith('p0d4wq81xe');
+      // A row of its own, by the name its links gave, latest first.
+      expect(rows().map((item) => item.querySelector('.friends-item__name')?.textContent)).toEqual([
+        'אלכסנדרה',
+        'Al',
+        'Ally',
+        'No name',
+        'Dan',
+      ]);
+      expect(row('Al').querySelector('.history-item__status')).toHaveTextContent(
+        'Name from their latest link',
+      );
+      expect(within(row('Al')).getByRole('button', { name: /^Rename Al,/ })).toHaveFocus();
+      // The friend left keeps their name, on the one device left.
+      expect(within(row('Ally')).queryByRole('list')).toBeNull();
+      expect(row('Ally').querySelector('.history-item__status')).toHaveTextContent(
+        'Their latest link says Rude McRudeface',
+      );
+      expect(status()).toHaveTextContent('Split off: a friend of their own now.');
+    });
+
+    it("finds the friend's Rename, keyed afresh, when their first device is the one split off", () => {
+      const { onSplit } = renderLive();
+      fireEvent.click(within(row('Ally')).getByRole('button', { name: /^Split off Rude/ }));
+      expect(onSplit).toHaveBeenCalledExactlyOnceWith('k3x9q7za2m');
+      expect(row('Ally')).toHaveAttribute('data-friend', 'p0d4wq81xe');
+      expect(row('Rude McRudeface')).toHaveAttribute('data-friend', 'k3x9q7za2m');
+      expect(
+        within(row('Rude McRudeface')).getByRole('button', { name: /^Rename Rude McRudeface,/ }),
+      ).toHaveFocus();
+    });
+  });
+
+  describe('merging', () => {
+    const picker = () => screen.getByRole('combobox', { name: 'Same person as' });
+
+    function open(name: string) {
+      fireEvent.click(within(row(name)).getByRole('button', { name: /^Merge/ }));
+    }
+
+    it('is offered only once there is someone else to merge with', () => {
+      renderFriends({ friends: [FRIENDS[1]] });
+      expect(within(list()).getAllByRole('button', { name: /^Split off/ })).toHaveLength(2);
+      expect(within(list()).queryByRole('button', { name: /^Merge/ })).toBeNull();
+    });
+
+    it('opens in place of the buttons, everyone else to choose from, latest first, the latest chosen', () => {
+      renderFriends();
+      open('Dan');
+      const group = within(row('Dan')).getByRole('group', { name: 'Merge Dan, latest link 1 Oct' });
+      expect(within(group).getByRole('combobox')).toBe(picker());
+      expect(picker()).toHaveFocus();
+      expect(
+        within(picker())
+          .getAllByRole('option')
+          .map((option) => [option.getAttribute('value'), option.textContent]),
+      ).toEqual([
+        ['q1w2e3r4t5', 'אלכסנדרה · Today 14:05'],
+        ['k3x9q7za2m', 'Ally · Today 13:00'],
+        ['z8c2m5r1to', 'No name · 10 Oct'],
+      ]);
+      expect(picker()).toHaveValue('q1w2e3r4t5');
+      expect(picker()).toHaveAccessibleDescription(
+        "They become one friend, under the name you gave the one you choose, or else this one's. You can split them apart again.",
+      );
+      expect(
+        within(group).getByRole('button', { name: 'Confirm merge, Dan, latest link 1 Oct' }),
+      ).toHaveTextContent('Merge');
+      expect(
+        within(group).getByRole('button', { name: 'Cancel merging Dan, latest link 1 Oct' }),
+      ).toHaveTextContent('Cancel');
+      expect(within(row('Dan')).queryByRole('button', { name: /^Rename/ })).toBeNull();
+    });
+
+    it('opens one edit at a time, a rename or a merge', () => {
+      renderFriends();
+      fireEvent.click(within(row('Ally')).getByRole('button', { name: /^Rename/ }));
+      open('Dan');
+      expect(screen.queryByRole('textbox')).toBeNull();
+      expect(screen.getAllByRole('group')).toHaveLength(1);
+      fireEvent.click(within(row('No name')).getByRole('button', { name: /^Rename/ }));
+      expect(screen.queryByRole('combobox')).toBeNull();
+      expect(within(row('Dan')).getByRole('button', { name: /^Merge/ })).toBeVisible();
+    });
+
+    it('merges into the friend chosen, focus on their Rename, and says how many devices they have', () => {
+      const { onMerge } = renderLive();
+      open('No name');
+      fireEvent.change(picker(), { target: { value: 'k3x9q7za2m' } });
+      fireEvent.click(screen.getByRole('button', { name: /^Confirm merge/ }));
+      expect(onMerge).toHaveBeenCalledExactlyOnceWith('z8c2m5r1to', 'k3x9q7za2m');
+      // One row fewer: the chosen friend's, under their name, with every device.
+      expect(rows().map((item) => item.querySelector('.friends-item__name')?.textContent)).toEqual([
+        'אלכסנדרה',
+        'Ally',
+        'Dan',
+      ]);
+      expect(
+        within(row('Ally'))
+          .getAllByRole('listitem')
+          .map((item) => item.querySelector('bdi')?.textContent ?? 'No name'),
+      ).toEqual(['Rude McRudeface', 'Al', 'No name']);
+      expect(within(row('Ally')).getByRole('button', { name: /^Rename Ally,/ })).toHaveFocus();
+      expect(status()).toHaveTextContent('Merged into one friend, on 3 devices.');
+    });
+
+    it('merges into the friend chosen as it stands, before any choice is changed', () => {
+      const { props } = renderFriends();
+      open('Ally');
+      fireEvent.click(screen.getByRole('button', { name: /^Confirm merge/ }));
+      expect(props.onMerge).toHaveBeenCalledExactlyOnceWith('k3x9q7za2m', 'q1w2e3r4t5');
+      expect(status()).toHaveTextContent('Merged into one friend, on 3 devices.');
+    });
+
+    it.each(['the picker', 'Merge', 'Cancel'])(
+      'backs out on Escape from %s, without closing the dialog, focus back on Merge…',
+      (where) => {
+        const { props } = renderFriends();
+        open('Dan');
+        const target =
+          where === 'the picker'
+            ? picker()
+            : screen.getByRole('button', {
+                name: new RegExp(`^${where === 'Merge' ? 'Confirm merge' : 'Cancel merging'}`),
+              });
+        fireEvent.keyDown(target, { key: 'Escape' });
+        expect(screen.queryByRole('combobox')).toBeNull();
+        expect(props.onClose).not.toHaveBeenCalled();
+        expect(props.onMerge).not.toHaveBeenCalled();
+        expect(within(row('Dan')).getByRole('button', { name: /^Merge/ })).toHaveFocus();
+        expect(dialog()).toBeInTheDocument();
+      },
+    );
+
+    it('backs out on Cancel, saying nothing', () => {
+      const { props } = renderFriends();
+      open('Dan');
+      fireEvent.click(screen.getByRole('button', { name: /^Cancel merging Dan/ }));
+      expect(props.onMerge).not.toHaveBeenCalled();
+      expect(within(row('Dan')).getByRole('button', { name: /^Merge/ })).toHaveFocus();
+      expect(status()).toBeEmptyDOMElement();
     });
   });
 

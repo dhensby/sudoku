@@ -26,7 +26,9 @@ import type { Puzzle } from '../src/core';
  * lists them, and the name given someone there is the one shown on every race
  * of theirs — whatever their links call them, past races and later ones
  * alike, through a reload. The first link from someone new asks who sent it
- * before anything else, the name it gives ready to keep or type over.
+ * before anything else, the name it gives ready to keep or type over — or
+ * says it is a friend already known, on another device, and the two are
+ * one; Friends splits them apart again, and merges them back.
  *
  * Runs on Chromium (desktop layout).
  */
@@ -34,22 +36,30 @@ import type { Puzzle } from '../src/core';
 /** A sending browser's ID, as its links carry it (`u=`). */
 const SENDER = 'k3x9q7za2m';
 
+/** The same sender's other browser: a laptop, say, beside their phone. */
+const SENDER_ELSEWHERE = 'p0d4wq81xe';
+
 const historyDialog = (page: Page) => page.getByRole('dialog', { name: 'History' });
 
 /** The rows of History's list — not the chips nested inside them. */
 const historyRows = (page: Page) =>
   historyDialog(page).getByRole('list', { name: 'Games, newest first' }).locator(':scope > li');
 
-/** Friends' rows. */
+/** Friends' rows — not the devices a merged friend's row lists. */
 const friendRows = (friends: Locator) =>
-  friends.getByRole('list', { name: 'Friends, latest first' }).getByRole('listitem');
+  friends.getByRole('list', { name: 'Friends, latest first' }).locator(':scope > li');
 
 /**
- * Open a link from SENDER: behind its Ready card — and, the first time, behind
- * the question of who sent it before that.
+ * Open a link from SENDER (or another of theirs): behind its Ready card — and,
+ * the first time, behind the question of who sent it before that.
  */
-async function openTheirLink(page: Page, puzzle: Puzzle, challenge: LinkChallenge): Promise<void> {
-  await gotoPuzzle(page, puzzle.givens, { challenge: { ...challenge, playerId: SENDER } });
+async function openTheirLink(
+  page: Page,
+  puzzle: Puzzle,
+  challenge: LinkChallenge,
+  playerId = SENDER,
+): Promise<void> {
+  await gotoPuzzle(page, puzzle.givens, { challenge: { ...challenge, playerId } });
 }
 
 /** Press Start on the link's card, solve it a few seconds in, and leave Solved! up. */
@@ -233,5 +243,95 @@ test.describe('friends', () => {
       await expect(boardArea(friend)).toContainText(/Ally solved this Easy puzzle in 0:1\d\./);
       await expect(whoSentDialog(friend)).toHaveCount(0);
     });
+  });
+
+  test("one sender's two devices: taken for one at the prompt, split off and merged again in Friends, every race following through a reload", async ({
+    page,
+  }) => {
+    await page.clock.install();
+    // The first device's first link, named at the prompt as its link names them.
+    await openTheirLink(page, NEARLY_DONE, { seconds: 200, name: 'Alice' });
+    await answerWhoSent(page, { name: 'Alice' });
+    let solved = await race(page, NEARLY_DONE);
+    await page.keyboard.press('Escape');
+    await expect(solved).toBeHidden();
+
+    // A link from their other device, by another name: someone new to this
+    // browser, so asked about — and it is Alice, on another device.
+    await openTheirLink(page, NEARLY_DONE_2, { seconds: 300, name: 'Al' }, SENDER_ELSEWHERE);
+    const choice = whoSentDialog(page).getByRole('combobox', {
+      name: 'Or is it a friend you have already, on another device?',
+    });
+    // Never chosen for the player.
+    await expect(choice).toHaveValue('');
+    await answerWhoSent(page, { sameAs: SENDER });
+    await expect(boardArea(page)).toContainText(
+      'Alice solved this Easy puzzle in 5:00. Can you beat it?',
+    );
+    await expect(startButton(page)).toBeFocused();
+    solved = await race(page, NEARLY_DONE_2);
+    await expect(solved.getByRole('columnheader').nth(1)).toHaveText('Alice');
+    await page.keyboard.press('Escape');
+
+    // Both races under the one name, from one friend on two devices.
+    await openHeaderDialog(page, 'History');
+    await expect(historyRows(page).filter({ hasText: 'vs Alice' })).toHaveCount(2);
+    await historyDialog(page).getByRole('button', { name: 'Friends' }).click();
+    let friends = page.getByRole('dialog', { name: 'Friends' });
+    await expect(friendRows(friends)).toHaveCount(1);
+    await expect(friendRows(friends)).toContainText('2 devices');
+    await expect(friends.getByRole('list', { name: /^Devices, Alice,/ })).toContainText(
+      /Alice · latest link Today .*Al · latest link Today /,
+    );
+
+    // Not the same after all: Al split off, a friend of their own, focus on
+    // their Rename, and their race back under their link's name.
+    await friends
+      .getByRole('button', { name: /^Split off Al, latest link Today \d\d:\d\d, from Alice$/ })
+      .click();
+    await expect(
+      friends.getByRole('button', { name: /^Rename Al, latest link Today/ }),
+    ).toBeFocused();
+    await expect(friends.getByRole('status')).toHaveText('Split off: a friend of their own now.');
+    await expect(friendRows(friends)).toHaveCount(2);
+    await page.keyboard.press('Escape');
+    await expect(historyRows(page).filter({ hasText: 'vs Al 5:00' })).toHaveCount(1);
+    await expect(historyRows(page).filter({ hasText: 'vs Alice 3:20' })).toHaveCount(1);
+
+    // The same after all: merged back from the keyboard, Alice chosen for them.
+    await historyDialog(page).getByRole('button', { name: 'Friends' }).click();
+    friends = page.getByRole('dialog', { name: 'Friends' });
+    await friends
+      .getByRole('button', { name: /^Merge Al, latest link Today .* with another friend$/ })
+      .click();
+    const picker = friends.getByRole('combobox', { name: 'Same person as' });
+    await expect(picker).toBeFocused();
+    await expect(picker).toHaveValue(SENDER);
+    // Escape backs out of the merge, not the dialog.
+    await page.keyboard.press('Escape');
+    await expect(picker).toBeHidden();
+    const merge = friends.getByRole('button', { name: /^Merge Al,/ });
+    await expect(merge).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(picker).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(friends.getByRole('button', { name: /^Confirm merge, Al,/ })).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(friends.getByRole('button', { name: /^Rename Alice,/ })).toBeFocused();
+    await expect(friends.getByRole('status')).toHaveText('Merged into one friend, on 2 devices.');
+    await expect(friendRows(friends)).toHaveCount(1);
+    await page.keyboard.press('Escape');
+    await expect(historyRows(page).filter({ hasText: 'vs Alice' })).toHaveCount(2);
+    await page.keyboard.press('Escape');
+
+    // Kept through a reload.
+    await page.reload();
+    await expect(grid(page)).toBeVisible();
+    await openHeaderDialog(page, 'History');
+    await expect(historyRows(page).filter({ hasText: 'vs Alice' })).toHaveCount(2);
+    await historyDialog(page).getByRole('button', { name: 'Friends' }).click();
+    friends = page.getByRole('dialog', { name: 'Friends' });
+    await expect(friendRows(friends)).toHaveCount(1);
+    await expect(friendRows(friends)).toContainText('2 devices');
   });
 });

@@ -64,7 +64,7 @@ your browser.
   apart from anyone else's, whatever name they come with. [Friends](#friends), at the foot of
   History, lists everyone who has sent you a time: the name you give someone replaces whatever
   their links call them, on every race of theirs. The first link from someone new asks who sent
-  it.
+  it. Merge someone's phone and laptop into one friend, or split them apart again.
 - **History and stats** — every game you play is kept: resume unfinished ones, play a solved
   puzzle again, [watch your solve](#watch-your-solve) of it, share it, or delete it. A game you only glanced at — nothing entered, no help
   taken — is dropped when you move on to another, so browsing the levels doesn't clutter the list
@@ -889,7 +889,21 @@ links' names until you name them in Friends. Either way they were noted as the l
 question is never asked of them again — closing the tab before answering is the same as Skip. A
 link without an ID, from your own browser, or from anyone already in the list never asks.
 
-The list keeps up to 200 devices (some 41,000 characters at most, every name at its longest). Past
+An ID belongs to a browser, not a person, so someone who shares from their phone and their laptop
+arrives as two friends. Once anyone else is in the list, _Who sent this?_ asks below its field
+**Or is it a friend you have already, on another device?**, with everyone else to choose from,
+latest first — never chosen for you, however alike the names, as a name is exactly what a stranger
+can copy. Choose one and **Save**, and the new device joins them, under the name you gave them
+(the name field is disabled meanwhile, greyed out but not hidden, so nothing moves). In Friends,
+**Merge…** (once there are two friends) says one is the same person as another, picked from
+everyone else, latest first, with the latest picked to begin with: the two become one, under the
+name you gave the one you chose, or else this one's — a merge never makes a name up, and never
+loses the one you gave. Pressing **Merge** is all it asks, as a merge can be undone: a merged
+friend lists their devices, each by the name its links last gave and when, and **Split off** on
+any of them makes it a friend of its own again, unnamed, so its races show the name each of its
+links gave until you name it.
+
+The list keeps up to 200 devices (some 41,000 characters with every name at its longest). Past
 that, the device heard from longest ago is forgotten — with the name you gave its friend, if it
 was their last — and its next link is noted as someone new; never the device whose link is being
 opened. The list is never shed to make room for anything else.
@@ -911,8 +925,8 @@ its game is deleted), the puzzles whose shared solve you watched before solving 
 (`sudoku.watched`, up to 2,000 — see [Sharing a solve](#sharing-a-solve)), the friends whose
 links you have opened (`sudoku.friends`, up to 200 devices — each one's ID, the latest name its
 links gave and when — grouped into friends with the name you gave each; some 41,000 characters
-at most — see [Friends](#friends)) and the daily puzzles already dealt (the last 112, so they
-need not be dealt again). A game raced against a link that
+with every name at its longest — see [Friends](#friends)) and the daily puzzles already dealt (the
+last 112, so they need not be dealt again). A game raced against a link that
 carried a solve keeps it with the challenge, inside its record, held on reading back to the shape
 and length of a log in a link (at most 4,000 characters; some 200–1,100 in practice). There are no
 accounts and no tracking: the player ID is random, and travels only in links you share with a
@@ -1031,7 +1045,8 @@ of the logs here were shed, none of the file's logs are taken.
   version shipped must read a new link's help unchanged, skipping its mistakes, and an old link
   must read as mistakes not recorded, never 0; a link without `u=` reads as no ID, a garbled `u=`
   costs only the ID, and `u=` changes no other parameter; the friends list's operations — noting,
-  renaming, the cap — read back exactly what they wrote. A solve in a link is held to its puzzle
+  renaming, merging, splitting, the cap — read back exactly what they wrote, and a device merged
+  in and split off again is on its own as it was. A solve in a link is held to its puzzle
   and its time — another puzzle's log, a time a second or more off, an older version's log, a broken
   one and a newer version's (which alone is said) — and the spoiler rule to every way back to a
   watched puzzle: a reload mid-game, Play again, a new attempt from the generator, a game resumed
@@ -1055,8 +1070,9 @@ of the logs here were shed, none of the file's logs are taken.
   side, the chart and the board both in view), friends (a sharer named in the list, then at the
   prompt, kept through a reload and a later link calling itself something else — every race, the
   head-to-head and History following — the prompt's field typed over and Enter, then Enter again
-  starting the race, and a real sharer's two links carrying the one ID the prompt fills its name
-  from),
+  starting the race, a real sharer's two links carrying the one ID the prompt fills its name from,
+  and two devices taken for one friend at the prompt, split off and merged again in Friends —
+  every race in History following, through a reload),
   watching a solve with a mistake played back from the Solved dialog and from History (stepped,
   scrubbed and played at 8× on Playwright's clock, its mistake marked and captioned, focus back on
   Watch as it closes, and fitting a 320px phone and a phone on its side) and the phone layout from
@@ -1069,16 +1085,17 @@ of the logs here were shed, none of the file's logs are taken.
   total, never cut, beside a counter with a candidate mistake; with neither shown, the board as
   large as with the setting off; help taken alone above a 375×667 phone's controls, and on a
   320×568 phone beside a hint that keeps to two lines; Friends and _Who sent this?_ upright and on
-  their sides, a long right-to-left name kept inside Friends' rows and the prompt's hint, every
-  control 44px, and History's foot giving Friends a row of its own at 320px; and a desktop's header with a daily Medium and help at its widest). Help taken stays on show through a pause, its count the only one the
+  their sides, a long right-to-left name kept inside Friends' rows, a merged friend's devices and
+  the prompt's hint, every control 44px — the friend pickers and a merge's buttons among them — and History's foot giving Friends a row of its own at 320px; and a desktop's header with a daily Medium and help at its widest). Help taken stays on show through a pause, its count the only one the
   hidden board leaves beside the timer's. An accessibility pass (`a11y.spec.ts`) runs axe-core's WCAG 2.2 A and AA rules over the main states — the board with
   every kind of mark, the error counter and help taken in both their places, the Ready and Paused
   cards, the menus (the "…" menu's "Hint (1 used)" among them),
   every dialog (Show me's, the daily calendar's, a solve played back, the warning before watching
   a friend's solve, two solves compared, Share with the solve included, History with Friends at
-  its foot, Friends with a name being changed, and _Who sent this?_ among them), each guide entry
-  and a step hint's tinted houses — in both themes, and the board (its tint included), the
-  dialogs, the menus and the calendar in High contrast, both chosen in
+  its foot, Friends with a merged friend's devices, a name being changed and two friends being
+  merged, and _Who sent this?_ with friends to choose from among them), each guide entry and a
+  step hint's tinted houses — in both themes, and the board (its tint included), the dialogs, the
+  menus and the calendar in High contrast, both chosen in
   Settings on a dark device and from a dark system asking for more contrast, measuring its heavier
   lines and its same-number ring kept off the digits — and allows no violations. Three projects:
 

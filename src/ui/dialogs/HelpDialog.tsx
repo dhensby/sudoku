@@ -441,6 +441,11 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
               in. Skip it, and they go by their links&apos; names until you name them in Friends.
             </li>
             <li>
+              Someone who shares from two devices arrives as two friends: say so when the second
+              one&apos;s first link asks who sent it, or merge them in Friends. A merged friend
+              lists their devices, and any of them can be split off again.
+            </li>
+            <li>
               Your friend&apos;s solve and yours are compared row by row: the time, each kind of
               help, and the mistakes. The faster time wins; the rest is there to keep it fair. A
               dash means the mistakes weren&apos;t recorded: a link from an older version of the

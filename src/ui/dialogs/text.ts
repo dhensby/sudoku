@@ -1,5 +1,6 @@
 import { formatDuration, type Assists } from '../../core';
-import { assistPartText, assistParts, describeAssists } from '../format';
+import { friendLabel, lastLinkAt, type Friend } from '../../storage/friends';
+import { assistPartText, assistParts, describeAssists, formatDate } from '../format';
 
 /*
  * Small pieces of English the dialogs share. The general vocabulary (tier
@@ -15,6 +16,18 @@ import { assistPartText, assistParts, describeAssists } from '../format';
  * stray spaces, feels broken. This matches the tidier's own UTF-16 ceiling.
  */
 export const NAME_INPUT_MAX = 64;
+
+/**
+ * A friend as an option in a picker of friends — "Who sent this?"'s, and a
+ * merge's in Friends — names them: "Ally · Today 14:05", "No name · 3 Oct".
+ * What they go by, and when their latest link came, which tells two of one
+ * name apart. Plain text, as an option holds no markup, so no <bdi>: names
+ * are tidied of direction controls (see `normaliseName`), so at worst a
+ * right-to-left one sits the other side of its date.
+ */
+export function friendOption(friend: Friend, now: number): string {
+  return `${friendLabel(friend) ?? 'No name'} · ${formatDate(lastLinkAt(friend), now)}`;
+}
 
 /** "With auto candidates, 2 hints" — or null for a time earned unaided. */
 export function assistsSentence(assists: Assists): string | null {
