@@ -441,6 +441,39 @@ describe('HistoryDialog', () => {
     });
   });
 
+  describe('friends', () => {
+    it('offers Friends at its foot only when told how to open it', () => {
+      renderHistory();
+      expect(screen.queryByRole('button', { name: 'Friends' })).toBeNull();
+    });
+
+    it('opens Friends, first in the footer, marked with its icon', () => {
+      const onOpenFriends = vi.fn();
+      renderHistory({ onOpenFriends });
+      const friends = screen.getByRole('button', { name: 'Friends' });
+      expect(friends.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+      expect(
+        within(friends.parentElement!)
+          .getAllByRole('button')
+          .map((button) => button.textContent),
+      ).toEqual(['Friends', 'Export', 'Import']);
+      // Opening on the list, not on it.
+      expect(friends).not.toHaveFocus();
+      fireEvent.click(friends);
+      expect(onOpenFriends).toHaveBeenCalledOnce();
+    });
+
+    it('offers Friends with no games to list as well', () => {
+      renderHistory({ records: [], currentId: null, onOpenFriends: vi.fn() });
+      expect(screen.getByRole('button', { name: 'Friends' })).toBeEnabled();
+    });
+
+    it('comes back from Friends with focus on Friends', () => {
+      renderHistory({ onOpenFriends: vi.fn(), isBackFromFriends: true });
+      expect(screen.getByRole('button', { name: 'Friends' })).toHaveFocus();
+    });
+  });
+
   describe('export', () => {
     it('marks Export and Import with download and upload icons, names unchanged', () => {
       renderHistory();

@@ -1,8 +1,9 @@
-import { fieldsOf, newerFields, type Difficulty } from '../core';
-import { MAKE_ROOM } from './history';
+import { createRng, fieldsOf, newerFields, type Difficulty, type RandomFn } from '../core';
+import { MAKE_ROOM, createPlayerId } from './history';
 import {
   isDifficulty,
   isObject,
+  isPlayerId,
   normaliseName,
   readJson,
   writeItem,
@@ -12,7 +13,7 @@ import {
 /*
  * The player's preferences, under one key:
  *
- *   sudoku.prefs   { "settings": { … }, "playerName": "…", "lastDifficulty": "…" }
+ *   sudoku.prefs   { "settings": { … }, "playerName": "…", "lastDifficulty": "…", "playerId": "…" }
  *
  * A newer version may add to it — a setting, a theme — and a tab left open on
  * this version after a deploy still saves it whenever the player changes
@@ -78,6 +79,15 @@ export interface Preferences {
   playerName: string;
   /** The tier last chosen, which a first-visit or fallback puzzle is generated at. */
   lastDifficulty: Difficulty;
+  /**
+   * This browser's player ID: random (see `createPlayerId`), and sent as `u=`
+   * in every link with a time, so a friend's game can tell this browser's
+   * times from anyone else's, whatever name each comes with. Left off until
+   * the first time a time is shared (see `ensurePlayerId`) — a browser that
+   * only ever shares bare puzzles never gets one — and never exported: two
+   * browsers with one ID could not be told apart.
+   */
+  playerId?: string;
 }
 
 const STORAGE_KEY = 'sudoku.prefs';
@@ -106,6 +116,7 @@ const PREFERENCE_FIELDS = fieldsOf<Preferences>({
   settings: true,
   playerName: true,
   lastDifficulty: true,
+  playerId: true,
 });
 
 /** The on/off settings, which all normalise the same way. */
@@ -193,6 +204,8 @@ function normalise(parsed: unknown): Preferences {
     lastDifficulty: isDifficulty(fields.lastDifficulty)
       ? fields.lastDifficulty
       : DEFAULT_PREFERENCES.lastDifficulty,
+    // Left off rather than defaulted: one is made only when a time is shared.
+    ...(isPlayerId(fields.playerId) ? { playerId: fields.playerId } : {}),
   };
 }
 
@@ -272,6 +285,21 @@ export function setPlayerName(storage: StorageLike, name: string): Preferences {
 export function setLastDifficulty(storage: StorageLike, difficulty: Difficulty): Preferences {
   const prefs = loadPreferences(storage);
   if (isDifficulty(difficulty)) prefs.lastDifficulty = difficulty;
+  savePreferences(storage, prefs);
+  return prefs;
+}
+
+/**
+ * This browser's player ID, made and stored the first time it is asked for.
+ * Another tab's, if it made one first, is adopted rather than replaced.
+ * Returns the preferences with it, even if storage refused the write — the
+ * ID then lasts until something next reads the preferences back from storage
+ * (setting the name does), and the next share makes another.
+ */
+export function ensurePlayerId(storage: StorageLike, rng: RandomFn = createRng()): Preferences {
+  const prefs = loadPreferences(storage);
+  if (prefs.playerId !== undefined) return prefs;
+  prefs.playerId = createPlayerId(rng);
   savePreferences(storage, prefs);
   return prefs;
 }

@@ -14,3 +14,5 @@ export { StruckDialog, type StruckDialogProps } from './StruckDialog';
 export { PlaybackDialog, type PlaybackDialogProps, type PlaybackSource } from './PlaybackDialog';
 export { SpoilerDialog, type SpoilerDialogProps } from './SpoilerDialog';
 export { CompareDialog, type CompareDialogProps, type CompareSource } from './CompareDialog';
+export { FriendsDialog, type FriendsDialogProps } from './FriendsDialog';
+export { WhoSentDialog, type WhoSentAnswer, type WhoSentDialogProps } from './WhoSentDialog';

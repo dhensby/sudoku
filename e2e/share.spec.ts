@@ -3,6 +3,7 @@ import { encodeGivens } from '../src/core';
 import {
   NEARLY_DONE,
   PUZZLES,
+  answerWhoSent,
   boardArea,
   cell,
   cells,
@@ -285,6 +286,8 @@ test.describe('the share dialog', () => {
       p: encodeGivens(NEARLY_DONE.givens),
       t: String(Number(time.split(':')[0]) * 60 + Number(time.split(':')[1])),
       n: 'Alice',
+      // This browser's player ID, made as it first shared a time.
+      u: expect.stringMatching(/^[0-9a-z]{10}$/),
       // Unaided and clean, and it says so: a link that says nothing is not the same.
       a: 'm0',
     });
@@ -296,6 +299,8 @@ test.describe('the share dialog', () => {
     try {
       const other = await elsewhere.newPage();
       await other.goto(link.href);
+      // A first link from this browser: who sent it is asked first, skipped.
+      await answerWhoSent(other);
       await expect(boardArea(other)).toContainText(
         `Alice solved this Easy puzzle in ${time}. Can you beat it?`,
       );
@@ -347,6 +352,7 @@ test.describe('the share dialog', () => {
       const other = await elsewhere.newPage();
       await other.clock.install();
       await other.goto(link.href);
+      await answerWhoSent(other);
       await expect(boardArea(other)).toContainText(
         `Alice solved this Easy puzzle in ${time}. Can you beat it?`,
       );

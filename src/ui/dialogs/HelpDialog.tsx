@@ -124,6 +124,7 @@ const CONTROLS: readonly Control[] = [
     keyboard: null,
     pointer: 'The header (on a phone, the ☰ menu)',
   },
+  { action: 'Friends', keyboard: null, pointer: 'Friends, at the foot of History' },
   {
     action: 'Solving techniques',
     keyboard: null,
@@ -335,8 +336,9 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
             </li>
             <li>
               A link with a solve offers <strong>Watch your friend&apos;s solve</strong> (with their
-              name, if they gave one) beside <strong>Start</strong>. Once you&apos;ve solved the
-              puzzle yourself, watching is free: the Solved dialog and History offer it too.
+              name, if you or their link gave one) beside <strong>Start</strong>. Once you&apos;ve
+              solved the puzzle yourself, watching is free: the Solved dialog and History offer it
+              too.
             </li>
             <li>
               Watch before you&apos;ve solved it, and you&apos;ve seen every number go in, so the
@@ -425,7 +427,23 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
           <ul className="help__list">
             <li>
               A share link carries the puzzle itself — and, once you have solved it, your time, your
-              name, any help you took and your mistakes.
+              name, any help you took, your mistakes and a random ID for this browser, so a
+              friend&apos;s game can tell your times from anyone else&apos;s.
+            </li>
+            <li>
+              <strong>Friends</strong>, at the foot of History, lists everyone who has sent you a
+              time. Give someone a name there and it&apos;s the one you&apos;ll see on all their
+              times, past ones too, whatever their links call them; until you do, each time shows
+              the name its link gave.
+            </li>
+            <li>
+              The first link from someone new asks who sent it, with the name from their link filled
+              in. Skip it, and they go by their links&apos; names until you name them in Friends.
+            </li>
+            <li>
+              Someone who shares from two devices arrives as two friends: say so when the second
+              one&apos;s first link asks who sent it, or merge them in Friends. A merged friend
+              lists their devices, and any of them can be split off again.
             </li>
             <li>
               Your friend&apos;s solve and yours are compared row by row: the time, each kind of
@@ -476,7 +494,14 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
         <section className="help__section">
           <h3 className="help__heading">Privacy</h3>
           <ul className="help__list">
-            <li>Everything stays in this browser: there are no accounts and no tracking.</li>
+            <li>
+              Everything stays in this browser: there are no accounts and no tracking. A link with
+              your time carries a random ID for this browser, made the first time you share a time:
+              the ID says nothing else about you.
+            </li>
+            <li>
+              The names you give friends never leave this browser, except in History&apos;s export.
+            </li>
             <li>
               Some browsers clear a site's data after a while away. Export your history from the
               History screen to keep it safe.

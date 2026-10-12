@@ -2,7 +2,9 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { encodeGivens, type Puzzle } from '../core';
-import { upsertRecord } from '../storage/history';
+import { meetDevice, renameFriend } from '../storage/friends';
+import { exportHistory, loadFriends, updateFriends, upsertRecord } from '../storage/history';
+import { loadPreferences } from '../storage/prefs';
 import { memoryStorage, type StorageLike } from '../storage/storage';
 import { App } from './App';
 import type { PuzzleSource } from './puzzleSource';
@@ -538,14 +540,16 @@ describe('App', () => {
   });
 
   it('opens the share dialog with a link to the puzzle on screen', async () => {
-    await startApp();
+    const { storage } = await startApp();
     fireEvent.click(screen.getByRole('button', { name: 'Share' }));
     const dialog = screen.getByRole('dialog', { name: 'Share this puzzle' });
     expect(
       within(dialog).getByText(new RegExp(`\\?p=${encodeGivens(PUZZLE.givens)}$`)),
     ).toBeInTheDocument();
-    // Mid-game there is no time to share, so no name to put on it.
+    // Mid-game there is no time to share, so no name to put on it — nor a
+    // player ID, which is not even made.
     expect(within(dialog).queryByRole('textbox')).not.toBeInTheDocument();
+    expect(loadPreferences(storage)).not.toHaveProperty('playerId');
     // The board waits, hidden, behind the dialog.
     expect(screen.queryByRole('grid')).not.toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Close' }));
@@ -792,7 +796,7 @@ describe('App', () => {
   });
 
   it('shares the time from the completion dialog, and starts the next game from it', async () => {
-    await startApp({ source: fakeSource(nearlySolved([0]), PUZZLE) });
+    const { storage } = await startApp({ source: fakeSource(nearlySolved([0]), PUZZLE) });
     press(String(answerAt(0)));
     await screen.findByRole('dialog', { name: 'Solved!' });
     fireEvent.click(screen.getByRole('button', { name: 'Share your time' }));
@@ -801,9 +805,11 @@ describe('App', () => {
     expect(share.querySelector('.share__text')).toHaveTextContent(
       /^Sudoku · Easy · 0:\d\d No mistakes/,
     );
-    expect(new URL(share.querySelector('.share__url')!.textContent!).searchParams.get('a')).toBe(
-      'm0',
-    );
+    const url = new URL(share.querySelector('.share__url')!.textContent!);
+    expect(url.searchParams.get('a')).toBe('m0');
+    // And this browser's player ID, made as Share opened, in the first link it showed.
+    expect(url.searchParams.get('u')).toMatch(/^[0-9a-z]{10}$/);
+    expect(url.searchParams.get('u')).toBe(loadPreferences(storage).playerId);
     fireEvent.click(within(share).getByRole('button', { name: 'Close' }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
@@ -993,6 +999,550 @@ describe('App', () => {
         }),
       ).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: /Watch/ })).toBeNull();
+    });
+  });
+
+  describe('friends', () => {
+    const ALLY = 'k3x9q7za2m';
+    // Five moves, the last at 0:09: the link's time is 9 seconds.
+    const { puzzle, encoded } = shortSolve();
+    const search = linkFor(puzzle.givens, { t: '9', n: 'Rude', u: ALLY, s: encoded });
+
+    /** A browser that has had a link from ALLY before, and named them `name`. */
+    function named(name: string): StorageLike {
+      const storage = memoryStorage();
+      updateFriends(storage, (friends) =>
+        renameFriend(meetDevice(friends, { id: ALLY, sentAs: 'Al', at: 1 }), ALLY, name),
+      );
+      return storage;
+    }
+
+    /** Skip "Who sent this?", which a first link from ALLY asks before its card. */
+    async function skipWhoSent(): Promise<void> {
+      const prompt = await screen.findByRole('dialog', { name: 'Who sent this?' });
+      fireEvent.click(within(prompt).getByRole('button', { name: 'Skip' }));
+    }
+
+    /** Fill in the shared puzzle's three blanks from the keyboard. */
+    function solveShared(): void {
+      for (const index of [0, 40, 80]) {
+        fireEvent.click(cells()[index]);
+        press(String(answerAt(index, puzzle)));
+      }
+    }
+
+    /** Open History from the header, and Friends from its foot. */
+    function openFriends(): HTMLElement {
+      fireEvent.click(screen.getByRole('button', { name: 'History' }));
+      const history = screen.getByRole('dialog', { name: 'History' });
+      fireEvent.click(within(history).getByRole('button', { name: 'Friends' }));
+      return screen.getByRole('dialog', { name: 'Friends' });
+    }
+
+    /** In Friends, rename the one friend there, from the keyboard, then close it. */
+    async function renameTo(friends: HTMLElement, name: string): Promise<void> {
+      fireEvent.click(within(friends).getByRole('button', { name: /^Rename/ }));
+      const field = within(friends).getByRole('textbox', { name: 'Their name' });
+      await waitFor(() => expect(field).toHaveFocus());
+      fireEvent.change(field, { target: { value: name } });
+      fireEvent.keyDown(field, { key: 'Enter' });
+      expect(friends.querySelector('[role="status"]')).toHaveTextContent(
+        `Renamed: you'll see them as ${name}.`,
+      );
+      fireEvent.click(within(friends).getByRole('button', { name: 'Close' }));
+    }
+
+    it('draws a friend named here by that name everywhere, whatever their link calls them', async () => {
+      renderApp({ storage: named('Dan'), search });
+      await screen.findByRole('heading', { name: 'Ready?' });
+      expect(document.querySelector('.board-overlay__text')).toHaveTextContent(
+        'Dan solved this Easy puzzle in 0:09. Can you beat it?',
+      );
+      expect(screen.getByRole('main')).not.toHaveTextContent(/Rude/);
+
+      fireEvent.click(screen.getByRole('button', { name: "Watch Dan's solve" }));
+      const spoiler = screen.getByRole('dialog', { name: "Watch Dan's solve?" });
+      expect(spoiler).toHaveTextContent('This shows every number Dan placed.');
+      fireEvent.click(within(spoiler).getByRole('button', { name: 'Play it first' }));
+      await screen.findByRole('grid');
+      solveShared();
+
+      const solved = await screen.findByRole('dialog', { name: 'Solved!' });
+      const versus = within(solved).getByRole('region', { name: 'Head to head' });
+      expect(
+        within(versus)
+          .getAllByRole('columnheader')
+          .map((th) => th.textContent),
+      ).toEqual(['You', 'Dan']);
+      expect(versus.querySelector('.comparison__verdict')).toHaveTextContent(
+        /^You were 0:0\d faster than Dan!$/,
+      );
+      fireEvent.click(within(solved).getByRole('button', { name: "Watch Dan's solve" }));
+      expect(screen.getByRole('dialog', { name: "Dan's solve" })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+      fireEvent.click(
+        within(screen.getByRole('dialog', { name: 'Solved!' })).getByRole('button', {
+          name: 'Compare solves',
+        }),
+      );
+      const compared = screen.getByRole('dialog', { name: 'You vs Dan' });
+      expect(compared).not.toHaveTextContent(/Rude/);
+      fireEvent.click(within(compared).getByRole('button', { name: 'Close' }));
+      fireEvent.click(
+        within(screen.getByRole('dialog', { name: 'Solved!' })).getByRole('button', {
+          name: 'Close',
+        }),
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'History' }));
+      const history = screen.getByRole('dialog', { name: 'History' });
+      expect(history.querySelector('.history-item__challenge')).toHaveTextContent(/^vs Dan 0:09/);
+      expect(
+        within(history).getByRole('button', { name: /^Watch Dan's solve, Easy puzzle from / }),
+      ).toBeInTheDocument();
+      expect(history).not.toHaveTextContent(/Rude/);
+      fireEvent.click(within(history).getByRole('button', { name: /^Compare solves, Easy/ }));
+      expect(screen.getByRole('dialog', { name: 'You vs Dan' })).not.toHaveTextContent(/Rude/);
+    });
+
+    it('names them in the offer to play a puzzle solved already', async () => {
+      const storage = named('Dan');
+      upsertRecord(storage, {
+        id: 'mbx3k2f0-done',
+        givens: puzzle.givens,
+        difficulty: puzzle.difficulty,
+        source: 'generated',
+        createdAt: 1,
+        updatedAt: 2,
+        completedAt: 2,
+        status: 'solved',
+        elapsedMs: 60_000,
+        assists: { autoCandidates: false, hints: 0, checks: 0, reveals: 0 },
+        challenge: null,
+      });
+      renderApp({ storage, search });
+      const offer = await screen.findByRole('dialog', { name: "You've solved this one" });
+      expect(within(offer).getAllByRole('columnheader')[1]).toHaveTextContent('Dan');
+      expect(offer.querySelector('.comparison__verdict')).toHaveTextContent('Dan was 0:51 faster.');
+      expect(within(offer).getByRole('button', { name: "Watch Dan's solve" })).toBeInTheDocument();
+      expect(offer).not.toHaveTextContent(/Rude/);
+    });
+
+    it('offers Friends in History only once a link with an ID has been opened', async () => {
+      await startApp();
+      fireEvent.click(screen.getByRole('button', { name: 'History' }));
+      expect(screen.queryByRole('button', { name: 'Friends' })).toBeNull();
+    });
+
+    it('renames a friend from History, every race of theirs following, focus back on Friends', async () => {
+      const { storage } = renderApp({ search });
+      await skipWhoSent();
+      await screen.findByRole('heading', { name: 'Ready?' });
+      // Noted as the link opened, by the name it gave.
+      expect(loadFriends(storage)).toEqual([
+        { devices: [{ id: ALLY, sentAs: 'Rude', lastAt: expect.any(Number) }] },
+      ]);
+      fireEvent.click(within(screen.getByRole('main')).getByRole('button', { name: 'Start' }));
+      await screen.findByRole('grid');
+      solveShared();
+      fireEvent.click(
+        within(await screen.findByRole('dialog', { name: 'Solved!' })).getByRole('button', {
+          name: 'Close',
+        }),
+      );
+
+      const friends = openFriends();
+      expect(within(friends).getByRole('listitem')).toHaveTextContent(
+        /^Rude.*Name from their latest link/,
+      );
+      await renameTo(friends, 'Bob');
+
+      const history = screen.getByRole('dialog', { name: 'History' });
+      await waitFor(() =>
+        expect(within(history).getByRole('button', { name: 'Friends' })).toHaveFocus(),
+      );
+      expect(history.querySelector('.history-item__challenge')).toHaveTextContent(/^vs Bob 0:09/);
+      expect(loadFriends(storage)[0].name).toBe('Bob');
+      // And its solve, watched from History, is headed with it.
+      fireEvent.click(
+        within(history).getByRole('button', { name: /^Watch Bob's solve, Easy puzzle from / }),
+      );
+      expect(screen.getByRole('dialog', { name: "Bob's solve" })).toBeInTheDocument();
+    });
+
+    it('names the head-to-head a solve brings by a name given since its link was opened', async () => {
+      renderApp({ search });
+      await skipWhoSent();
+      await screen.findByRole('heading', { name: 'Ready?' });
+      fireEvent.click(within(screen.getByRole('main')).getByRole('button', { name: 'Start' }));
+      await screen.findByRole('grid');
+      // Named mid-game: the race's record still holds the link's "Rude".
+      await renameTo(openFriends(), 'Bob');
+      fireEvent.click(
+        within(screen.getByRole('dialog', { name: 'History' })).getByRole('button', {
+          name: 'Close',
+        }),
+      );
+      solveShared();
+      const solved = await screen.findByRole('dialog', { name: 'Solved!' });
+      expect(within(solved).getAllByRole('columnheader')[1]).toHaveTextContent('Bob');
+      expect(solved.querySelector('.comparison__verdict')).toHaveTextContent(
+        /^You were 0:0\d faster than Bob!$/,
+      );
+      expect(within(solved).getByRole('button', { name: "Watch Bob's solve" })).toBeInTheDocument();
+    });
+
+    it('merges two friends in Friends, and splits them apart again, History following each', async () => {
+      const DAN = 'p0d4wq81xe';
+      const storage = memoryStorage();
+      updateFriends(storage, (friends) =>
+        renameFriend(meetDevice(friends, { id: DAN, sentAs: 'D', at: 1 }), DAN, 'Dan'),
+      );
+      renderApp({ storage, search });
+      await skipWhoSent();
+      await screen.findByRole('heading', { name: 'Ready?' });
+      fireEvent.click(within(screen.getByRole('main')).getByRole('button', { name: 'Start' }));
+      await screen.findByRole('grid');
+      solveShared();
+      fireEvent.click(
+        within(await screen.findByRole('dialog', { name: 'Solved!' })).getByRole('button', {
+          name: 'Close',
+        }),
+      );
+
+      // Rude, from the link just raced, is Dan on another device.
+      let friends = openFriends();
+      fireEvent.click(
+        within(friends).getByRole('button', {
+          name: /^Merge Rude, latest link .* with another friend$/,
+        }),
+      );
+      const picker = within(friends).getByRole('combobox', { name: 'Same person as' });
+      await waitFor(() => expect(picker).toHaveFocus());
+      expect(picker).toHaveValue(DAN);
+      fireEvent.click(within(friends).getByRole('button', { name: /^Confirm merge, Rude/ }));
+      await waitFor(() =>
+        expect(within(friends).getByRole('button', { name: /^Rename Dan,/ })).toHaveFocus(),
+      );
+      expect(friends.querySelector('[role="status"]')).toHaveTextContent(
+        'Merged into one friend, on 2 devices.',
+      );
+      fireEvent.click(within(friends).getByRole('button', { name: 'Close' }));
+      let history = screen.getByRole('dialog', { name: 'History' });
+      expect(history.querySelector('.history-item__challenge')).toHaveTextContent(/^vs Dan 0:09/);
+      expect(loadFriends(storage)).toEqual([
+        {
+          name: 'Dan',
+          devices: [
+            { id: DAN, sentAs: 'D', lastAt: 1 },
+            { id: ALLY, sentAs: 'Rude', lastAt: expect.any(Number) },
+          ],
+        },
+      ]);
+
+      // Not Dan after all: split off, the race goes by its link's name again.
+      fireEvent.click(within(history).getByRole('button', { name: 'Friends' }));
+      friends = screen.getByRole('dialog', { name: 'Friends' });
+      expect(within(friends).getByRole('list', { name: /^Devices, Dan,/ })).toHaveTextContent(
+        /^D · latest link .*Rude · latest link /,
+      );
+      fireEvent.click(
+        within(friends).getByRole('button', { name: /^Split off Rude, .* from Dan$/ }),
+      );
+      await waitFor(() =>
+        expect(within(friends).getByRole('button', { name: /^Rename Rude,/ })).toHaveFocus(),
+      );
+      expect(friends.querySelector('[role="status"]')).toHaveTextContent(
+        'Split off: a friend of their own now.',
+      );
+      fireEvent.click(within(friends).getByRole('button', { name: 'Close' }));
+      history = screen.getByRole('dialog', { name: 'History' });
+      expect(history.querySelector('.history-item__challenge')).toHaveTextContent(/^vs Rude 0:09/);
+      expect(loadFriends(storage).map((friend) => friend.name ?? null)).toEqual(['Dan', null]);
+    });
+
+    it('names the races an imported file brings by the names given where it came from', async () => {
+      // Another browser, which raced the link and named its sender Dan.
+      const other = named('Dan');
+      const noHelp = { autoCandidates: false, hints: 0, checks: 0, reveals: 0 };
+      upsertRecord(other, {
+        id: 'mbx3k2f0-race',
+        givens: puzzle.givens,
+        difficulty: puzzle.difficulty,
+        source: 'shared',
+        createdAt: 1,
+        updatedAt: 2,
+        completedAt: 2,
+        status: 'solved',
+        elapsedMs: 8000,
+        assists: noHelp,
+        challenge: { name: 'Rude', seconds: 9, assists: noHelp, playerId: ALLY },
+      });
+      const file = new File([exportHistory(other, 2)], 'history.json', {
+        type: 'application/json',
+      });
+
+      await startApp();
+      fireEvent.click(screen.getByRole('button', { name: 'History' }));
+      const history = screen.getByRole('dialog', { name: 'History' });
+      expect(within(history).queryByRole('button', { name: 'Friends' })).toBeNull();
+      await act(async () => {
+        fireEvent.change(history.querySelector('input[type="file"]')!, {
+          target: { files: [file] },
+        });
+      });
+      expect(within(history).getByRole('status')).toHaveTextContent(
+        'Imported 1 new game, updated 0.',
+      );
+      expect(history.querySelector('.history-item__challenge')).toHaveTextContent(/^vs Dan 0:09/);
+      expect(history).not.toHaveTextContent(/Rude/);
+      // And Friends, with someone in it now, to rename them in.
+      fireEvent.click(within(history).getByRole('button', { name: 'Friends' }));
+      const friends = screen.getByRole('dialog', { name: 'Friends' });
+      expect(within(friends).getByRole('listitem')).toHaveTextContent(/^Dan/);
+    });
+
+    describe('who sent this?', () => {
+      const prompt = () => screen.getByRole('dialog', { name: 'Who sent this?' });
+      const field = () => within(prompt()).getByRole('textbox', { name: 'Their name' });
+      /** One of the card's own buttons — the header's timer is named Start or Resume too. */
+      const cardButton = (name: string) =>
+        within(document.querySelector<HTMLElement>('.board-overlay')!).getByRole('button', {
+          name,
+        });
+
+      /**
+       * Wait for the question, its field focused: by then its Escape is heard
+       * too, listened for from the same mount as the focus is given.
+       */
+      async function asked(): Promise<void> {
+        await screen.findByRole('dialog', { name: 'Who sent this?' });
+        await waitFor(() => expect(field()).toHaveFocus());
+      }
+
+      /** A solve of the shared puzzle, a day ago in a minute: the link's 0:09 is faster. */
+      function solvedBefore(storage: StorageLike): void {
+        upsertRecord(storage, {
+          id: 'mbx3k2f0-done',
+          givens: puzzle.givens,
+          difficulty: puzzle.difficulty,
+          source: 'generated',
+          createdAt: Date.now() - 86_400_000,
+          updatedAt: Date.now() - 86_400_000,
+          completedAt: Date.now() - 86_400_000,
+          status: 'solved',
+          elapsedMs: 60_000,
+          assists: { autoCandidates: false, hints: 0, checks: 0, reveals: 0 },
+          challenge: null,
+        });
+      }
+
+      it('asks of the first link from someone new before its card, the board’s place blank and the clock stopped', async () => {
+        let played = 1_000_000;
+        const { storage } = renderApp({ search, clock: () => played });
+        await asked();
+        expect(field()).toHaveValue('Rude');
+        // Nothing behind it: no card yet, and no name from the link to read through the scrim.
+        expect(screen.queryByRole('heading', { name: 'Ready?' })).toBeNull();
+        expect(document.querySelector('.board-overlay--veiled')).toBeInTheDocument();
+        expect(screen.getByRole('main')).not.toHaveTextContent(/Rude/);
+        // Noted as it opened, unnamed.
+        expect(loadFriends(storage)).toEqual([
+          { devices: [{ id: ALLY, sentAs: 'Rude', lastAt: expect.any(Number) }] },
+        ]);
+
+        // Ten seconds asking, and a P and a digit typed: the field's, not the game's.
+        played += 10_000;
+        expect(press('p', {}, field())).toBe(true);
+        expect(press('5', {}, field())).toBe(true);
+        fireEvent.change(field(), { target: { value: '  Ally ' } });
+        fireEvent.keyDown(field(), { key: 'Enter' });
+
+        expect(screen.queryByRole('dialog')).toBeNull();
+        expect(document.querySelector('.board-overlay__text')).toHaveTextContent(
+          'Ally solved this Easy puzzle in 0:09. Can you beat it?',
+        );
+        expect(cardButton("Watch Ally's solve")).toBeInTheDocument();
+        await waitFor(() => expect(cardButton('Start')).toHaveFocus());
+        // Never started: the timer waits on Start, at nothing.
+        expect(
+          within(screen.getByRole('banner')).getByRole('button', { name: 'Start' }),
+        ).toBeInTheDocument();
+        expect(document.querySelector('.timer__time')).toHaveTextContent('0:00');
+        expect(loadFriends(storage)[0].name).toBe('Ally');
+      });
+
+      it.each([
+        ['Skip', () => fireEvent.click(within(prompt()).getByRole('button', { name: 'Skip' }))],
+        ['Escape', () => fireEvent.keyDown(field(), { key: 'Escape' })],
+      ])(
+        'goes by the link’s name once skipped with %s, the sender noted all the same',
+        async (_, skip) => {
+          const { storage } = renderApp({ search });
+          await asked();
+          skip();
+          expect(screen.queryByRole('dialog')).toBeNull();
+          expect(document.querySelector('.board-overlay__text')).toHaveTextContent(
+            'Rude solved this Easy puzzle in 0:09. Can you beat it?',
+          );
+          await waitFor(() => expect(cardButton('Start')).toHaveFocus());
+          expect(loadFriends(storage)).toEqual([
+            { devices: [{ id: ALLY, sentAs: 'Rude', lastAt: expect.any(Number) }] },
+          ]);
+        },
+      );
+
+      it('asks nothing of a later link from the same sender, whatever it calls them', async () => {
+        const first = renderApp({ search });
+        await asked();
+        fireEvent.click(within(prompt()).getByRole('button', { name: 'Skip' }));
+        first.unmount();
+
+        const near = nearlySolved([0, 1, 2]);
+        renderApp({
+          storage: first.storage,
+          search: linkFor(near.givens, { t: '200', n: 'Ruder', u: ALLY }),
+        });
+        await screen.findByRole('heading', { name: 'Ready?' });
+        expect(screen.queryByRole('dialog')).toBeNull();
+        expect(document.querySelector('.board-overlay__text')).toHaveTextContent(
+          'Ruder solved this Easy puzzle in 3:20. Can you beat it?',
+        );
+      });
+
+      it.each([
+        [
+          'a link without an ID',
+          () => memoryStorage(),
+          linkFor(puzzle.givens, { t: '9', n: 'Rude' }),
+        ],
+        [
+          "this browser's own link",
+          () => {
+            const storage = memoryStorage();
+            storage.setItem('sudoku.prefs', JSON.stringify({ playerId: ALLY }));
+            return storage;
+          },
+          search,
+        ],
+        ['a broken link', () => memoryStorage(), `?p=!!!&t=9&n=Rude&u=${ALLY}`],
+        [
+          'a link from someone heard from before, still unnamed',
+          () => {
+            const storage = memoryStorage();
+            updateFriends(storage, (friends) =>
+              meetDevice(friends, { id: ALLY, sentAs: 'Al', at: 1 }),
+            );
+            return storage;
+          },
+          search,
+        ],
+      ])('asks nothing of %s', async (_, storage, link) => {
+        renderApp({ storage: storage(), search: link });
+        await settle();
+        expect(screen.queryByRole('dialog')).toBeNull();
+        expect(document.querySelector('.board-overlay--veiled')).toBeNull();
+      });
+
+      it('makes them one with a friend chosen as on another device, the card naming that friend', async () => {
+        const DAN = 'p0d4wq81xe';
+        const storage = memoryStorage();
+        updateFriends(storage, (friends) =>
+          renameFriend(meetDevice(friends, { id: DAN, sentAs: 'D', at: 1 }), DAN, 'Dan'),
+        );
+        renderApp({ storage, search });
+        await asked();
+        const choice = within(prompt()).getByRole('combobox', {
+          name: 'Or is it a friend you have already, on another device?',
+        });
+        expect(choice).toHaveValue('');
+        fireEvent.change(choice, { target: { value: DAN } });
+        expect(field()).toBeDisabled();
+        fireEvent.click(within(prompt()).getByRole('button', { name: 'Save' }));
+
+        expect(screen.queryByRole('dialog')).toBeNull();
+        expect(document.querySelector('.board-overlay__text')).toHaveTextContent(
+          'Dan solved this Easy puzzle in 0:09. Can you beat it?',
+        );
+        expect(cardButton("Watch Dan's solve")).toBeInTheDocument();
+        await waitFor(() => expect(cardButton('Start')).toHaveFocus());
+        expect(loadFriends(storage)).toEqual([
+          {
+            name: 'Dan',
+            devices: [
+              { id: DAN, sentAs: 'D', lastAt: 1 },
+              { id: ALLY, sentAs: 'Rude', lastAt: expect.any(Number) },
+            ],
+          },
+        ]);
+      });
+
+      it('holds back the offer to play a puzzle solved already, which follows it under the name given', async () => {
+        const storage = memoryStorage();
+        solvedBefore(storage);
+        renderApp({ storage, search });
+        await asked();
+        expect(screen.queryByRole('dialog', { name: "You've solved this one" })).toBeNull();
+        fireEvent.change(field(), { target: { value: 'Ally' } });
+        fireEvent.click(within(prompt()).getByRole('button', { name: 'Save' }));
+
+        const offer = screen.getByRole('dialog', { name: "You've solved this one" });
+        expect(within(offer).getAllByRole('columnheader')[1]).toHaveTextContent('Ally');
+        expect(offer.querySelector('.comparison__verdict')).toHaveTextContent(
+          'Ally was 0:51 faster.',
+        );
+        expect(offer).not.toHaveTextContent(/Rude/);
+        await waitFor(() =>
+          expect(within(offer).getByRole('button', { name: 'Play again' })).toHaveFocus(),
+        );
+      });
+
+      it('reopens an unfinished attempt behind it, paused, on Resume once skipped', async () => {
+        const storage = memoryStorage();
+        const first = await startApp({ storage, source: fakeSource(puzzle) });
+        fireEvent.click(cells()[0]);
+        press(String(answerAt(0, puzzle)));
+        fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
+        first.unmount();
+
+        renderApp({ storage, search });
+        await asked();
+        expect(screen.queryByRole('heading', { name: 'Paused' })).toBeNull();
+        fireEvent.click(within(prompt()).getByRole('button', { name: 'Skip' }));
+        expect(screen.getByRole('heading', { name: 'Paused' })).toBeInTheDocument();
+        await waitFor(() => expect(cardButton('Resume')).toHaveFocus());
+        // Still paused: the board stays hidden until Resume.
+        expect(screen.queryByRole('grid')).toBeNull();
+      });
+
+      it('says, under the board, when a newer version recorded the solve', async () => {
+        renderApp({
+          search: linkFor(puzzle.givens, { t: '9', n: 'Rude', u: ALLY, s: 'zAAAAAAAA' }),
+        });
+        await asked();
+        expect(
+          screen.getByText('This solve needs a newer version of the game to watch.', {
+            selector: '.hint-bar span',
+          }),
+        ).toBeInTheDocument();
+      });
+
+      it('names the daily in the offer it holds back, its date checked meanwhile', async () => {
+        const NOON = new Date(2026, 9, 13, 12).getTime();
+        const TODAY = '2026-10-13';
+        const now = () => NOON;
+        const storage = memoryStorage();
+        solvedBefore(storage);
+        const dailies = fakeDailies({ now, held: true, puzzles: { [`${TODAY}/hard`]: puzzle } });
+        renderApp({ storage, now, dailies, search: `${search}&d=${TODAY}` });
+        await asked();
+        // The date checks out while the question waits.
+        dailies.release();
+        await settle();
+        fireEvent.click(within(prompt()).getByRole('button', { name: 'Skip' }));
+        const offer = screen.getByRole('dialog', { name: "You've solved this one" });
+        expect(offer).toHaveTextContent(/You solved the Hard daily for 13 Oct/);
+      });
     });
   });
 

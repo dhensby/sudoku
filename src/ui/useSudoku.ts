@@ -40,6 +40,17 @@ import {
 } from '../core';
 import { ArchiveUnavailableError, dailies as appDailies, type DailyStore } from '../daily/dailies';
 import {
+  challengerName,
+  indexFriends,
+  meetDevice,
+  mergeFriends,
+  namedChallenge,
+  renameFriend,
+  splitDevice,
+  type Friend,
+  type FriendIndex,
+} from '../storage/friends';
+import {
   computeStats,
   deleteRecord,
   exportHistory,
@@ -50,6 +61,7 @@ import {
   hasWatched,
   importHistory,
   loadDailyLedger,
+  loadFriends,
   loadHistory,
   markSeen,
   markWatched,
@@ -58,6 +70,7 @@ import {
   saveCurrentId,
   savedGameIds,
   sweepMoveLogs,
+  updateFriends,
   upsertRecord,
   type Challenge,
   type DifficultyStats,
@@ -66,6 +79,7 @@ import {
 } from '../storage/history';
 import { loadEncodedMoveLog } from '../storage/moveLogs';
 import {
+  ensurePlayerId,
   hasNewerTheme,
   loadPreferences,
   setLastDifficulty,
@@ -106,6 +120,7 @@ import {
   shareTargetOfRecord,
   tagDaily,
   type ChallengeOffer,
+  type LinkSharer,
   type Moment,
   type PauseReason,
   type Phase,
@@ -119,6 +134,7 @@ import { useStableActions } from './useStableActions';
 import type { CompareSource } from './dialogs/CompareDialog';
 import type { HistoryPlace } from './dialogs/HistoryDialog';
 import type { PlaybackSource } from './dialogs/PlaybackDialog';
+import type { WhoSentAnswer } from './dialogs/WhoSentDialog';
 import {
   WATCHED_SOLVE_TEXT,
   compareSource,
@@ -308,8 +324,14 @@ export type DialogState =
     }
   /** `returnTo` reopens History when the share was started from it. */
   | { kind: 'share'; target: ShareTarget; returnTo: 'history' | null }
-  /** `place`: back from watching a game, the list as it was (see `HistoryPlace`). */
-  | { kind: 'history'; place?: HistoryPlace }
+  /**
+   * `place`: back from watching a game, the list as it was (see
+   * `HistoryPlace`); `isBackFromFriends`, from Friends, so focus goes back to
+   * the button that opened it.
+   */
+  | { kind: 'history'; place?: HistoryPlace; isBackFromFriends?: boolean }
+  /** Everyone who has sent a time, to name them (see `FriendsDialog`), opened from History. */
+  | { kind: 'friends' }
   | { kind: 'settings' }
   | { kind: 'help' }
   /**
@@ -339,6 +361,12 @@ export type DialogState =
   | { kind: 'confirmReset' }
   /** The daily calendar and streaks. */
   | { kind: 'daily'; calendar: CalendarView }
+  /**
+   * "Who sent this?": the first link from a player ID no friend here holds,
+   * asked before anything else the link opens. `offer`, to play a solved
+   * puzzle again, waits behind it (see `closeDialog`).
+   */
+  | { kind: 'whoSent'; sharer: LinkSharer; offer: ChallengeOffer | null }
   | PlaybackView
   | CompareView;
 
@@ -478,6 +506,37 @@ export interface SudokuActions {
   canCompareRecord: (record: GameRecord) => boolean;
   /** From History: compare a solved game with the friend's it was raced against. */
   compareRecord: (id: string, place: HistoryPlace) => void;
+  /**
+   * From History: the friends who have sent times, read afresh, to name them.
+   * The game behind stays paused, as for History, until History closes.
+   */
+  openFriends: () => void;
+  /**
+   * From Friends: the friend holding `deviceId` — any of their devices — is
+   * called `name` from now on, on every race of theirs; '' takes the name off,
+   * back to each race's own link name (see `renameFriend`).
+   */
+  renameFriend: (deviceId: string, name: string) => void;
+  /**
+   * From Friends: the friend holding `fromId` is the friend holding `intoId`,
+   * on another device — one friend from now on, under into's name, or else
+   * from's, and into's key (see `mergeFriends`).
+   */
+  mergeFriends: (fromId: string, intoId: string) => void;
+  /**
+   * From Friends: `deviceId` leaves the friend it was merged with, to be a
+   * friend of its own, unnamed, keyed by its own ID; its races show the name
+   * each link gave again (see `splitDevice`).
+   */
+  splitFriend: (deviceId: string) => void;
+  /**
+   * From "Who sent this?": the name to know the link's sender by, or the
+   * friend they already are, on another device (see `WhoSentAnswer`), then
+   * on to whatever the link opens — its card, or the offer it held back.
+   * Their device was noted as the link opened, so an empty name, like Skip,
+   * leaves them going by their links' names.
+   */
+  answerWhoSent: (answer: WhoSentAnswer) => void;
   deleteRecord: (id: string) => void;
   exportHistory: () => string;
   importHistory: (json: string) => ImportResult;
@@ -576,6 +635,11 @@ export interface Sudoku {
    */
   isThemeNewer: boolean;
   playerName: string;
+  /**
+   * This browser's player ID (see `Preferences.playerId`), for Share to put
+   * in a link with a time; null until the first time one is shared.
+   */
+  playerId: string | null;
   announcement: Announcement | null;
   notice: Notice | null;
   dialog: DialogState | null;
@@ -590,7 +654,8 @@ export interface Sudoku {
   /**
    * The friend whose solve the game on screen's link carried, while it is
    * unsolved and the solve can be watched — the Ready and Paused cards offer
-   * "Watch Dan's solve" — or null. `name` is null for a link with none.
+   * "Watch Dan's solve" — or null. `name` is the one given the friend here,
+   * else their link's (see `challengerName`), and null for neither.
    */
   friendSolve: { name: string | null } | null;
   /**
@@ -604,6 +669,17 @@ export interface Sudoku {
    * offers "Compare solves".
    */
   canCompareSolves: boolean;
+  /**
+   * The friends whose links have been opened here, or brought by an import
+   * (see `friends.ts`), as last read: at startup, as History or Friends
+   * opens, after an import, and after each change made here.
+   */
+  friends: readonly Friend[];
+  /**
+   * `friends` by device ID, for drawing every challenger under the name given
+   * them (see `namedChallenge`). Its identity changes only with `friends`.
+   */
+  friendIndex: FriendIndex;
   actions: SudokuActions;
 }
 
@@ -856,6 +932,11 @@ function dialogFriendSolve(
   return null;
 }
 
+/** An offer to play a daily again, once its link's date has checked out. */
+function asDailyOffer(offer: ChallengeOffer, date: DateKey, tier: Difficulty): ChallengeOffer {
+  return { ...offer, puzzle: { ...offer.puzzle, difficulty: tier }, daily: date };
+}
+
 /** A full board that is not the solution: the case the boardFull notice is for. */
 function isFullButWrong(game: GameState): boolean {
   return game.status === 'playing' && isBoardFull(game);
@@ -896,6 +977,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       options.search ?? window.location.search,
       { wall: now(), clock: clock() },
       prefs.settings.startInAutoCandidate,
+      prefs.playerId ?? null,
     ),
   );
 
@@ -907,9 +989,14 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
   // The tier of the game on screen when History deleted it, to be replaced
   // as History closes.
   const [vacancy, setVacancy] = useState<Difficulty | null>(null);
-  const [dialog, setDialog] = useState<DialogState | null>(() =>
-    startup.offer === null ? null : { kind: 'challenge', offer: startup.offer },
-  );
+  const [dialog, setDialog] = useState<DialogState | null>(() => {
+    // The first link from someone new asks who sent it before anything else
+    // it opens; an offer to play a solved puzzle again waits behind it.
+    if (startup.sharer?.isNew === true) {
+      return { kind: 'whoSent', sharer: startup.sharer, offer: startup.offer };
+    }
+    return startup.offer === null ? null : { kind: 'challenge', offer: startup.offer };
+  });
   const [history, setHistory] = useState<HistoryView>(() => ({
     records: startup.records,
     resumableIds: new Set<string>(),
@@ -940,6 +1027,10 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
   const [announcement, setAnnouncement] = useState<Announcement | null>(null);
   const [heldModifiers, setHeldModifiers] = useState<ReadonlySet<string>>(NO_MODIFIERS);
   const [completionDue, setCompletionDue] = useState<CompletionResult | null>(null);
+  // The friends as last read; every write goes through `updateFriends`, which
+  // applies it to the list as stored, so another tab's names are never lost.
+  const [friends, setFriends] = useState<readonly Friend[]>(startup.friends);
+  const friendIndex = useMemo(() => indexFriends(friends), [friends]);
 
   // The session last written to storage, so the save timer skips a session
   // a handler has already saved. Written only in handlers and timers.
@@ -1071,11 +1162,30 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       ? encodeMoveLog(session.moves)
       : loadEncodedMoveLog(storage, id);
 
-  /** Open the player on a friend's solve, coming back to `returnTo` as it closes. */
+  /**
+   * Open Share on `target`. A time going out takes this browser's player ID,
+   * made now if there is none yet (see `ensurePlayerId`): the two updates
+   * land together, so the dialog's first link already carries it. A bare
+   * puzzle names no one, and makes none.
+   */
+  const openShare = (target: ShareTarget, returnTo: 'history' | null): void => {
+    if (target.result !== null && prefs.playerId === undefined) setPrefs(ensurePlayerId(storage));
+    setDialog({ kind: 'share', target, returnTo });
+  };
+
+  /**
+   * Open the player on a friend's solve, coming back to `returnTo` as it
+   * closes — headed with the name given them, if they have one (see
+   * `challengerName`). Fixed as it opens, which is enough: nothing can rename
+   * them while it is open, and wherever it goes back to draws the name afresh.
+   */
   const showFriendSolve = (solve: FriendSolve, returnTo: PlaybackView['returnTo']): void => {
     setDialog({
       kind: 'playback',
-      source: friendSolveSource(solve, dateKeyOf(now())),
+      source: friendSolveSource(
+        { ...solve, challenge: namedChallenge(friendIndex, solve.challenge) },
+        dateKeyOf(now()),
+      ),
       returnTo,
     });
   };
@@ -1506,6 +1616,12 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
   // address bar and storage from being touched twice for nothing.
   const handleStartup = useEffectEvent(() => {
     if (startup.isLinkConsumed) clearShareParams();
+    // Whoever sent a link with a time and an ID is noted among the friends —
+    // new, or heard from again — whatever the link goes on to open.
+    if (startup.sharer !== null) {
+      const sighting = startup.sharer;
+      setFriends(updateFriends(storage, (list) => meetDevice(list, sighting)));
+    }
     // Logs that no longer go with a record — whose game a tab on an older
     // version, which knows nothing of logs, pruned, or finished without them.
     sweepMoveLogs(storage);
@@ -1642,16 +1758,12 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       }
     }
     // A link to a daily already solved: the offer to play it again names it,
-    // and a fresh attempt is recorded as it.
+    // and a fresh attempt is recorded as it — the offer still held back
+    // behind "Who sent this?" too, so that it comes out named.
     if (dialog?.kind === 'challenge' && dialog.offer.puzzle.givens === hint.givens) {
-      setDialog({
-        kind: 'challenge',
-        offer: {
-          ...dialog.offer,
-          puzzle: { ...dialog.offer.puzzle, difficulty: tier },
-          daily: date,
-        },
-      });
+      setDialog({ kind: 'challenge', offer: asDailyOffer(dialog.offer, date, tier) });
+    } else if (dialog?.kind === 'whoSent' && dialog.offer?.puzzle.givens === hint.givens) {
+      setDialog({ ...dialog, offer: asDailyOffer(dialog.offer, date, tier) });
     }
   });
   useEffect(() => {
@@ -1980,7 +2092,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       const current = pauseFor('dialog', t) ?? session;
       if (kind === 'share') {
         if (current === null) return;
-        setDialog({ kind, target: shareTargetOf(current), returnTo: null });
+        openShare(shareTargetOf(current), null);
         return;
       }
       if (kind === 'techniques') {
@@ -1994,9 +2106,11 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
         return;
       }
       if (kind === 'history') {
-        // Its list should show the game on screen as it is now.
+        // Its list should show the game on screen as it is now — and its
+        // friends by the names another tab may have given them since.
         if (current !== null && savedRef.current !== current) persist(current, t);
         setHistory(readHistory(t.wall));
+        setFriends(loadFriends(storage));
       }
       setDialog({ kind });
     },
@@ -2018,6 +2132,13 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       setDialog({ kind: 'techniques', initial });
     },
     closeDialog: () => {
+      // The offer the first link held back comes next, the game behind it
+      // still held by a dialog. Without one, the prompt closes as any dialog
+      // does: on the link's card, its clock never started.
+      if (dialog?.kind === 'whoSent' && dialog.offer !== null) {
+        setDialog({ kind: 'challenge', offer: dialog.offer });
+        return;
+      }
       // The guide opened from a walkthrough goes back to it, still paused.
       if (dialog?.kind === 'techniques' && dialog.returnTo !== undefined) {
         setDialog(dialog.returnTo);
@@ -2036,6 +2157,13 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
         } else {
           setDialog({ ...returnTo, isBackFromCompare: true });
         }
+        return;
+      }
+      // Friends goes back to History, focus on the button that opened it; the
+      // game stays paused until History closes.
+      if (dialog?.kind === 'friends') {
+        setHistory(readHistory(now()));
+        setDialog({ kind: 'history', isBackFromFriends: true });
         return;
       }
       if (dialog?.kind === 'playback') {
@@ -2081,7 +2209,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     },
     shareResult: () => {
       if (session === null) return;
-      setDialog({ kind: 'share', target: shareTargetOf(session), returnTo: null });
+      openShare(shareTargetOf(session), null);
     },
     playAgain: () => {
       if (dialog?.kind !== 'challenge') return;
@@ -2118,11 +2246,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     shareRecord: (id) => {
       const record = history.records.find((entry) => entry.id === id);
       if (record === undefined) return;
-      setDialog({
-        kind: 'share',
-        target: shareTargetOfRecord(record, watchedLogOf(id)),
-        returnTo: 'history',
-      });
+      openShare(shareTargetOfRecord(record, watchedLogOf(id)), 'history');
     },
     canWatchRecord: (record) =>
       record.status === 'solved' && isWatchable(record.givens, watchedLogOf(record.id)),
@@ -2197,9 +2321,19 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       const own = dialogOwnSolve();
       if (own === null || dialogSolve === null) return;
       if (dialog?.kind !== 'completion' && dialog?.kind !== 'challenge') return;
+      // Theirs under the name given them, if they have one (see
+      // `challengerName`), as their solve's playback is: fixed as it opens,
+      // which is enough — nothing can rename them while it is open, and the
+      // dialog it goes back to draws the name afresh.
+      const { solve } = dialogSolve;
       setDialog({
         kind: 'compare',
-        source: compareSource(own.game, own.encoded, dialogSolve.solve, own.today),
+        source: compareSource(
+          own.game,
+          own.encoded,
+          { ...solve, challenge: namedChallenge(friendIndex, solve.challenge) },
+          own.today,
+        ),
         returnTo:
           dialog.kind === 'completion'
             ? { kind: 'completion', result: dialog.result }
@@ -2215,11 +2349,42 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       const encoded = watchedLogOf(id)!;
       const solve = friendSolveOf(record)!;
       // The game behind stays paused, for History, and nothing is written.
+      // Theirs goes under the name given them, if any, as from the Solved
+      // dialog: the stored record carries only the name its link gave.
       setDialog({
         kind: 'compare',
-        source: compareSource(record, encoded, solve, dateKeyOf(now())),
+        source: compareSource(
+          record,
+          encoded,
+          { ...solve, challenge: namedChallenge(friendIndex, solve.challenge) },
+          dateKeyOf(now()),
+        ),
         returnTo: { kind: 'history', place },
       });
+    },
+    openFriends: () => {
+      // History paused the game already: Friends keeps it so.
+      setFriends(loadFriends(storage));
+      setDialog({ kind: 'friends' });
+    },
+    renameFriend: (deviceId, name) =>
+      setFriends(updateFriends(storage, (list) => renameFriend(list, deviceId, name))),
+    mergeFriends: (fromId, intoId) =>
+      setFriends(updateFriends(storage, (list) => mergeFriends(list, fromId, intoId))),
+    splitFriend: (deviceId) =>
+      setFriends(updateFriends(storage, (list) => splitDevice(list, deviceId))),
+    answerWhoSent: (answer) => {
+      if (dialog?.kind !== 'whoSent') return;
+      const { id } = dialog.sharer;
+      // Named, or one with the friend chosen, whose name then stands.
+      setFriends(
+        updateFriends(storage, (list) =>
+          answer.kind === 'name'
+            ? renameFriend(list, id, answer.name)
+            : mergeFriends(list, id, answer.friendId),
+        ),
+      );
+      actions.closeDialog();
     },
     deleteRecord: (id) => {
       deleteRecord(storage, id);
@@ -2238,7 +2403,11 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     exportHistory: () => exportHistory(storage, now()),
     importHistory: (json) => {
       const result = importHistory(storage, json);
-      if (result.ok) setHistory(readHistory(now()));
+      if (result.ok) {
+        setHistory(readHistory(now()));
+        // Its friends name its races, and may give History a Friends to open.
+        setFriends(loadFriends(storage));
+      }
       return result;
     },
 
@@ -2294,15 +2463,19 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     settings,
     isThemeNewer,
     playerName: prefs.playerName,
+    playerId: prefs.playerId ?? null,
     announcement,
     notice,
     dialog,
     history,
     isCelebrating: session?.isCelebrating ?? false,
     canWatchSolve,
-    friendSolve: cardSolve === null ? null : { name: cardSolve.challenge.name },
+    friendSolve:
+      cardSolve === null ? null : { name: challengerName(friendIndex, cardSolve.challenge) },
     canWatchChallengeSolve: dialogSolve !== null,
     canCompareSolves: dialogSolve !== null && dialogOwnSolve() !== null,
+    friends,
+    friendIndex,
     actions,
   };
 }

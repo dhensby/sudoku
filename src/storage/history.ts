@@ -37,6 +37,7 @@ import {
   deleteItem,
   isDifficulty,
   isObject,
+  isPlayerId,
   normaliseName,
   readItem,
   readJson,
@@ -54,6 +55,7 @@ import {
   saveMoveLog,
   storeMoveLogs,
 } from './moveLogs';
+import { mergeFriendLists, normaliseFriends, type Friend } from './friends';
 import {
   EMPTY_LEDGER,
   addToLedger,
@@ -66,7 +68,7 @@ import {
  * The history of every game played, the saved state of unfinished ones, and
  * the puzzles the player has seen.
  *
- * Six kinds of key here, and the move logs' two (see `moveLogs.ts`):
+ * Eight kinds of key here, and the move logs' two (see `moveLogs.ts`):
  *   sudoku.history      the list of `GameRecord`s, newest first
  *   sudoku.game.<id>    one game's saved state, opaque here (the game module
  *                       validates it on the way back in)
@@ -79,6 +81,9 @@ import {
  *   sudoku.watched      the share codes of puzzles whose shared solve was
  *                       watched before they were solved, least recently
  *                       watched first (see `markWatched`)
+ *   sudoku.friends      the friends whose links were opened: their devices, by the
+ *                       player ID each one's links carry, and the name given each
+ *                       friend (see friends.ts)
  *   sudoku.moves.<id>   one game's move log
  *   sudoku.moveLogs     the ids that have a `sudoku.moves.<id>` key
  *
@@ -126,7 +131,11 @@ import {
 
 /** Someone else's result that a shared link carried, to compare against. */
 export interface Challenge {
-  /** The challenger's display name from the link, or null. */
+  /**
+   * The challenger's display name from the link, or null. Never rewritten: a
+   * name the player gives the friend is drawn in its place (see
+   * `challengerName`), and taking that name off brings this one back.
+   */
   name: string | null;
   /** Their time in whole seconds. */
   seconds: number;
@@ -156,6 +165,14 @@ export interface Challenge {
    * left to the moment someone asks to watch it.
    */
   log?: string;
+  /**
+   * The player ID of the browser the link came from (`u=`, see `Preferences.playerId`):
+   * what the friends list knows the challenger by (see `friends.ts`), whatever name
+   * each link gives. Absent for a link without one — from a version before IDs, with
+   * a garbled one, or a bare name — whose challenger is known only by the name it
+   * gave. Like `name`, never updated here.
+   */
+  playerId?: string;
 }
 
 /**
@@ -302,6 +319,7 @@ const GAME_KEY_PREFIX = 'sudoku.game.';
 const SEEN_KEY = 'sudoku.seen';
 const LEDGER_KEY = 'sudoku.dailyLedger';
 const WATCHED_KEY = 'sudoku.watched';
+const FRIENDS_KEY = 'sudoku.friends';
 
 /** What a log in a link is made of (see `src/core/moves.ts`): base64url. */
 const SHARED_LOG_PATTERN = /^[A-Za-z0-9_-]+$/;
@@ -346,6 +364,7 @@ const CHALLENGE_FIELDS = fieldsOf<Challenge>({
   assists: true,
   mistakes: true,
   log: true,
+  playerId: true,
 });
 
 function gameKey(id: string): string {
@@ -363,6 +382,23 @@ export function createGameId(now: number, rng: RandomFn = createRng()): string {
   let tail = '';
   for (let k = 0; k < 4; k++) tail += ID_ALPHABET[Math.floor(rng() * ID_ALPHABET.length)];
   return `${time.toString(36)}-${tail}`;
+}
+
+/** How many characters a player ID is drawn with. */
+const PLAYER_ID_LENGTH = 10;
+
+/**
+ * A fresh player ID (see `Preferences.playerId`): ten random base-36
+ * characters, from the CSPRNG by default. Some 51.7 bits, so two browsers
+ * sharing links with the same friend all but never draw the same one, and
+ * nothing in it needs escaping in a link.
+ */
+export function createPlayerId(rng: RandomFn = createRng()): string {
+  let id = '';
+  for (let k = 0; k < PLAYER_ID_LENGTH; k++) {
+    id += ID_ALPHABET[Math.floor(rng() * ID_ALPHABET.length)];
+  }
+  return id;
 }
 
 // ---------------------------------------------------------------------------
@@ -498,7 +534,8 @@ function isSharedLog(value: unknown): value is string {
  * A usable challenge, or null — a broken one only costs the comparison, so it
  * never sinks the record. Broken mistakes cost only themselves: the time and
  * help still stand, with the mistakes not known. So does a broken solve,
- * which is dropped on its own (see `isSharedLog`).
+ * which is dropped on its own (see `isSharedLog`), and a broken player ID,
+ * which leaves the challenger known by their name alone.
  */
 function normaliseChallenge(value: unknown): Challenge | null {
   if (!isObject(value)) return null;
@@ -514,6 +551,7 @@ function normaliseChallenge(value: unknown): Challenge | null {
     // Left off rather than null, as on a record: absent is "not known".
     ...(mistakes === null ? {} : { mistakes }),
     ...(isSharedLog(value.log) ? { log: value.log } : {}),
+    ...(isPlayerId(value.playerId) ? { playerId: value.playerId } : {}),
   };
 }
 
@@ -1595,6 +1633,40 @@ function mergeWatched(storage: StorageLike, incoming: unknown): void {
 }
 
 // ---------------------------------------------------------------------------
+// Friends
+// ---------------------------------------------------------------------------
+
+/*
+ * The friends whose links have been opened, and the names given them: what
+ * they are, and every change to them, is `friends.ts`'s business. Here they
+ * are only read and written.
+ */
+
+/** The friends list (see `friends.ts`). Junk costs only itself. */
+export function loadFriends(storage: StorageLike): Friend[] {
+  return normaliseFriends(readJson(storage, FRIENDS_KEY));
+}
+
+/**
+ * Apply `change` to the list as stored now (another tab may have changed it
+ * since this one read it), and write the result with MAKE_ROOM unless it is the
+ * same list. Returns the list as changed, whether or not the write went through.
+ *
+ * Making room never sheds the list itself: it is small (see
+ * `MAX_FRIEND_DEVICES`), and a name lost would be a friend gone back to
+ * whatever their links call them.
+ */
+export function updateFriends(
+  storage: StorageLike,
+  change: (friends: readonly Friend[]) => readonly Friend[],
+): readonly Friend[] {
+  const friends = loadFriends(storage);
+  const changed = change(friends);
+  if (changed !== friends) writeItem(storage, FRIENDS_KEY, JSON.stringify(changed), MAKE_ROOM);
+  return changed;
+}
+
+// ---------------------------------------------------------------------------
 // Export and import
 // ---------------------------------------------------------------------------
 
@@ -1604,9 +1676,12 @@ function mergeWatched(storage: StorageLike, incoming: unknown): void {
  * other side; every game's move log, as stored (`moves`, by id — a file from
  * before logs were kept has none, and still imports); the puzzles seen, so one
  * played and deleted here is no fresh puzzle there either; the puzzles whose
- * shared solve was watched, so none of them sets a time there; and the daily
- * ledger, so streaks travel whole. Safari deletes the storage of a site not
- * visited for seven days, so this file is the only backup there is.
+ * shared solve was watched, so none of them sets a time there; the daily
+ * ledger, so streaks travel whole; and the friends list, so the names given
+ * friends here name their races there. Not this browser's own player ID,
+ * which is in the preferences, not the file: two browsers with one ID could
+ * never be told apart. Safari deletes the storage of a site not visited for
+ * seven days, so this file is the only backup there is.
  */
 export function exportHistory(storage: StorageLike, now: number): string {
   const records = loadHistory(storage);
@@ -1629,6 +1704,7 @@ export function exportHistory(storage: StorageLike, now: number): string {
   const seen = readSeen(storage);
   const watched = readWatched(storage);
   const dailyLedger = encodeLedger(loadDailyLedger(storage));
+  const friends = loadFriends(storage);
   return JSON.stringify(
     {
       app: EXPORT_APP,
@@ -1640,6 +1716,7 @@ export function exportHistory(storage: StorageLike, now: number): string {
       seen,
       watched,
       dailyLedger,
+      friends,
     },
     null,
     2,
@@ -1670,7 +1747,10 @@ export function exportHistory(storage: StorageLike, now: number): string {
  * after which every unfinished attempt at a puzzle watched, here or there, is
  * flagged as watched (see `markWatched`), the file's own among them. Flags are
  * kept on both sides: a record replaced by the file's newer copy keeps its
- * own, as the flag is never taken off.
+ * own, as the flag is never taken off. Its friends' devices new here are
+ * added to the friends list too (see `mergeFriendLists`), never renaming,
+ * merging or splitting a friend here; a file from before the list was
+ * exported has none, which costs only the names given there.
  */
 export function importHistory(storage: StorageLike, json: string): ImportResult {
   let data: unknown;
@@ -1692,6 +1772,7 @@ export function importHistory(storage: StorageLike, json: string): ImportResult 
   mergeSeen(storage, data.seen);
   mergeLedger(storage, data.dailyLedger);
   mergeWatched(storage, data.watched);
+  updateFriends(storage, (local) => mergeFriendLists(local, normaliseFriends(data.friends)));
 
   const current = loadCurrentId(storage);
   const records = loadHistory(storage);

@@ -450,6 +450,14 @@
   font-size: 16px;
 }
 
+/* A field with no say for now — "Who sent this?"'s name, once a friend chosen
+   below it is who sent the link — greyed as a disabled button is: its own
+   colours would otherwise keep it looking live, whatever it holds. */
+.field__input:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .field__input:focus-visible {
   border-color: var(--accent);
   outline: 2px solid var(--accent);
@@ -1105,6 +1113,74 @@
   margin-bottom: 10px;
 }
 
+/* Friends comes first in the footer, set apart on the left from the file
+   buttons: it is about people, not this history's safekeeping. */
+.history__friends {
+  margin-right: auto;
+}
+
+@media (max-width: 499px) {
+  /* On a phone, a row of its own: three icon buttons do not fit 320px. Named
+     through the footer to match the sheet's full-width button rule, at the
+     same weight and after it, so it wins. Its bottom margin is the footer's
+     8px gap between rows, which History's footer drops for its status line. */
+  .dialog__footer .history__friends {
+    flex-basis: 100%;
+    margin: 0 0 8px;
+  }
+}
+
+/* ---- Friends ----
+   Laid out as History's rows are (`history-item`): what a friend goes by and
+   when they last sent a time; their devices, once they have two, each with
+   Split off; and Rename, with Merge… once there is anyone to merge them
+   with, on a line beneath. */
+.friends__intro {
+  margin: 0;
+}
+
+/* A name from a link, or one given here: a long one, with no spaces to break
+   at, wraps rather than pushing the row wider than the sheet. */
+.friends-item__name {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+/* The same for the name a named friend's latest link gives, in the line under
+   it: past the row's edge it would not scroll but be cut off, the row's
+   `content-visibility` clipping it. On the line, not the row, so the buttons'
+   own words never break to fit. */
+.friends-item .history-item__status {
+  overflow-wrap: anywhere;
+}
+
+/* A merged friend's devices, one to a line under what the friend goes by:
+   the name each one's links gave, and Split off beside it, under it once
+   the name leaves no room. A long name breaks anywhere, as the friend's own
+   does, rather than pushing the line wider than the sheet. */
+.friends-item__devices {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.friends-item__device {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  overflow-wrap: anywhere;
+}
+
+/* Renaming or merging: the field (or the picker) takes the row, its two
+   buttons beneath it. */
+.friends-item__edit .field {
+  flex-basis: 100%;
+  margin: 0;
+}
+
 /* ---- Settings ---- */
 .settings__group {
   min-width: 0;
@@ -1337,6 +1413,25 @@
   margin: 4px 0 0;
   color: var(--text-muted);
   font-size: 0.875rem;
+}
+
+/* "Who sent this?": the message, then the name field, then — once there are
+   other friends — the picker of who else they may be, a field's own 16px
+   apart; the body's padding is the space below, so the fields keep no margin
+   of their own. */
+.who-sent {
+  display: grid;
+  gap: 16px;
+}
+
+.who-sent .field {
+  margin: 0;
+}
+
+/* A name from a link with no spaces to break at wraps in the field's hint,
+   rather than pushing the sheet wider than the screen. */
+.who-sent .field__hint {
+  overflow-wrap: anywhere;
 }
 
 /* ---- Help: the way into the technique guide ---- */
@@ -1938,13 +2033,20 @@
 
 /* A native select, so the platform's own picker opens on a phone; drawn
    flat, with a chevron in the text colour that the select's own arrow
-   would not take. */
-.guide__picker {
+   would not take. The friend pickers ("Who sent this?", and a merge in
+   Friends) are drawn the same, inside a field that spaces them itself. */
+.guide__picker,
+.friends__picker {
   position: relative;
   margin: 2px 0 16px;
 }
 
-.guide__picker::after {
+.friends__picker {
+  margin: 0;
+}
+
+.guide__picker::after,
+.friends__picker::after {
   content: '';
   position: absolute;
   top: 50%;
@@ -1958,7 +2060,8 @@
   pointer-events: none;
 }
 
-.guide__select {
+.guide__select,
+.friends__select {
   width: 100%;
   min-height: 44px;
   padding: 8px 40px 8px 12px;
@@ -1973,7 +2076,8 @@
   -webkit-appearance: none;
 }
 
-.guide__select:focus-visible {
+.guide__select:focus-visible,
+.friends__select:focus-visible {
   border-color: var(--accent);
   outline: 2px solid var(--accent);
   outline-offset: 0;
@@ -3956,6 +4060,7 @@
   .tabs__tab:focus-visible,
   .field__input:focus-visible,
   .guide__select:focus-visible,
+  .friends__select:focus-visible,
   .walkthrough__title:focus-visible,
   .walkthrough__question:focus-visible,
   .walkthrough__page:focus-visible,

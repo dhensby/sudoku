@@ -10,6 +10,7 @@ import {
   encodeMoveLog,
   formatGrid,
   mulberry32,
+  newerFields,
   parseGrid,
   type Digit,
   type MoveLog,
@@ -27,6 +28,7 @@ import {
   recordedMistakes,
   repairMistakeCounts,
   createGameId,
+  createPlayerId,
   deleteGameBlob,
   deleteRecord,
   exportHistory,
@@ -38,6 +40,7 @@ import {
   importHistory,
   loadDailyLedger,
   loadCurrentId,
+  loadFriends,
   loadGameBlob,
   loadHistory,
   markSeen,
@@ -46,9 +49,11 @@ import {
   saveGameMoves,
   savedGameIds,
   sweepMoveLogs,
+  updateFriends,
   upsertRecord,
   type GameRecord,
 } from './history';
+import { meetDevice, mergeFriends, renameFriend, splitDevice, type Friend } from './friends';
 import {
   loadEncodedMoveLog,
   loadMoveLog,
@@ -184,6 +189,24 @@ describe('createGameId', () => {
     saveCurrentId(storage, id);
     expect(loadCurrentId(storage)).toBe(id);
     expect(upsertRecord(storage, playing(id, 1))).toHaveLength(1);
+  });
+});
+
+describe('createPlayerId', () => {
+  it('is ten random base-36 characters', () => {
+    expect(createPlayerId(mulberry32(1))).toMatch(/^[0-9a-z]{10}$/);
+  });
+
+  it('is deterministic for a seeded random source, and differs from one draw to the next', () => {
+    expect(createPlayerId(mulberry32(7))).toBe(createPlayerId(mulberry32(7)));
+    const rng = mulberry32(3);
+    expect(createPlayerId(rng)).not.toBe(createPlayerId(rng));
+  });
+
+  it('uses the platform CSPRNG by default', () => {
+    const made = new Set(Array.from({ length: 20 }, () => createPlayerId()));
+    expect(made.size).toBeGreaterThan(1);
+    for (const id of made) expect(id).toMatch(/^[0-9a-z]{10}$/);
   });
 });
 
@@ -782,6 +805,220 @@ describe('puzzles seen', () => {
   });
 });
 
+describe('the friends list', () => {
+  const FRIENDS = 'sudoku.friends';
+  const ALLY = 'k3x9q7za2m';
+  const ZED = 'z8c2m5r1to';
+  const met = (friends: readonly Friend[]) =>
+    meetDevice(friends, { id: ALLY, sentAs: 'Al', at: 5 });
+
+  it('reads nothing stored as no friends', () => {
+    expect(loadFriends(memoryStorage())).toEqual([]);
+  });
+
+  it.each([
+    ['not JSON', '['],
+    ['not a list', '{"k3x9q7za2m":{"name":"Ally"}}'],
+  ])('reads a stored list that is %s as no friends', (_label, raw) => {
+    const storage = memoryStorage();
+    storage.setItem(FRIENDS, raw);
+    expect(loadFriends(storage)).toEqual([]);
+  });
+
+  it('skips junk in the stored list one entry at a time', () => {
+    const storage = memoryStorage();
+    storage.setItem(
+      FRIENDS,
+      JSON.stringify([
+        42,
+        { devices: [{ id: 'BAD ID', lastAt: 1 }] },
+        { devices: [{ id: ALLY, lastAt: 5 }] },
+      ]),
+    );
+    expect(loadFriends(storage)).toStrictEqual([{ devices: [{ id: ALLY, lastAt: 5 }] }]);
+  });
+
+  it('writes a change, and reads back what it wrote', () => {
+    const storage = memoryStorage();
+    const changed = updateFriends(storage, met);
+    expect(changed).toStrictEqual([{ devices: [{ id: ALLY, sentAs: 'Al', lastAt: 5 }] }]);
+    expect(loadFriends(storage)).toStrictEqual(changed);
+  });
+
+  it('writes nothing for a change that changes nothing', () => {
+    const storage = countingStorage();
+    updateFriends(storage, met);
+    expect(storage.sets).toEqual([FRIENDS]);
+    // The same link again, and a rename of nobody: the same list back.
+    updateFriends(storage, met);
+    updateFriends(storage, (friends) => renameFriend(friends, ZED, 'Zed'));
+    expect(storage.sets).toEqual([FRIENDS]);
+  });
+
+  it('applies a change to the list as stored now, keeping what another tab wrote since', () => {
+    const storage = memoryStorage();
+    const read = updateFriends(storage, met);
+    // Another tab notes a second friend, and names the first.
+    storage.setItem(
+      FRIENDS,
+      JSON.stringify(
+        renameFriend(meetDevice(read, { id: ZED, sentAs: null, at: 6 }), ALLY, 'Ally'),
+      ),
+    );
+    const changed = updateFriends(storage, (friends) => renameFriend(friends, ZED, 'Zed'));
+    expect(changed).toStrictEqual([
+      { name: 'Ally', devices: [{ id: ALLY, sentAs: 'Al', lastAt: 5 }] },
+      { name: 'Zed', devices: [{ id: ZED, lastAt: 6 }] },
+    ]);
+    expect(loadFriends(storage)).toStrictEqual(changed);
+  });
+
+  it('makes room in a full storage, then writes', () => {
+    const storage = quotaStorage();
+    const records: GameRecord[] = [];
+    for (let i = 0; i < 15; i++) {
+      records.push(playing(`p${i}`, i, { updatedAt: 100 + i }));
+      saveGameBlob(storage, `p${i}`, 'x'.repeat(1000));
+    }
+    seed(storage, records);
+    storage.capacity = storage.used() + 20;
+    updateFriends(storage, met);
+    // Saved games of the least recently played went to make room.
+    expect(hasGameBlob(storage, 'p0')).toBe(false);
+    expect(loadFriends(storage)).toHaveLength(1);
+  });
+
+  it('gives up quietly when the storage refuses every write, still giving back the change', () => {
+    const storage = throwingStorage({ set: true });
+    let changed: readonly Friend[] = [];
+    expect(() => {
+      changed = updateFriends(storage, met);
+    }).not.toThrow();
+    expect(changed).toStrictEqual([{ devices: [{ id: ALLY, sentAs: 'Al', lastAt: 5 }] }]);
+    expect(loadFriends(storage)).toEqual([]);
+  });
+
+  describe('export and import', () => {
+    const AL = 'p0d4wq81xe';
+    const challenge = { name: 'Rude', seconds: 323, assists: NO_ASSISTS, playerId: ALLY };
+
+    /** A browser that raced a link from ALLY, and named them `name`. */
+    function racedAgainst(name: string): StorageLike {
+      const storage = memoryStorage();
+      upsertRecord(storage, solved('a', 1, 5000, { challenge }));
+      updateFriends(storage, (friends) => renameFriend(met(friends), ALLY, name));
+      return storage;
+    }
+
+    /** An export file built by hand, with `friends` as given. */
+    function file(friends: unknown): string {
+      return JSON.stringify({
+        app: 'sudoku',
+        version: 1,
+        exportedAt: 0,
+        records: [solved('b', 2)],
+        friends,
+      });
+    }
+
+    it('carries the friends list, which names the races it brings in another browser', () => {
+      const source = racedAgainst('Ally');
+      const exported = JSON.parse(exportHistory(source, 0)) as { friends: unknown };
+      expect(exported.friends).toStrictEqual([
+        { name: 'Ally', devices: [{ id: ALLY, sentAs: 'Al', lastAt: 5 }] },
+      ]);
+
+      const target = memoryStorage();
+      importHistory(target, exportHistory(source, 0));
+      expect(loadFriends(target)).toStrictEqual(loadFriends(source));
+      // The race keeps its link's name: the one given is drawn in its place.
+      expect(loadHistory(target)[0].challenge).toEqual(challenge);
+    });
+
+    it("never carries this browser's own player ID", () => {
+      const source = racedAgainst('Ally');
+      source.setItem('sudoku.prefs', JSON.stringify({ playerId: 'm3m3m3m3m3' }));
+      expect(exportHistory(source, 0)).not.toContain('m3m3m3m3m3');
+    });
+
+    it("adds the file's friends to the ones here, even with no record new", () => {
+      const target = racedAgainst('Ally');
+      const source = memoryStorage();
+      upsertRecord(source, solved('a', 1, 5000, { challenge }));
+      updateFriends(source, (friends) =>
+        renameFriend(meetDevice(friends, { id: ZED, sentAs: null, at: 6 }), ZED, 'Zed'),
+      );
+      expect(importHistory(target, exportHistory(source, 0))).toEqual({
+        ok: true,
+        added: 0,
+        updated: 0,
+      });
+      expect(loadFriends(target).map((friend) => friend.name)).toEqual(['Ally', 'Zed']);
+    });
+
+    it.each([
+      ['no friends at all', undefined],
+      ['friends that are not a list', { [ALLY]: { name: 'Ally' } }],
+      ['nothing but junk among them', [42, { name: 'No devices' }]],
+    ])('imports a file with %s, the friends here left alone', (_label, friends) => {
+      const storage = racedAgainst('Ally');
+      const before = storage.getItem(FRIENDS);
+      expect(importHistory(storage, file(friends))).toEqual({ ok: true, added: 1, updated: 0 });
+      expect(storage.getItem(FRIENDS)).toBe(before);
+      // Nor is an empty list written where there was none.
+      const empty = memoryStorage();
+      expect(importHistory(empty, file(friends))).toEqual({ ok: true, added: 1, updated: 0 });
+      expect(empty.getItem(FRIENDS)).toBeNull();
+    });
+
+    it('writes no friends for the same file imported again', () => {
+      const json = exportHistory(racedAgainst('Ally'), 0);
+      const storage = countingStorage();
+      importHistory(storage, json);
+      expect(storage.sets.filter((key) => key === FRIENDS)).toHaveLength(1);
+      importHistory(storage, json);
+      expect(storage.sets.filter((key) => key === FRIENDS)).toHaveLength(1);
+    });
+
+    it('never renames, merges or splits a friend here', () => {
+      // Here: Ally named, and a second device merged into her, then split off again.
+      const storage = racedAgainst('Ally');
+      updateFriends(storage, (friends) =>
+        splitDevice(
+          mergeFriends(meetDevice(friends, { id: AL, sentAs: 'Al', at: 7 }), AL, ALLY),
+          AL,
+        ),
+      );
+      // There: the two devices one friend, under another name, heard from
+      // since, and a third device with them that is new here.
+      importHistory(
+        storage,
+        file([
+          {
+            name: 'Someone',
+            devices: [
+              { id: AL, sentAs: 'Ruder', lastAt: 9 },
+              { id: ALLY, lastAt: 9 },
+              { id: ZED, lastAt: 9 },
+            ],
+          },
+        ]),
+      );
+      // Only the new device is taken, to the friend here of the first the
+      // file lists — still unnamed, and still apart from Ally.
+      expect(loadFriends(storage)).toStrictEqual([
+        { name: 'Ally', devices: [{ id: ALLY, sentAs: 'Al', lastAt: 5 }] },
+        {
+          devices: [
+            { id: AL, sentAs: 'Al', lastAt: 7 },
+            { id: ZED, lastAt: 9 },
+          ],
+        },
+      ]);
+    });
+  });
+});
+
 describe('saved games', () => {
   it('round-trips any JSON value under a namespaced key', () => {
     const storage = memoryStorage();
@@ -1004,6 +1241,7 @@ describe('exportHistory', () => {
       seen: [],
       watched: [],
       dailyLedger: {},
+      friends: [],
     });
     // Indented, for anyone who opens the file.
     expect(json).toContain('\n  "records"');
@@ -2839,15 +3077,43 @@ describe('shared solves and puzzles watched', () => {
     });
   });
 
+  describe("a challenger's player ID", () => {
+    const ID = 'k3x9q7za2m';
+
+    it('is kept as the link carried it', () => {
+      const storage = memoryStorage();
+      upsertRecord(storage, playing('a', 1, { challenge: { ...challenge, playerId: ID } }));
+      expect(loadHistory(storage)[0].challenge).toEqual({ ...challenge, playerId: ID });
+    });
+
+    it.each([
+      ['garbled', 'BAD ID'],
+      ['not a string', 12345678],
+    ])('is dropped on its own when %s, the challenge kept', (_, playerId) => {
+      const storage = memoryStorage();
+      seed(storage, [playing('a', 1, { challenge: { ...challenge, playerId } as never })]);
+      expect(loadHistory(storage)[0].challenge).toEqual(challenge);
+    });
+
+    it('survives a tab from before IDs, which keeps it as a newer field', () => {
+      // What that tab knew of a challenge: everything but the ID.
+      const before = ['name', 'seconds', 'assists', 'mistakes', 'log'];
+      expect(newerFields({ ...challenge, playerId: ID }, before)).toEqual({ playerId: ID });
+    });
+  });
+
   describe("friends' solves in a full storage", () => {
     const LOG = 'B'.repeat(2000);
+    const ID = 'k3x9q7za2m';
 
     /** 400 finished games with a friend's solve, 20 unfinished ones with saved boards, p19 on screen. */
     function fullStorage(): ReturnType<typeof quotaStorage> {
       const storage = quotaStorage();
       const records: GameRecord[] = [];
       for (let i = 0; i < 400; i++) {
-        records.push(solved(`s${i}`, i * 10, 60_000, { challenge: { ...challenge, log: LOG } }));
+        records.push(
+          solved(`s${i}`, i * 10, 60_000, { challenge: { ...challenge, playerId: ID, log: LOG } }),
+        );
       }
       for (let i = 0; i < 20; i++) {
         const log = i === 19 ? LOG : undefined;
@@ -2873,8 +3139,11 @@ describe('shared solves and puzzles watched', () => {
       expect(
         after.filter((record) => record.challenge?.log !== undefined).map((r) => r.id),
       ).toEqual(['p19']);
-      // Each challenge keeps its name and time: only the solve to watch went.
-      expect(after.find((record) => record.id === 's0')?.challenge).toEqual(challenge);
+      // Each challenge keeps its name, time and player ID: only the solve to watch went.
+      expect(after.find((record) => record.id === 's0')?.challenge).toEqual({
+        ...challenge,
+        playerId: ID,
+      });
       expect(savedGameIds(storage).size).toBe(20);
     });
 

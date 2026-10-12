@@ -1,11 +1,33 @@
 import { formatDuration, type Assists } from '../../core';
-import { assistPartText, assistParts, describeAssists } from '../format';
+import { friendLabel, lastLinkAt, type Friend } from '../../storage/friends';
+import { assistPartText, assistParts, describeAssists, formatDate } from '../format';
 
 /*
  * Small pieces of English the dialogs share. The general vocabulary (tier
  * labels, counts, the assists list, dates) lives in `../format`; these are
  * the dialog-specific turns of phrase built on it.
  */
+
+/**
+ * How much a name field takes while typing — the player's own in Share, and
+ * a friend's in Friends. Generous on purpose: the name is tidied and, past 24
+ * characters, cut short with an ellipsis on the way out (`normaliseName`), and a
+ * field that stops accepting keys mid-emoji, or mid-paste of a name with
+ * stray spaces, feels broken. This matches the tidier's own UTF-16 ceiling.
+ */
+export const NAME_INPUT_MAX = 64;
+
+/**
+ * A friend as an option in a picker of friends — "Who sent this?"'s, and a
+ * merge's in Friends — names them: "Ally · Today 14:05", "No name · 3 Oct".
+ * What they go by, and when their latest link came, which tells two of one
+ * name apart. Plain text, as an option holds no markup, so no <bdi>: names
+ * are tidied of direction controls (see `normaliseName`), so at worst a
+ * right-to-left one sits the other side of its date.
+ */
+export function friendOption(friend: Friend, now: number): string {
+  return `${friendLabel(friend) ?? 'No name'} · ${formatDate(lastLinkAt(friend), now)}`;
+}
 
 /** "With auto candidates, 2 hints" — or null for a time earned unaided. */
 export function assistsSentence(assists: Assists): string | null {

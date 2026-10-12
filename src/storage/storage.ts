@@ -183,6 +183,21 @@ export const GAME_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 // Field validators shared by the stores
 // ---------------------------------------------------------------------------
 
+/**
+ * What a player ID may look like (see `Preferences.playerId`, `Challenge.playerId`).
+ * `createPlayerId` writes 10 characters; the pattern is loose so a later version's
+ * longer IDs still load, and has no `_`, so no ID is ever `__proto__`.
+ */
+const PLAYER_ID_PATTERN = /^[0-9a-z]{8,32}$/;
+
+/**
+ * Whether a value read back from the outside world — storage, a file or a
+ * link's `u=` — is shaped like a player ID. Anything else is no ID at all.
+ */
+export function isPlayerId(value: unknown): value is string {
+  return typeof value === 'string' && PLAYER_ID_PATTERN.test(value);
+}
+
 /** A JSON object — not null, not an array. */
 export function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);

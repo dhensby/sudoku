@@ -19,6 +19,7 @@ import {
   openHeaderDialog,
   placedSolve,
   puzzleLink,
+  seedFriends,
   seedHistory,
   selectCell,
   solveFromKeyboard,
@@ -34,11 +35,13 @@ import {
  * Accessibility, checked by machine: axe-core runs its WCAG 2.2 A and AA
  * rules over the states a player meets — the board in play with every kind
  * of mark on it, the Ready and Paused cards, the "…" menu, every dialog (each
- * step of Show me, and the Show me of a missing candidate, among them),
- * each entry of the technique guide, and a step hint with its houses tinted
- * on the board — in the light theme and the dark (and the main ones, the
- * tint among them, in High contrast), and each must come back with no
- * violations at all, with no rule switched off.
+ * step of Show me, the Show me of a missing candidate, Friends with a name
+ * being changed and with two friends being merged, and "Who sent this?"
+ * with friends to choose from, among them), each entry of the technique
+ * guide, and a step hint with its houses tinted on the board — in the light
+ * theme and the dark (and the main ones, the tint among them, in High
+ * contrast), and each must come back with no violations at all, with no
+ * rule switched off.
  * Contrast is the rule that a palette change is likeliest to break:
  * contrast.test.ts holds the tokens to their targets pair by pair, and this
  * is the check that the rendered page, every colour composed, agrees.
@@ -267,6 +270,76 @@ async function compareSolves(page: Page, before?: () => Promise<void>): Promise<
   await compare.getByRole('button', { name: 'Show as table' }).click();
   await expect(compare.getByRole('table', { name: 'Cells solved, of 3' })).toBeVisible();
   await expectAccessible(page, 'two solves compared, shown as a table');
+}
+
+/**
+ * Friends as a browser that has had their links holds them: one named here
+ * on two devices (so their row counts them), one going by their link's name,
+ * and one whose links give none.
+ */
+const SEEDED_FRIENDS = [
+  {
+    name: 'Ally',
+    devices: [
+      { id: 'k3x9q7za2m', sentAs: 'Rude McRudeface', lastAt: Date.UTC(2026, 9, 1, 9) },
+      { id: 'p0d4wq81xe', sentAs: 'Al', lastAt: Date.UTC(2026, 9, 2, 9) },
+    ],
+  },
+  { devices: [{ id: 'q1w2e3r4t5', sentAs: 'Alexandra', lastAt: Date.UTC(2026, 9, 3, 9) }] },
+  { devices: [{ id: 'z8c2m5r1to', lastAt: Date.UTC(2026, 9, 4, 9) }] },
+];
+
+/**
+ * A link from someone new, noted as it opens: "Who sent this?" first, its
+ * field focused on the name the link gave and the seeded friends offered
+ * below it, then skipped; then History with Friends at its foot, Friends —
+ * the new sender and the seeded three, every kind of row, a merged friend's
+ * devices among them — and Friends with a name being changed, and with a
+ * merge open. `before` runs first, on a puzzle of its own (to choose High
+ * contrast, say): the question comes before anything the link opens, the
+ * header's menus with it.
+ */
+async function friendsList(page: Page, before?: () => Promise<void>): Promise<void> {
+  await seedFriends(page, SEEDED_FRIENDS);
+  if (before !== undefined) {
+    await gotoPuzzle(page, EASY.givens);
+    await before();
+  }
+  await gotoPuzzle(page, NEARLY_DONE.givens, {
+    challenge: { seconds: 90, name: 'Newcomer', playerId: 'n3wc0m3r42' },
+  });
+  const whoSent = dialog(page, 'Who sent this?');
+  await expect(whoSent.getByRole('textbox', { name: 'Their name' })).toBeFocused();
+  await expect(whoSent.getByRole('textbox', { name: 'Their name' })).toHaveValue('Newcomer');
+  await expect(
+    whoSent.getByRole('combobox', {
+      name: 'Or is it a friend you have already, on another device?',
+    }),
+  ).toBeVisible();
+  await expectAccessible(page, 'Who sent this?');
+  await whoSent.getByRole('button', { name: 'Skip' }).click();
+  await expect(startButton(page)).toBeVisible();
+  await openHeaderDialog(page, 'History');
+  const open = dialog(page, 'History').getByRole('button', { name: 'Friends' });
+  await expect(open).toBeVisible();
+  await expectAccessible(page, 'History with Friends at its foot');
+
+  await open.click();
+  const friends = dialog(page, 'Friends');
+  const rows = friends.getByRole('list', { name: 'Friends, latest first' }).locator(':scope > li');
+  await expect(rows).toHaveCount(4);
+  await expect(rows.first()).toContainText('Newcomer');
+  await expect(friends.getByRole('list', { name: /^Devices, Ally,/ })).toBeVisible();
+  await expectAccessible(page, 'the Friends dialog');
+
+  await friends.getByRole('button', { name: /^Rename Ally,/ }).click();
+  await expect(friends.getByRole('textbox', { name: 'Their name' })).toBeFocused();
+  await expectAccessible(page, 'Friends with a name being changed');
+
+  await page.keyboard.press('Escape');
+  await friends.getByRole('button', { name: /^Merge Ally,/ }).click();
+  await expect(friends.getByRole('combobox', { name: 'Same person as' })).toBeFocused();
+  await expectAccessible(page, 'Friends with two friends being merged');
 }
 
 /** London noon on a date of October 2026, in epoch ms. */
@@ -554,6 +627,11 @@ for (const scheme of ['light', 'dark'] as const) {
     test('two solves compared: the chart, its table and the overlaid board', async ({ page }) => {
       await compareSolves(page);
     });
+
+    test('a link from someone new, and the friends list', async ({ page }) => {
+      await friendsList(page);
+      await expectScheme(page, scheme);
+    });
   });
 }
 
@@ -715,6 +793,18 @@ for (const { way, isChosen, media } of HIGH_CONTRAST_WAYS) {
         if (isChosen) await chooseHighContrast(page);
         await expectHighContrast(page, isChosen);
       });
+    });
+
+    test('Who sent this?, History with Friends at its foot, and the friends list', async ({
+      page,
+    }) => {
+      await page.emulateMedia(media);
+      await friendsList(page, async () => {
+        if (isChosen) await chooseHighContrast(page);
+        await expectHighContrast(page, isChosen);
+      });
+      // The link opens as a page of its own: its scans were in High contrast too.
+      await expectHighContrast(page, isChosen);
     });
 
     test('watching a solve played back, from History', async ({ page }) => {
@@ -933,6 +1023,16 @@ test.describe('on a phone', () => {
       await sheet.getByRole('combobox', { name: 'Technique' }).selectOption({ label: 'X-Wing' });
       await expect(sheet.getByRole('heading', { level: 3 })).toHaveText('X-Wing');
       await expectAccessible(page, 'the guide as a bottom sheet');
+    });
+  }
+
+  for (const scheme of ['light', 'dark'] as const) {
+    test(`Who sent this? and Friends as bottom sheets, and History's foot, in the ${scheme} theme`, async ({
+      page,
+    }) => {
+      await page.emulateMedia({ colorScheme: scheme });
+      await friendsList(page);
+      await expectScheme(page, scheme);
     });
   }
 

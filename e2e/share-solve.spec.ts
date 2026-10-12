@@ -1,9 +1,11 @@
-import { expect, test, type Browser, type Locator, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { generateDaily } from '../src/daily/generate';
 import {
   NEARLY_DONE,
+  answerWhoSent,
   boardArea,
   copiedText,
+  elsewhere,
   openHeaderDialog,
   placedSolve,
   puzzleLink,
@@ -55,20 +57,8 @@ async function shareWithTheSolve(page: Page): Promise<URL> {
     "You can watch my solve too, once you've had a go.",
   ]);
   const link = new URL(lines.at(-1)!);
-  expect([...link.searchParams.keys()]).toEqual(['p', 't', 'n', 'a', 's']);
+  expect([...link.searchParams.keys()]).toEqual(['p', 't', 'n', 'u', 'a', 's']);
   return link;
-}
-
-/** Run `body` in a fresh browser, as a friend's. */
-async function elsewhere(browser: Browser, body: (page: Page) => Promise<void>): Promise<void> {
-  const context = await browser.newContext();
-  try {
-    const page = await context.newPage();
-    await page.clock.install();
-    await body(page);
-  } finally {
-    await context.close();
-  }
 }
 
 /** Step the player to the solve and close it, back where it was opened. */
@@ -87,6 +77,8 @@ test('a friend plays first, solves it, then watches the solve for nothing', asyn
   const link = await shareWithTheSolve(page);
   await elsewhere(browser, async (b) => {
     await b.goto(link.href);
+    // A first link from Alice's browser: who sent it is asked first, skipped.
+    await answerWhoSent(b);
     await expect(boardArea(b)).toContainText('Alice solved this Easy puzzle in 0:12.');
     await expect(startButton(b)).toBeFocused();
     await watchAlice(b).click();
@@ -122,6 +114,7 @@ test('a friend who watches first solves it with no time recorded', async ({ page
   const link = await shareWithTheSolve(page);
   await elsewhere(browser, async (c) => {
     await c.goto(link.href);
+    await answerWhoSent(c);
     await watchAlice(c).click();
     await spoiler(c).getByRole('button', { name: 'Watch anyway' }).click();
     await watchToTheEnd(c);

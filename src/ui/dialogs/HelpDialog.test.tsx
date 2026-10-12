@@ -97,7 +97,7 @@ describe('HelpDialog', () => {
     expect(section).toHaveTextContent(/it's off until you turn it on/);
     // Product text, not an example: no sample name.
     expect(section).toHaveTextContent(
-      /offers Watch your friend's solve \(with their name, if they gave one\) beside Start/,
+      /offers Watch your friend's solve \(with their name, if you or their link gave one\) beside Start/,
     );
     expect(section).not.toHaveTextContent(/Dan/);
     expect(section).toHaveTextContent(/Once you've solved the puzzle yourself, watching is free/);
@@ -132,6 +132,7 @@ describe('HelpDialog', () => {
       ['Show me how to solve a cell', 'Show me, after a hint'],
       ['New game', 'The + button'],
       ['History, share, settings, help', 'on a phone, the ☰ menu'],
+      ['Friends', 'Friends, at the foot of History'],
       ['Solving techniques', 'The header, or the question after a hint'],
     ];
     for (const [action, pointer] of rows) {
@@ -158,12 +159,63 @@ describe('HelpDialog', () => {
     render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={vi.fn()} />);
     expect(screen.getByText(/Nothing is uploaded/)).toBeInTheDocument();
     expect(screen.getByText(/honour system/)).toBeInTheDocument();
-    expect(screen.getByText(/Everything stays in this browser/)).toBeInTheDocument();
+    expect(screen.getByText(/Everything stays in this browser/)).toHaveTextContent(
+      'Everything stays in this browser: there are no accounts and no tracking. A link with your time carries a random ID for this browser, made the first time you share a time: the ID says nothing else about you.',
+    );
+  });
+
+  it("says a link with a time carries a random ID for the browser, and what it's for", () => {
+    render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={vi.fn()} />);
+    const section = screen.getByRole('heading', { name: 'Racing friends' }).closest('section')!;
+    expect(within(section).getByText(/^A share link carries/)).toHaveTextContent(
+      "A share link carries the puzzle itself — and, once you have solved it, your time, your name, any help you took, your mistakes and a random ID for this browser, so a friend's game can tell your times from anyone else's.",
+    );
+  });
+
+  it('says where Friends is, and that a name given there shows on every time, past ones too', () => {
+    render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={vi.fn()} />);
+    const section = screen.getByRole('heading', { name: 'Racing friends' }).closest('section')!;
+    expect(within(section).getByText(/at the foot of History, lists everyone/)).toHaveTextContent(
+      "Friends, at the foot of History, lists everyone who has sent you a time. Give someone a name there and it's the one you'll see on all their times, past ones too, whatever their links call them; until you do, each time shows the name its link gave.",
+    );
+    // Product text, not an example: no sample name.
+    expect(section).not.toHaveTextContent(/Dan/);
+    // After History's row, where it is found.
+    const actions = within(screen.getByRole('table'))
+      .getAllByRole('rowheader')
+      .map((cell) => cell.textContent);
+    expect(actions.indexOf('Friends')).toBe(actions.indexOf('History, share, settings, help') + 1);
+  });
+
+  it('says the first link from someone new asks who sent it, and what Skip leaves', () => {
+    render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={vi.fn()} />);
+    const section = screen.getByRole('heading', { name: 'Racing friends' }).closest('section')!;
+    expect(within(section).getByText(/^The first link from someone new/)).toHaveTextContent(
+      "The first link from someone new asks who sent it, with the name from their link filled in. Skip it, and they go by their links' names until you name them in Friends.",
+    );
+    // Product text, not an example: no sample name.
+    expect(section).not.toHaveTextContent(/Dan/);
+  });
+
+  it("says the names given friends leave this browser only in History's export", () => {
+    render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={vi.fn()} />);
+    const section = screen.getByRole('heading', { name: 'Privacy' }).closest('section')!;
+    expect(within(section).getByText(/^The names you give friends/)).toHaveTextContent(
+      "The names you give friends never leave this browser, except in History's export.",
+    );
+  });
+
+  it('says a friend on two devices can be merged into one, and split apart again', () => {
+    render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={vi.fn()} />);
+    const section = screen.getByRole('heading', { name: 'Racing friends' }).closest('section')!;
+    expect(within(section).getByText(/^Someone who shares from two devices/)).toHaveTextContent(
+      "Someone who shares from two devices arrives as two friends: say so when the second one's first link asks who sent it, or merge them in Friends. A merged friend lists their devices, and any of them can be split off again.",
+    );
   });
 
   it('says links carry your mistakes, compared beside the help, and explains the dash', () => {
     render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={vi.fn()} />);
-    expect(screen.getByText(/any help you took and your mistakes/)).toBeInTheDocument();
+    expect(screen.getByText(/any help you took, your mistakes/)).toBeInTheDocument();
     // The head-to-head shows a bare dash for a count not known, so Help names it as such.
     expect(screen.getByText(/compared row by row/)).toHaveTextContent(
       "A dash means the mistakes weren't recorded: a link from an older version of the game doesn't carry them, and a solve of yours that wasn't recorded move by move has none to show.",

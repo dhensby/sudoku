@@ -16,7 +16,7 @@ import {
   formatDate,
   formatDay,
 } from '../format';
-import { DownloadIcon, UploadIcon } from '../icons';
+import { DownloadIcon, FriendsIcon, UploadIcon } from '../icons';
 import { COMPARE_LABEL } from '../compareText';
 import { WATCHED_RECORD_TEXT, watchFriendLabel } from '../watch';
 import { WatchFriendText } from '../WatchFriendText';
@@ -69,6 +69,14 @@ export interface HistoryDialogProps {
   /** Returns the export JSON; the dialog turns it into a download. */
   onExport: () => string;
   onImport: (json: string) => ImportResult;
+  /**
+   * Open Friends, the list of everyone who has sent a time, to name them.
+   * Offered at the foot of the list only when given: there is no one to list
+   * until a link with an ID has been opened.
+   */
+  onOpenFriends?: () => void;
+  /** Back from Friends: focus goes back to the button that opened it. */
+  isBackFromFriends?: boolean;
   onClose: () => void;
 }
 
@@ -453,7 +461,9 @@ function AllStats({ stats }: { stats: Record<Difficulty, DifficultyStats> }) {
  * share or delete from — each row's actions on a line of their own
  * under what it says, so the list reads the same whichever a row offers.
  * Export and import keep the history safe from a browser that clears site
- * data (Safari does after a week away).
+ * data (Safari does after a week away). Friends, at its foot, lists everyone
+ * who has sent a time, to name them; the records it is given are already
+ * drawn under those names (see `namedRecord`).
  */
 export function HistoryDialog({
   records,
@@ -473,6 +483,8 @@ export function HistoryDialog({
   onDelete,
   onExport,
   onImport,
+  onOpenFriends,
+  isBackFromFriends = false,
   onClose,
 }: HistoryDialogProps) {
   const ids = useId();
@@ -600,6 +612,19 @@ export function HistoryDialog({
           <p className="history__status" role="status">
             {status && <span key={status.id}>{status.text}</span>}
           </p>
+          {/* First, and set apart from the file buttons on the left: it is
+              about people, not this history's safekeeping. */}
+          {onOpenFriends !== undefined && (
+            <button
+              type="button"
+              className="button history__friends"
+              data-autofocus={isBackFromFriends || undefined}
+              onClick={onOpenFriends}
+            >
+              <FriendsIcon />
+              Friends
+            </button>
+          )}
           <button
             type="button"
             className="button"

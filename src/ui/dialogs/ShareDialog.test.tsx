@@ -85,6 +85,11 @@ describe('ShareDialog', () => {
       expect(dialog()).toHaveTextContent('Try this Hard Sudoku!');
       expect(shownUrl()).toBe(buildShareUrl(shareBaseUrl(), GIVENS));
     });
+
+    it('names no one, whatever player ID it is given', () => {
+      renderShare({ result: null, playerId: 'k3x9q7za2m' });
+      expect(shownUrl()).toBe(buildShareUrl(shareBaseUrl(), GIVENS));
+    });
   });
 
   describe('a solved time', () => {
@@ -113,6 +118,13 @@ describe('ShareDialog', () => {
     it('starts the name field on the remembered name', () => {
       renderShare();
       expect(nameField().value).toBe('Dan');
+    });
+
+    it('says where the name shows, and that a name a friend gives you shows instead', () => {
+      renderShare();
+      expect(nameField().closest('.field')!.querySelector('.field__hint')).toHaveTextContent(
+        "Shown next to your time when a friend opens the link, unless they've given you a name of their own.",
+      );
     });
 
     it('updates the link as the name is typed, tidied as it will be sent', () => {
@@ -149,6 +161,16 @@ describe('ShareDialog', () => {
       fireEvent.keyDown(document, { key: 'Escape' });
       expect(props.onPlayerNameChange).toHaveBeenCalledExactlyOnceWith('Ann');
       expect(props.onClose).toHaveBeenCalledOnce();
+    });
+
+    it("puts this browser's player ID in the link, beside the name or without one", () => {
+      renderShare({ playerId: 'k3x9q7za2m' });
+      expect(shownUrl()).toBe(
+        buildShareUrl(shareBaseUrl(), GIVENS, { ...RESULT, name: 'Dan', playerId: 'k3x9q7za2m' }),
+      );
+      expect(new URL(shownUrl()!).searchParams.get('u')).toBe('k3x9q7za2m');
+      fireEvent.change(nameField(), { target: { value: '' } });
+      expect([...new URL(shownUrl()!).searchParams.keys()]).toEqual(['p', 't', 'u', 'a']);
     });
   });
 

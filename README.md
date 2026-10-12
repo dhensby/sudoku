@@ -60,11 +60,16 @@ your browser.
   comparison is fair. Plus a link of their own to send back. Nothing is uploaded; everything
   travels in the link — your solve too, if you choose: switch on **Include my solve** and your
   friend can watch how you did it, once they've had a go (see [Sharing a solve](#sharing-a-solve)).
+  The link also carries a random ID for your browser, so your friend's game can tell your times
+  apart from anyone else's, whatever name they come with. [Friends](#friends), at the foot of
+  History, lists everyone who has sent you a time: the name you give someone replaces whatever
+  their links call them, on every race of theirs. The first link from someone new asks who sent
+  it. Merge someone's phone and laptop into one friend, or split them apart again.
 - **History and stats** — every game you play is kept: resume unfinished ones, play a solved
   puzzle again, [watch your solve](#watch-your-solve) of it, share it, or delete it. A game you only glanced at — nothing entered, no help
   taken — is dropped when you move on to another, so browsing the levels doesn't clutter the list
-  or count as played. A game raced against a friend's link shows their time, and the help and
-  mistakes it came with under it. Per-difficulty stats show games played and solved, and best and average
+  or count as played. A game raced against a friend's link shows their time — under the name you gave them,
+  if you have — and the help and mistakes it came with under it. Per-difficulty stats show games played and solved, and best and average
   times. Export your history to a file and import it on another browser.
 - **Help when you want it** — Hint points at a cell you can fill next and names the technique
   ("Hidden single: there's only one place for a number in this box"), without ever giving the
@@ -689,8 +694,8 @@ is dropped without a word and the link opens as it would have without it, but fo
 by a newer version, which says so under the board: "This solve needs a newer version of the game
 to watch." A solve that checks out is kept with the challenge (`Challenge.log`).
 
-- **Watching before solving.** The Ready card offers **Watch Dan's solve** ("Watch your friend's
-  solve" for a link with no name) beside Start, and the Paused card beside Resume, for an attempt
+- **Watching before solving.** The Ready card offers **Watch Dan's solve** (the name you gave the
+  friend, if you have, else their link's; "Watch your friend's solve" for a link with no name) beside Start, and the Paused card beside Resume, for an attempt
   reopened from the link. For a puzzle the player has not solved, it asks first, focus on the
   safe choice: "Watch Dan's solve? — This shows every number Dan placed. You haven't solved this
   puzzle yet: if you watch now, you won't be able to record a time for it, now or later." with
@@ -719,7 +724,8 @@ to watch." A solve that checks out is kept with the challenge (`Challenge.log`).
   it as the player closes.
 
 The player is the one your own solves play in (see [Watch your solve](#watch-your-solve)),
-headed "Dan's solve" over the puzzle's tier, or its daily, and their time.
+headed "Dan's solve" (the name you gave the friend, if you have, else their link's) over the
+puzzle's tier, or its daily, and their time.
 
 ## Comparing solves
 
@@ -732,8 +738,9 @@ first, can be compared too: it simply shows no time. Like watching, comparing ch
 no record, count or time moves, and nothing is written — the game behind stays paused, as for any
 dialog, and closing it goes back where it was opened, focus on its Compare solves.
 
-- **The heading:** "You vs Dan" ("You vs your friend" for a link with no name), over the puzzle
-  and both times: "Easy · You 5:23 · Dan 6:40", or "You: no time recorded".
+- **The heading:** "You vs Dan" (the name you gave the friend, if you have, else their link's;
+  "You vs your friend" for a link with no name), over the puzzle and both times: "Easy · You 5:23
+  · Dan 6:40", or "You: no time recorded".
 - **The chart:** the cells each of you had solved — the puzzle's empty cells holding their answer
   — over play time, from 0:00 to the end of the longer solve, a step line each: yours solid, your
   friend's dashed. The mistakes that counted (of both kinds) are triangles on the line, and each
@@ -795,13 +802,18 @@ the game — there is no server and nothing is uploaded.
 | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `?p=<code>`    | The puzzle: its givens packed into ~26–34 URL-safe characters.                                                                                              |
 | `&t=<secs>`    | The sharer's time in whole seconds — the time to beat.                                                                                                      |
-| `&n=<name>`    | The sharer's name (optional; past 24 characters it is cut short with an ellipsis).                                                                          |
+| `&n=<name>`    | The sharer's name (optional; past 24 characters it is cut short with an ellipsis); shown until the friend names you (see [Friends](#friends)).              |
+| `&u=<id>`      | The sharer's player ID: 10 random letters and digits, made once per browser the first time it shares a time. Only with `t=`. Versions before it ignore it.  |
 | `&a=<assists>` | Help the sharer took: `c` auto candidates, `g` guesses checked as entered, `h<N>` hints, `k<N>` checks, `r<N>` reveals; mistakes: `m<N>`, candidate `x<N>`. |
 | `&d=<date>`    | A daily's date (`2026-10-13`): the opener checks it against that day's daily of the tier.                                                                   |
 | `&s=<solve>`   | The sharer's solve, its move log as stored (base64url), only with `t=`: see [Sharing a solve](#sharing-a-solve). Versions before it ignore it.              |
 
 Opening a link:
 
+- **A link from someone new** — an ID not in [Friends](#friends) yet — first asks _Who sent this?_,
+  the board's place blank and the clock stopped, before any of the below. Save names them (the
+  link's name is filled in), Skip goes by their links' names. A link without an ID, or from your own
+  browser, never asks.
 - **A puzzle you haven't played** opens behind a "Ready?" card showing the time to beat, and the
   clock only starts when you press **Start** — so both of you start the same way. Until you do, a
   reload or a second click on the link brings the same card back.
@@ -816,7 +828,8 @@ the parameters are cleared from the address bar once read, so reloading never dr
 A version of the game opens a link from a later one all the same: it skips a letter of `a=` it
 does not know (`g` came after the others), and reads the rest as written. A version from before
 solves were shared skips `s=` too — it only stays in that version's address bar, which clears
-the parameters it knows and no others; harmless, as nothing there reads it.
+the parameters it knows and no others; harmless, as nothing there reads it. A version from before
+player IDs skips `u=` the same way, and leaves it in its address bar.
 
 The mistakes ride in `a=` rather than a parameter of their own, after the help: `m<N>` is always
 there once the count is known — an unaided, mistake-free solve sends `a=m0` — so a link that says
@@ -840,21 +853,89 @@ the board but not the clock, a game with revealed cells never sets a best time, 
 playing a puzzle again once you know it, even after deleting the game you saw it in. A replay's
 time is never offered as one to beat, either: sharing it shares the puzzle alone.
 
+## Friends
+
+Every browser that shares a time sends its player ID with it (`u=`, see
+[Racing friends](#racing-friends)): ten random letters and digits, made once, the first time it
+shares one. That ID, not the name a link gives, is what tells one friend's times from another's —
+a link's name is whatever its sender typed that day, and can change from one link to the next. A
+link without an ID, from a version before them or with a garbled one, is raced as before, under
+its own name.
+
+Every link opened with an ID is noted (`sudoku.friends`, in `src/storage/friends.ts`): the ID,
+the latest name its links gave and when its latest link was opened, whatever the link goes on to
+open — a new game, one you were part-way through, or the offer to play a solved puzzle again. A
+link from your own browser's ID is not. **Friends**, at the foot of History (shown once there is
+anyone in it), lists everyone noted, the most recent link first — what each goes by, when their
+latest link came, and what their links call them — with **Rename** on each. The name you give
+someone there is the one you see on every race of theirs: the Ready card, **Watch Dan's solve**
+and the warning before it, the solve played back, **Compare solves**, the head-to-head when you
+finish, the offer to play a solved puzzle again, and History's "vs Dan" — past races included, as names are worked out
+as they are drawn, never written into the history. Each race keeps the name its own link gave,
+which shows again if you clear the name you gave (save it empty). Saving the name a link gave
+keeps it too, whatever their later links call themselves. A race from before player IDs keeps its
+link's name for good, and so does a race of a device whose links came in before Friends existed,
+until its next link notes it. Other tabs pick a new name up as History or Friends next opens.
+
+The first link from an ID the list does not hold yet asks **Who sent this?** before anything the
+link opens — its Ready card, the game you were part-way through or the offer to play a solved puzzle
+again, each coming once it is answered — the board's place left blank meanwhile, so a rude name in
+the link is not on show behind it, and the clock never running. (Races already in History with that
+ID do not count on their own: only the list does — which History's import fills too, see below.) Its
+field holds the link's name, focused and selected: type over it, or keep it, and **Save** (or Enter)
+names them, just as **Rename** in Friends would — saving the link's own name keeps it whatever their
+later links say. Saved empty, or skipped (**Skip**, Escape, the close button or a tap outside), they
+go by their links' names until you name them in Friends. Either way they were noted as the link
+opened, so the question is never asked of them again — closing the tab before answering is the same
+as Skip. A link without an ID, from your own browser, or from anyone already in the list never asks.
+
+An ID belongs to a browser, not a person, so someone who shares from their phone and their laptop
+arrives as two friends. Once anyone else is in the list, _Who sent this?_ asks below its field
+**Or is it a friend you have already, on another device?**, with everyone else to choose from,
+latest first — never chosen for you, however alike the names, as a name is exactly what a stranger
+can copy. Choose one and **Save**, and the new device joins them, under the name you gave them
+(the name field is disabled meanwhile, greyed out but not hidden, so nothing moves). In Friends,
+**Merge…** (once there are two friends) says one is the same person as another, picked from
+everyone else, latest first, with the latest picked to begin with: the two become one, under the
+name you gave the one you chose, or else this one's — a merge never makes a name up, and never
+loses the one you gave. Pressing **Merge** is all it asks, as a merge can be undone: a merged
+friend lists their devices, each by the name its links last gave and when, and **Split off** on
+any of them makes it a friend of its own again, unnamed, so its races show the name each of its
+links gave until you name it.
+
+The list keeps up to 200 devices (some 41,000 characters with every name at its longest). Past
+that, the device heard from longest ago is forgotten — with the name you gave its friend, if it
+was their last — and its next link is noted as someone new; never the device whose link is being
+opened. The list is never shed to make room for anything else.
+
+History's **Export** carries the list to another browser, whose **Import** adds the devices it has
+never had a link from, into whatever room is left of its 200 — each joining whichever of its friends
+holds a device the file groups it with, or else a new friend under the file's name — and never
+renames, merges or splits a friend it has (see [Your data](#your-data)).
+
+An ID proves nothing, as a time proves nothing: anyone holding one of your links can copy its
+`u=`, and their links would then show under the name a friend gave you. It is the honour system,
+as times are; trust is on first use.
+
 ## Your data
 
-Everything is stored in your browser's `localStorage` under `sudoku.*` keys — preferences, the
-history (up to 1,000 games, a daily's with the date it is the daily of and the date you started
-it — the calendar and the streaks are worked out from it — and each game's
-[mistakes](#mistakes), stamped with the time they were counted at), what the dailies of games pruned from
-the history said (a few bytes a day, kept for good, so neither a best streak nor the calendar
-forgets them), the saved state of unfinished games (up to 50), every game's move log, the
-puzzles you have seen (up to 2,000, so a puzzle stays seen after its game is deleted), the
-puzzles whose shared solve you watched before solving them (`sudoku.watched`, up to 2,000 — see
-[Sharing a solve](#sharing-a-solve)) and the daily puzzles already dealt (the last 112, so they
-need not be dealt again). A game raced against a link that carried a solve keeps it with the
-challenge, inside its record, held on reading back to the shape and length of a log in a link (at
-most 4,000 characters; some 200–1,100 in practice). There are no
-accounts and no tracking.
+Everything is stored in your browser's `localStorage` under `sudoku.*` keys — preferences (with
+this browser's player ID, once you share a time), the history (up to 1,000 games, a daily's with
+the date it is the daily of and the date you started it — the calendar and the streaks are worked
+out from it — and each game's [mistakes](#mistakes), stamped with the time they were counted at),
+what the dailies of games pruned from the history said (a few bytes a day, kept for good, so
+neither a best streak nor the calendar forgets them), the saved state of unfinished games (up to
+50), every game's move log, the puzzles you have seen (up to 2,000, so a puzzle stays seen after
+its game is deleted), the puzzles whose shared solve you watched before solving them
+(`sudoku.watched`, up to 2,000 — see [Sharing a solve](#sharing-a-solve)), the friends whose
+links you have opened (`sudoku.friends`, up to 200 devices — each one's ID, the latest name its
+links gave and when — grouped into friends with the name you gave each; some 41,000 characters
+with every name at its longest — see [Friends](#friends)) and the daily puzzles already dealt (the
+last 112, so they need not be dealt again). A game raced against a link that
+carried a solve keeps it with the challenge, inside its record, held on reading back to the shape
+and length of a log in a link (at most 4,000 characters; some 200–1,100 in practice). There are no
+accounts and no tracking: the player ID is random, and travels only in links you share with a
+time.
 
 Every game in the history, finished or not, keeps its **move log** (see
 [The move log](#the-move-log)) under a key of its own, `sudoku.moves.<id>`, listed in
@@ -880,29 +961,36 @@ each step: the logs of games no longer in the history, then the oldest finished 
 more than one such chunk beyond what the write needed is ever lost; then friends' solves kept with
 their challenges (every game's but the one on screen, which keeps the name and time it was racing;
 only the button to watch the solve goes); and only once those are gone too, the saved boards of all but the 10 most recently played unfinished games, and
-finished games beyond the newest 300, with their logs. The game on screen, and the logs of
-unfinished games, are never shed. Finished games' logs go first because nothing needs them to
-carry on playing (a game whose log is shed keeps its record and its count of mistakes, but can no
-longer be watched). In a test with a full history and the storage filled to the brim, one chunk
-(130 logs) makes room for the whole of a pencil-every-candidate game played after it; with the
-quota cut by another 300,000 characters, 754 of the 950 finished games' logs go and every record
-and board stays. If a log cannot be written even then, its game's old log is deleted rather than
-left stopping short of the board saved beside it.
+finished games beyond the newest 300, with their logs. The game on screen, the logs of unfinished
+games, the preferences and the friends list are never shed. Finished games' logs go first because
+nothing needs them to carry on playing (a game whose log is shed keeps its record and its count of
+mistakes, but can no longer be watched). In a test with a full history and the storage filled to the
+brim, one chunk (130 logs) makes room for the whole of a pencil-every-candidate game played after
+it; with the quota cut by another 300,000 characters, 754 of the 950 finished games' logs go and
+every record and board stays. If a log cannot be written even then, its game's old log is deleted
+rather than left stopping short of the board saved beside it.
 
 A tab left open on an older version after an update carries on saving, so the game keeps what it
 does not recognise rather than wiping it: small fields a newer version added to a game's record,
 its saved board or the preferences (up to 8 per object, each at most 200 characters of JSON) are
 written back untouched, and a theme it does not know is applied as System, with none shown as
 chosen in Settings, but kept until you pick one. (So a record's `watched` flag survives such a
-tab — though that tab, knowing nothing of it, would show and count the solve's time until it is
-reloaded; a challenge's solve longer than those 200 characters, as most are, is dropped by it.)
+tab, as do a challenge's player ID and the preferences' — though that tab, knowing nothing of the
+flag, would show and count the solve's time until it is reloaded; a challenge's solve longer than
+those 200 characters, as most are, is dropped by it.) A tab from before the friends list never
+touches `sudoku.friends`, so the names given there survive it too, though it shows each race
+under its link's name until it is reloaded.
 
 Some browsers clear a site's storage after a while away (Safari does after seven days without a
 visit, unless the game has been added to the home screen). Use **Export** in History to keep a
 copy, and **Import** to bring it back or move it to another browser — imported games, the
 puzzles seen, the puzzles watched and the dailies' record are merged with what is already
 there, and every unfinished attempt at a puzzle watched, here or in the file, is flagged as
-watched. The file carries every
+watched. The friends list is merged too: a device this browser has never had a link from joins
+the friend the file has it with — one of yours, if the file groups it with a device you know, or
+else a new friend under the file's name — into the room left under the cap. A friend you already
+have is never renamed, merged or split by an import, so importing the same file twice adds
+nothing. Your own player ID is not exported: each browser keeps its own. The file carries every
 game's move log too; an import takes the log of each game it adds or replaces, leaving out (on its
 own) any log that does not read back exactly, and never makes room for one by deleting anything:
 logs go only into space that was free, and if the imported games themselves only fitted once some
@@ -964,12 +1052,15 @@ of the logs here were shed, none of the file's logs are taken.
   playing back, writing nothing.
   Share links are held to the versions before them: a copy of the assists decoder every earlier
   version shipped must read a new link's help unchanged, skipping its mistakes, and an old link
-  must read as mistakes not recorded, never 0. A solve in a link is held to its puzzle and its
-  time — another puzzle's log, a time a second or more off, an older version's log, a broken one
-  and a newer version's (which alone is said) — and the spoiler rule to every way back to a
+  must read as mistakes not recorded, never 0; a link without `u=` reads as no ID, a garbled `u=`
+  costs only the ID, and `u=` changes no other parameter; the friends list's operations — noting,
+  renaming, merging, splitting, the cap — read back exactly what they wrote, a device merged
+  in and split off again is on its own as it was, and an import never undoes a merge, split or
+  rename. A solve in a link is held to its puzzle
+  and its time — another puzzle's log, a time a second or more off, an older version's log, a broken
+  one and a newer version's (which alone is said) — and the spoiler rule to every way back to a
   watched puzzle: a reload mid-game, Play again, a new attempt from the generator, a game resumed
-  from History, a daily, an import, and the record pruned past 1,000 while the puzzle stays
-  watched.
+  from History, a daily, an import, and the record pruned past 1,000 while the puzzle stays watched.
   Coverage thresholds are enforced in CI, with the engine held to 100%.
 - **End-to-end** (`e2e/`, Playwright): full journeys against the built app — playing and solving,
   pausing and reloading, share links between two browsers (a solve with a mistake shared, opened in
@@ -986,7 +1077,13 @@ of the logs here were shed, none of the file's logs are taken.
   comparing two solves between browsers (opened from the Solved dialog and from History, the
   cursor moved by keys and by a press, the readout and the board following it, focus back on
   Compare solves, and fitting a 320px phone and a phone on its side, opened at the top and, on its
-  side, the chart and the board both in view),
+  side, the chart and the board both in view), friends (a sharer named in the list, then at the
+  prompt, kept through a reload and a later link calling itself something else — every race, the
+  head-to-head and History following — the prompt's field typed over and Enter, then Enter again
+  starting the race, a real sharer's two links carrying the one ID the prompt fills its name from,
+  two devices taken for one friend at the prompt, split off and merged again in Friends — every
+  race in History following, through a reload — and a name given carried by History's export to
+  another browser, naming the race it imports and asking nothing of the sender's next link there),
   watching a solve with a mistake played back from the Solved dialog and from History (stepped,
   scrubbed and played at 8× on Playwright's clock, its mistake marked and captioned, focus back on
   Watch as it closes, and fitting a 320px phone and a phone on its side) and the phone layout from
@@ -998,15 +1095,18 @@ of the logs here were shed, none of the file's logs are taken.
   never clipped, measured to the sub-pixel — and help taken giving way to its counts and then its
   total, never cut, beside a counter with a candidate mistake; with neither shown, the board as
   large as with the setting off; help taken alone above a 375×667 phone's controls, and on a
-  320×568 phone beside a hint that keeps to two lines; and a desktop's header with a daily Medium
-  and help at its widest). Help taken stays on show through a pause, its count the only one the
+  320×568 phone beside a hint that keeps to two lines; Friends and _Who sent this?_ upright and on
+  their sides, a long right-to-left name kept inside Friends' rows, a merged friend's devices and
+  the prompt's hint, every control 44px — the friend pickers and a merge's buttons among them — and History's foot giving Friends a row of its own at 320px; and a desktop's header with a daily Medium and help at its widest). Help taken stays on show through a pause, its count the only one the
   hidden board leaves beside the timer's. An accessibility pass (`a11y.spec.ts`) runs axe-core's WCAG 2.2 A and AA rules over the main states — the board with
   every kind of mark, the error counter and help taken in both their places, the Ready and Paused
   cards, the menus (the "…" menu's "Hint (1 used)" among them),
   every dialog (Show me's, the daily calendar's, a solve played back, the warning before watching
-  a friend's solve, two solves compared and Share with the solve included among them), each guide
-  entry and a step hint's tinted houses — in both themes, and the board (its tint included), the
-  dialogs, the menus and the calendar in High contrast, both chosen in
+  a friend's solve, two solves compared, Share with the solve included, History with Friends at
+  its foot, Friends with a merged friend's devices, a name being changed and two friends being
+  merged, and _Who sent this?_ with friends to choose from among them), each guide entry and a
+  step hint's tinted houses — in both themes, and the board (its tint included), the dialogs, the
+  menus and the calendar in High contrast, both chosen in
   Settings on a dark device and from a dark system asking for more contrast, measuring its heavier
   lines and its same-number ring kept off the digits — and allows no violations. Three projects:
 
@@ -1054,6 +1154,7 @@ no change is needed — the base is derived from the repository name at build ti
 | New game, or today's puzzles   | —                                                                                                  | The + button                         |
 | Daily calendar and streaks     | Arrow keys, Home/End, Page Up/Page Down in the month                                               | The calendar in the header, or +     |
 | History, share, settings, help | —                                                                                                  | The header (on a phone, the ☰ menu) |
+| Friends                        | —                                                                                                  | Friends, at the foot of History      |
 | Solving techniques             | —                                                                                                  | The header, or a hint's question     |
 | Watch your solve               | <kbd>Space</kbd>, <kbd>←</kbd>/<kbd>→</kbd>, <kbd>Home</kbd>/<kbd>End</kbd>                        | Watch your solve, or History's Watch |
 | Compare solves                 | <kbd>←</kbd>/<kbd>→</kbd>, <kbd>Page Up</kbd>/<kbd>Page Down</kbd>, <kbd>Home</kbd>/<kbd>End</kbd> | Tap or drag along the chart          |

@@ -12,6 +12,7 @@ import {
 } from '../share';
 import { CopyIcon, ShareIcon } from '../icons';
 import { Dialog } from './Dialog';
+import { NAME_INPUT_MAX } from './text';
 
 export interface ShareDialogProps {
   givens: GridString;
@@ -31,6 +32,12 @@ export interface ShareDialogProps {
    * out) to offer none.
    */
   solve?: string | null;
+  /**
+   * This browser's player ID (see `Preferences.playerId`), which the link
+   * carries with a time, so a friend's game can tell this player's times from
+   * anyone else's — with the name or without it. Null (or left out) sends none.
+   */
+  playerId?: string | null;
   /** The remembered name, already normalised. */
   playerName: string;
   /**
@@ -40,15 +47,6 @@ export interface ShareDialogProps {
   onPlayerNameChange: (name: string) => void;
   onClose: () => void;
 }
-
-/**
- * How much the name field takes while typing. Generous on purpose: the name
- * is tidied and, past 24 characters, cut short with an ellipsis on the way out
- * (`normaliseName`), and a
- * field that stops accepting keys mid-emoji, or mid-paste of a name with
- * stray spaces, feels broken. This matches the tidier's own UTF-16 ceiling.
- */
-const NAME_INPUT_MAX = 64;
 
 interface Status {
   text: string;
@@ -78,6 +76,10 @@ function copyHint(isTouch: boolean): string {
  * message and hands it to the native share sheet or the clipboard — and, when
  * neither works, shows it selected for copying by hand.
  *
+ * A time goes with this browser's player ID, with a name or without one
+ * (see `ShareResult.playerId`). There is no switch for it: it is what lets a
+ * friend's game tell this player's times from anyone else's.
+ *
  * With a time, the solve itself can go too, for the friend to watch: a
  * switch, "Include my solve", shown only when there is a solve that will
  * play back. Off to begin with, every time: a race is what a shared time is
@@ -91,6 +93,7 @@ export function ShareDialog({
   result,
   daily = null,
   solve = null,
+  playerId = null,
   playerName,
   onPlayerNameChange,
   onClose,
@@ -116,7 +119,7 @@ export function ShareDialog({
   const url = buildShareUrl(
     shareBaseUrl(),
     givens,
-    result === null ? undefined : { ...result, name: normaliseName(name), log },
+    result === null ? undefined : { ...result, name: normaliseName(name), playerId, log },
     daily,
   );
   const text = buildShareText({
@@ -255,7 +258,10 @@ export function ShareDialog({
               onChange={(event) => setName(event.target.value)}
               onBlur={commitName}
             />
-            <p className="field__hint">Shown next to your time when a friend opens the link.</p>
+            <p className="field__hint">
+              Shown next to your time when a friend opens the link, unless they&apos;ve given you a
+              name of their own.
+            </p>
           </div>
         )}
 

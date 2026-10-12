@@ -1,4 +1,4 @@
-import { expect, type Locator, type Page } from '@playwright/test';
+import { expect, type Browser, type Locator, type Page } from '@playwright/test';
 import {
   appendMove,
   createGame,
@@ -76,10 +76,14 @@ export function solutionOf(givens: GridString): GridString {
   return Array.from(solved).join('');
 }
 
-/** A sharer's result to put in a link. `assists` is the link's compact form, e.g. `ch2`. */
+/**
+ * A sharer's result to put in a link. `assists` is the link's compact form,
+ * e.g. `ch2`; `playerId` is the sharing browser's ID (`u=`), e.g. `k3x9q7za2m`.
+ */
 export interface LinkChallenge {
   seconds: number;
   name?: string;
+  playerId?: string;
   assists?: string;
 }
 
@@ -89,6 +93,7 @@ export function puzzleLink(givens: GridString, challenge?: LinkChallenge): strin
   if (challenge !== undefined) {
     params.set('t', String(challenge.seconds));
     if (challenge.name !== undefined) params.set('n', challenge.name);
+    if (challenge.playerId !== undefined) params.set('u', challenge.playerId);
     if (challenge.assists !== undefined) params.set('a', challenge.assists);
   }
   return `/?${params.toString()}`;
@@ -136,10 +141,16 @@ export function toSeconds(time: string): number {
   return time.split(':').reduce((total, part) => total * 60 + Number(part), 0);
 }
 
+/** "Who sent this?": what the first link from a player ID not in the friends list yet asks. */
+export const whoSentDialog = (page: Page): Locator =>
+  page.getByRole('dialog', { name: 'Who sent this?' });
+
 /**
  * Open a share link to `givens`. A puzzle new to this browser waits behind
  * its Ready card; this resolves once the card (or, for a puzzle already in
- * progress here, the paused card) is up.
+ * progress here, the paused card) is up — or, for the first link from a
+ * player ID new here, the question of who sent it, which comes before either
+ * (see `answerWhoSent`).
  *
  * Waits for the page to render: `goto` resolves on the load event, and React
  * paints in a task of its own after that, so for a moment the page is an
@@ -151,7 +162,57 @@ export async function gotoPuzzle(
   options: { challenge?: LinkChallenge } = {},
 ): Promise<void> {
   await page.goto(puzzleLink(givens, options.challenge));
-  await expect(boardArea(page).getByRole('heading').or(grid(page)).first()).toBeVisible();
+  await expect(
+    boardArea(page).getByRole('heading').or(grid(page)).or(whoSentDialog(page)).first(),
+  ).toBeVisible();
+}
+
+/**
+ * Answer "Who sent this?", asked of the first link from someone new before
+ * anything it opens, and wait for it to go. With no answer, Skip: they go by
+ * their links' names. With one, Save — `name` typed over the link's name
+ * first, if given; `sameAs`, a friend's key (their first device's ID),
+ * chosen as the sender on another device, if given; else the link's name as
+ * it came.
+ */
+export async function answerWhoSent(
+  page: Page,
+  answer?: { name?: string; sameAs?: string },
+): Promise<void> {
+  const dialog = whoSentDialog(page);
+  await expect(dialog).toBeVisible();
+  if (answer === undefined) {
+    await dialog.getByRole('button', { name: 'Skip' }).click();
+  } else {
+    if (answer.name !== undefined) {
+      await dialog.getByRole('textbox', { name: 'Their name' }).fill(answer.name);
+    }
+    if (answer.sameAs !== undefined) {
+      await dialog
+        .getByRole('combobox', { name: 'Or is it a friend you have already, on another device?' })
+        .selectOption(answer.sameAs);
+    }
+    await dialog.getByRole('button', { name: 'Save' }).click();
+  }
+  await expect(dialog).toBeHidden();
+}
+
+/**
+ * Run `body` in a fresh browser — no storage, no history, so another player
+ * ID — as a friend's would be, on a clock the test can move.
+ */
+export async function elsewhere(
+  browser: Browser,
+  body: (page: Page) => Promise<void>,
+): Promise<void> {
+  const context = await browser.newContext();
+  try {
+    const page = await context.newPage();
+    await page.clock.install();
+    await body(page);
+  } finally {
+    await context.close();
+  }
 }
 
 /** Open a share link and press Start: the puzzle is on screen with the clock running. */
@@ -348,6 +409,19 @@ export async function seedHistory(page: Page, records: readonly unknown[]): Prom
   }, records);
 }
 
+/**
+ * Put friends in the list before the page loads (see `src/storage/friends.ts`),
+ * as a browser that has had their links holds them — once, so a reload does
+ * not put them back over a name given since.
+ */
+export async function seedFriends(page: Page, friends: readonly unknown[]): Promise<void> {
+  await page.addInitScript((seeded) => {
+    if (localStorage.getItem('e2e.seededFriends') !== null) return;
+    localStorage.setItem('sudoku.friends', JSON.stringify(seeded));
+    localStorage.setItem('e2e.seededFriends', '1');
+  }, friends);
+}
+
 /** A solved or unfinished daily attempt, as the history stores one, begun at `createdAt`. */
 export function dailyRecord(
   id: string,
@@ -397,6 +471,22 @@ export async function openHeaderDialog(
   }
   await page.getByRole('banner').getByRole('button', { name: 'Menu' }).click();
   await page.getByRole('menu', { name: 'Menu' }).getByRole('menuitem', { name: label }).click();
+}
+
+/**
+ * Open History from the header, then Friends from its foot, and wait for it:
+ * the list of everyone who has sent a time. There must be someone in it, or
+ * History offers no Friends to open.
+ */
+export async function openFriends(page: Page): Promise<Locator> {
+  await openHeaderDialog(page, 'History');
+  await page
+    .getByRole('dialog', { name: 'History' })
+    .getByRole('button', { name: 'Friends' })
+    .click();
+  const friends = page.getByRole('dialog', { name: 'Friends' });
+  await expect(friends).toBeVisible();
+  return friends;
 }
 
 /**

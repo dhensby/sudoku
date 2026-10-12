@@ -35,12 +35,20 @@ export { MAX_NAME_LENGTH } from '../storage/storage';
  * link several times longer, and it gives the puzzle away. A version from
  * before solves were shared skips the parameter it does not know — it only
  * stays in that version's address bar, as it does not clear it.
+ *
+ * A link with a time names the browser it came from, too (`&u=`): the
+ * sharer's player ID, ten random letters and digits made the first time
+ * that browser shares a time (see `Preferences.playerId`), so the friend's
+ * game can tell this sharer's times from anyone else's, whatever name each
+ * link gives — or none. Only with a time, as the name is: a bare puzzle has
+ * no time to name anyone by. A version from before it skips it, and leaves it
+ * in its address bar, as with `s`.
  */
 
 /** A result to put in a link: the time to beat, the help it came with and its mistakes. */
 export interface ShareResult {
   seconds: number;
-  /** The sharer's name, or '' to stay anonymous. */
+  /** The sharer's name, or '' to send none (the player ID still goes, see `playerId`). */
   name: string;
   assists: Assists;
   /**
@@ -55,6 +63,11 @@ export interface ShareResult {
    * `sharedSolveRefusal`) — or null (or left out) to send the time alone.
    */
   log?: string | null;
+  /**
+   * This browser's player ID (see `Preferences.playerId`), so the friend's
+   * game knows whose time it is; null (or left out) sends none.
+   */
+  playerId?: string | null;
 }
 
 /**
@@ -183,7 +196,8 @@ function sharedSeconds(seconds: number): number {
 
 /**
  * The link that opens `givens` — with the date of the daily it is, if it is
- * one, and the sharer's result, when there is one.
+ * one, and the sharer's result, when there is one: its time, the sharer's
+ * name and player ID, its help and mistakes, and its solve, in that order.
  */
 export function buildShareUrl(
   base: string,
@@ -200,6 +214,10 @@ export function buildShareUrl(
     url.searchParams.set('t', String(sharedSeconds(result.seconds)));
     const name = normaliseName(result.name);
     if (name !== '') url.searchParams.set('n', name);
+    // Beside the name: what the friend's game knows the sharer by (see `friends.ts`).
+    if (result.playerId !== undefined && result.playerId !== null) {
+      url.searchParams.set('u', result.playerId);
+    }
     // Mistakes after the help, in the same parameter (see `encodeMistakes`).
     const assists = encodeAssists(result.assists) + encodeMistakes(result.mistakes);
     if (assists !== '') url.searchParams.set('a', assists);

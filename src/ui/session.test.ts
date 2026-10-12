@@ -18,6 +18,7 @@ import {
   type MoveLog,
   type Puzzle,
 } from '../core';
+import { meetDevice, renameFriend } from '../storage/friends';
 import {
   deleteRecord,
   loadGameBlob,
@@ -27,6 +28,7 @@ import {
   saveCurrentId,
   saveGameBlob,
   saveGameMoves,
+  updateFriends,
   upsertRecord,
   type Challenge,
   type GameRecord,
@@ -1590,6 +1592,109 @@ describe('planStartup', () => {
     // A guard against the plan drifting from what createGame makes.
     const plan = planStartup(memoryStorage(), linkFor(PUZZLE.givens), at(NOW), false);
     expect(plan.session?.game.cells).toEqual(createGame(PUZZLE).cells);
+  });
+});
+
+describe('planStartup and the friends', () => {
+  const ALLY = 'k3x9q7za2m';
+  const STRANGER = 'z8c2m5r1to';
+  const SHARED = linkFor(PUZZLE.givens, { t: '323', n: 'Rude', u: ALLY });
+
+  it('reads the friends list as it stands, link or none', () => {
+    const storage = memoryStorage();
+    updateFriends(storage, (friends) =>
+      renameFriend(meetDevice(friends, { id: ALLY, sentAs: 'Al', at: 1 }), ALLY, 'Ally'),
+    );
+    const friends = [{ name: 'Ally', devices: [{ id: ALLY, sentAs: 'Al', lastAt: 1 }] }];
+    expect(planStartup(storage, '', at(NOW), false).friends).toEqual(friends);
+    expect(planStartup(storage, SHARED, at(NOW), false).friends).toEqual(friends);
+    expect(planStartup(memoryStorage(), '', at(NOW), false).friends).toEqual([]);
+  });
+
+  it('names the sender of a new link, by its ID, its name and when it was opened, by the wall clock', () => {
+    // A date, as the friends list keeps it: not the play clock's reading.
+    const plan = planStartup(memoryStorage(), SHARED, { wall: NOW + 1000, clock: 42 }, false);
+    expect(plan.sharer).toEqual({ id: ALLY, sentAs: 'Rude', at: NOW + 1000, isNew: true });
+    // The race keeps the ID with the link's own name.
+    expect(plan.session?.record.challenge).toMatchObject({ name: 'Rude', playerId: ALLY });
+  });
+
+  it('names the sender of a link with no name, as sending none', () => {
+    const plan = planStartup(
+      memoryStorage(),
+      linkFor(PUZZLE.givens, { t: '323', u: ALLY }),
+      at(NOW),
+      false,
+    );
+    expect(plan.sharer).toEqual({ id: ALLY, sentAs: null, at: NOW, isNew: true });
+  });
+
+  it('names the sender of a link that reopens an unfinished attempt', () => {
+    const storage = memoryStorage();
+    const attempt = running();
+    saveSession(storage, attempt, at(NOW + 4000));
+    const plan = planStartup(storage, SHARED, at(NOW + 9000), false);
+    expect(plan.session?.record.id).toBe(attempt.record.id);
+    expect(plan.session?.record.challenge?.playerId).toBe(ALLY);
+    expect(plan.sharer).toEqual({ id: ALLY, sentAs: 'Rude', at: NOW + 9000, isNew: true });
+  });
+
+  it('names the sender of a link to a puzzle already solved, which writes no record', () => {
+    const storage = memoryStorage();
+    upsertRecord(storage, { ...running().record, status: 'solved', completedAt: NOW });
+    const plan = planStartup(storage, SHARED, at(NOW + 9000), false);
+    expect(plan.offer?.challenge?.playerId).toBe(ALLY);
+    expect(plan.sharer).toEqual({ id: ALLY, sentAs: 'Rude', at: NOW + 9000, isNew: true });
+  });
+
+  it('takes the sender of a link to be someone new until a friend here holds their ID', () => {
+    const storage = memoryStorage();
+    expect(planStartup(storage, SHARED, at(NOW), false).sharer?.isNew).toBe(true);
+    // Heard from before, named or not: no longer new.
+    updateFriends(storage, (friends) => meetDevice(friends, { id: ALLY, sentAs: null, at: 1 }));
+    expect(planStartup(storage, SHARED, at(NOW), false).sharer).toEqual({
+      id: ALLY,
+      sentAs: 'Rude',
+      at: NOW,
+      isNew: false,
+    });
+    updateFriends(storage, (friends) => renameFriend(friends, ALLY, 'Ally'));
+    expect(planStartup(storage, SHARED, at(NOW), false).sharer?.isNew).toBe(false);
+  });
+
+  it('takes a sender whose races are in the history, but who no friend holds, to be new', () => {
+    // An imported race, say: the friends list alone says who has been heard from.
+    const storage = memoryStorage();
+    const challenge: Challenge = { name: 'Al', seconds: 100, assists: NO_HELP, playerId: ALLY };
+    upsertRecord(storage, { ...running().record, id: 'old-0001', challenge });
+    expect(planStartup(storage, SHARED, at(NOW), false).sharer?.isNew).toBe(true);
+  });
+
+  // This browser's own ID is ALLY here, so only the row about it carries ALLY:
+  // the rest each name no sender for the reason the row gives.
+  it.each([
+    ['no link', ''],
+    ['a broken link', `?p=!!!&t=323&u=${STRANGER}`],
+    ['a link with no time, whatever ID it carries', linkFor(PUZZLE.givens, { u: STRANGER })],
+    ['a link with a time and no ID', linkFor(PUZZLE.givens, { t: '323', n: 'Dan' })],
+    ['a link with a garbled ID', linkFor(PUZZLE.givens, { t: '323', u: 'BAD ID' })],
+    ["a link from this browser's own ID", SHARED],
+  ])('names no sender for %s', (_, search) => {
+    expect(planStartup(memoryStorage(), search, at(NOW), false, ALLY).sharer).toBeNull();
+  });
+
+  it("keeps the ID on the race of this browser's own link, the name its own", () => {
+    const plan = planStartup(memoryStorage(), SHARED, at(NOW), false, ALLY);
+    expect(plan.session?.record.challenge).toMatchObject({ name: 'Rude', playerId: ALLY });
+  });
+
+  it('writes nothing, the friends list included: noting the sender is for the hook to do', () => {
+    const storage = memoryStorage();
+    const set = vi.spyOn(storage, 'setItem');
+    const remove = vi.spyOn(storage, 'removeItem');
+    planStartup(storage, SHARED, at(NOW), false);
+    expect(set).not.toHaveBeenCalled();
+    expect(remove).not.toHaveBeenCalled();
   });
 });
 
