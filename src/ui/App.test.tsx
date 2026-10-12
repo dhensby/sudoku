@@ -866,6 +866,25 @@ describe('App', () => {
     );
   });
 
+  it("opens the player's own link, solve and all, as their solve: no race against themselves", async () => {
+    const { storage, unmount } = await startApp({ source: fakeSource(nearlySolved([0]), PUZZLE) });
+    press(String(answerAt(0)));
+    await screen.findByRole('dialog', { name: 'Solved!' });
+    fireEvent.click(screen.getByRole('button', { name: 'Share your time' }));
+    const share = screen.getByRole('dialog', { name: 'Share your time' });
+    fireEvent.click(within(share).getByRole('checkbox', { name: 'Include my solve' }));
+    const link = new URL(share.querySelector('.share__url')!.textContent!);
+    fireEvent.click(within(share).getByRole('button', { name: 'Close' }));
+    unmount();
+
+    // The same browser follows the link it shared.
+    renderApp({ storage, search: link.search });
+    const offer = await screen.findByRole('dialog', { name: "You've solved this one" });
+    expect(within(offer).queryByRole('region', { name: 'Head to head' })).toBeNull();
+    expect(within(offer).queryByRole('button', { name: /Watch|Compare/ })).toBeNull();
+    expect(storage.getItem('sudoku.friends')).toBeNull();
+  });
+
   describe("a friend's solve", () => {
     const { puzzle, encoded } = shortSolve();
     const search = linkFor(puzzle.givens, { t: '9', n: 'Dan', s: encoded });

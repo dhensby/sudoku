@@ -20,9 +20,10 @@ import {
  * Sharing a solve, end to end, between browsers: A solves a puzzle and shares
  * the time with the solve in the link; B, who has not solved it, chooses to
  * play it first, solves it, and then watches A's solve for nothing; C watches
- * it first, anyway, and solves it with no time to show; someone who has
- * solved it already watches without being asked; and a daily's link, whose
- * solve watched first keeps the daily out of the streak.
+ * it first, anyway, and solves it with no time to show; A's own link,
+ * followed by A, races no one; someone who has solved it already watches
+ * without being asked; and a daily's link, whose solve watched first keeps
+ * the daily out of the streak.
  *
  * Each browser is a fresh context — no storage, no history — as a friend's
  * would be. Runs on Chromium (desktop layout).
@@ -156,16 +157,37 @@ test('a friend who watches first solves it with no time recorded', async ({ page
   });
 });
 
-test('someone who has solved the puzzle already watches without being asked', async ({ page }) => {
+test("the sharer's own link races no one", async ({ page }) => {
   const link = await shareWithTheSolve(page);
-  // A has solved it: the link opens the offer to play it again.
+  // A follows the link A shared: A's solve, offered to play again, and no
+  // head-to-head against A's own time, nor A's own solve to watch as a friend's.
   await page.goto(link.href);
   const offer = page.getByRole('dialog', { name: "You've solved this one" });
   await expect(offer).toBeVisible();
-  await offer.getByRole('button', { name: "Watch Alice's solve" }).click();
-  await expect(spoiler(page)).toHaveCount(0);
-  await watchToTheEnd(page);
-  await expect(offer.getByRole('button', { name: "Watch Alice's solve" })).toBeFocused();
+  await expect(offer.getByRole('region', { name: 'Head to head' })).toHaveCount(0);
+  await expect(offer.getByRole('button', { name: /Watch|Compare/ })).toHaveCount(0);
+  await expect(offer.getByRole('button', { name: 'Play again' })).toBeFocused();
+});
+
+test('someone who has solved the puzzle already watches without being asked', async ({
+  page,
+  browser,
+}) => {
+  const link = await shareWithTheSolve(page);
+  await elsewhere(browser, async (d) => {
+    // D solves the puzzle first, from a link without a time, before Alice's comes.
+    await startPuzzle(d, NEARLY_DONE);
+    await solveFromKeyboard(d, NEARLY_DONE);
+    await solved(d).getByRole('button', { name: 'Close' }).click();
+    await d.goto(link.href);
+    await answerWhoSent(d);
+    const offer = d.getByRole('dialog', { name: "You've solved this one" });
+    await expect(offer).toBeVisible();
+    await offer.getByRole('button', { name: "Watch Alice's solve" }).click();
+    await expect(spoiler(d)).toHaveCount(0);
+    await watchToTheEnd(d);
+    await expect(offer.getByRole('button', { name: "Watch Alice's solve" })).toBeFocused();
+  });
 });
 
 test.describe("a daily's link with a solve", () => {

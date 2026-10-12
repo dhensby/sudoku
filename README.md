@@ -822,6 +822,10 @@ Opening a link:
   counted, rather than a replay's — and offers to play it again (which carries on an unfinished
   attempt, if you have one).
 - **A broken link** says so and carries on with a fresh puzzle (or the game you were playing).
+- **Your own link** — one whose `u=` is this browser's own ID — races no one: its time, solve and
+  ID are set aside and it opens as a link without a time would, so a puzzle you have solved here
+  shows your time and offers to play it again, with no head-to-head against yourself and no
+  solve of your own to watch as a friend's.
 
 The difficulty is always re-graded from the puzzle itself rather than taken from the link, and
 the parameters are cleared from the address bar once read, so reloading never drags you back.
@@ -1072,8 +1076,9 @@ of the logs here were shed, none of the file's logs are taken.
   was not obvious, Check guesses marking and counting one at once with "guesses checked as
   entered" beside the time, and the error counter waiting out a slip's 3 seconds of play),
   sharing a solve between browsers (one plays first and then watches it for nothing, another
-  watches first and solves it with no time, one who has solved it watches without being asked,
-  and a daily's, watched first, kept out of the streak),
+  watches first and solves it with no time, the sharer's own link, followed in their own browser,
+  racing no one, one who has solved it watches without being asked, and a daily's, watched first,
+  kept out of the streak),
   comparing two solves between browsers (opened from the Solved dialog and from History, the
   cursor moved by keys and by a press, the readout and the board following it, focus back on
   Compare solves, and fitting a 320px phone and a phone on its side, opened at the top and, on its

@@ -1683,9 +1683,54 @@ describe('planStartup and the friends', () => {
     expect(planStartup(memoryStorage(), search, at(NOW), false, ALLY).sharer).toBeNull();
   });
 
-  it("keeps the ID on the race of this browser's own link, the name its own", () => {
-    const plan = planStartup(memoryStorage(), SHARED, at(NOW), false, ALLY);
-    expect(plan.session?.record.challenge).toMatchObject({ name: 'Rude', playerId: ALLY });
+  describe("this browser's own link", () => {
+    // ALLY is this browser's own ID here: the link is the player's own.
+    const { puzzle, encoded } = shortSolve();
+    const OWN = linkFor(puzzle.givens, { t: '9', n: 'Me', u: ALLY, s: encoded });
+
+    it('races no one on a puzzle solved here: the offer has no challenge to compare', () => {
+      const storage = memoryStorage();
+      const solved = newSession(puzzle, {
+        source: 'generated',
+        challenge: null,
+        now: at(NOW),
+        autoCandidates: false,
+        start: 'running',
+      });
+      upsertRecord(storage, { ...solved.record, status: 'solved', completedAt: NOW + 9000 });
+      const plan = planStartup(storage, OWN, at(NOW + 60_000), false, ALLY);
+      expect(plan.offer?.previous.id).toBe(solved.record.id);
+      expect(plan.offer?.challenge).toBeNull();
+      expect(plan.sharer).toBeNull();
+    });
+
+    it('opens a puzzle not played here as a link without a time would', () => {
+      const plan = planStartup(memoryStorage(), OWN, at(NOW), false, ALLY);
+      expect(plan.session?.record.challenge).toBeNull();
+      expect(plan.session?.record.source).toBe('shared');
+    });
+
+    it('leaves an unfinished attempt racing whoever it raced before', () => {
+      const storage = memoryStorage();
+      const attempt = newSession(puzzle, {
+        source: 'shared',
+        challenge: DAN,
+        now: at(NOW),
+        autoCandidates: false,
+        start: 'running',
+      });
+      saveSession(storage, attempt, at(NOW + 4000));
+      const plan = planStartup(storage, OWN, at(NOW + 9000), false, ALLY);
+      expect(plan.session?.record.id).toBe(attempt.record.id);
+      expect(plan.session?.record.challenge).toEqual(DAN);
+    });
+
+    it("is only the link whose ID is this browser's: another's still races, solve and all", () => {
+      const theirs = linkFor(puzzle.givens, { t: '9', n: 'Dan', u: STRANGER, s: encoded });
+      const plan = planStartup(memoryStorage(), theirs, at(NOW), false, ALLY);
+      expect(plan.session?.record.challenge).toMatchObject({ playerId: STRANGER, log: encoded });
+      expect(plan.sharer?.id).toBe(STRANGER);
+    });
   });
 
   it('writes nothing, the friends list included: noting the sender is for the hook to do', () => {

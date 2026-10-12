@@ -839,9 +839,12 @@ export function shareTargetOfRecord(record: GameRecord, encoded: string | null):
  *
  * A link's player ID (`&u=`) goes with its challenge, whichever of the three
  * it opens, and names its sender for the hook to note among the friends
- * (`sharer`) — unless it is `playerId`, this browser's own: the player's own
- * link, opened here, is no friend's. An ID no friend here holds is someone
- * new (`isNew`), whose link asks who sent it before any of the three shows.
+ * (`sharer`). An ID no friend here holds is someone new (`isNew`), whose link
+ * asks who sent it before any of the three shows. A link with `playerId`,
+ * this browser's own, is the player's own link: no friend's, and no race —
+ * its time, its solve and its ID are set aside, and it opens as a link
+ * without a time would (its daily's date still checked), so a puzzle solved
+ * here offers to be played again with no head-to-head against themselves.
  */
 export function planStartup(
   storage: StorageLike,
@@ -880,13 +883,19 @@ export function planStartup(
     solution: check.solution,
     difficulty: rate(gridValues(link.givens)),
   };
+  // The player's own link, opened here, races no one: their time is no time
+  // to beat, and their solve theirs to watch already. It opens as a link
+  // without a time would.
+  const isOwn = link.challenge?.playerId === playerId;
+  const linkChallenge = isOwn ? null : link.challenge;
   // `readSharedLink` only reads a solve alongside a challenge.
+  const linkSolve = isOwn ? null : link.solve;
   const refusal =
-    link.solve === null
+    linkSolve === null
       ? 'none'
-      : sharedSolveRefusal(puzzle.givens, link.solve, link.challenge!.seconds);
+      : sharedSolveRefusal(puzzle.givens, linkSolve, linkChallenge!.seconds);
   const challenge: Challenge | null =
-    refusal === null ? { ...link.challenge!, log: link.solve! } : link.challenge;
+    refusal === null ? { ...linkChallenge!, log: linkSolve! } : linkChallenge;
   const linked: Startup = {
     ...opened,
     dailyHint:
@@ -895,13 +904,13 @@ export function planStartup(
         : { date: link.daily, givens: puzzle.givens, tier: puzzle.difficulty },
     isSolveTooNew: refusal === 'newer',
     sharer:
-      link.challenge?.playerId === undefined || link.challenge.playerId === playerId
+      linkChallenge?.playerId === undefined
         ? null
         : {
-            id: link.challenge.playerId,
-            sentAs: link.challenge.name,
+            id: linkChallenge.playerId,
+            sentAs: linkChallenge.name,
             at: now.wall,
-            isNew: !indexFriends(friends).has(link.challenge.playerId),
+            isNew: !indexFriends(friends).has(linkChallenge.playerId),
           },
   };
   const attempts = findAttempts(records, puzzle.givens);
