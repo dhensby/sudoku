@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import { bit } from '../core';
 import { Cell, type CellProps } from './Cell';
 
 function renderCell(overrides: Partial<CellProps> = {}) {
@@ -213,14 +214,20 @@ describe('Cell', () => {
         isReadOnly: true,
         ...overrides,
       };
-      render(
+      const tree = (drawn: CellProps) => (
         <div role="table">
           <div role="row">
-            <Cell {...props} />
+            <Cell {...drawn} />
           </div>
-        </div>,
+        </div>
       );
-      return { props, cell: screen.getByRole('cell') };
+      const { rerender } = render(tree(props));
+      return {
+        props,
+        cell: screen.getByRole('cell'),
+        /** The cell drawn again, with `changes` to its props. */
+        redraw: (changes: Partial<CellProps>) => rerender(tree({ ...props, ...changes })),
+      };
     }
 
     it('is a plain cell, named by its state and placed in the table', () => {
@@ -247,6 +254,27 @@ describe('Cell', () => {
     it('carries the outline of the move on show', () => {
       const { cell } = renderReadOnly({ isCurrent: true, given: true, value: 3 });
       expect(cell).toHaveClass('cell', 'cell--given', 'cell--current');
+    });
+
+    it('draws a number or a candidate that changes afresh, and keeps what stays', () => {
+      // So that, played back, what a move adds fades in and nothing else does.
+      const { cell, redraw } = renderReadOnly({ value: 6 });
+      const value = () => cell.querySelector('.cell__value');
+      const six = value();
+      redraw({ value: 6, isCurrent: true });
+      expect(value()).toBe(six);
+      redraw({ value: 5, isCurrent: true });
+      expect(value()).not.toBe(six);
+
+      const spots = () => [...cell.querySelectorAll('.cell__candidate')];
+      redraw({ value: 0, candidates: bit(1) });
+      const before = spots();
+      redraw({ value: 0, candidates: bit(1) | bit(2) });
+      const after = spots();
+      expect(after[0]).toBe(before[0]);
+      expect(after[1]).not.toBe(before[1]);
+      expect(after[1]).toHaveTextContent('2');
+      expect(after[2]).toBe(before[2]);
     });
   });
 });

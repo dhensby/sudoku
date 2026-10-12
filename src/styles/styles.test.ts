@@ -734,6 +734,24 @@ describe('Watch your solve', () => {
     expect(current).toMatch(/outline-offset:\s*calc\(-1 \* var\(--current-ring\)\)/);
   });
 
+  it('fades in what a move adds from its first frame, as a transition less motion stills', () => {
+    for (const selector of [
+      '.playback__board .cell--player .cell__value',
+      '.playback__board .cell__candidate',
+    ]) {
+      expect(rule(DIALOGS, selector)).toMatch(/transition:\s*opacity 250ms ease-out/);
+    }
+    expect(DIALOGS).toMatch(
+      /@starting-style \{\s*\.playback__board \.cell--player \.cell__value,\s*\.playback__board \.cell__candidate \{\s*opacity:\s*0;/,
+    );
+    // Only there: not the game's own board, nor Compare's.
+    expect(DIALOGS.match(/@starting-style/g)).toHaveLength(1);
+    expect(BOARD).not.toContain('@starting-style');
+    expect(INDEX).toMatch(
+      /prefers-reduced-motion: reduce[^}]*transition-duration: 0\.01ms !important/,
+    );
+  });
+
   it('keeps what the caption is about clear of the ring, on the smallest board too', () => {
     // The candidates inset by the ring, the tick a pixel past it.
     expect(rule(BOARD, '.cell--current .cell__candidates')).toMatch(

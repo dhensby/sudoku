@@ -2642,6 +2642,29 @@
   }
 }
 
+/*
+ * What a move adds — a number, a candidate — fades in, mostly where the
+ * outline has already drawn the eye. Only what has just been drawn fades: each
+ * is keyed by what it shows (see Cell), so a change draws it afresh, and
+ * @starting-style styles only an element's first frame, so the outline moving
+ * or play starting fades nothing already there. Givens are there from the
+ * start, and never fade. What a move takes away goes at once. A transition
+ * rather than an animation, so that the accessibility scans, which turn
+ * transitions off, read the page at rest; less motion makes it instant
+ * either way (see index.css).
+ */
+.playback__board .cell--player .cell__value,
+.playback__board .cell__candidate {
+  transition: opacity 250ms ease-out;
+}
+
+@starting-style {
+  .playback__board .cell--player .cell__value,
+  .playback__board .cell__candidate {
+    opacity: 0;
+  }
+}
+
 .playback__panel {
   container: playback-panel / inline-size;
   display: flex;

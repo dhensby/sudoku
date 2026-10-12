@@ -635,7 +635,8 @@ Watch.
   time"), and the solving move ("— solved"). While it plays, the next move's cell is outlined a
   moment before the move is shown, so you see where before what: the board, caption, scrubber
   and time stay on the move on show until then (before a move about no one cell, the outline
-  goes instead).
+  goes instead). What a move adds — a number, a candidate — fades in; what it takes away goes at
+  once.
 - **The controls:** Play and Pause (Watch again at the solve), a move back or forward, to the
   start or the solve, speeds of 1×, 2×, 4× and 8×, and a scrubber — a native range, which a
   screen reader hears as "Move 42 of 310, 4:12". Marks along it show each mistake that counted
@@ -647,8 +648,8 @@ Watch.
   down while any dialog is open, and a held Space counts once. A step, a jump or the scrubber
   shows its move with no outline going ahead of it, and pausing takes the outline back to the move on show. A move taken by
   hand has its caption spoken; a playback running by itself speaks only where it stops — the move on show when
-  paused, the solve when it gets there — and with less motion asked for it still steps, with
-  nothing animated.
+  paused, the solve when it gets there — and with less motion asked for it plays the same, the
+  outline still going ahead of each move, but nothing fades in.
 - **Time:** each move comes after the pause the player took before it, divided by the speed, but
   a long think is shortened to 1.5 s (at 1×), and moves made within a tenth of a second of each
   other are spread 0.15 s apart so each shows. While it plays, a move's cell is outlined 0.4 s

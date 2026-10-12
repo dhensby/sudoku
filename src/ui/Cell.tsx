@@ -93,25 +93,35 @@ function className({
   return classes.join(' ');
 }
 
-/** What a cell draws: its digit, or its candidates in their 3×3 spots. */
+/**
+ * What a cell draws: its digit, or its candidates in their 3×3 spots. Each
+ * is keyed by what it shows, so a digit or a candidate that changes is drawn
+ * afresh: on a board played back, what a move adds fades in (see
+ * dialogs.css).
+ */
 function cellContent(value: number, candidates: number, sameCandidate: number) {
   return value !== 0 ? (
-    <span className="cell__value" aria-hidden="true">
+    <span className="cell__value" aria-hidden="true" key={value}>
       {value}
     </span>
   ) : (
     candidates !== 0 && (
       <span className="cell__candidates" aria-hidden="true">
-        {DIGITS.map((digit) => (
-          <span
-            className={
-              digit === sameCandidate ? 'cell__candidate cell__candidate--same' : 'cell__candidate'
-            }
-            key={digit}
-          >
-            {hasDigit(candidates, digit) ? digit : ''}
-          </span>
-        ))}
+        {DIGITS.map((digit) => {
+          const isShown = hasDigit(candidates, digit);
+          return (
+            <span
+              className={
+                digit === sameCandidate
+                  ? 'cell__candidate cell__candidate--same'
+                  : 'cell__candidate'
+              }
+              key={isShown ? digit : -digit}
+            >
+              {isShown ? digit : ''}
+            </span>
+          );
+        })}
       </span>
     )
   );

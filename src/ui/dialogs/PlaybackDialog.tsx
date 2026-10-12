@@ -94,9 +94,12 @@ interface Spoken {
  * A move taken by hand — a step, a jump, the scrubber — has its caption
  * spoken; the moves of a playback running on its own are not, which would
  * talk over everything at 8×. Where it stops is spoken once: the move on
- * show when the viewer pauses, and the solve when it gets there by itself. Play shows each move in a step, so with less
- * motion asked for it plays the same: nothing on the board animates bar the
- * conflict dot, which the stylesheet stills.
+ * show when the viewer pauses, and the solve when it gets there by itself.
+ *
+ * What a move adds to the board fades in (see dialogs.css), but play still
+ * shows each move in a single step: with less motion asked for it plays just
+ * the same, the outline still going ahead of each move, as the stylesheet
+ * stills the fade and the conflict dot's pop, which are all that move.
  */
 function Player({ playback, settings }: { playback: Playback; settings: BoardSettings }) {
   const [spoken, setSpoken] = useState<Spoken | null>(null);
