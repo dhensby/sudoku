@@ -285,6 +285,8 @@ test.describe('the share dialog', () => {
       p: encodeGivens(NEARLY_DONE.givens),
       t: String(Number(time.split(':')[0]) * 60 + Number(time.split(':')[1])),
       n: 'Alice',
+      // This browser's player ID, made as it first shared a time.
+      u: expect.stringMatching(/^[0-9a-z]{10}$/),
       // Unaided and clean, and it says so: a link that says nothing is not the same.
       a: 'm0',
     });

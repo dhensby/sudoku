@@ -126,6 +126,51 @@ describe('readSharedLink', () => {
     expect(readSharedLink(`${searchOf(timed)}&s=`)?.solve).toBeNull();
   });
 
+  it("reads the sharer's player ID onto the challenge", () => {
+    const url = buildShareUrl('https://x.test/', GIVENS, {
+      seconds: 323,
+      name: 'Dan',
+      assists: NONE,
+      playerId: 'k3x9q7za2m',
+    });
+    expect(readSharedLink(searchOf(url))?.challenge).toEqual({
+      name: 'Dan',
+      seconds: 323,
+      assists: NONE,
+      playerId: 'k3x9q7za2m',
+    });
+  });
+
+  it.each(['', 'K3X9Q7ZA2M', 'k3x9', '__proto__', 'k3x9-q7za2m', 'a'.repeat(33)])(
+    'drops a player ID of "%s", keeping the challenge',
+    (u) => {
+      const url = new URL(
+        buildShareUrl('https://x.test/', GIVENS, { seconds: 323, name: 'Dan', assists: NONE }),
+      );
+      url.searchParams.set('u', u);
+      expect(readSharedLink(url.search)?.challenge).toEqual({
+        name: 'Dan',
+        seconds: 323,
+        assists: NONE,
+      });
+    },
+  );
+
+  it('ignores a player ID with no time to go with it', () => {
+    const url = new URL(buildShareUrl('https://x.test/', GIVENS));
+    url.searchParams.set('u', 'k3x9q7za2m');
+    expect(readSharedLink(url.search)).toMatchObject({ givens: GIVENS, challenge: null });
+  });
+
+  it('reads a link from before player IDs as naming no browser', () => {
+    const url = buildShareUrl('https://x.test/', GIVENS, {
+      seconds: 60,
+      name: 'Dan',
+      assists: NONE,
+    });
+    expect(readSharedLink(searchOf(url))?.challenge).not.toHaveProperty('playerId');
+  });
+
   it('keeps a challenge without a name', () => {
     const url = buildShareUrl('https://x.test/', GIVENS, { seconds: 60, name: '', assists: NONE });
     expect(readSharedLink(searchOf(url))?.challenge).toEqual({
@@ -175,7 +220,11 @@ describe('clearShareParams', () => {
   afterEach(() => window.history.replaceState({}, '', '/'));
 
   it('removes the share parameters and keeps the rest of the URL', () => {
-    window.history.replaceState({}, '', '/?p=abc&d=2026-10-13&t=10&n=Dan&a=c&s=BBA&keep=1#here');
+    window.history.replaceState(
+      {},
+      '',
+      '/?p=abc&d=2026-10-13&t=10&n=Dan&u=k3x9q7za2m&a=c&s=BBA&keep=1#here',
+    );
     clearShareParams();
     expect(window.location.search).toBe('?keep=1');
     expect(window.location.hash).toBe('#here');

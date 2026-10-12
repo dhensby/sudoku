@@ -444,6 +444,7 @@ export function App({ options }: AppProps = {}) {
             result={dialog.target.result}
             daily={dialog.target.daily}
             solve={dialog.target.solve}
+            playerId={sudoku.playerId}
             playerName={sudoku.playerName}
             onPlayerNameChange={actions.setPlayerName}
             onClose={actions.closeDialog}

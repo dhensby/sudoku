@@ -3,6 +3,7 @@ import { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { encodeGivens, type Puzzle } from '../core';
 import { upsertRecord } from '../storage/history';
+import { loadPreferences } from '../storage/prefs';
 import { memoryStorage, type StorageLike } from '../storage/storage';
 import { App } from './App';
 import type { PuzzleSource } from './puzzleSource';
@@ -538,14 +539,16 @@ describe('App', () => {
   });
 
   it('opens the share dialog with a link to the puzzle on screen', async () => {
-    await startApp();
+    const { storage } = await startApp();
     fireEvent.click(screen.getByRole('button', { name: 'Share' }));
     const dialog = screen.getByRole('dialog', { name: 'Share this puzzle' });
     expect(
       within(dialog).getByText(new RegExp(`\\?p=${encodeGivens(PUZZLE.givens)}$`)),
     ).toBeInTheDocument();
-    // Mid-game there is no time to share, so no name to put on it.
+    // Mid-game there is no time to share, so no name to put on it — nor a
+    // player ID, which is not even made.
     expect(within(dialog).queryByRole('textbox')).not.toBeInTheDocument();
+    expect(loadPreferences(storage)).not.toHaveProperty('playerId');
     // The board waits, hidden, behind the dialog.
     expect(screen.queryByRole('grid')).not.toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Close' }));
@@ -792,7 +795,7 @@ describe('App', () => {
   });
 
   it('shares the time from the completion dialog, and starts the next game from it', async () => {
-    await startApp({ source: fakeSource(nearlySolved([0]), PUZZLE) });
+    const { storage } = await startApp({ source: fakeSource(nearlySolved([0]), PUZZLE) });
     press(String(answerAt(0)));
     await screen.findByRole('dialog', { name: 'Solved!' });
     fireEvent.click(screen.getByRole('button', { name: 'Share your time' }));
@@ -801,9 +804,11 @@ describe('App', () => {
     expect(share.querySelector('.share__text')).toHaveTextContent(
       /^Sudoku · Easy · 0:\d\d No mistakes/,
     );
-    expect(new URL(share.querySelector('.share__url')!.textContent!).searchParams.get('a')).toBe(
-      'm0',
-    );
+    const url = new URL(share.querySelector('.share__url')!.textContent!);
+    expect(url.searchParams.get('a')).toBe('m0');
+    // And this browser's player ID, made as Share opened, in the first link it showed.
+    expect(url.searchParams.get('u')).toMatch(/^[0-9a-z]{10}$/);
+    expect(url.searchParams.get('u')).toBe(loadPreferences(storage).playerId);
     fireEvent.click(within(share).getByRole('button', { name: 'Close' }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });

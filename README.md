@@ -60,6 +60,8 @@ your browser.
   comparison is fair. Plus a link of their own to send back. Nothing is uploaded; everything
   travels in the link — your solve too, if you choose: switch on **Include my solve** and your
   friend can watch how you did it, once they've had a go (see [Sharing a solve](#sharing-a-solve)).
+  The link also carries a random ID for your browser, so your friend's game can tell your times
+  apart from anyone else's, whatever name they come with.
 - **History and stats** — every game you play is kept: resume unfinished ones, play a solved
   puzzle again, [watch your solve](#watch-your-solve) of it, share it, or delete it. A game you only glanced at — nothing entered, no help
   taken — is dropped when you move on to another, so browsing the levels doesn't clutter the list
@@ -796,6 +798,7 @@ the game — there is no server and nothing is uploaded.
 | `?p=<code>`    | The puzzle: its givens packed into ~26–34 URL-safe characters.                                                                                              |
 | `&t=<secs>`    | The sharer's time in whole seconds — the time to beat.                                                                                                      |
 | `&n=<name>`    | The sharer's name (optional; past 24 characters it is cut short with an ellipsis).                                                                          |
+| `&u=<id>`      | The sharer's player ID: 10 random letters and digits, made once per browser the first time it shares a time. Only with `t=`. Versions before it ignore it.  |
 | `&a=<assists>` | Help the sharer took: `c` auto candidates, `g` guesses checked as entered, `h<N>` hints, `k<N>` checks, `r<N>` reveals; mistakes: `m<N>`, candidate `x<N>`. |
 | `&d=<date>`    | A daily's date (`2026-10-13`): the opener checks it against that day's daily of the tier.                                                                   |
 | `&s=<solve>`   | The sharer's solve, its move log as stored (base64url), only with `t=`: see [Sharing a solve](#sharing-a-solve). Versions before it ignore it.              |
@@ -816,7 +819,8 @@ the parameters are cleared from the address bar once read, so reloading never dr
 A version of the game opens a link from a later one all the same: it skips a letter of `a=` it
 does not know (`g` came after the others), and reads the rest as written. A version from before
 solves were shared skips `s=` too — it only stays in that version's address bar, which clears
-the parameters it knows and no others; harmless, as nothing there reads it.
+the parameters it knows and no others; harmless, as nothing there reads it. A version from before
+player IDs skips `u=` the same way, and leaves it in its address bar.
 
 The mistakes ride in `a=` rather than a parameter of their own, after the help: `m<N>` is always
 there once the count is known — an unaided, mistake-free solve sends `a=m0` — so a link that says
@@ -842,19 +846,20 @@ time is never offered as one to beat, either: sharing it shares the puzzle alone
 
 ## Your data
 
-Everything is stored in your browser's `localStorage` under `sudoku.*` keys — preferences, the
-history (up to 1,000 games, a daily's with the date it is the daily of and the date you started
-it — the calendar and the streaks are worked out from it — and each game's
-[mistakes](#mistakes), stamped with the time they were counted at), what the dailies of games pruned from
-the history said (a few bytes a day, kept for good, so neither a best streak nor the calendar
-forgets them), the saved state of unfinished games (up to 50), every game's move log, the
-puzzles you have seen (up to 2,000, so a puzzle stays seen after its game is deleted), the
-puzzles whose shared solve you watched before solving them (`sudoku.watched`, up to 2,000 — see
-[Sharing a solve](#sharing-a-solve)) and the daily puzzles already dealt (the last 112, so they
-need not be dealt again). A game raced against a link that carried a solve keeps it with the
-challenge, inside its record, held on reading back to the shape and length of a log in a link (at
-most 4,000 characters; some 200–1,100 in practice). There are no
-accounts and no tracking.
+Everything is stored in your browser's `localStorage` under `sudoku.*` keys — preferences (with
+this browser's player ID, once you share a time), the history (up to 1,000 games, a daily's with
+the date it is the daily of and the date you started it — the calendar and the streaks are worked
+out from it — and each game's [mistakes](#mistakes), stamped with the time they were counted at),
+what the dailies of games pruned from the history said (a few bytes a day, kept for good, so
+neither a best streak nor the calendar forgets them), the saved state of unfinished games (up to
+50), every game's move log, the puzzles you have seen (up to 2,000, so a puzzle stays seen after
+its game is deleted), the puzzles whose shared solve you watched before solving them
+(`sudoku.watched`, up to 2,000 — see [Sharing a solve](#sharing-a-solve)) and the daily puzzles
+already dealt (the last 112, so they need not be dealt again). A game raced against a link that
+carried a solve keeps it with the challenge, inside its record, held on reading back to the shape
+and length of a log in a link (at most 4,000 characters; some 200–1,100 in practice). There are no
+accounts and no tracking: the player ID is random, and travels only in links you share with a
+time.
 
 Every game in the history, finished or not, keeps its **move log** (see
 [The move log](#the-move-log)) under a key of its own, `sudoku.moves.<id>`, listed in
@@ -894,8 +899,9 @@ does not recognise rather than wiping it: small fields a newer version added to 
 its saved board or the preferences (up to 8 per object, each at most 200 characters of JSON) are
 written back untouched, and a theme it does not know is applied as System, with none shown as
 chosen in Settings, but kept until you pick one. (So a record's `watched` flag survives such a
-tab — though that tab, knowing nothing of it, would show and count the solve's time until it is
-reloaded; a challenge's solve longer than those 200 characters, as most are, is dropped by it.)
+tab, as do a challenge's player ID and the preferences' — though that tab, knowing nothing of the
+flag, would show and count the solve's time until it is reloaded; a challenge's solve longer than
+those 200 characters, as most are, is dropped by it.)
 
 Some browsers clear a site's storage after a while away (Safari does after seven days without a
 visit, unless the game has been added to the home screen). Use **Export** in History to keep a
@@ -964,12 +970,12 @@ of the logs here were shed, none of the file's logs are taken.
   playing back, writing nothing.
   Share links are held to the versions before them: a copy of the assists decoder every earlier
   version shipped must read a new link's help unchanged, skipping its mistakes, and an old link
-  must read as mistakes not recorded, never 0. A solve in a link is held to its puzzle and its
-  time — another puzzle's log, a time a second or more off, an older version's log, a broken one
-  and a newer version's (which alone is said) — and the spoiler rule to every way back to a
+  must read as mistakes not recorded, never 0; a link without `u=` reads as no ID, a garbled `u=`
+  costs only the ID, and `u=` changes no other parameter. A solve in a link is held to its puzzle
+  and its time — another puzzle's log, a time a second or more off, an older version's log, a broken
+  one and a newer version's (which alone is said) — and the spoiler rule to every way back to a
   watched puzzle: a reload mid-game, Play again, a new attempt from the generator, a game resumed
-  from History, a daily, an import, and the record pruned past 1,000 while the puzzle stays
-  watched.
+  from History, a daily, an import, and the record pruned past 1,000 while the puzzle stays watched.
   Coverage thresholds are enforced in CI, with the engine held to 100%.
 - **End-to-end** (`e2e/`, Playwright): full journeys against the built app — playing and solving,
   pausing and reloading, share links between two browsers (a solve with a mistake shared, opened in

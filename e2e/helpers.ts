@@ -76,10 +76,14 @@ export function solutionOf(givens: GridString): GridString {
   return Array.from(solved).join('');
 }
 
-/** A sharer's result to put in a link. `assists` is the link's compact form, e.g. `ch2`. */
+/**
+ * A sharer's result to put in a link. `assists` is the link's compact form,
+ * e.g. `ch2`; `playerId` is the sharing browser's ID (`u=`), e.g. `k3x9q7za2m`.
+ */
 export interface LinkChallenge {
   seconds: number;
   name?: string;
+  playerId?: string;
   assists?: string;
 }
 
@@ -89,6 +93,7 @@ export function puzzleLink(givens: GridString, challenge?: LinkChallenge): strin
   if (challenge !== undefined) {
     params.set('t', String(challenge.seconds));
     if (challenge.name !== undefined) params.set('n', challenge.name);
+    if (challenge.playerId !== undefined) params.set('u', challenge.playerId);
     if (challenge.assists !== undefined) params.set('a', challenge.assists);
   }
   return `/?${params.toString()}`;

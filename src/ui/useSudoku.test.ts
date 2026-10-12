@@ -261,7 +261,7 @@ describe('useSudoku', () => {
   describe('opening a share link', () => {
     it('waits behind Start, with the challenger’s time, then starts the clock', async () => {
       const near = nearlySolved([0, 10, 20]);
-      const search = linkFor(near.givens, { t: '323', n: 'Dan', a: 'h2' });
+      const search = linkFor(near.givens, { t: '323', n: 'Dan', u: 'k3x9q7za2m', a: 'h2' });
       window.history.replaceState(null, '', `/${search}`);
       const { result, storage } = await started({ search });
 
@@ -269,7 +269,12 @@ describe('useSudoku', () => {
       expect(result.current.record).toMatchObject({
         source: 'shared',
         givens: near.givens,
-        challenge: { name: 'Dan', seconds: 323, assists: { ...NO_HELP, hints: 2 } },
+        challenge: {
+          name: 'Dan',
+          seconds: 323,
+          assists: { ...NO_HELP, hints: 2 },
+          playerId: 'k3x9q7za2m',
+        },
       });
       // The link has done its job; a reload must not drag the player back to it.
       expect(window.location.search).toBe('');
@@ -326,10 +331,16 @@ describe('useSudoku', () => {
       const id = first.result.current.record?.id;
       first.unmount();
 
-      const { result } = setup({ storage, search: linkFor(PUZZLE.givens, { t: '200' }) });
+      const { result } = setup({
+        storage,
+        search: linkFor(PUZZLE.givens, { t: '200', u: 'k3x9q7za2m' }),
+      });
       expect(result.current.record?.id).toBe(id);
       expect(result.current.phase).toBe('paused');
-      expect(result.current.record?.challenge?.seconds).toBe(200);
+      expect(result.current.record?.challenge).toMatchObject({
+        seconds: 200,
+        playerId: 'k3x9q7za2m',
+      });
       expect(result.current.game?.cells[FIRST_EMPTY].value).toBe(answerAt(FIRST_EMPTY));
     });
 
@@ -341,7 +352,7 @@ describe('useSudoku', () => {
         const view = await started({
           storage,
           source: fakeSource(other),
-          search: linkFor(PUZZLE.givens, { t: '323', n: 'Dan' }),
+          search: linkFor(PUZZLE.givens, { t: '323', n: 'Dan', u: 'k3x9q7za2m' }),
         });
         return { ...view, other };
       }
@@ -350,7 +361,10 @@ describe('useSudoku', () => {
         const { result, storage } = await solvedThenLinked();
         expect(result.current.dialog).toMatchObject({
           kind: 'challenge',
-          offer: { previous: { id: 'old-0001' }, challenge: { name: 'Dan', seconds: 323 } },
+          offer: {
+            previous: { id: 'old-0001' },
+            challenge: { name: 'Dan', seconds: 323, playerId: 'k3x9q7za2m' },
+          },
         });
         // A game is still made for behind the dialog, held until it closes —
         // and unrecorded until then, as nobody has seen it.
@@ -379,7 +393,7 @@ describe('useSudoku', () => {
         expect(result.current.record).toMatchObject({
           source: 'replay',
           givens: PUZZLE.givens,
-          challenge: { name: 'Dan' },
+          challenge: { name: 'Dan', playerId: 'k3x9q7za2m' },
         });
         // And the game made behind the offer, never seen, leaves no trace.
         expect(loadHistory(storage)).toHaveLength(2);
@@ -2271,6 +2285,65 @@ describe('useSudoku', () => {
       enter(result, 1, answerAt(1));
       expect(result.current.phase).toBe('solved');
       expect(result.current.notice).toBeNull();
+    });
+  });
+
+  describe("this browser's player ID", () => {
+    it('is made the first time a time is shared, and only then', async () => {
+      const { result, storage } = await started({ source: fakeSource(nearlySolved([0])) });
+      enter(result, 0, answerAt(0));
+      advance(COMPLETION_DELAY_MS);
+      // Solving makes none: a time that is never shared needs no ID.
+      expect(result.current.playerId).toBeNull();
+      expect(loadPreferences(storage)).not.toHaveProperty('playerId');
+
+      // The header's Share, once Solved! is closed, shares the time and makes it.
+      act(() => result.current.actions.closeDialog());
+      act(() => result.current.actions.openDialog('share'));
+      expect(result.current.dialog).toMatchObject({ kind: 'share', target: { result: {} } });
+      const id = result.current.playerId;
+      expect(id).toMatch(/^[0-9a-z]{10}$/);
+      expect(loadPreferences(storage).playerId).toBe(id);
+
+      // Solved!'s Share takes the same one, with nothing written for it.
+      act(() => result.current.actions.closeDialog());
+      const writes = vi.spyOn(storage, 'setItem');
+      act(() => result.current.actions.shareResult());
+      expect(result.current.dialog).toMatchObject({ kind: 'share', target: { result: {} } });
+      expect(result.current.playerId).toBe(id);
+      expect(writes.mock.calls.filter(([key]) => key === 'sudoku.prefs')).toEqual([]);
+    });
+
+    it('is not made for a puzzle shared alone, mid-game or from History', async () => {
+      const { result, storage } = await started();
+      enter(result, FIRST_EMPTY, answerAt(FIRST_EMPTY));
+      act(() => result.current.actions.openDialog('share'));
+      expect(result.current.dialog).toMatchObject({ kind: 'share', target: { result: null } });
+      act(() => result.current.actions.closeDialog());
+      act(() => result.current.actions.openDialog('history'));
+      act(() => result.current.actions.shareRecord(result.current.record!.id));
+      expect(result.current.dialog).toMatchObject({
+        kind: 'share',
+        target: { result: null },
+        returnTo: 'history',
+      });
+      expect(result.current.playerId).toBeNull();
+      expect(loadPreferences(storage)).not.toHaveProperty('playerId');
+    });
+
+    it('is made for a solved game shared from History', async () => {
+      const storage = memoryStorage();
+      upsertRecord(storage, solvedRecord(PUZZLE, 290_000));
+      const { result } = await started({ storage, source: fakeSource(another(PUZZLE)) });
+      act(() => result.current.actions.openDialog('history'));
+      act(() => result.current.actions.shareRecord('old-0001'));
+      expect(result.current.dialog).toMatchObject({
+        kind: 'share',
+        target: { result: { seconds: 290 } },
+        returnTo: 'history',
+      });
+      expect(result.current.playerId).toMatch(/^[0-9a-z]{10}$/);
+      expect(loadPreferences(storage).playerId).toBe(result.current.playerId);
     });
   });
 

@@ -66,6 +66,7 @@ import {
 } from '../storage/history';
 import { loadEncodedMoveLog } from '../storage/moveLogs';
 import {
+  ensurePlayerId,
   hasNewerTheme,
   loadPreferences,
   setLastDifficulty,
@@ -576,6 +577,11 @@ export interface Sudoku {
    */
   isThemeNewer: boolean;
   playerName: string;
+  /**
+   * This browser's player ID (see `Preferences.playerId`), for Share to put
+   * in a link with a time; null until the first time one is shared.
+   */
+  playerId: string | null;
   announcement: Announcement | null;
   notice: Notice | null;
   dialog: DialogState | null;
@@ -1070,6 +1076,17 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     session?.record.id === id && session.moves !== null
       ? encodeMoveLog(session.moves)
       : loadEncodedMoveLog(storage, id);
+
+  /**
+   * Open Share on `target`. A time going out takes this browser's player ID,
+   * made now if there is none yet (see `ensurePlayerId`): the two updates
+   * land together, so the dialog's first link already carries it. A bare
+   * puzzle names no one, and makes none.
+   */
+  const openShare = (target: ShareTarget, returnTo: 'history' | null): void => {
+    if (target.result !== null && prefs.playerId === undefined) setPrefs(ensurePlayerId(storage));
+    setDialog({ kind: 'share', target, returnTo });
+  };
 
   /** Open the player on a friend's solve, coming back to `returnTo` as it closes. */
   const showFriendSolve = (solve: FriendSolve, returnTo: PlaybackView['returnTo']): void => {
@@ -1980,7 +1997,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       const current = pauseFor('dialog', t) ?? session;
       if (kind === 'share') {
         if (current === null) return;
-        setDialog({ kind, target: shareTargetOf(current), returnTo: null });
+        openShare(shareTargetOf(current), null);
         return;
       }
       if (kind === 'techniques') {
@@ -2081,7 +2098,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     },
     shareResult: () => {
       if (session === null) return;
-      setDialog({ kind: 'share', target: shareTargetOf(session), returnTo: null });
+      openShare(shareTargetOf(session), null);
     },
     playAgain: () => {
       if (dialog?.kind !== 'challenge') return;
@@ -2118,11 +2135,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     shareRecord: (id) => {
       const record = history.records.find((entry) => entry.id === id);
       if (record === undefined) return;
-      setDialog({
-        kind: 'share',
-        target: shareTargetOfRecord(record, watchedLogOf(id)),
-        returnTo: 'history',
-      });
+      openShare(shareTargetOfRecord(record, watchedLogOf(id)), 'history');
     },
     canWatchRecord: (record) =>
       record.status === 'solved' && isWatchable(record.givens, watchedLogOf(record.id)),
@@ -2294,6 +2307,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     settings,
     isThemeNewer,
     playerName: prefs.playerName,
+    playerId: prefs.playerId ?? null,
     announcement,
     notice,
     dialog,

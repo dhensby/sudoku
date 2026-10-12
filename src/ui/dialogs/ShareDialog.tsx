@@ -31,6 +31,12 @@ export interface ShareDialogProps {
    * out) to offer none.
    */
   solve?: string | null;
+  /**
+   * This browser's player ID (see `Preferences.playerId`), which the link
+   * carries with a time, so a friend's game can tell this player's times from
+   * anyone else's — with the name or without it. Null (or left out) sends none.
+   */
+  playerId?: string | null;
   /** The remembered name, already normalised. */
   playerName: string;
   /**
@@ -78,6 +84,10 @@ function copyHint(isTouch: boolean): string {
  * message and hands it to the native share sheet or the clipboard — and, when
  * neither works, shows it selected for copying by hand.
  *
+ * A time goes with this browser's player ID, with a name or without one
+ * (see `ShareResult.playerId`). There is no switch for it: it is what lets a
+ * friend's game tell this player's times from anyone else's.
+ *
  * With a time, the solve itself can go too, for the friend to watch: a
  * switch, "Include my solve", shown only when there is a solve that will
  * play back. Off to begin with, every time: a race is what a shared time is
@@ -91,6 +101,7 @@ export function ShareDialog({
   result,
   daily = null,
   solve = null,
+  playerId = null,
   playerName,
   onPlayerNameChange,
   onClose,
@@ -116,7 +127,7 @@ export function ShareDialog({
   const url = buildShareUrl(
     shareBaseUrl(),
     givens,
-    result === null ? undefined : { ...result, name: normaliseName(name), log },
+    result === null ? undefined : { ...result, name: normaliseName(name), playerId, log },
     daily,
   );
   const text = buildShareText({

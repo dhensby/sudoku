@@ -228,9 +228,10 @@ describe('buildShareUrl', () => {
       name: 'Dan',
       assists: NONE,
       mistakes: { values: 0, candidates: 0 },
+      playerId: 'k3x9q7za2m',
     };
     const url = new URL(buildShareUrl(BASE, GIVENS, { ...result, log: 'BBAxy-_z' }, '2026-10-13'));
-    expect([...url.searchParams.keys()]).toEqual(['p', 'd', 't', 'n', 'a', 's']);
+    expect([...url.searchParams.keys()]).toEqual(['p', 'd', 't', 'n', 'u', 'a', 's']);
     expect(url.searchParams.get('s')).toBe('BBAxy-_z');
     // base64url needs no escaping in a query.
     expect(url.search).toContain('&s=BBAxy-_z');
@@ -238,6 +239,55 @@ describe('buildShareUrl', () => {
       new URL(buildShareUrl(BASE, GIVENS, { ...result, log: null })).searchParams.has('s'),
     ).toBe(false);
     expect(new URL(buildShareUrl(BASE, GIVENS, result)).searchParams.has('s')).toBe(false);
+  });
+
+  it("carries the sharer's player ID beside the name, with or without one", () => {
+    const named = new URL(
+      buildShareUrl(BASE, GIVENS, {
+        seconds: 90,
+        name: 'Dan',
+        assists: NONE,
+        playerId: 'k3x9q7za2m',
+      }),
+    );
+    expect([...named.searchParams.keys()]).toEqual(['p', 't', 'n', 'u']);
+    expect(named.searchParams.get('u')).toBe('k3x9q7za2m');
+    // Letters and digits: nothing to escape.
+    expect(named.search).toContain('&u=k3x9q7za2m');
+    // An anonymous time still names its browser, so a friend can tell whose it is.
+    const anonymous = new URL(
+      buildShareUrl(BASE, GIVENS, { seconds: 90, name: '', assists: NONE, playerId: 'k3x9q7za2m' }),
+    );
+    expect([...anonymous.searchParams.keys()]).toEqual(['p', 't', 'u']);
+  });
+
+  it('carries no player ID without one to carry, or without a time', () => {
+    const result = { seconds: 90, name: 'Dan', assists: NONE };
+    expect(
+      new URL(buildShareUrl(BASE, GIVENS, { ...result, playerId: null })).searchParams.has('u'),
+    ).toBe(false);
+    expect(new URL(buildShareUrl(BASE, GIVENS, result)).searchParams.has('u')).toBe(false);
+    // A bare puzzle names no one.
+    expect(new URL(buildShareUrl(BASE, GIVENS)).searchParams.has('u')).toBe(false);
+  });
+
+  it('changes no other parameter for the player ID it carries', () => {
+    const result = {
+      seconds: 90,
+      name: 'Dan',
+      assists: { ...NONE, hints: 2 },
+      mistakes: { values: 1, candidates: 0 },
+      log: 'BBAxy-_z',
+    };
+    const without = new URL(buildShareUrl(BASE, GIVENS, result, '2026-10-13'));
+    const withId = new URL(
+      buildShareUrl(BASE, GIVENS, { ...result, playerId: 'k3x9q7za2m' }, '2026-10-13'),
+    );
+    for (const key of ['p', 'd', 't', 'n', 'a', 's']) {
+      expect(withId.searchParams.get(key)).toBe(without.searchParams.get(key));
+    }
+    withId.searchParams.delete('u');
+    expect(withId.href).toBe(without.href);
   });
 
   it('replaces whatever query and hash the base had', () => {

@@ -158,12 +158,22 @@ describe('HelpDialog', () => {
     render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={vi.fn()} />);
     expect(screen.getByText(/Nothing is uploaded/)).toBeInTheDocument();
     expect(screen.getByText(/honour system/)).toBeInTheDocument();
-    expect(screen.getByText(/Everything stays in this browser/)).toBeInTheDocument();
+    expect(screen.getByText(/Everything stays in this browser/)).toHaveTextContent(
+      'Everything stays in this browser: there are no accounts and no tracking. A link with your time carries a random ID for this browser, made the first time you share a time: the ID says nothing else about you.',
+    );
+  });
+
+  it("says a link with a time carries a random ID for the browser, and what it's for", () => {
+    render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={vi.fn()} />);
+    const section = screen.getByRole('heading', { name: 'Racing friends' }).closest('section')!;
+    expect(within(section).getByText(/^A share link carries/)).toHaveTextContent(
+      "A share link carries the puzzle itself — and, once you have solved it, your time, your name, any help you took, your mistakes and a random ID for this browser, so a friend's game can tell your times from anyone else's.",
+    );
   });
 
   it('says links carry your mistakes, compared beside the help, and explains the dash', () => {
     render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={vi.fn()} />);
-    expect(screen.getByText(/any help you took and your mistakes/)).toBeInTheDocument();
+    expect(screen.getByText(/any help you took, your mistakes/)).toBeInTheDocument();
     // The head-to-head shows a bare dash for a count not known, so Help names it as such.
     expect(screen.getByText(/compared row by row/)).toHaveTextContent(
       "A dash means the mistakes weren't recorded: a link from an older version of the game doesn't carry them, and a solve of yours that wasn't recorded move by move has none to show.",

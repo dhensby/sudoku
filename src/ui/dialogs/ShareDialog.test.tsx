@@ -85,6 +85,11 @@ describe('ShareDialog', () => {
       expect(dialog()).toHaveTextContent('Try this Hard Sudoku!');
       expect(shownUrl()).toBe(buildShareUrl(shareBaseUrl(), GIVENS));
     });
+
+    it('names no one, whatever player ID it is given', () => {
+      renderShare({ result: null, playerId: 'k3x9q7za2m' });
+      expect(shownUrl()).toBe(buildShareUrl(shareBaseUrl(), GIVENS));
+    });
   });
 
   describe('a solved time', () => {
@@ -149,6 +154,16 @@ describe('ShareDialog', () => {
       fireEvent.keyDown(document, { key: 'Escape' });
       expect(props.onPlayerNameChange).toHaveBeenCalledExactlyOnceWith('Ann');
       expect(props.onClose).toHaveBeenCalledOnce();
+    });
+
+    it("puts this browser's player ID in the link, beside the name or without one", () => {
+      renderShare({ playerId: 'k3x9q7za2m' });
+      expect(shownUrl()).toBe(
+        buildShareUrl(shareBaseUrl(), GIVENS, { ...RESULT, name: 'Dan', playerId: 'k3x9q7za2m' }),
+      );
+      expect(new URL(shownUrl()!).searchParams.get('u')).toBe('k3x9q7za2m');
+      fireEvent.change(nameField(), { target: { value: '' } });
+      expect([...new URL(shownUrl()!).searchParams.keys()]).toEqual(['p', 't', 'u', 'a']);
     });
   });
 

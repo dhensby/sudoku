@@ -425,7 +425,8 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
           <ul className="help__list">
             <li>
               A share link carries the puzzle itself — and, once you have solved it, your time, your
-              name, any help you took and your mistakes.
+              name, any help you took, your mistakes and a random ID for this browser, so a
+              friend&apos;s game can tell your times from anyone else&apos;s.
             </li>
             <li>
               Your friend&apos;s solve and yours are compared row by row: the time, each kind of
@@ -476,7 +477,11 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
         <section className="help__section">
           <h3 className="help__heading">Privacy</h3>
           <ul className="help__list">
-            <li>Everything stays in this browser: there are no accounts and no tracking.</li>
+            <li>
+              Everything stays in this browser: there are no accounts and no tracking. A link with
+              your time carries a random ID for this browser, made the first time you share a time:
+              the ID says nothing else about you.
+            </li>
             <li>
               Some browsers clear a site's data after a while away. Export your history from the
               History screen to keep it safe.

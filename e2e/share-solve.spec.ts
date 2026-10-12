@@ -55,7 +55,7 @@ async function shareWithTheSolve(page: Page): Promise<URL> {
     "You can watch my solve too, once you've had a go.",
   ]);
   const link = new URL(lines.at(-1)!);
-  expect([...link.searchParams.keys()]).toEqual(['p', 't', 'n', 'a', 's']);
+  expect([...link.searchParams.keys()]).toEqual(['p', 't', 'n', 'u', 'a', 's']);
   return link;
 }
 

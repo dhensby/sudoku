@@ -10,6 +10,7 @@ import {
   encodeMoveLog,
   formatGrid,
   mulberry32,
+  newerFields,
   parseGrid,
   type Digit,
   type MoveLog,
@@ -27,6 +28,7 @@ import {
   recordedMistakes,
   repairMistakeCounts,
   createGameId,
+  createPlayerId,
   deleteGameBlob,
   deleteRecord,
   exportHistory,
@@ -184,6 +186,24 @@ describe('createGameId', () => {
     saveCurrentId(storage, id);
     expect(loadCurrentId(storage)).toBe(id);
     expect(upsertRecord(storage, playing(id, 1))).toHaveLength(1);
+  });
+});
+
+describe('createPlayerId', () => {
+  it('is ten random base-36 characters', () => {
+    expect(createPlayerId(mulberry32(1))).toMatch(/^[0-9a-z]{10}$/);
+  });
+
+  it('is deterministic for a seeded random source, and differs from one draw to the next', () => {
+    expect(createPlayerId(mulberry32(7))).toBe(createPlayerId(mulberry32(7)));
+    const rng = mulberry32(3);
+    expect(createPlayerId(rng)).not.toBe(createPlayerId(rng));
+  });
+
+  it('uses the platform CSPRNG by default', () => {
+    const made = new Set(Array.from({ length: 20 }, () => createPlayerId()));
+    expect(made.size).toBeGreaterThan(1);
+    for (const id of made) expect(id).toMatch(/^[0-9a-z]{10}$/);
   });
 });
 
@@ -2839,15 +2859,43 @@ describe('shared solves and puzzles watched', () => {
     });
   });
 
+  describe("a challenger's player ID", () => {
+    const ID = 'k3x9q7za2m';
+
+    it('is kept as the link carried it', () => {
+      const storage = memoryStorage();
+      upsertRecord(storage, playing('a', 1, { challenge: { ...challenge, playerId: ID } }));
+      expect(loadHistory(storage)[0].challenge).toEqual({ ...challenge, playerId: ID });
+    });
+
+    it.each([
+      ['garbled', 'BAD ID'],
+      ['not a string', 12345678],
+    ])('is dropped on its own when %s, the challenge kept', (_, playerId) => {
+      const storage = memoryStorage();
+      seed(storage, [playing('a', 1, { challenge: { ...challenge, playerId } as never })]);
+      expect(loadHistory(storage)[0].challenge).toEqual(challenge);
+    });
+
+    it('survives a tab from before IDs, which keeps it as a newer field', () => {
+      // What that tab knew of a challenge: everything but the ID.
+      const before = ['name', 'seconds', 'assists', 'mistakes', 'log'];
+      expect(newerFields({ ...challenge, playerId: ID }, before)).toEqual({ playerId: ID });
+    });
+  });
+
   describe("friends' solves in a full storage", () => {
     const LOG = 'B'.repeat(2000);
+    const ID = 'k3x9q7za2m';
 
     /** 400 finished games with a friend's solve, 20 unfinished ones with saved boards, p19 on screen. */
     function fullStorage(): ReturnType<typeof quotaStorage> {
       const storage = quotaStorage();
       const records: GameRecord[] = [];
       for (let i = 0; i < 400; i++) {
-        records.push(solved(`s${i}`, i * 10, 60_000, { challenge: { ...challenge, log: LOG } }));
+        records.push(
+          solved(`s${i}`, i * 10, 60_000, { challenge: { ...challenge, playerId: ID, log: LOG } }),
+        );
       }
       for (let i = 0; i < 20; i++) {
         const log = i === 19 ? LOG : undefined;
@@ -2873,8 +2921,11 @@ describe('shared solves and puzzles watched', () => {
       expect(
         after.filter((record) => record.challenge?.log !== undefined).map((r) => r.id),
       ).toEqual(['p19']);
-      // Each challenge keeps its name and time: only the solve to watch went.
-      expect(after.find((record) => record.id === 's0')?.challenge).toEqual(challenge);
+      // Each challenge keeps its name, time and player ID: only the solve to watch went.
+      expect(after.find((record) => record.id === 's0')?.challenge).toEqual({
+        ...challenge,
+        playerId: ID,
+      });
       expect(savedGameIds(storage).size).toBe(20);
     });
 

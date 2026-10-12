@@ -1,10 +1,10 @@
 import { decodeGivens, isDateKey, type DateKey, type GridString } from '../core';
 import type { Challenge } from '../storage/history';
-import { normaliseName } from '../storage/storage';
+import { isPlayerId, normaliseName } from '../storage/storage';
 import { decodeAssists, decodeMistakes } from './share';
 
 /** The parameters a share link may carry. */
-const SHARE_PARAMS = ['p', 'd', 't', 'n', 'a', 's'] as const;
+const SHARE_PARAMS = ['p', 'd', 't', 'n', 'u', 'a', 's'] as const;
 
 /** What a share link asked for. */
 export interface SharedLink {
@@ -43,7 +43,10 @@ export interface SharedLink {
  * challenge's mistakes unset, not known, never none (see `decodeMistakes`).
  *
  * A solve (`&s=`) only comes back with a result to go with it, as it is
- * checked against the result's time.
+ * checked against the result's time. So does the sharer's player ID (`&u=`),
+ * on the challenge: one that is not shaped like an ID (see `isPlayerId`) is
+ * no ID, and costs only itself — the challenger is then known by their name
+ * alone, as from a link made before IDs.
  *
  * Nothing from the link is trusted beyond the givens themselves: the caller
  * still validates them, re-grades the puzzle rather than taking a
@@ -60,6 +63,7 @@ export function readSharedLink(search: string): SharedLink | null {
   const name = normaliseName(params.get('n'));
   const assists = params.get('a');
   const mistakes = decodeMistakes(assists);
+  const playerId = params.get('u');
   const challenge: Challenge | null =
     seconds >= 1
       ? {
@@ -67,6 +71,7 @@ export function readSharedLink(search: string): SharedLink | null {
           seconds,
           assists: decodeAssists(assists),
           ...(mistakes === null ? {} : { mistakes }),
+          ...(isPlayerId(playerId) ? { playerId } : {}),
         }
       : null;
 

@@ -37,6 +37,7 @@ import {
   deleteItem,
   isDifficulty,
   isObject,
+  isPlayerId,
   normaliseName,
   readItem,
   readJson,
@@ -156,6 +157,14 @@ export interface Challenge {
    * left to the moment someone asks to watch it.
    */
   log?: string;
+  /**
+   * The player ID of the browser the link came from (`u=`, see `Preferences.playerId`):
+   * what tells this challenger's times from anyone else's, whatever name each link
+   * gives. Absent for a link without one — from a version before IDs, with a garbled
+   * one, or a bare name — whose challenger is known only by the name it gave. Like
+   * `name`, never updated here.
+   */
+  playerId?: string;
 }
 
 /**
@@ -346,6 +355,7 @@ const CHALLENGE_FIELDS = fieldsOf<Challenge>({
   assists: true,
   mistakes: true,
   log: true,
+  playerId: true,
 });
 
 function gameKey(id: string): string {
@@ -363,6 +373,23 @@ export function createGameId(now: number, rng: RandomFn = createRng()): string {
   let tail = '';
   for (let k = 0; k < 4; k++) tail += ID_ALPHABET[Math.floor(rng() * ID_ALPHABET.length)];
   return `${time.toString(36)}-${tail}`;
+}
+
+/** How many characters a player ID is drawn with. */
+const PLAYER_ID_LENGTH = 10;
+
+/**
+ * A fresh player ID (see `Preferences.playerId`): ten random base-36
+ * characters, from the CSPRNG by default. Some 51.7 bits, so two browsers
+ * sharing links with the same friend all but never draw the same one, and
+ * nothing in it needs escaping in a link.
+ */
+export function createPlayerId(rng: RandomFn = createRng()): string {
+  let id = '';
+  for (let k = 0; k < PLAYER_ID_LENGTH; k++) {
+    id += ID_ALPHABET[Math.floor(rng() * ID_ALPHABET.length)];
+  }
+  return id;
 }
 
 // ---------------------------------------------------------------------------
@@ -498,7 +525,8 @@ function isSharedLog(value: unknown): value is string {
  * A usable challenge, or null — a broken one only costs the comparison, so it
  * never sinks the record. Broken mistakes cost only themselves: the time and
  * help still stand, with the mistakes not known. So does a broken solve,
- * which is dropped on its own (see `isSharedLog`).
+ * which is dropped on its own (see `isSharedLog`), and a broken player ID,
+ * which leaves the challenger known by their name alone.
  */
 function normaliseChallenge(value: unknown): Challenge | null {
   if (!isObject(value)) return null;
@@ -514,6 +542,7 @@ function normaliseChallenge(value: unknown): Challenge | null {
     // Left off rather than null, as on a record: absent is "not known".
     ...(mistakes === null ? {} : { mistakes }),
     ...(isSharedLog(value.log) ? { log: value.log } : {}),
+    ...(isPlayerId(value.playerId) ? { playerId: value.playerId } : {}),
   };
 }
 

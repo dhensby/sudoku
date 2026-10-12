@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { formatGrid, parseGrid, type Difficulty } from '../core';
+import { formatGrid, mulberry32, newerFields, parseGrid, type Difficulty } from '../core';
 import { saveGameBlob } from './history';
 import {
   DEFAULT_PREFERENCES,
   DEFAULT_SETTINGS,
+  ensurePlayerId,
   hasNewerTheme,
   loadPreferences,
   setLastDifficulty,
@@ -305,6 +306,101 @@ describe('setLastDifficulty', () => {
     const prefs = setLastDifficulty(storage, 'extreme' as Difficulty);
     expect(prefs.lastDifficulty).toBe('hard');
     expect(loadPreferences(storage).lastDifficulty).toBe('hard');
+  });
+});
+
+describe('the player ID', () => {
+  const ID = 'k3x9q7za2m';
+
+  const stored = (storage: ReturnType<typeof memoryStorage>): Record<string, unknown> =>
+    JSON.parse(storage.getItem(KEY)!) as Record<string, unknown>;
+
+  it('is not made by loading: a browser that never shares a time has none', () => {
+    expect(loadPreferences(memoryStorage())).not.toHaveProperty('playerId');
+    expect(loadPreferences(storageWith({ playerName: 'Dan' }))).not.toHaveProperty('playerId');
+  });
+
+  it('is read back as stored', () => {
+    expect(loadPreferences(storageWith({ playerId: ID })).playerId).toBe(ID);
+  });
+
+  it.each([['K3X9Q7ZA2M'], ['short'], [''], [42], [null], ['__proto__']])(
+    'is dropped when stored as %j',
+    (playerId) => {
+      expect(loadPreferences(storageWith({ playerId }))).not.toHaveProperty('playerId');
+    },
+  );
+
+  describe('ensurePlayerId', () => {
+    it('makes one, and stores it', () => {
+      const storage = memoryStorage();
+      const prefs = ensurePlayerId(storage, mulberry32(1));
+      expect(prefs.playerId).toMatch(/^[0-9a-z]{10}$/);
+      expect(loadPreferences(storage).playerId).toBe(prefs.playerId);
+    });
+
+    it('hands back the same one the next time, writing nothing', () => {
+      const storage = quotaStorage();
+      const first = ensurePlayerId(storage).playerId;
+      const writes = storage.writes();
+      expect(ensurePlayerId(storage).playerId).toBe(first);
+      expect(storage.writes()).toBe(writes);
+    });
+
+    it("adopts another tab's rather than making its own", () => {
+      // The other tab shared a time since this one read its preferences, which
+      // still have no ID: the stored one is what counts.
+      const storage = storageWith({ playerName: 'Dan' });
+      expect(loadPreferences(storage)).not.toHaveProperty('playerId');
+      storage.setItem(KEY, JSON.stringify({ playerName: 'Dan', playerId: ID }));
+      expect(ensurePlayerId(storage, mulberry32(1)).playerId).toBe(ID);
+    });
+
+    it('keeps the name, the settings and what a newer version stored', () => {
+      const storage = storageWith({
+        settings: { ...DEFAULT_SETTINGS, theme: 'dark' },
+        playerName: 'Dan',
+        lastDifficulty: 'hard',
+        tourSeen: true,
+      });
+      const prefs = ensurePlayerId(storage, mulberry32(1));
+      expect(prefs).toMatchObject({
+        settings: { theme: 'dark' },
+        playerName: 'Dan',
+        lastDifficulty: 'hard',
+      });
+      expect(stored(storage)).toMatchObject({
+        settings: { theme: 'dark' },
+        playerName: 'Dan',
+        lastDifficulty: 'hard',
+        tourSeen: true,
+        playerId: prefs.playerId,
+      });
+    });
+
+    it('returns one even when the storage refuses the write', () => {
+      // Best-effort, as every write: the share in hand still carries it.
+      const prefs = ensurePlayerId(throwingStorage({ set: true }));
+      expect(prefs.playerId).toMatch(/^[0-9a-z]{10}$/);
+    });
+  });
+
+  it.each<[string, (storage: ReturnType<typeof memoryStorage>) => unknown]>([
+    ['the name changes', (storage) => setPlayerName(storage, 'Sam')],
+    ['a setting changes', (storage) => updateSettings(storage, { showTimer: false })],
+    ['the tier changes', (storage) => setLastDifficulty(storage, 'hard')],
+  ])('is kept when %s', (_label, change) => {
+    const storage = storageWith({ playerId: ID });
+    expect(change(storage)).toMatchObject({ playerId: ID });
+    expect(loadPreferences(storage).playerId).toBe(ID);
+  });
+
+  it('survives a tab from before IDs, which keeps it as a newer field', () => {
+    // What that tab knew of the preferences: everything but the ID.
+    const before = ['settings', 'playerName', 'lastDifficulty'];
+    const storage = memoryStorage();
+    const { playerId } = ensurePlayerId(storage, mulberry32(1));
+    expect(newerFields(stored(storage), before)).toEqual({ playerId });
   });
 });
 

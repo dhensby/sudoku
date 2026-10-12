@@ -7,6 +7,7 @@ import {
   deleteItem,
   isDifficulty,
   isObject,
+  isPlayerId,
   memoryStorage,
   normaliseName,
   readItem,
@@ -342,6 +343,31 @@ describe('isDifficulty', () => {
       expect(isDifficulty(value)).toBe(false);
     },
   );
+});
+
+describe('isPlayerId', () => {
+  it.each([
+    ['ten characters, as one is made', 'k3x9q7za2m'],
+    ['eight, the fewest', '0123abcd'],
+    ['32, the most, as a later version might make', 'a'.repeat(32)],
+    // A word Object already uses is still only letters: the store keys nothing by it.
+    ['one that spells constructor', 'constructor'],
+  ])('accepts %s', (_label, value) => {
+    expect(isPlayerId(value)).toBe(true);
+  });
+
+  it.each([
+    ['empty', ''],
+    ['in capitals', 'K3X9Q7ZA2M'],
+    ['seven characters', 'k3x9q7z'],
+    ['33 characters', 'a'.repeat(33)],
+    ['__proto__', '__proto__'],
+    ['with a dash', 'k3x9-q7za2'],
+    ['a number', 12345678],
+    ['null', null],
+  ])('rejects %s', (_label, value) => {
+    expect(isPlayerId(value)).toBe(false);
+  });
 });
 
 describe('normaliseName', () => {
