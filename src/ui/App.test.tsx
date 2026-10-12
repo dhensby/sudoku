@@ -377,8 +377,14 @@ describe('App', () => {
     it('walks through the hinted cell step by step, with the board hidden meanwhile', async () => {
       await startStuck();
       expect(document.querySelector('.hint-bar')).toHaveTextContent(
-        "Look here — a hidden pair will unlock this cell. What's a hidden pair? Show me",
+        "Step 1 of 3: a hidden pair in column 6. What's a hidden pair? Show me",
       );
+      // Its column is tinted, in place of the selected cell's row, column and box.
+      const tinted = cells().flatMap((cell, i) =>
+        cell.classList.contains('cell--step') ? [i] : [],
+      );
+      expect(tinted).toEqual([5, 14, 23, 32, 41, 50, 59, 68, 77]);
+      expect(document.querySelector('.cell--peer')).toBeNull();
       clickWithMouse(showMe());
       expect(stepHeading()).toHaveAccessibleName('Step 1 of 3: Hidden pair');
       expect(stepHeading()).toHaveFocus();
@@ -388,8 +394,17 @@ describe('App', () => {
 
       fireEvent.click(within(walkthrough()).getByRole('button', { name: /^Next:/ }));
       expect(stepHeading()).toHaveAccessibleName('Step 2 of 3: Pointing pair or triple');
+      // A page seen for the first time counts, and says so with its heading.
+      expect(stepHeading()).toHaveAccessibleDescription('3 hints used.');
+      expect(stepHeading()).toHaveFocus();
       fireEvent.click(within(walkthrough()).getByRole('button', { name: /^Next:/ }));
       expect(stepHeading()).toHaveAccessibleName('Step 3 of 3: Naked single');
+      expect(stepHeading()).toHaveAccessibleDescription('4 hints used.');
+      // Back to a page seen already: free, and nothing said.
+      fireEvent.click(within(walkthrough()).getByRole('button', { name: /^Previous:/ }));
+      expect(stepHeading()).toHaveAccessibleName('Step 2 of 3: Pointing pair or triple');
+      expect(stepHeading()).toHaveAccessibleDescription('');
+      fireEvent.click(within(walkthrough()).getByRole('button', { name: /^Next:/ }));
       expect(
         within(walkthrough()).getByText('Row 5, column 2 must be', { exact: false }),
       ).toHaveTextContent('Row 5, column 2 must be 8.');
@@ -459,9 +474,7 @@ describe('App', () => {
       expect(document.querySelector('.hint-bar')).toBeEmptyDOMElement();
       press('ArrowDown');
       expect(showMe()).toBeInTheDocument();
-      expect(selectedCell()).toHaveAccessibleDescription(
-        'Look here — a hidden pair will unlock this cell.',
-      );
+      expect(selectedCell()).toHaveAccessibleDescription('Step 1 of 3: a hidden pair in column 6.');
     });
   });
 

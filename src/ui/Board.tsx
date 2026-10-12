@@ -55,7 +55,16 @@ export interface BoardProps {
   isReadOnly?: boolean;
   /** On a read-only board, the cell to outline: the one the move on show acted on. */
   current?: number | null;
+  /**
+   * The cells of the step the hint bar names (see `Sudoku.hintTint`) —
+   * its houses, or a wing's or chain's own cells — tinted so the player
+   * sees where to look; none by default, and never on a read-only board,
+   * which has no hint bar to name a step.
+   */
+  tinted?: readonly number[];
 }
+
+const NO_CELLS: readonly number[] = [];
 
 const LINES = [0, 1, 2, 3, 4, 5, 6, 7, 8];
 
@@ -80,6 +89,7 @@ export function Board({
   describedBy,
   isReadOnly = false,
   current = null,
+  tinted = NO_CELLS,
 }: BoardProps) {
   const gridRef = useRef<HTMLDivElement>(null);
   const cellRefs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -93,6 +103,8 @@ export function Board({
     () => (game.autoCandidates ? computeCandidates(valuesOf(game)) : null),
     [game],
   );
+
+  const tintedCells = useMemo(() => new Set(tinted), [tinted]);
 
   const registerRef = useCallback((index: number, element: HTMLButtonElement | null) => {
     cellRefs.current[index] = element;
@@ -116,6 +128,11 @@ export function Board({
     settings.highlightIdentical && selectedValue !== 0 && hasDigit(candidates[index], selectedValue)
       ? selectedValue
       : 0;
+  // The selection and the same numbers come first, as they do everywhere.
+  // A hinted step's cells then take the place of the selection's row,
+  // column and box: the hinted cell, or one of the step's, is selected, and
+  // its houses would hide the step's where they cross — and two washes side
+  // by side, told apart by hue alone, would be lost on a colour-blind player.
   const highlightOf = (index: number): Highlight => {
     // A board played back has no selection: the replay's own is no one's.
     if (isReadOnly) return 'none';
@@ -127,6 +144,7 @@ export function Board({
     ) {
       return 'same';
     }
+    if (tintedCells.size > 0) return tintedCells.has(index) ? 'step' : 'none';
     const isLinePeer = ROW[index] === ROW[selected] || COL[index] === COL[selected];
     if (settings.highlightRowColumn && isLinePeer) return 'peer';
     if (settings.highlightBox && BOX[index] === BOX[selected]) return 'peer';

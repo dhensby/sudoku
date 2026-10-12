@@ -41,8 +41,9 @@ import type { Digit, Puzzle } from './types';
  *     takes back or puts back, so undoing the slip itself is not "elsewhere".
  *     Switching auto candidates (or undoing that) changes every cell's
  *     candidates, so it is elsewhere for every cell;
- *   - any help: Check (a cell or the puzzle), Hint, Show me (opened again for
- *     free included — it is help seen) and Reveal;
+ *   - any help: Check (a cell or the puzzle), Hint (a step hint included),
+ *     Show me and each new page of it (opened again for free included — it
+ *     is help seen) and Reveal;
  *   - Reset;
  *   - the board becoming full (or solved): a move that fills its last empty
  *     cell. "The board is full, but something isn't right" is news about the
@@ -309,6 +310,7 @@ function scopeOf(move: LoggedMove, before: GameState): Scope {
       return NONE;
     case 'hint':
     case 'walkthrough':
+    case 'page':
     case 'checkCell':
     case 'checkPuzzle':
     case 'reveal':

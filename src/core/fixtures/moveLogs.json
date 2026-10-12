@@ -162,6 +162,26 @@
         "redo": 0
       },
       "trace": "95ca8a71"
+    },
+    {
+      "name": "Expert, the next step towards a cell, and Show me a page at a time",
+      "givens": "400150830000002000008640097000020000609000070073000480000000305310000900000400060",
+      "solution": "467159832935782146128643597841327659659814273273965481784296315316578924592431768",
+      "difficulty": "expert",
+      "log": "BBBkqFvDBBXSk9KI0EjzGMFBBxwwe5BC5FjmFnDBBzVHjMCsZkoFuDBB5nOoEDuFkFI4LBCMrAvQEctBj9I4LBCMrAvQG2EjlHVSBHSgzpFjlHVSBHSgzpErSSgzpErSMrAv2BrScHwOarSSgzpGjdHVSBHSgzpIjlHVSBHSgzprBZKQZTJjlI4SCHMrAvKcUcgHQXSecWFgJ3BXVUjlG_SDHcHwOVgOFjlHrSEH2EOWvBYEecSuBY6FZMec_uBjlJQSFHketzWrCSrCmBrCMrCLrCgBjlHrSEH2EOWfjlASUjdABYrKAAABEjeABGkvGrLAAACJYE1BcSHY6SZMEc_FjlJQSBDketzuBYVKYvlBjlL4SCD4yr2Gg7EiHNjlFnDDDJAHyEKRFrFJGWEHoFKNEBZFKRJCsGFPRHyWJENAPgBEDPGmqBASuBBkcC5FFcQJShBEPxBAdjBDAbIGEG2FFmjBKrJFpEJeEAocEcKB7EDO7BB-MK4EHGHF2IA1IIcEJuHEreCKXLClBHQUA9QHW4BGGEIplBJ7ICXlBE6IGMGLRGCb6BDudBNlBI0ZKHEtj-",
+      "end": {
+        "values": "467159832935782146128643597841327659659814273273965481784296315316578924592431768",
+        "marks": ".................................................................................",
+        "notes": "",
+        "autoRemoved": "",
+        "autoCandidates": true,
+        "status": "solved",
+        "assists": "auto:true hints:16 checks:0 reveals:0",
+        "cellHints": "",
+        "undo": 55,
+        "redo": 0
+      },
+      "trace": "7674549b"
     }
   ]
 }

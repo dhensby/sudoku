@@ -24,8 +24,9 @@ import {
  * that asked for them: a player sixteen entries into the puzzle of share
  * code `O3NLgKqUTeam9ygZMBQVALBbgSY`, whose hint pointed at row 5, column 2
  * and named a hidden pair — in column 6, three steps and half a board away.
- * Show me walks those three steps; selecting the cell again shows the hint
- * again, and neither that nor asking again costs another hint.
+ * The hint names the first of those steps; Show me walks all three, each
+ * page counted the first time it is seen; selecting the cell again shows
+ * the hint again, and neither that nor asking again costs another hint.
  *
  * Runs on Chromium (desktop layout); the phones' bottom sheet is checked by
  * axe in a11y.spec.ts and its press areas in touch.spec.ts.
@@ -33,7 +34,8 @@ import {
 
 const { target } = STUCK_ON_A_HIDDEN_PAIR;
 
-const HINT = "Look here — a hidden pair will unlock this cell. What's a hidden pair? Show me";
+const HINT_TEXT = 'Step 1 of 3: a hidden pair in column 6.';
+const HINT = `${HINT_TEXT} What's a hidden pair? Show me`;
 
 /** What each step says, as its diagram is named. */
 const CAPTIONS = [
@@ -82,9 +84,12 @@ test('Show me walks a stuck player through the cell their hint points at', async
     await expect(stepHeading(page)).toHaveAccessibleName(`Step ${k + 1} of 3: ${titles[k]}`);
     await expect(stepHeading(page)).toBeFocused();
     await expect(walkthrough(page).getByRole('img')).toHaveAccessibleName(caption);
+    // Each page after the first counts as it is turned to, and says so with its heading.
+    if (k > 0) await expect(stepHeading(page)).toHaveAccessibleDescription(`${k + 2} hints used.`);
     if (k < 2) {
+      // A page not seen yet goes by its number, not its technique, which it would give away.
       await walkthrough(page)
-        .getByRole('button', { name: `Next: ${titles[k + 1]}` })
+        .getByRole('button', { name: `Next: Step ${k + 2} of 3` })
         .click();
     }
   }
@@ -96,8 +101,8 @@ test('Show me walks a stuck player through the cell their hint points at', async
   // Opened with the mouse: back to the board, on the cell it solved.
   await expect(page.getByRole('gridcell', { selected: true })).toBeFocused();
   expect(await selectedIndex(page)).toBe(target);
-  // The hint, and Show me itself, each counted once.
-  await expectHelpUsed(page, '2 hints');
+  // The hint, and each of Show me's three pages, counted once.
+  await expectHelpUsed(page, '4 hints');
 });
 
 test('a hinted cell shows its hint again whenever it is selected, at no further cost', async ({
@@ -116,7 +121,7 @@ test('a hinted cell shows its hint again whenever it is selected, at no further 
   await expect(hintBar(page)).toHaveText(HINT);
   // A screen reader hears it as the cell's description, not from the status region.
   await expect(page.getByRole('gridcell', { selected: true })).toHaveAccessibleDescription(
-    'Look here — a hidden pair will unlock this cell.',
+    HINT_TEXT,
   );
 
   // Asking again, and opening Show me again, are free.
@@ -200,28 +205,37 @@ test('Show me says nothing, for free, of a wrong digit elsewhere, and points at 
   await expect(stepHeading(page)).toHaveAccessibleName('Step 1 of 3: Hidden pair');
 });
 
-test('a hinted cell’s hint is put afresh as the board moves on, agreeing with its Show me', async ({
+test('a hinted cell’s hint is put afresh as the board moves on, but never to a step not seen', async ({
   page,
 }) => {
   await getStuck(page);
   await chooseMore(page, 'Hint');
-  // Two right digits in row 5, and the hidden pair is no longer needed.
+  // Two right digits in row 5, and the hidden pair is no longer needed: the
+  // cell's next step is its naked single, which no hint or page has shown.
   await typeDigits(page, [
     { index: target + 3, digit: 9 },
     { index: target + 4, digit: 5 },
   ]);
   await arrowTo(page, target + 4, target);
+  const MOVED_ON = "The board has moved on. Ask again for this cell's next step.";
+  await expect(hintBar(page)).toHaveText(`${MOVED_ON} Show me`);
+  await expect(page.getByRole('gridcell', { selected: true })).toHaveAccessibleDescription(
+    MOVED_ON,
+  );
+  await expect(page.locator('.cell--step')).toHaveCount(0);
+  await expectHelpUsed(page, '1 hint');
+  await showMe(page).click();
+  // The last of the three steps the hint first named: a page not seen, counted.
+  await expect(stepHeading(page)).toHaveAccessibleName('Step 3 of 3: Naked single');
+  await page.keyboard.press('Escape');
+  await waitForPlaying(page);
+  // Seen on its page, the step is put afresh, agreeing with Show me, for free.
   await expect(hintBar(page)).toHaveText(
     "Naked single: only one number fits in this cell. What's a naked single? Show me",
   );
   await expect(page.getByRole('gridcell', { selected: true })).toHaveAccessibleDescription(
     'Naked single: only one number fits in this cell.',
   );
-  await showMe(page).click();
-  await expect(stepHeading(page)).toHaveAccessibleName('Step 1 of 1: Naked single');
-  await page.keyboard.press('Escape');
-  await waitForPlaying(page);
-  // Put afresh, not asked for again: the hint and Show me, once each.
   await expectHelpUsed(page, '2 hints');
 });
 
@@ -256,17 +270,108 @@ test.describe('hints from your own candidates', () => {
     await selectCell(page, target);
     await showMeFor(page).click();
     const heading = stepsFor(page).getByRole('heading', { level: 3 });
-    await expect(heading).toHaveAccessibleName('Step 1 of 6: Hidden triple');
+    // Numbered on from the step taken, as the hint numbers the route.
+    await expect(heading).toHaveAccessibleName('Step 2 of 7: Hidden triple');
     // The chain rests on a 2 the player struck, and says so.
     for (let step = 1; step < 5; step++) {
       await stepsFor(page)
         .getByRole('button', { name: /^Next:/ })
         .click();
     }
-    await expect(heading).toHaveAccessibleName('Step 5 of 6: XY-Chain');
+    await expect(heading).toHaveAccessibleName('Step 6 of 7: XY-Chain');
     await expect(stepsFor(page).getByRole('img')).toHaveAccessibleName(
       /You'd already ruled out 2 from row 9, column 9\./,
     );
+  });
+
+  test('Hint pages through the steps to the cell, and Show me counts only pages not seen before', async ({
+    page,
+  }) => {
+    const help = page.locator('.help-taken--header .help-taken__full');
+    const bar = hintBar(page);
+    await getStuckOnAnXyChain(page);
+    await chooseMore(page, 'Hint');
+    await expect(bar).toHaveText(
+      'Step 1 of 7: a box/line reduction in column 8. The hardest is an XY-Chain. ' +
+        "What's a box/line reduction? Show me",
+    );
+    expect(await selectedIndex(page)).toBe(target);
+    // Column 8 and box 9 tinted, in place of the selected cell's row, column and box.
+    await expect(cell(page, at(1, 8))).toHaveClass(/\bcell--step\b/);
+    await expect(cell(page, at(9, 9))).toHaveClass(/\bcell--step\b/);
+    await expect(cell(page, at(2, 2))).not.toHaveClass(/\bcell--(step|peer)\b/);
+    await expect(help).toHaveText('Auto candidates · 1 hint');
+
+    // The 2s struck, as the step says: asked again, the hint moves on, and counts.
+    await modeButton(page, 'Candidate').click();
+    await typeDigits(
+      page,
+      strikes.map(([row, col, digit]) => ({ index: at(row, col), digit })),
+    );
+    await ensureNormalMode(page);
+    await chooseMore(page, 'Hint');
+    await expect(bar).toContainText('Step 2 of 7: a hidden triple in row 4.');
+    await expect(cell(page, at(4, 1))).toHaveClass(/\bcell--step\b/);
+    await expect(help).toHaveText('Auto candidates · 2 hints');
+    // Asked again, nothing changed: free.
+    await chooseMore(page, 'Hint');
+    await expect(help).toHaveText('Auto candidates · 2 hints');
+
+    // Show me: its first page counted as it opens, the next as it is turned to;
+    // back and forward again, free.
+    await showMeFor(page).click();
+    const heading = stepsFor(page).getByRole('heading', { level: 3 });
+    await expect(heading).toHaveAccessibleName('Step 2 of 7: Hidden triple');
+    await expect(stepsFor(page).locator('.walkthrough__charge')).toHaveText('3 hints used.');
+    await stepsFor(page)
+      .getByRole('button', { name: /^Next:/ })
+      .click();
+    await expect(heading).toHaveAccessibleName('Step 3 of 7: Pointing pair or triple');
+    await expect(heading).toHaveAccessibleDescription('4 hints used.');
+    // One count on show: the opening's, said already and now behind, is gone.
+    await expect(stepsFor(page).getByText(/hints used\./)).toHaveCount(1);
+    await stepsFor(page)
+      .getByRole('button', { name: /^Previous:/ })
+      .click();
+    await expect(heading).toHaveAccessibleName('Step 2 of 7: Hidden triple');
+    await expect(heading).toHaveAccessibleDescription('');
+    await stepsFor(page)
+      .getByRole('button', { name: /^Next:/ })
+      .click();
+    await expect(heading).toHaveAccessibleDescription('');
+    await page.keyboard.press('Escape');
+    await waitForPlaying(page);
+    await expect(help).toHaveText('Auto candidates · 4 hints');
+    // Opened again, at a page already seen: free.
+    await showMeFor(page).click();
+    await expect(stepsFor(page).locator('.walkthrough__charge')).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    await waitForPlaying(page);
+    await expect(help).toHaveText('Auto candidates · 4 hints');
+  });
+
+  test('a step hint keeps the bar to its two lines, on phones and a laptop alike', async ({
+    page,
+  }) => {
+    await getStuckOnAnXyChain(page);
+    await chooseMore(page, 'Hint');
+    await expect(hintBar(page)).toContainText('Step 1 of 7: a box/line reduction in column 8.');
+    // Phones held upright, and a 1366×768 laptop's window, whose board is held by its height.
+    for (const size of [
+      { width: 390, height: 844 },
+      { width: 412, height: 915 },
+      { width: 430, height: 932 },
+      { width: 1366, height: 657 },
+    ]) {
+      await page.setViewportSize(size);
+      const bar = await hintBar(page).evaluate((element) => ({
+        height: element.getBoundingClientRect().height,
+        min: parseFloat(getComputedStyle(element).minHeight),
+        isScrolled: document.documentElement.scrollHeight > window.innerHeight,
+      }));
+      expect(bar.height, `${size.width}×${size.height}`).toBeLessThanOrEqual(bar.min + 0.5);
+      expect(bar.isScrolled, `${size.width}×${size.height}`).toBe(false);
+    }
   });
 
   test('a struck answer gets a hint of its own, and Show me names it and puts it back', async ({

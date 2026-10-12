@@ -8,8 +8,18 @@ import {
   type MoveChange,
   type PlaybackFrame,
   type PlaybackRefusal,
+  type StepHint,
+  type TechniqueId,
+  type Unit,
 } from '../core';
-import { EASY_PUZZLE, act, startPlaying } from '../test/movePlayers';
+import { createRng } from '../core/rng';
+import {
+  EASY_PUZZLE,
+  act,
+  showMeOnceAStepIsTaken,
+  startPlaying,
+  stepHintsTour,
+} from '../test/movePlayers';
 import {
   REFUSAL_TEXT,
   START_CAPTION,
@@ -66,6 +76,11 @@ describe('describeMove', () => {
     ],
     [{ op: 'erase', cell: 21 }, 'Erased row 3, column 4'],
     [{ op: 'walkthrough', cell: 0 }, 'Show me for row 1, column 1'],
+    [
+      { op: 'page', cell: 9, id: 1, page: { step: 3, of: 7 } },
+      'Show me for row 2, column 1: step 3 of 7',
+    ],
+    [{ op: 'page', cell: 9, id: 1, page: null }, 'Show me for row 2, column 1'],
     [{ op: 'checkCell', cell: 21 }, 'Checked row 3, column 4'],
     [{ op: 'checkPuzzle' }, 'Checked the puzzle'],
     [{ op: 'reveal', cell: 21 }, 'Revealed row 3, column 4'],
@@ -111,6 +126,52 @@ describe('describeMove', () => {
     [{ kind: 'deduction', index: 21, technique: null }, 'Hint: try row 3, column 4'],
     [{ kind: 'deduction', index: -1, technique: null }, 'Hint'],
   ] as const)('names the hint %o', (hint, caption) => {
+    expect(describeMove(frame({ op: 'hint', hint }))).toBe(caption);
+  });
+
+  /** A step hint about row 2, column 1 (cell 9), its route `of` steps long. */
+  const step = (
+    technique: TechniqueId,
+    unit: Unit | null,
+    numbering: { step: number; of: number },
+  ): StepHint => ({
+    kind: 'step',
+    index: 9,
+    technique,
+    unit,
+    ...numbering,
+    hardest: 'xyChain',
+    id: 1,
+  });
+
+  it.each([
+    [
+      step('claiming', { kind: 'column', index: 7 }, { step: 1, of: 7 }),
+      'Hint: step 1 of 7, a box/line reduction in column 8',
+    ],
+    [
+      step('hiddenTriple', { kind: 'row', index: 3 }, { step: 2, of: 7 }),
+      'Hint: step 2 of 7, a hidden triple in row 4',
+    ],
+    // A step with no house of its own is named alone.
+    [step('xWing', null, { step: 5, of: 7 }), 'Hint: step 5 of 7, an X-Wing'],
+    [step('xyChain', null, { step: 2, of: 3 }), 'Hint: step 2 of 3, an XY-Chain'],
+    // A single on the way, filling another cell in a house the hinted one is in.
+    [
+      step('hiddenSingleBox', { kind: 'box', index: 0 }, { step: 6, of: 7 }),
+      'Hint: step 6 of 7, a hidden single elsewhere in box 1',
+    ],
+    [
+      step('nakedSingle', { kind: 'box', index: 5 }, { step: 1, of: 7 }),
+      'Hint: step 1 of 7, a naked single in box 6',
+    ],
+    // The last step, the single that fills the cell, as a single always is.
+    [
+      step('hiddenSingleBox', { kind: 'box', index: 0 }, { step: 3, of: 3 }),
+      'Hint: Hidden single in box 1',
+    ],
+    [step('nakedSingle', null, { step: 1, of: 1 }), 'Hint: Naked single in row 2, column 1'],
+  ] as const)('names the step a step hint named: %o', (hint, caption) => {
     expect(describeMove(frame({ op: 'hint', hint }))).toBe(caption);
   });
 
@@ -195,6 +256,39 @@ describe('a playback’s words', () => {
     expect(positionText(playback, 0)).toBe('Start, 0:00');
     expect(positionText(playback, 1)).toBe('Move 1 of 3, 1:01');
     expect(positionText(playback, 3)).toBe('Move 3 of 3, 6:06');
+  });
+});
+
+describe('a solve with step hints and Show me a page at a time', () => {
+  it('captions each step hint and each page as the player saw them', () => {
+    const toured = stepHintsTour(createRng('captions'));
+    const result = preparePlayback(toured.game.puzzle.givens, 'expert', encodeMoveLog(toured.log));
+    if (!result.ok) throw new Error(result.reason);
+    const captions = result.playback.frames.map((_, i) => captionAt(result.playback, i + 1));
+    // Stuck at row 2, column 1: its first step named twice, then Show me
+    // opened and turned twice, and opened again at its first page.
+    const opened = captions.indexOf('Show me for row 2, column 1: step 1 of 7');
+    expect(captions.slice(opened - 2, opened + 4)).toEqual([
+      'Hint: step 1 of 7, a box/line reduction in column 8',
+      'Hint: step 1 of 7, a box/line reduction in column 8',
+      'Show me for row 2, column 1: step 1 of 7',
+      'Show me for row 2, column 1: step 2 of 7',
+      'Show me for row 2, column 1: step 3 of 7',
+      'Show me for row 2, column 1: step 1 of 7',
+    ]);
+    expect(captions).toContain('Hint: step 2 of 7, a hidden triple in row 4');
+    expect(captions).toContain('Hint: step 5 of 7, an X-Wing');
+  });
+
+  it('captions the pages of a Show me opened once a step is taken as they were headed', () => {
+    const { game, log } = showMeOnceAStepIsTaken();
+    const result = preparePlayback(game.puzzle.givens, 'expert', encodeMoveLog(log));
+    if (!result.ok) throw new Error(result.reason);
+    const captions = result.playback.frames.map((_, i) => captionAt(result.playback, i + 1));
+    expect(captions.filter((caption) => caption.startsWith('Show me'))).toEqual([
+      'Show me for row 2, column 1: step 2 of 7',
+      'Show me for row 2, column 1: step 4 of 7',
+    ]);
   });
 });
 

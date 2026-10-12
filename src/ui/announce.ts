@@ -1,10 +1,13 @@
 import {
+  BOX,
   COL,
   ROW,
   conflictingUnits,
   digitsOf,
+  harderTechnique,
   hasDigit,
   isEditable,
+  unitCells,
   valuesOf,
   visibleCandidates,
   type Assists,
@@ -15,6 +18,7 @@ import {
   type GameState,
   type Hint,
   type SingleTechniqueId,
+  type StepHint,
   type TechniqueId,
   type Unit,
 } from '../core';
@@ -45,6 +49,12 @@ export interface DescribeOptions {
    * says more than the board shows. Default true.
    */
   conflicts?: boolean;
+  /**
+   * The houses of the step a step hint names (see `describeStep`), to say
+   * where it is when the hint's one house can't: an X-Wing's rows. None by
+   * default.
+   */
+  stepHouses?: readonly Unit[];
 }
 
 /**
@@ -270,13 +280,14 @@ export function describeChange(
     case 'redo':
       return describeReplay('Redone.', prev, next, options);
     case 'walkthrough':
-      // Opening "Show me" says nothing here: focus moves into its dialog,
-      // which speaks for itself.
+    case 'showStep':
+      // Opening "Show me", or turning its page, says nothing here: focus
+      // moves into its dialog, which speaks for itself.
       return null;
     case 'hint': {
       // The visible message points at the highlighted cell ("this cell");
       // spoken, it needs to say which one that is.
-      const message = describeHint(action.hint);
+      const message = describeHint(action.hint, options.stepHouses);
       if (action.hint.kind === 'none') return message;
       return `${message} ${capitalise(describePosition(action.hint.index))}.`;
     }
@@ -308,6 +319,118 @@ function describeSingle(technique: SingleTechniqueId, unit: Unit | null): string
   }
 }
 
+const SINGLES: readonly unknown[] = [
+  'fullHouse',
+  'hiddenSingleBox',
+  'hiddenSingleLine',
+  'nakedSingle',
+] satisfies SingleTechniqueId[];
+
+/** Whether a step's technique is a single: one that fills a cell. */
+export function isSingle(technique: TechniqueId): technique is SingleTechniqueId {
+  return SINGLES.includes(technique);
+}
+
+/**
+ * Whether a step hint's step is a single on the way to its cell that fills
+ * another cell in `unit`, a house the hinted cell is in too: said as
+ * "elsewhere in" that house, so it can't be taken for the cell's own.
+ */
+export function isSingleElsewhere(hint: StepHint, unit: Unit): boolean {
+  const { technique, index, step, of } = hint;
+  return isSingle(technique) && step < of && unitCells(unit).includes(index);
+}
+
+/**
+ * A house a step is in, on the hint bar: "row 4", "column 8", "box 9" —
+ * numbered, as Show me's captions number them, for the step is often half
+ * a board from the cell (its houses are tinted on the board as well) — but
+ * the hinted cell's own box is "this box", as a single's is.
+ */
+function stepHouse(unit: Unit, index: number): string {
+  return unit.kind === 'box' && unit.index === BOX[index] ? 'this box' : describeUnit(unit);
+}
+
+/**
+ * The houses that say where a step with no one house of its own is, from
+ * all its houses (see `SolveStep.houses`): a fish's base lines ("rows 2
+ * and 7"), a Skyscraper's or a 2-String Kite's two strong links ("row 3 and
+ * column 5"), a W-Wing's one. None for the rest — a wing or a chain whose
+ * cells are tinted instead, as their houses are none, or too many to say.
+ */
+function placesOf(technique: TechniqueId, houses: readonly Unit[], index: number): string {
+  let named: readonly Unit[] = [];
+  if (technique === 'xWing' || technique === 'swordfish') {
+    const end = houses.findIndex((house) => house.kind !== houses[0].kind);
+    named = end === -1 ? houses : houses.slice(0, end);
+  } else if (technique === 'skyscraper' || technique === 'twoStringKite') {
+    named = houses.slice(0, 2);
+  } else if (technique === 'wWing') {
+    named = houses.slice(0, 1);
+  }
+  if (named.length === 0) return '';
+  if (named.length === 1) return stepHouse(named[0], index);
+  if (named.some((house) => house.kind !== named[0].kind)) {
+    return joinList(named.map((house) => stepHouse(house, index)));
+  }
+  // Two or three lines of one kind (fish and Skyscrapers are only ever lines).
+  return `${named[0].kind}s ${joinList(named.map((house) => String(house.index + 1)))}`;
+}
+
+/**
+ * Where a step hint's step is, as " in row 4" — "" when it can't be said.
+ * Its unit when it has one; else what its houses say (see `placesOf`). A
+ * single on the way, which fills another cell, says "elsewhere in" a house
+ * the hinted cell is in, so it can't be taken for that cell's own.
+ */
+function stepWhere(hint: StepHint, houses: readonly Unit[]): string {
+  const { technique, unit, index } = hint;
+  if (unit === null) {
+    const places = placesOf(technique, houses, index);
+    return places === '' ? '' : ` in ${places}`;
+  }
+  return `${isSingleElsewhere(hint, unit) ? ' elsewhere' : ''} in ${stepHouse(unit, index)}`;
+}
+
+/**
+ * A step hint's message, without the hardest step (see `describeHardest`):
+ * "Step 1 of 7: a box/line reduction in column 8." — or, as the last step,
+ * the single that fills the cell, put as a single always is. `houses` are
+ * the step's (see `stepWhere`), for one with no single house to name.
+ *
+ * It says nothing of "this cell": short enough to keep the bar to two lines
+ * at every width, and the hint selects the cell — the spoken hint says which
+ * after it, and the cell's description is read on the cell itself.
+ */
+export function describeStep(hint: StepHint, houses: readonly Unit[] = []): string {
+  const { technique, unit, step, of } = hint;
+  if (step === of && isSingle(technique)) {
+    return describeSingle(technique, unit);
+  }
+  const what = withArticle(TECHNIQUE_LABEL[technique]);
+  return `Step ${step} of ${of}: ${what}${stepWhere(hint, houses)}.`;
+}
+
+/**
+ * A remembered step hint whose cell has moved on to a step the player
+ * hasn't seen (see `Sudoku.isHintMovedOn`): said without naming it, which
+ * Hint would count.
+ */
+export const MOVED_ON = "The board has moved on. Ask again for this cell's next step.";
+
+/**
+ * The hardest step still ahead on a step hint's route, said after the step
+ * when it is harder than that step — "The hardest is an XY-Chain." — so the
+ * player knows how deep the cell goes; null otherwise, and for any other
+ * hint.
+ */
+export function describeHardest(hint: Hint): string | null {
+  if (hint.kind !== 'step' || harderTechnique(hint.technique, hint.hardest) === hint.technique) {
+    return null;
+  }
+  return `The hardest is ${withArticle(TECHNIQUE_LABEL[hint.hardest])}.`;
+}
+
 function describeDeduction(technique: TechniqueId | null): string {
   if (technique === null) return 'Try this cell — it has the fewest candidates.';
   return `Look here — ${withArticle(TECHNIQUE_LABEL[technique])} will unlock this cell.`;
@@ -316,12 +439,15 @@ function describeDeduction(technique: TechniqueId | null): string {
 /**
  * The hint bar's message, which is also what is spoken: where to look and,
  * where the grader knows, which technique gets you there — "Hidden single:
- * there's only one place for a number in this box." — or that a candidate
- * the cell needs is missing from it. It refers to "this cell" and "this box"
- * because the hint selects the cell, and it never names the digit: a hint is
- * a nudge, not an answer.
+ * there's only one place for a number in this box." — the next step towards
+ * the cell and how far there is to go ("Step 2 of 7: a hidden triple in row
+ * 4. The hardest is an XY-Chain."; `stepHouses` say where a step is that
+ * its hint's one house can't), or that a candidate the cell needs is
+ * missing from it. It refers to "this cell" and "this box" because the hint
+ * selects the cell, and it never names the digit: a hint is a nudge, not an
+ * answer.
  */
-export function describeHint(hint: Hint): string {
+export function describeHint(hint: Hint, stepHouses: readonly Unit[] = []): string {
   switch (hint.kind) {
     case 'mistake':
       return 'This number is incorrect.';
@@ -333,6 +459,11 @@ export function describeHint(hint: Hint): string {
       return describeSingle(hint.technique, hint.unit);
     case 'deduction':
       return describeDeduction(hint.technique);
+    case 'step': {
+      const step = describeStep(hint, stepHouses);
+      const hardest = describeHardest(hint);
+      return hardest === null ? step : `${step} ${hardest}`;
+    }
     case 'none':
       return 'The puzzle is complete.';
   }

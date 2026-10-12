@@ -1,7 +1,8 @@
-import type { FillHint } from './game';
+import { hintBoardOf, type FillHint, type GameState, type StepHint } from './game';
 import { TECHNIQUE_ORDER, harderTechnique, nextStep, type TechniqueTrace } from './grader';
 import { BOX, COL, PEERS, POPCOUNT, ROW, bit, digitsOf, lowestDigit, unitCells } from './grid';
 import { isStepValid, reliance, stepOn } from './patterns';
+import { seedFromString } from './rng';
 import { cloneBoard, eliminate, place, type SolveStep, type SolverBoard } from './techniques';
 import type { Digit, Hint, SingleTechniqueId, TechniqueId, Unit, Values } from './types';
 
@@ -316,23 +317,22 @@ export function explainCell(
 }
 
 /**
- * The walkthrough for a hint's cell, if it has one: a single or a deduction
- * can be shown; a mistake, a missing candidate (whose Show me is a page of
- * its own) or "nothing to suggest" cannot. See `explainCell`.
+ * The walkthrough for a hint's cell, if it has one: a single, a deduction or
+ * a step can be shown; a mistake, a missing candidate (whose Show me is a
+ * page of its own) or "nothing to suggest" cannot. See `explainCell`.
  */
 export function explainHint(board: SolverBoard, hint: Hint, solution?: Values): Walkthrough | null {
-  return hint.kind === 'single' || hint.kind === 'deduction'
+  return hint.kind === 'single' || hint.kind === 'deduction' || hint.kind === 'step'
     ? explainCell(board, hint.index, solution)
     : null;
 }
 
 /**
- * What a walkthrough says of its cell, put as a hint: the single that fills
- * it when that is the only step, and otherwise a deduction naming the
- * hardest technique among the steps. For the cell Hint points at, that is
- * Hint's own hint (see above), so a hint given a while ago can be put
- * afresh for the board as it now stands — it may have moved on, so that
- * what took a hidden pair then takes a single now.
+ * What a walkthrough says of its cell, put as the hints were before they
+ * named the next step: the single that fills it when that is the only step,
+ * and otherwise a deduction naming the hardest technique among the steps.
+ * For the cell `findHint` points at, that is its own hint (see above). The
+ * hint bar puts a hint afresh as the next step instead (see `stepHint`).
  */
 export function walkthroughHint(walkthrough: Walkthrough): FillHint {
   const { target: index, steps } = walkthrough;
@@ -344,4 +344,149 @@ export function walkthroughHint(walkthrough: Walkthrough): FillHint {
   let technique: TechniqueId | null = null;
   for (const { step } of steps) technique = harderTechnique(technique, step.technique);
   return { kind: 'deduction', index, technique };
+}
+
+/** The bits of a step's id (see `stepId`): four characters of a move log. */
+export const STEP_ID_BITS = 24;
+
+/**
+ * The steps whose deduction is one digit's place in a few houses — locked
+ * candidates and fish — told apart by those houses and that digit alone.
+ */
+const HOUSE_STEPS: ReadonlySet<TechniqueId> = new Set([
+  'pointing',
+  'claiming',
+  'xWing',
+  'swordfish',
+]);
+
+/** The subsets, told apart by their house, their cells and their digits. */
+const SUBSETS: ReadonlySet<TechniqueId> = new Set([
+  'nakedPair',
+  'hiddenPair',
+  'nakedTriple',
+  'hiddenTriple',
+]);
+
+/**
+ * What defines a step's deduction, beyond its technique, houses and digit:
+ * the parts of its pattern a player can lose a candidate from without the
+ * step becoming another (see `stepId`).
+ *
+ * - Locked candidates and fish: nothing more. Their houses and digit are the
+ *   deduction; a cell of the pattern losing the digit, while the rest still
+ *   lock it, leaves the same step.
+ * - Subsets: their cells and the digits between them — not each cell's own,
+ *   which shrink as the player strikes a subset digit a cell can't be
+ *   (r4c4 losing its 9 leaves the same hidden triple in row 4).
+ * - Singles, wings and chains: the pattern itself, cell by cell. A single's
+ *   is its cell and digit; a wing's or chain's holds only candidates it
+ *   can't lose and stay the same step (a pincer's two, a link's one), so
+ *   any loss there makes it another step, or none.
+ */
+function patternKey({ technique, pattern }: SolveStep): string {
+  if (HOUSE_STEPS.has(technique)) return '';
+  if (SUBSETS.has(technique)) {
+    const cells = pattern.map(({ index }) => index).sort((a, b) => a - b);
+    let digits = 0;
+    for (const { mask } of pattern) digits |= mask;
+    return `${cells.join(',')}:${digits}`;
+  }
+  return pattern.map(({ index, mask }) => `${index}:${mask}`).join(',');
+}
+
+/**
+ * What a step is, as a number: its technique, its houses, its digit and what
+ * defines its pattern (see `patternKey`). Not the eliminations it makes,
+ * which shrink as the player makes it a candidate at a time — a step half
+ * taken is still that step — nor a candidate struck from its pattern that
+ * leaves the deduction as it was, nor where it falls on a route, which moves
+ * as the route is planned again. Read on any board that still holds the
+ * deduction, the same step has the same id, so it is counted once however
+ * the route round it changes; another step has another, bar a
+ * one-in-16.7-million chance — the cost of fitting a log in four characters.
+ */
+export function stepId(step: SolveStep): number {
+  const houses = step.houses.map(({ kind, index }) => `${kind}${index}`).join(',');
+  const key = `${step.technique}|${houses}|${step.digit ?? ''}|${patternKey(step)}`;
+  return seedFromString(key) & (2 ** STEP_ID_BITS - 1);
+}
+
+/** Where a step falls on a cell's route: step `step` of `of` (see `stepNumbering`). */
+export interface StepNumber {
+  step: number;
+  of: number;
+}
+
+/**
+ * Where a route of `length` steps to `index` stands — the steps behind it
+ * counted against the route as first shown for the cell, which `previous`,
+ * the cell's last step hint, numbers: so a hint asked for again once a step
+ * is taken moves on, "Step 2 of 7", and Show me's pages go on from there.
+ *
+ * The steps left, `of - step + 1`, are always the route's own length; only
+ * those behind are counted against the first plan, which a route planned
+ * again may have outrun (a step taken a shorter way: "Step 4 of 7"). A route
+ * longer than the first plan — a step undone, say, or a candidate put back —
+ * can't be numbered against it, and starts afresh: "Step 1 of 8".
+ */
+export function stepNumbering(
+  previous: Hint | null | undefined,
+  index: number,
+  length: number,
+): StepNumber {
+  if (previous?.kind !== 'step' || previous.index !== index || length > previous.of) {
+    return { step: 1, of: length };
+  }
+  return { step: previous.of - length + 1, of: previous.of };
+}
+
+/** Show me's route to a cell, and how it is numbered: see `showMeRoute`. */
+export interface ShowMeRoute {
+  walkthrough: Walkthrough;
+  /** Where its first page falls (see `stepNumbering`); each page after it is one on. */
+  numbering: StepNumber;
+}
+
+/**
+ * The route Show me walks to `index` in `state`, and its numbering: from
+ * the board Hint reasons from, held to the solution, numbered on from the
+ * cell's last step hint. Null when there is none to show (see
+ * `explainCell`). The one place this is worked out, for Show me as it opens
+ * and for playback, which numbers a logged page from the board before it:
+ * the two must never tell a page's number differently.
+ */
+export function showMeRoute(state: GameState, index: number, solution: Values): ShowMeRoute | null {
+  const walkthrough = explainCell(hintBoardOf(state), index, solution);
+  if (walkthrough === null) return null;
+  const previous = state.cellHints.get(index)?.fill;
+  return { walkthrough, numbering: stepNumbering(previous, index, walkthrough.steps.length) };
+}
+
+/**
+ * A walkthrough put as a step hint: its first step — the next to take, the
+ * single that fills the cell when that is all there is — numbered against
+ * `previous`, the cell's last step hint (see `stepNumbering`), with the
+ * hardest technique among its steps.
+ *
+ * Its unit is the step's own; but a naked single that fills another cell
+ * on the way, which has none, takes that cell's box, so the hint can say
+ * where on the board it is rather than seem to be about the hinted cell.
+ */
+export function stepHint(walkthrough: Walkthrough, previous: Hint | null = null): StepHint {
+  const { target: index, steps } = walkthrough;
+  const { step: next } = steps[0];
+  let hardest = next.technique;
+  for (const { step } of steps) hardest = harderTechnique(hardest, step.technique);
+  const { placement } = next;
+  const isElsewhere = placement !== null && placement.index !== index;
+  return {
+    kind: 'step',
+    index,
+    technique: next.technique,
+    unit: next.unit ?? (isElsewhere ? { kind: 'box', index: BOX[placement.index] } : null),
+    ...stepNumbering(previous, index, steps.length),
+    hardest,
+    id: stepId(next),
+  };
 }

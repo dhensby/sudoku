@@ -2,8 +2,11 @@ import { memo, useRef, type CSSProperties } from 'react';
 import { COL, ROW, hasDigit, type CellMark, type Digit } from '../core';
 import { cellLabel } from './announce';
 
-/** How a cell is tinted relative to the selection. */
-export type Highlight = 'selected' | 'same' | 'peer' | 'none';
+/**
+ * How a cell is tinted: relative to the selection, or — `step` — in a house
+ * of the step a hint names.
+ */
+export type Highlight = 'selected' | 'same' | 'step' | 'peer' | 'none';
 
 const DIGITS: readonly Digit[] = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 

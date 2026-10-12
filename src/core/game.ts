@@ -49,6 +49,16 @@ import type {
  * `RememberedHints`): selecting the cell again shows it again, and asking
  * for it again costs nothing, until the cell no longer needs it.
  *
+ * A hint names the next step towards a cell (`step`): each step it reveals
+ * counts once, and so does each page of Show me — the steps to the cell's
+ * answer, one a page — the first time it is seen. A step is known by what
+ * it is (see `stepId`), not by where it falls on the route, so a route
+ * planned afresh as the board changes neither counts a step seen already
+ * nor gives a new one away — and nor does a route to another cell that
+ * passes through it (see `GameState.seenSteps`). The hints from before steps
+ * were named (`single` and `deduction`), which older move logs hold, count
+ * as they always did: once a cell.
+ *
  * Hint and Show me reason from the candidates the player has (see
  * `hintBoardOf`): the automatic ones less their strikes, or their own notes,
  * a cell with none counting as having every candidate. A cell whose answer
@@ -91,8 +101,25 @@ export interface CellState {
   mark: CellMark;
 }
 
-/** A hint about filling a cell: a single, or the deduction that leads to one. */
-export type FillHint = Extract<Hint, { kind: 'single' | 'deduction' }>;
+/** A hint about filling a cell: a single, the deduction that leads to one, or the next step to it. */
+export type FillHint = Extract<Hint, { kind: 'single' | 'deduction' | 'step' }>;
+
+/** A hint naming the next step towards a cell. */
+export type StepHint = Extract<Hint, { kind: 'step' }>;
+
+/**
+ * The steps the player has seen, by id (see `stepId`), each counted as a
+ * hint the first time: named by a step hint, and shown on a page of Show
+ * me. A step on a page is seen in full — its pattern drawn, what it removes
+ * struck out — so a hint naming one already on a page tells nothing new; a
+ * page for a step a hint only named shows more than the hint did.
+ */
+export interface SeenSteps {
+  /** The steps step hints have named, oldest first. */
+  named: readonly number[];
+  /** The steps whose Show me page has been on show, oldest first. */
+  shown: readonly number[];
+}
 
 /** A hint that a placed value is wrong. */
 export type MistakeHint = Extract<Hint, { kind: 'mistake' }>;
@@ -116,7 +143,7 @@ export interface RememberedStruck {
  */
 export interface RememberedHints {
   /**
-   * The newest single or deduction hint for the cell. On show while the cell
+   * The newest single, deduction or step hint for the cell. On show while the cell
    * is empty — it says nothing about a value there — and forgotten once the
    * cell holds its solution digit.
    */
@@ -129,7 +156,10 @@ export interface RememberedHints {
   mistake: { hint: MistakeHint; value: number } | null;
   /**
    * Whether "Show me" has been opened for the fill hint, so that opening it
-   * again is free. It goes with the fill hint.
+   * again is free — as an older build's Show me was counted, once a cell,
+   * every page of it paid for at once: its pages stay free while this holds
+   * (pages are counted one by one now: see `GameState.seenSteps`). It goes
+   * with the fill hint.
    */
   walkthrough: boolean;
   /**
@@ -198,6 +228,25 @@ export interface GameState {
    * remembered hints.
    */
   checkedCandidates: Uint16Array | null;
+  /**
+   * The steps seen so far, on the way to any cell (see `SeenSteps`): a step
+   * hint, or a page of Show me, is free for a step in here and counted for
+   * one that isn't. Board-wide, as a step is the same step whichever cell's
+   * route it is on: the X-Wing seen on one cell's pages is not news when the
+   * next hint, for another cell, starts with it. Forgotten only at a Reset,
+   * with the hints; a step made can't come round again unless it is undone,
+   * and then it is still a step the player has seen. Always empty in an
+   * older move log, which has no steps, so it replays as it was recorded.
+   */
+  seenSteps: SeenSteps;
+  /**
+   * The cell the last step hint was about, which the next one stays on while
+   * it can (see `findStepHint`), so that the hint doesn't hop, and count
+   * again, while the player works towards it; -1 for none, and after a
+   * Reset. Kept here rather than read from the move log, which a game may
+   * not have (begun before logs were kept, or grown past `MAX_MOVES`).
+   */
+  hintedCell: number;
 }
 
 export interface NewGameOptions {
@@ -241,9 +290,22 @@ export type GameAction =
    * Open "Show me" for a cell's hint: the walkthrough of its fill hint, or,
    * while it has a wrong-marks hint, the page that names the missing digit.
    * Counted as a hint the first time for that hint, and free after that.
-   * Ignored unless the cell is empty and has had one of them.
+   * Ignored unless the cell is empty and has had one of them. What older
+   * move logs hold of Show me; a walkthrough is shown a page at a time now
+   * (`showStep`), and only the wrong-marks hint's page opens this way.
    */
   | { type: 'walkthrough'; index: number }
+  /**
+   * A page of Show me on show: the step `id` (see `stepId`) of the
+   * walkthrough of `index`'s fill hint. Counted as a hint the first time
+   * that step is seen on a page, on whichever cell's route, and free after
+   * that (see `GameState.seenSteps`). `opens`
+   * says Show me is opening at it — help seen even when free, which the
+   * move log keeps (see `moveFor`); the reducer itself pays it no heed.
+   * Ignored unless the cell is empty, has a fill hint, and has no
+   * wrong-marks hint (whose own page Show me opens instead).
+   */
+  | { type: 'showStep'; index: number; id: number; opens?: boolean }
   | { type: 'check'; scope: 'cell' | 'puzzle' }
   /** Reveal the selected cell's solution digit. */
   | { type: 'reveal' }
@@ -265,6 +327,9 @@ const NO_HINTS = Object.freeze<RememberedHints>({
   walkthrough: false,
   struck: null,
 });
+
+/** No steps seen yet. */
+const NO_STEPS: SeenSteps = Object.freeze({ named: [], shown: [] });
 
 /**
  * The state of every untouched empty cell. Shared, and frozen so that a stray
@@ -290,6 +355,7 @@ const ALLOWED_WHEN_SOLVED: ReadonlySet<GameAction['type']> = new Set([
 const KEEPS_HINT: ReadonlySet<GameAction['type']> = new Set([
   'hint',
   'walkthrough',
+  'showStep',
   'setCheckGuesses',
 ]);
 
@@ -441,9 +507,9 @@ function setCellHints(
  * `value`, its answer missing from the player's candidates or not
  * (`isMissing`, never for a filled cell): the fill hint until the cell holds
  * its solution digit, the mistake hint while it holds the value it was
- * about, "Show me" with the fill hint, and the wrong-marks hint, with its
- * own Show me, while the answer is missing. The entry itself when nothing has
- * gone; null when everything has.
+ * about, "Show me" with the fill hint, and the
+ * wrong-marks hint, with its own Show me, while the answer is missing. The
+ * entry itself when nothing has gone; null when everything has.
  */
 function liveHints(
   entry: RememberedHints,
@@ -761,13 +827,20 @@ function showHint(state: GameState, hint: Hint): GameState {
   // A hint the cell has had already is shown again for free; only a new one
   // counts. A remembered mistake hint is always about the value the cell
   // holds now (it is forgotten when that changes), so another is no news;
-  // nor is another wrong-marks hint while the answer is still missing.
+  // nor is another wrong-marks hint while the answer is still missing; nor
+  // a step named before, or seen on a page of Show me, however the route
+  // round it has changed, and whichever cell's route it was on. The hints
+  // from before steps were named count once a cell, as they did when older
+  // logs were recorded.
+  const seen = state.seenSteps;
   const isNew =
     hint.kind === 'mistake'
       ? entry.mistake === null
       : hint.kind === 'struck'
         ? entry.struck === null
-        : entry.fill === null;
+        : hint.kind === 'step'
+          ? !seen.named.includes(hint.id) && !seen.shown.includes(hint.id)
+          : entry.fill === null;
   let remembered = entry;
   if (hint.kind === 'struck') {
     if (entry.struck === null) remembered = { ...entry, struck: { hint, walkthrough: false } };
@@ -777,7 +850,7 @@ function showHint(state: GameState, hint: Hint): GameState {
   // A fill hint is given only on a sound board (see `findHint`), so being
   // given one tells the player their candidates hold every answer: the
   // remembered hints may be put afresh from these ones, not from later.
-  const isFill = hint.kind === 'single' || hint.kind === 'deduction';
+  const isFill = hint.kind === 'single' || hint.kind === 'deduction' || hint.kind === 'step';
   const next: GameState = {
     ...state,
     hint,
@@ -786,6 +859,11 @@ function showHint(state: GameState, hint: Hint): GameState {
     assists: isNew ? withHint(state.assists) : state.assists,
     checkedCandidates:
       isFill && isSoundBoard(state) ? hintBoardOf(state).candidates : state.checkedCandidates,
+    seenSteps:
+      hint.kind === 'step' && isNew
+        ? { named: [...seen.named, hint.id], shown: seen.shown }
+        : state.seenSteps,
+    hintedCell: hint.kind === 'step' ? index : state.hintedCell,
   };
   // A mistake is marked as Check would mark it — NYT's slash — so the clue
   // outlives the hint bar, which goes with the next key press. Like a check's
@@ -819,6 +897,32 @@ function openWalkthrough(state: GameState, index: number): GameState {
   return {
     ...state,
     cellHints: setCellHints(state.cellHints, index, { ...entry, walkthrough: true }),
+    assists: withHint(state.assists),
+  };
+}
+
+/**
+ * A page of Show me on show (see the `showStep` action): counted the first
+ * time its step is seen on a page, whatever the hints before it named — a
+ * page shows the step whole — and free after that, on whichever cell's
+ * route it comes round again.
+ *
+ * Free, and not remembered as seen, for a cell whose Show me an older build
+ * charged for (`RememberedHints.walkthrough`): that paid for every page of
+ * it at once, and a game carried over from that build must not pay again
+ * page by page. A step hint naming one of those steps later is counted, as
+ * the step was never recorded as seen — the lesser of the two errors, and
+ * only ever in a game begun on an older build.
+ */
+function showStep(state: GameState, index: number, id: number): GameState {
+  const entry = isCellIndex(index) ? state.cellHints.get(index) : undefined;
+  if (entry === undefined || state.cells[index].value !== 0) return state;
+  if (entry.fill === null || entry.struck !== null || !isStepId(id)) return state;
+  const seen = state.seenSteps;
+  if (entry.walkthrough || seen.shown.includes(id)) return state;
+  return {
+    ...state,
+    seenSteps: { named: seen.named, shown: [...seen.shown, id] },
     assists: withHint(state.assists),
   };
 }
@@ -880,13 +984,16 @@ function reset(state: GameState): GameState {
     state.undoStack.length === 0 &&
     state.redoStack.length === 0 &&
     state.hint === null &&
-    state.cellHints.size === 0
+    state.cellHints.size === 0 &&
+    !hasSeenSteps(state.seenSteps) &&
+    state.hintedCell === -1
   ) {
     return state;
   }
   // Assists and the auto-candidate flag stay: help already taken stays on
   // the record. The remembered hints go with the board they were about, and
-  // so do the candidates they were put afresh from.
+  // so do the candidates they were put afresh from, the steps seen and the
+  // cell the last step hint was about.
   return {
     ...state,
     cells: board,
@@ -895,6 +1002,8 @@ function reset(state: GameState): GameState {
     redoStack: NO_ENTRIES,
     cellHints: NO_CELL_HINTS,
     checkedCandidates: null,
+    seenSteps: NO_STEPS,
+    hintedCell: -1,
   };
 }
 
@@ -924,6 +1033,8 @@ function step(state: GameState, action: GameAction): GameState {
       return showHint(state, action.hint);
     case 'walkthrough':
       return openWalkthrough(state, action.index);
+    case 'showStep':
+      return showStep(state, action.index, action.id);
     case 'check':
       return check(state, action.scope);
     case 'reveal':
@@ -958,6 +1069,8 @@ export function createGame(puzzle: Puzzle, options: NewGameOptions = {}): GameSt
     hint: null,
     cellHints: NO_CELL_HINTS,
     checkedCandidates: null,
+    seenSteps: NO_STEPS,
+    hintedCell: -1,
   };
 }
 
@@ -989,7 +1102,7 @@ export function reduce(state: GameState, action: GameAction): GameState {
 }
 
 /** The placed digits, 0 for empty. */
-export function valuesOf(state: GameState): Uint8Array {
+export function valuesOf(state: Pick<GameState, 'cells'>): Uint8Array {
   const values = new Uint8Array(81);
   for (let i = 0; i < 81; i++) values[i] = state.cells[i].value;
   return values;
@@ -1027,7 +1140,7 @@ export function hintBoardOf(state: GameState): SolverBoard {
  * is free again for a cell that has had it, brings their latest in. A cell
  * filled when they were taken counts as having every candidate.
  */
-export function checkedBoardOf(state: GameState): SolverBoard {
+export function checkedBoardOf(state: Pick<GameState, 'cells' | 'checkedCandidates'>): SolverBoard {
   const values = valuesOf(state);
   const candidates = computeCandidates(values);
   const checked = state.checkedCandidates;
@@ -1171,6 +1284,14 @@ export interface SerialisedGame {
    * placed digits alone until the next fill hint.
    */
   checkedCandidates?: number[];
+  /**
+   * `GameState.seenSteps`. Written only when there are some, so a save
+   * without them — every save from before steps were named — loads with
+   * none.
+   */
+  seenSteps?: { named: number[]; shown: number[] };
+  /** `GameState.hintedCell`. Written only when there is one. */
+  hintedCell?: number;
 }
 
 /**
@@ -1207,6 +1328,8 @@ export const SERIALISED_GAME_FIELDS = fieldsOf<SerialisedGame>({
   cellHints: true,
   checkGuesses: true,
   checkedCandidates: true,
+  seenSteps: true,
+  hintedCell: true,
 });
 
 /** The game as plain, JSON-safe data. */
@@ -1234,6 +1357,10 @@ export function serialiseGame(state: GameState): SerialisedGame {
     ...(state.checkedCandidates === null
       ? {}
       : { checkedCandidates: Array.from(state.checkedCandidates) }),
+    ...(hasSeenSteps(state.seenSteps)
+      ? { seenSteps: { named: [...state.seenSteps.named], shown: [...state.seenSteps.shown] } }
+      : {}),
+    ...(state.hintedCell === -1 ? {} : { hintedCell: state.hintedCell }),
   };
 }
 
@@ -1286,10 +1413,36 @@ function readUnit(data: unknown): Unit | null {
   return { kind: kind as Unit['kind'], index: index as number };
 }
 
+/** Whether a value is a step's id (see `stepId`): a whole number of `STEP_ID_BITS` bits. */
+function isStepId(value: unknown): value is number {
+  return Number.isInteger(value) && (value as number) >= 0 && (value as number) < 2 ** 24;
+}
+
+/** A stored step hint for cell `index` (its kind already read), rebuilt from its parts. */
+function readStepHint(data: Record<string, unknown>, index: number): StepHint | null {
+  const { technique, unit, step, of, hardest, id } = data;
+  if (!isTechnique(technique) || !isTechnique(hardest) || !isStepId(id)) return null;
+  if (!Number.isInteger(of) || !Number.isInteger(step)) return null;
+  if ((step as number) < 1 || (step as number) > (of as number)) return null;
+  const house = readUnit(unit);
+  if (unit !== null && house === null) return null;
+  return {
+    kind: 'step',
+    index,
+    technique,
+    unit: house,
+    step: step as number,
+    of: of as number,
+    hardest,
+    id,
+  };
+}
+
 /** A stored fill hint for cell `index`, rebuilt from its parts; null if it is not one. */
 function readFillHint(data: unknown, index: number): FillHint | null {
   if (!isRecord(data) || data.index !== index) return null;
   const { kind, technique, unit } = data;
+  if (kind === 'step') return readStepHint(data, index);
   if (kind === 'deduction' && (technique === null || isTechnique(technique))) {
     return { kind, index, technique };
   }
@@ -1305,6 +1458,27 @@ function readFillHint(data: unknown, index: number): FillHint | null {
 function readStruck(data: unknown, index: number): RememberedStruck | null {
   if (!isRecord(data)) return null;
   return { hint: { kind: 'struck', index }, walkthrough: data.walkthrough === true };
+}
+
+/** Stored step ids: each a step's id, once. Anything else is dropped. */
+function readStepIds(data: unknown): number[] {
+  return Array.isArray(data) ? [...new Set(Array.from(data as unknown[]).filter(isStepId))] : [];
+}
+
+/** Whether any step has been seen. */
+function hasSeenSteps(seen: SeenSteps): boolean {
+  return seen.named.length + seen.shown.length > 0;
+}
+
+/**
+ * Stored steps seen (see `SeenSteps`), as far as they can be trusted; none
+ * if there are none. Doubtful ids are dropped, which costs only seeing those
+ * steps again at a charge.
+ */
+function readSeenSteps(data: unknown): SeenSteps {
+  if (!isRecord(data)) return NO_STEPS;
+  const seen = { named: readStepIds(data.named), shown: readStepIds(data.shown) };
+  return hasSeenSteps(seen) ? seen : NO_STEPS;
 }
 
 /**
@@ -1387,8 +1561,10 @@ function readAssists(data: unknown): Assists | null {
  * Stored assists, raised to cover the help the board itself shows was taken —
  * help taken must never be lost, and a revealed game that loads as unassisted
  * could set a best time. Every revealed cell is a reveal; every remembered
- * hint, and every "Show me" opened (a wrong-marks hint's included), was
- * counted once when it was first shown; a cell checked correct means at least one check, and so does one
+ * hint, every "Show me" opened (a wrong-marks hint's included), and every
+ * step seen — named by a hint or on a page of Show me — was counted once
+ * when it was first shown, bar what is said below; a cell checked correct
+ * means at least one check, and so does one
  * marked wrong unless a hint accounts for it (a hint marks the mistake it
  * points at the same way) or "Check guesses when entered" was on (it marks a
  * wrong digit as it goes in, with no Check taken); Check guesses on now means
@@ -1401,11 +1577,22 @@ function reconcileAssists(
   autoCandidates: boolean,
   checkGuesses: boolean,
   cellHints: ReadonlyMap<number, RememberedHints>,
+  seenSteps: SeenSteps,
 ): Assists {
   const reveals = cells.filter((cell) => cell.mark === 'revealed').length;
-  let remembered = 0;
+  // A step hint was counted with its step, among the steps seen. A hint of
+  // the kinds before steps were named is free for a cell that has a fill
+  // hint already — the stall's deduction after a step hint, say — so once
+  // any step has been seen one may not have been counted: it is left out
+  // then. Seen, not only named: a step hint is free when its step was seen
+  // on a page, which leaves no trace among the steps named, and the
+  // deduction after it is free too. Short of the help taken, the sum is only
+  // ever a floor; above it, the game would no longer match its own move log.
+  const isFillCounted = !hasSeenSteps(seenSteps);
+  let remembered = seenSteps.named.length + seenSteps.shown.length;
   for (const { fill, mistake, walkthrough, struck } of cellHints.values()) {
-    remembered += Number(fill !== null) + Number(mistake !== null) + Number(walkthrough);
+    remembered += Number(isFillCounted && fill !== null && fill.kind !== 'step');
+    remembered += Number(walkthrough) + Number(mistake !== null);
     remembered += Number(struck !== null) + Number(struck?.walkthrough === true);
   }
   const hints = Math.max(assists.hints, remembered);
@@ -1479,6 +1666,7 @@ export function deserialiseGame(data: unknown): GameState | null {
   const autoCandidates = data.autoCandidates === true;
   const checkGuesses = data.checkGuesses === true;
   const cellHints = readCellHints(data.cellHints, cells, puzzle, autoCandidates);
+  const seenSteps = readSeenSteps(data.seenSteps);
   return {
     puzzle,
     cells,
@@ -1489,9 +1677,11 @@ export function deserialiseGame(data: unknown): GameState | null {
     status: statusOf(cells, puzzle),
     undoStack: NO_ENTRIES,
     redoStack: NO_ENTRIES,
-    assists: reconcileAssists(assists, cells, autoCandidates, checkGuesses, cellHints),
+    assists: reconcileAssists(assists, cells, autoCandidates, checkGuesses, cellHints, seenSteps),
     hint: null,
     cellHints,
     checkedCandidates: readCheckedCandidates(data.checkedCandidates, puzzle),
+    seenSteps,
+    hintedCell: isCellIndex(data.hintedCell) ? data.hintedCell : -1,
   };
 }

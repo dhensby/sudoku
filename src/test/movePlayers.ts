@@ -8,6 +8,7 @@ import {
   createMoveLog,
   digitsOf,
   findHint,
+  findStepHint,
   formatGrid,
   gridValues,
   explainCell,
@@ -16,6 +17,8 @@ import {
   parseGrid,
   reduce,
   seedFromString,
+  stepHint,
+  stepId,
   valuesOf,
   type Digit,
   type Direction,
@@ -471,6 +474,156 @@ export function candidateHintsTour(rng: RandomFn): Played {
   run(pencil(z, answers[z]));
 
   for (const i of empties()) run(place(i, answers[i]));
+  return played;
+}
+
+/**
+ * A scripted game of step hints and Show me's pages, for the golden logs:
+ * the report that asked for them (`STUCK_ON_AN_XY_CHAIN`), in auto candidate
+ * mode, every hint asked for as the app asks — the next step towards the
+ * cell the last hint was about, numbered on from it. Six hinted cells, then
+ * stuck at row 2, column 1: its first step named (counted) and named again
+ * (free); Show me opened (its first page counted), turned on twice
+ * (counted) and opened again (free); a step seen there named for another
+ * cell whose route starts with it (free), and the first cell's asked for
+ * again (free); the steps on its second and third pages named (free: the
+ * one named for another cell on the way here, the other seen in full), and
+ * the one after (counted); a step taken and undone, so the step named before
+ * is named again on a route planned afresh (free); a hint of the kind before steps
+ * were named (free for the cell, as it always was); Show me's page for
+ * another cell's (counted), and for a cell whose Show me was counted once a
+ * cell, as older builds counted it (free); the route followed to the
+ * single, and the answer placed; a Reset, forgetting the steps seen. Then a
+ * solve.
+ */
+export function stepHintsTour(rng: RandomFn): Played {
+  const { givens, solution, entries, target, strikes } = STUCK_ON_AN_XY_CHAIN;
+  const puzzle: Puzzle = { givens, solution, difficulty: 'expert' };
+  const answers = gridValues(solution);
+  const t = () => thinking(rng, 400, 6000);
+  let played = startPlaying(puzzle, true);
+  const run = (...actions: GameAction[]) => {
+    for (const action of actions) played = act(played, action, t());
+  };
+  const cell = (row: number, col: number) => (row - 1) * 9 + col - 1;
+  /** Hint, as the app asks for it. */
+  const ask = () => {
+    const { game } = played;
+    const hint = findStepHint(hintBoardOf(game), answers, {
+      prefer: game.hintedCell,
+      previous: (index) => game.cellHints.get(index)?.fill ?? null,
+    });
+    run({ type: 'hint', hint });
+  };
+  /** The steps Show me walks for the target now. */
+  const route = () => explainCell(hintBoardOf(played.game), target, answers)!.steps;
+  /** Show me's page `k` of the route as it stands, opening Show me at it or turning to it. */
+  const page = (k: number, opens = false): GameAction => ({
+    type: 'showStep',
+    index: target,
+    id: stepId(route()[k].step),
+    opens,
+  });
+  /** The next step on the route, taken: what it removes struck out. */
+  const take = () => {
+    for (const { index, mask } of route()[0].step.eliminations) {
+      for (const digit of digitsOf(mask)) run(pencil(index, digit));
+    }
+  };
+
+  // The six hinted cells, each a single — a step of one — hinted and filled.
+  for (const [row, col, digit] of entries) {
+    ask();
+    run(place(cell(row, col), digit));
+  }
+  // Stuck: step 1 of 7 named, counted; named again, free.
+  ask();
+  ask();
+  // Show me: its first page counted, its second and third too; opened
+  // again, free.
+  run(page(0, true), page(1), page(2));
+  run(page(0, true));
+  // Another cell whose route starts with a step seen: named for free. Then
+  // back to the first, asked for again as it was: free.
+  const { seenSteps } = played.game;
+  const seen = (id: number) => seenSteps.named.includes(id) || seenSteps.shown.includes(id);
+  const via = played.game.cells
+    .map((c, i) =>
+      c.value === 0 && i !== target ? explainCell(hintBoardOf(played.game), i, answers) : null,
+    )
+    .find((walk) => walk != null && seen(stepId(walk.steps[0].step)));
+  if (via == null) throw new Error('No other cell’s route starts with a step seen');
+  run({ type: 'hint', hint: stepHint(via) });
+  const again = explainCell(hintBoardOf(played.game), target, answers)!;
+  run({ type: 'hint', hint: stepHint(again, played.game.cellHints.get(target)!.fill) });
+  // The first step made: the second, seen on its page, named for free; made,
+  // and the third, seen on its page too, named for free; made, and the
+  // fourth named, counted.
+  for (const [row, col, digit] of strikes) run(pencil(cell(row, col), digit));
+  ask();
+  take();
+  ask();
+  take();
+  ask();
+  // The fourth made, the fifth named; the fourth undone, and named again on
+  // the route as planned afresh, free.
+  const before = played.game.undoStack.length;
+  take();
+  ask();
+  while (played.game.undoStack.length > before) run({ type: 'undo' });
+  ask();
+  // A hint of the kind from before steps were named: free for a cell that has had one.
+  run({ type: 'hint', hint: { kind: 'deduction', index: target, technique: 'xyChain' } });
+  // And Show me's page for a cell whose hint is of that kind: counted.
+  const other = played.game.cells.findIndex((c, i) => c.value === 0 && i !== target);
+  run({ type: 'hint', hint: { kind: 'deduction', index: other, technique: null } });
+  run({ type: 'showStep', index: other, id: 1, opens: true });
+  // And a cell whose Show me was counted once for every page, as older
+  // builds counted it: its pages free.
+  const third = played.game.cells.findIndex(
+    (c, i) => c.value === 0 && i !== target && i !== other && !played.game.cellHints.has(i),
+  );
+  run({ type: 'hint', hint: { kind: 'deduction', index: third, technique: null } });
+  run({ type: 'walkthrough', index: third });
+  run({ type: 'showStep', index: third, id: 2, opens: true });
+  // The route followed to the single, a hint after each step, and the answer placed.
+  while (route().length > 1) {
+    take();
+    ask();
+  }
+  run(place(target, answers[target]));
+  // A Reset: the steps seen, and the cell last hinted, forgotten.
+  run({ type: 'reset' });
+
+  for (const i of played.game.cells.flatMap((c, j) => (c.value === 0 ? [j] : []))) {
+    run(place(i, answers[i]));
+  }
+  return played;
+}
+
+/**
+ * Show me opened once a step is taken (see `STUCK_ON_AN_XY_CHAIN`): the
+ * report's position, in auto candidate mode; Hint, naming step 1 of 7 for
+ * row 2, column 1; that step taken, its two 2s struck, leaving six steps;
+ * Show me opened at its first page — "Step 2 of 7", numbered on from the
+ * hint — and turned to its third, "Step 4 of 7". Then a solve. Moves a
+ * second apart.
+ */
+export function showMeOnceAStepIsTaken(): Played {
+  const { givens, solution, entries, target, strikes } = STUCK_ON_AN_XY_CHAIN;
+  const answers = gridValues(solution);
+  const cell = (row: number, col: number) => (row - 1) * 9 + col - 1;
+  let played = startPlaying({ givens, solution, difficulty: 'expert' }, true);
+  const run = (action: GameAction) => (played = act(played, action, 1000));
+  for (const [row, col, digit] of entries) run(place(cell(row, col), digit));
+  run({ type: 'hint', hint: findStepHint(hintBoardOf(played.game), answers) });
+  for (const [row, col, digit] of strikes) run(pencil(cell(row, col), digit));
+  const route = explainCell(hintBoardOf(played.game), target, answers)!.steps;
+  run({ type: 'showStep', index: target, id: stepId(route[0].step), opens: true });
+  run({ type: 'showStep', index: target, id: stepId(route[2].step) });
+  for (const [index, { value }] of played.game.cells.entries()) {
+    if (value === 0) run(place(index, answers[index]));
+  }
   return played;
 }
 

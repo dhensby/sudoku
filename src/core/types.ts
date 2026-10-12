@@ -92,9 +92,34 @@ export type Hint =
   /**
    * No single is available yet: `index` is the next cell a logical solve fills,
    * and `technique` the hardest step needed to get there (null when the board is
-   * beyond the techniques the grader knows).
+   * beyond the techniques the grader knows). What hints were before they named
+   * the next step (`step`, below): still given when the techniques stall, and
+   * read back from older move logs.
    */
   | { kind: 'deduction'; index: number; technique: TechniqueId | null }
+  /**
+   * The next step on the way to filling a cell (see `findStepHint`): `index`
+   * is the cell, and `technique` and `unit` the step to take next — an
+   * elimination, or, as the last step, the single that fills the cell (`unit`
+   * null for a naked single, or a step with no house of its own, such as a
+   * wing or an XY-Chain). `step` of `of` is how far along the cell's route
+   * that step is, numbered against the route as first shown for the cell
+   * (see `stepNumbering`), so that steps left to take are always `of - step
+   * + 1`; `hardest` is the hardest technique among them. `id` is what the
+   * step is (see `stepId`) — not where it falls on a route, which can change
+   * as the board does — so that the same step is counted once, however the
+   * route around it is planned again.
+   */
+  | {
+      kind: 'step';
+      index: number;
+      technique: TechniqueId;
+      unit: Unit | null;
+      step: number;
+      of: number;
+      hardest: TechniqueId;
+      id: number;
+    }
   /** Nothing to suggest — the board is already complete. */
   | { kind: 'none' };
 

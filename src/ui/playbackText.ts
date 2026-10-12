@@ -5,13 +5,15 @@ import {
   type CandidateChange,
   type LoggedHint,
   type MistakeEvent,
+  type PageChange,
   type Playback,
   type PlaybackFrame,
   type PlaybackRefusal,
   type PlaybackTickKind,
+  type StepHint,
 } from '../core';
-import { describePosition, describeUnit } from './announce';
-import { capitalise, TECHNIQUE_LABEL } from './format';
+import { describePosition, describeUnit, isSingle, isSingleElsewhere } from './announce';
+import { capitalise, TECHNIQUE_LABEL, withArticle } from './format';
 
 /*
  * The words of a playback (see `src/core/playback.ts`): a caption for each
@@ -25,8 +27,41 @@ import { capitalise, TECHNIQUE_LABEL } from './format';
 export const START_CAPTION = 'Before the first move';
 
 /**
+ * A step hint's caption, put as the hint bar put it but naming every house
+ * by number, as there is no "this cell" to measure from: "Hint: step 1 of
+ * 7, a box/line reduction in column 8". A single on the way that fills
+ * another cell in a house the hinted one shares is "elsewhere in" it, so it
+ * can't be taken for the outlined cell's own; the last step, the single
+ * that fills the cell, is captioned as a single always is. A step with no
+ * house of its own — a wing, a chain, a fish — is named alone: the log
+ * holds its technique, not its cells.
+ */
+function stepCaption(hint: StepHint): string {
+  const { technique, unit, index, step, of } = hint;
+  if (step === of && isSingle(technique)) {
+    return hintCaption({ kind: 'single', index, technique, unit });
+  }
+  const where =
+    unit === null
+      ? ''
+      : `${isSingleElsewhere(hint, unit) ? ' elsewhere' : ''} in ${describeUnit(unit)}`;
+  return `Hint: step ${step} of ${of}, ${withArticle(TECHNIQUE_LABEL[technique])}${where}`;
+}
+
+/**
+ * A page of Show me's caption: the cell, and the page as Show me headed it
+ * ("Show me for row 2, column 1: step 3 of 7"); just the cell for a page
+ * the route had none of, which only a log from outside could hold.
+ */
+function pageCaption({ cell, page }: PageChange): string {
+  const where = `Show me for ${describePosition(cell)}`;
+  return page === null ? where : `${where}: step ${page.step} of ${page.of}`;
+}
+
+/**
  * A hint's caption: the technique it named and where — the unit a single
- * lives in, else the cell — or the wrong number it pointed at. A hint the
+ * lives in, else the cell — or the wrong number it pointed at; a step hint,
+ * which step towards its cell it named (see `stepCaption`). A hint the
  * grader could not name points at a cell to try. (A hint off the grid,
  * which only a log from outside could hold, names no place.)
  */
@@ -49,6 +84,8 @@ function hintCaption(hint: LoggedHint): string {
     case 'deduction':
       if (hint.technique !== null) return `Hint: ${capitalise(TECHNIQUE_LABEL[hint.technique])}`;
       return isOnGrid ? `Hint: try ${describePosition(hint.index)}` : 'Hint';
+    case 'step':
+      return stepCaption(hint);
   }
 }
 
@@ -85,6 +122,8 @@ function moveCaption({ change }: PlaybackFrame): string {
       return hintCaption(change.hint);
     case 'walkthrough':
       return `Show me for ${describePosition(change.cell)}`;
+    case 'page':
+      return pageCaption(change);
     case 'checkCell':
       return `Checked ${describePosition(change.cell)}`;
     case 'checkPuzzle':

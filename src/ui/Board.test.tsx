@@ -143,6 +143,27 @@ describe('Board', () => {
     expect(document.querySelectorAll('.cell--same')).toHaveLength(0);
   });
 
+  it('tints the cells of a hinted step in place of the selection’s row, column and box', () => {
+    // Row 1, column 1 selected (a given 5); column 8 and box 9 tinted.
+    const houses = [7, 16, 25, 34, 43, 52, 60, 61, 62, 69, 70, 71, 78, 79, 80];
+    renderBoard({ game: play({ type: 'select', index: 0 }), tinted: houses });
+    const cells = screen.getAllByRole('gridcell');
+    const tinted = cells.flatMap((cell, i) => (cell.classList.contains('cell--step') ? [i] : []));
+    const fives = cells.flatMap((cell, i) => (cell.classList.contains('cell--same') ? [i] : []));
+    // The same numbers are lit as they always are, over the tint.
+    expect(fives.length).toBeGreaterThan(1);
+    expect(tinted).toEqual(houses.filter((i) => !fives.includes(i)));
+    expect(tinted.length).toBeGreaterThan(10);
+    expect(document.querySelector('.cell--peer')).toBeNull();
+    expect(cellAt(0)).toHaveClass('cell--selected');
+  });
+
+  it('tints nothing with no cells to tint', () => {
+    renderBoard({ game: play({ type: 'select', index: 40 }), tinted: [] });
+    expect(document.querySelector('.cell--step')).toBeNull();
+    expect(cellAt(36)).toHaveClass('cell--peer');
+  });
+
   it('highlights nothing as the same when the selected cell is empty', () => {
     renderBoard();
     expect(document.querySelectorAll('.cell--same')).toHaveLength(0);
@@ -295,6 +316,11 @@ describe('Board', () => {
       expect(
         document.querySelectorAll('.cell--selected, .cell--peer, .cell--same, .cell__ghosts'),
       ).toHaveLength(0);
+    });
+
+    it('tints no step: a board played back has no hint bar to name one', () => {
+      renderBoard({ game, isReadOnly: true, current: 3, tinted: [0, 1, 2, 3, 4] });
+      expect(document.querySelectorAll('.cell--step')).toHaveLength(0);
     });
 
     it('outlines nothing for a move about no one cell', () => {

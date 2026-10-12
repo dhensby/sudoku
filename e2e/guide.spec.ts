@@ -54,7 +54,7 @@ test.describe('from a hint', () => {
     await hintOn(page, 'pointing');
     const hint = page.locator('.hint-bar');
     await expect(hint).toHaveText(
-      "Look here — a pointing pair or triple will unlock this cell. What's a pointing pair or triple? Show me",
+      "Step 1 of 2: a pointing pair or triple in box 1. What's a pointing pair or triple? Show me",
     );
     const hinted = await selectedIndex(page);
     await hint.getByRole('button', { name: "What's a pointing pair or triple?" }).click();

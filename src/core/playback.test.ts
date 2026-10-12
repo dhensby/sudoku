@@ -32,6 +32,7 @@ import {
 } from './playback';
 import { createRng } from './rng';
 import type { Digit, Puzzle } from './types';
+import { STUCK_ON_AN_XY_CHAIN } from '../test/logic-fixtures';
 import {
   EASY_PUZZLE,
   LOG_IN_A_LATER_FORMAT,
@@ -39,8 +40,10 @@ import {
   checkGuessesTour,
   logFromAnotherBuild,
   playWithHelp,
+  showMeOnceAStepIsTaken,
   solveByPlacing,
   startPlaying,
+  stepHintsTour,
   tourTheRules,
   type Played,
 } from '../test/movePlayers';
@@ -355,6 +358,107 @@ describe('preparePlayback', () => {
       expect(log?.moves).toHaveLength(lengthOf(PLAYBACK) + 2);
       expect(replayMoves(PUZZLE, log!).status).toBe('solved');
     });
+  });
+});
+
+describe('a log with step hints and Show me a page at a time', () => {
+  // The report that asked for step hints, toured: steps named, Show me's
+  // pages turned, steps named again on routes planned afresh, a Reset.
+  const toured = stepHintsTour(createRng('playback steps'));
+  const encoded = encodeMoveLog(toured.log);
+  const { givens } = toured.game.puzzle;
+  const playback = prepared(givens, encoded);
+  const pages = playback.frames.flatMap(({ change, cell, index }) =>
+    change.op === 'page' ? [{ change, cell, position: index + 1 }] : [],
+  );
+
+  it('plays back to the solve, as it was played', () => {
+    expect(isPlayable(givens, encoded)).toBe(true);
+    expect(lengthOf(playback)).toBe(toured.log.moves.length);
+    expect(playback.frames.at(-1)!.state.cells).toEqual(toured.game.cells);
+    expect(
+      playback.frames.some(({ change }) => change.op === 'hint' && change.hint.kind === 'step'),
+    ).toBe(true);
+  });
+
+  it('numbers the pages of Show me as Show me headed them', () => {
+    const { target } = STUCK_ON_AN_XY_CHAIN;
+    // Opened (step 1 of 7), turned twice, and opened again at its first page.
+    expect(pages.slice(0, 4).map(({ change }) => [change.cell, change.page])).toEqual([
+      [target, { step: 1, of: 7 }],
+      [target, { step: 2, of: 7 }],
+      [target, { step: 3, of: 7 }],
+      [target, { step: 1, of: 7 }],
+    ]);
+  });
+
+  it('numbers the pages of a Show me opened once a step is taken on from the cell’s step hint', () => {
+    // Step 1 of 7 named, then taken: six steps left. Show me's first and
+    // third pages were headed "Step 2 of 7" and "Step 4 of 7" — numbered on
+    // from the hint, not afresh as "of 6".
+    const { game, log } = showMeOnceAStepIsTaken();
+    const { target } = STUCK_ON_AN_XY_CHAIN;
+    expect(game.status).toBe('solved');
+    const { frames } = prepared(game.puzzle.givens, encodeMoveLog(log));
+    const hinted = frames.find(({ change }) => change.op === 'hint')!.change;
+    expect(hinted).toMatchObject({ hint: { kind: 'step', index: target, step: 1, of: 7 } });
+    expect(
+      frames.flatMap(({ change }) => (change.op === 'page' ? [[change.cell, change.page]] : [])),
+    ).toEqual([
+      [target, { step: 2, of: 7 }],
+      [target, { step: 4, of: 7 }],
+    ]);
+  });
+
+  it('numbers a page as the step hint naming the same step numbered it', () => {
+    const named = new Map<string, unknown>();
+    for (const { change } of playback.frames) {
+      if (change.op === 'hint' && change.hint.kind === 'step') {
+        const { index, id, step, of } = change.hint;
+        named.set(`${index}/${id}`, { step, of });
+      }
+    }
+    const numbered = pages.filter(({ change }) => change.page !== null);
+    expect(numbered.length).toBeGreaterThan(0);
+    for (const { change } of numbered) {
+      const hint = named.get(`${change.cell}/${change.id}`);
+      if (hint !== undefined) expect(change.page).toEqual(hint);
+    }
+  });
+
+  it('leaves a page unnumbered when its route had no such step, as a log from outside might', () => {
+    // The tour's pages for cells whose route it never walked: ids 1 and 2.
+    expect(
+      pages.filter(({ change }) => change.page === null).map(({ change }) => change.id),
+    ).toEqual([1, 2]);
+  });
+
+  it('leaves a page unnumbered when its cell had no route, as a log from outside might', () => {
+    // A wrong digit on the board: Show me walks no route from a mistake.
+    let log = appendMove(
+      createMoveLog(),
+      { op: 'place', cell: 0, digit: wrong(0), clearPeerNotes: false },
+      0,
+    );
+    log = appendMove(log, { op: 'page', cell: 40, id: 1 }, 1000);
+    let at = 1000;
+    for (const cell of BLANKS) {
+      at += 1000;
+      log = appendMove(log, { op: 'place', cell, digit: answer(cell), clearPeerNotes: false }, at);
+    }
+    const page = prepared(PUZZLE.givens, encodeMoveLog(log)).frames[1];
+    expect(page.change).toEqual({ op: 'page', cell: 40, id: 1, at: 1000, page: null });
+    expect(page.cell).toBe(40);
+  });
+
+  it('outlines the cell each page is for, and marks each as help', () => {
+    const helped = new Set(
+      playback.ticks.filter((tick) => tick.kind === 'help').map((tick) => tick.position),
+    );
+    for (const { change, cell, position } of pages) {
+      expect(cell).toBe(change.cell);
+      expect(helped.has(position)).toBe(true);
+    }
   });
 });
 

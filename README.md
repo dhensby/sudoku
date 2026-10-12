@@ -68,32 +68,63 @@ your browser.
   times. Export your history to a file and import it on another browser.
 - **Help when you want it** — Hint points at a cell you can fill next and names the technique
   ("Hidden single: there's only one place for a number in this box"), without ever giving the
-  number away. It reasons from **your own candidates** — in Auto Candidate Mode the automatic ones
-  less those you struck out, otherwise your notes, taken as whole lists (less any a placed number
-  rules out), a cell you haven't marked counting as having every candidate — so a step you have
-  taken is never the one it points you to again: strike what a box/line reduction removes, and
-  Show me moves on to the next step. Crossed out a candidate, or left one out of your notes, that
-  nothing rules out yet? Hint points at that cell first — "This cell is missing a candidate that
+  number away. Where the cell takes several steps, it names **the next step** and how far there is
+  to go — "Step 1 of 7: a box/line reduction in column 8." — and tints where that step is on the
+  board: its rows, columns and boxes (a fish's lines, a Skyscraper's or a kite's links), or a wing's
+  or a chain's own cells, in place of the selected cell's row, column and box. The words say where
+  too — "an X-Wing in rows 2 and 7" — and a single on the way, which fills another cell first, says
+  so: "a naked single in box 6", "a hidden single elsewhere in this box". The tint stays while you
+  select cells inside it to make the step. Make the step and ask again, and it moves on: "Step 2 of
+  7 …", page by page, to the single that fills the cell, said as a single always is and untinted: the
+  selected cell's own row, column and box are where to read it. The numbering
+  counts against the route as first shown for the cell, so what is still to do ("of 7" less those
+  behind) is always the route's own length: a step made a shorter way skips ahead, and a route
+  grown longer than the first plan (a step undone) starts again from "Step 1". The "What's a …?"
+  question asks about the next step's technique. Where the bar is wide enough to keep to two lines
+  with it, it also says the hardest step still ahead — "The hardest is an XY-Chain." — which is
+  always read out with the hint and in the cell's description, and Show me names every step. The
+  hint stays with its cell while you fill in others, as long as the cell is no further off than
+  it was, so it doesn't hop about and lose your place. It reasons from **your own
+  candidates** — in Auto Candidate Mode the automatic ones less those you struck out, otherwise
+  your notes, taken as whole lists (less any a placed number rules out), a cell you haven't marked
+  counting as having every candidate — so a step you have taken is never the one it points you to
+  again: strike what a box/line reduction removes, ask again, and it moves on to the next step.
+  Crossed out a candidate, or left one out of your notes, that nothing rules out yet? Hint points at that cell first — "This cell is missing a candidate that
   can't be ruled out yet." — without saying which; its Show me names the number, shows that
   nothing on the board rules it out (none in its row, column or box, and no pattern among the
   candidates), and offers to **put it back** (or pencil it in), as an ordinary move that Undo takes
   back. Each counts as one hint; asking again is free until you change that cell's candidates, and
   then counts again — as a hint about a wrong number does for each number tried — so putting back
-  the right number looks just like putting back any other. A cell **remembers its hint**: select
-  it again and the hint is back under the board (and in the cell's description for a screen
-  reader) — brought up to date for the numbers placed since, so a cell that needed a hidden pair
-  and now needs only a single says so — and asking again for the same cell isn't counted again.
+  the right number looks just like putting back any other. **Each step a hint names counts as one
+  hint**, the first time: asking again before you make it is free, and so is any step you have
+  seen already — named by a hint, or on a page of Show me — however the route around it is planned
+  afresh, and on whichever cell's route it comes round again, since a step is known by what it is
+  (its technique, houses and digit, and what makes its pattern that step: a subset's cells and
+  digits, a wing's or a chain's candidates), not by where it falls on the route — so striking a
+  candidate a step doesn't need leaves it the same step. A cell **remembers its hint**: select it
+  again and the hint is back under the board (and in the cell's description for a screen reader) —
+  brought up to date for the numbers placed since, so a cell that needed a hidden pair and now
+  needs only a single says so, numbered on from where it was — and asking again for the same step
+  isn't counted again. It is only ever brought up to a step you have seen: if the numbers placed
+  since have moved the cell on to one you haven't, it says "The board has moved on. Ask again for
+  this cell's next step." and Hint names it, counted as any new step is.
   What it says unasked, and whether it offers Show me, never turns on candidates you have changed
   since Hint last pointed you to a cell to fill, which nothing has checked: that would tell the
   right number from the wrong ones. Asking again brings them in. Still stuck? **Show me**, beside the hint, walks
-  through the steps that solve that one cell — only the steps it depends on, however far across
+  through the steps that solve that one cell, **a page each**, numbered as the hint numbers them
+  ("Step 2 of 7", "Step 3 of 7" …) — only the steps it depends on, however far across
   the board the solve wandered, and none it could do without — each drawn on your own board with
   the cell marked, a caption that says which earlier step removed what, and the answer at the end.
   Its first step's board is yours, so it skips what you have done already, and a caption credits
   you with what you had ruled out ("You'd already ruled out its 5."), crossed out level on the
-  board where an earlier step's removal has a dashed slash. It counts as one more hint,
-  once per cell. Whether it is on offer never gives away a wrong digit or a missing candidate
-  elsewhere: pressed with one on the board, it points at that instead, as Hint would. On a phone on
+  board where an earlier step's removal has a dashed slash. **Each page counts as one hint the
+  first time it is seen** — opening it shows the first, and each Next to a page not yet seen shows
+  another — and says so on the page ("4 hints used."); going back to a page seen, or opening Show
+  me again on one, is free, as is a hint naming a step already seen on a page (a page shows the
+  step whole; a hint naming a step does not stop its page counting). Next names a page not yet
+  seen by its number ("Step 4 of 7"), not its technique, which would give it away for free. A cell
+  whose Show me was counted by an older version, once for every page, keeps its pages free. Whether it is on offer never
+  gives away a wrong digit or a missing candidate elsewhere: pressed with one on the board, it points at that instead, as Hint would. On a phone on
   its side, each step's board is sized to the screen with its caption beside it. Check cell, Check
   puzzle and Reveal cell are in the "…" menu, and **Check guesses when entered**, in Settings,
   marks a wrong number the moment it goes in, as NYT's does. Any help you take (auto candidates
@@ -182,9 +213,10 @@ The design keeps a hard line between logic and presentation:
 - **`src/core/`** — a pure, framework-free engine: grid geometry, a bitmask solver, a human-style
   logical grader (with a worked example of every technique it knows), the puzzle generator, hints
   and walkthroughs from the player's own candidates (Show me: the steps one cell depends on, sliced
-  from a solve, pruned of any it can do without and checked step by step), share-link codec, clock
-  arithmetic, the game reducer (which remembers each cell's hints), the move log that replays it,
-  and playback (a solve shown again move by move, from its log). No DOM, no React and no
+  from a solve, pruned of any it can do without and checked step by step; a hint, the next of
+  them), share-link codec, clock arithmetic, the game reducer (which remembers each cell's hints,
+  and the steps seen), the move log that replays it, and playback (a solve shown again move by
+  move, from its log). No DOM, no React and no
   English; `reduce(state, action)` is a pure function, randomness is passed in, and the whole
   directory is held to 100% coverage.
 - **`src/storage/`** — a thin, injectable `localStorage` layer for preferences, the history and
@@ -389,12 +421,15 @@ What the logs show is a game's [mistakes](#mistakes), and the solve itself, play
 
 - **What is logged:** every move that changed the game, with its time on the play clock (which
   stops while paused), rounded down to a tenth of a second so that a logged time is never later
-  than the clock: placing and pencilling a digit, erasing, hints (with their technique and unit),
-  Show me, Check, Reveal, auto candidates on and off, "Check guesses when entered" on and off (at
-  the start of a game begun with it on, and wherever it changed — a setting, but one that decides
-  how what follows is marked and counted), Undo, Redo and Reset. Show me opened again
-  for a cell already counted is logged too, though it changes nothing, because it is still help
-  seen. A move that acts on the selected cell carries the cell. Selecting, moving the selection,
+  than the clock: placing and pencilling a digit, erasing, hints (with their technique and unit,
+  and for a step, where it falls on its route and which step it is), Show me and each page of it
+  seen for the first time (with which step's page it was), Check, Reveal, auto candidates on and
+  off, "Check guesses when entered" on and off (at the start of a game begun with it on, and
+  wherever it changed — a setting, but one that decides how what follows is marked and counted),
+  Undo, Redo and Reset. Show me opened again for a cell already counted, or at a page already
+  seen, is logged too, though it changes nothing, because it is still help seen; a page turned
+  back to while it is open is not, as opening it was help seen already. A move that acts on the
+  selected cell carries the cell. Selecting, moving the selection,
   the input mode, pauses and a hint with nothing to say are not logged.
 - **Replaying:** the moves go back through the same reducer, which is pure, so the replay rebuilds
   the game exactly — the board, the help taken, the hints remembered, and the Undo and Redo
@@ -405,7 +440,12 @@ What the logs show is a game's [mistakes](#mistakes), and the solve itself, play
   moves without a cell above those — Check guesses on and off among them, in the two codes kept
   for them when the format was made, so they came with no new rules version; a hint adds 2 more,
   from a fixed table of techniques and units, where a wrong-marks hint took a code then unused,
-  again with no new rules version) and the time since the previous move as a varint, then a 3-character check, so that a log
+  again with no new rules version; a step hint takes descriptors then unused too, 256 +
+  technique × 28 + unit, and adds its hardest technique, where it falls and the route's length
+  (varints) and the step's 24-bit id, 4 characters; a page of Show me takes a code a cell after
+  Check guesses', 2761 + cell, and adds the id of its step — so an older build, which counted Show
+  me once a cell, refuses a log holding either rather than replaying it its own way) and the time
+  since the previous move as a varint, then a 3-character check, so that a log
   cut short or mistyped is refused rather than read as another game. That comes to 3–4 characters
   a move: about 160–250 for a solve that only places digits, 190–370 with auto candidates, and
   500–1,100 for one that pencils in every candidate. Decoding is strict: anything malformed, or
@@ -442,8 +482,8 @@ Each one — the same wrong digit or strike made again included — opens a **wi
 settles at the first of: 3 seconds of play time (the log's time, so a pause neither uses it up nor
 stretches it); a change to another cell (what one move does beside its own cell, such as clearing
 peers' notes, is not; Undo or Redo acts on the cell of the change it takes back; switching auto
-candidates changes every cell); any help — Check, Hint, Show me (opened again for free included) or
-Reveal; Reset; and the board becoming full (the move that fills its last empty cell), since "The
+candidates changes every cell); any help — Check, Hint (a step hint included), Show me and each new
+page of it (opened again for free included) or Reveal; Reset; and the board becoming full (the move that fills its last empty cell), since "The
 board is full, but something isn't right" is news a slip must not wait for. A board full already
 tells nothing new, so a slip made on it, while you hunt for what is wrong, has its window like any
 other. As it settles it **counts unless forgiven**. A wrong number is forgiven only if its cell's
@@ -551,8 +591,10 @@ turning it off hides the count, the count on Hint and the count said with a move
   help." as Settings closes, or with "Resumed.", on a game already on show.
 - **Show me says what it cost.** Its walkthrough shows the charge after its introduction — "2
   hints used." — so a sighted player sees it as it is made, and a screen reader hears it with the
-  dialog's description (the status region is hidden behind a dialog). Opened again for a hint
-  already counted, it is free, and says nothing of cost.
+  dialog's description (the status region is hidden behind a dialog). Each page turned to for the
+  first time says what it cost under its heading — "3 hints used." — which describes the heading,
+  so a screen reader hears it as focus moves there; once, as the page is turned to. Opened again,
+  or turned back to a page already seen, it is free, and says nothing of cost.
 - **While paused.** It stays on show, unlike the error counter: what help was taken says nothing
   about the board — not which cells, nor whether a number is right — and, like the timer's
   digits, it is a record of the game rather than of its cells.
@@ -571,7 +613,10 @@ Watch.
   board in a read-only mode (a table of plain cells: nothing to select or press), the move's
   cell outlined in the accent, and a caption: "5 in row 3, column 4", "Struck 3 in row 3,
   column 4", "Erased row 3, column 4", "Undo", "Hint: X-Wing", "Hint: Hidden single in box 2",
-  "Show me for row 5, column 5", "Checked the puzzle", "Revealed row 3, column 4", "Auto
+  "Hint: step 2 of 7, a hidden triple in row 4" (a step hint: every house numbered, as there is
+  no "this cell" to count from; the last step, the single, captioned as a single), "Show me for
+  row 5, column 5", "Show me for row 2, column 1: step 3 of 7" (a page of Show me, headed as Show
+  me headed it), "Checked the puzzle", "Revealed row 3, column 4", "Auto
   candidates on", "Check guesses off", "Reset"; a candidate entered over a number says what it
   cleared ("Cleared 6, struck 5 in row 3, column 4"). A move that made a mistake that counted says so
   ("— a mistake", "— a candidate mistake"), as does a slip forgiven ("— a slip, put right in
@@ -580,7 +625,7 @@ Watch.
   start or the solve, speeds of 1×, 2×, 4× and 8×, and a scrubber — a native range, which a
   screen reader hears as "Move 42 of 310, 4:12". Marks along it show each mistake that counted
   (solid, above the track), each slip forgiven (open, above) and each move of help — a hint, Show
-  me, a check or a reveal (a small square, below) — with a key to those present. The keys work
+  me or a page of it, a check or a reveal (a small square, below) — with a key to those present. The keys work
   anywhere in the dialog — <kbd>Space</kbd> plays and pauses, <kbd>←</kbd> and <kbd>→</kbd> step,
   <kbd>Home</kbd> and <kbd>End</kbd> jump — except where a control has a use of its own for one
   (Space presses a button, the arrows move the scrubber or the speeds); the game's own keys stand
@@ -598,7 +643,10 @@ Watch.
   the same way. `src/core/playback.ts` prepares it: it replays the log through the reducer once,
   keeping the game after every move, works out each move's cell, what a candidate move did to its
   digit (pencilled or struck, and any number it cleared — read from the game before and after
-  it, as `analyseMistakes` judges a struck answer), and its mistakes (`analyseMistakes`), and
+  it, as `analyseMistakes` judges a struck answer), which page of Show me a page move showed (the
+  log keeps only its step's id: the route is walked again from the board before it, held to the
+  solution and numbered on from the cell's last step hint, as Show me did), and its mistakes
+  (`analyseMistakes`), and
   places the scrubber's marks; the
   timing and the cursor (`steer`: play, pause, step, seek, speed) are pure functions of it, and
   `usePlayback` only waits out each pause on the browser's timers. The captions are the UI's
@@ -799,7 +847,11 @@ of the logs here were shed, none of the file's logs are taken.
   interactions. The palette is read straight from the stylesheet and held to its contrast targets
   pair by pair, in all three palettes (High contrast's text at 7:1, but for the guide's struck-out
   candidate on the same-number fill, held at 4.5:1) and under simulated colour-blindness
-  (`src/styles/contrast.test.ts`). The daily archive is held to the engine in the code, and on a
+  (`src/styles/contrast.test.ts`) — a hinted step's sage tint and its given twin included: every
+  ink on them, the rules and marks, a clear step from plain cells and givens, and from the same
+  numbers and the selected block, which can sit among its cells. The tint takes the place of the
+  selected cell's row, column and box whenever it is on show, so it never meets the peer fill,
+  which it would be told from by hue alone. The daily archive is held to the engine in the code, and on a
   pull request to the archive main has released, by a guard of its own
   (`src/daily/archive.guard.test.ts`, see [The daily archive](#the-daily-archive)), and date
   arithmetic and streaks are tested across the clocks changing in London and New York, and across
@@ -819,11 +871,20 @@ of the logs here were shed, none of the file's logs are taken.
   words, counts, total) and to ticking on a charge only — not for help a game behind Start takes
   up as it starts, and for Show me's, only as its walkthrough closes; through the main hook, a hint
   asked for again costs and says nothing more, while the next new one says "2 hints used.", and
-  Check guesses switched on mid-game says it is help.
+  Check guesses switched on mid-game says it is help. The owner's report — the Expert of 10
+  October 2026, row 2, column 1, in Auto Candidate Mode — is played through the main hook a hint
+  at a time: "Step 1 of 7 … column 8", the 2s struck, "Step 2 of 7" counted, asked again for
+  free, and on to the hidden single, every new step counted once; a digit placed elsewhere moving
+  the cell on to a step not seen, which the bar and tint then never name for free; the tint kept
+  while the step is made; Show me's pages counted as each is first seen and free on return; and
+  step hints followed on the Expert dailies always name the step Show me starts with, never strike
+  an answer, and always solve.
   Playback is held to every kind of move a log holds — the cell each outlines, its caption, its
   mistakes and the scrubber's marks — to its timing at every speed, long pauses shortened and
   bursts spread, to stepping, seeking and its ends, and to refusing, with the reason, a log from
-  an older or a newer build or a broken one; watching is checked to write nothing.
+  an older or a newer build or a broken one; watching is checked to write nothing. A log with
+  step hints and Show me's pages in it plays back, each captioned with the step or page it
+  revealed.
   Share links are held to the versions before them: a copy of the assists decoder every earlier
   version shipped must read a new link's help unchanged, skipping its mistakes, and an old link
   must read as mistakes not recorded, never 0. A solve in a link is held to its puzzle and its
@@ -836,7 +897,8 @@ of the logs here were shed, none of the file's logs are taken.
 - **End-to-end** (`e2e/`, Playwright): full journeys against the built app — playing and solving,
   pausing and reloading, share links between two browsers (a solve with a mistake shared, opened in
   the other and compared row by row), the history, the technique guide, a
-  hint's Show me walkthrough, the daily puzzles on a fixed clock (today's Hard from New game to
+  hint's Show me walkthrough (and a step hint followed a step at a time, its pages turned with
+  help taken ticking only for pages not seen before), the daily puzzles on a fixed clock (today's Hard from New game to
   the end and its streak, yesterday's from the calendar kept but not counted, a friend's daily
   link recognised), mistakes (an obvious slip put right at once, a wrong number where the answer
   was not obvious, Check guesses marking and counting one at once with "guesses checked as
@@ -861,8 +923,9 @@ of the logs here were shed, none of the file's logs are taken.
   every kind of mark, the error counter and help taken in both their places, the Ready and Paused
   cards, the menus (the "…" menu's "Hint (1 used)" among them),
   every dialog (Show me's, the daily calendar's, a solve played back, the warning before watching
-  a friend's solve and Share with the solve included among them) and each guide entry — in both
-  themes, and the board, the dialogs, the menus and the calendar in High contrast, both chosen in
+  a friend's solve and Share with the solve included among them), each guide entry and a step
+  hint's tinted houses — in both themes, and the board (its tint included), the dialogs, the menus
+  and the calendar in High contrast, both chosen in
   Settings on a dark device and from a dark system asking for more contrast, measuring its heavier
   lines and its same-number ring kept off the digits — and allows no violations. Three projects:
 

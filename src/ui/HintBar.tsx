@@ -1,5 +1,11 @@
-import type { Hint, TechniqueId } from '../core';
-import { describeHint, describePosition } from './announce';
+import type { Hint, TechniqueId, Unit } from '../core';
+import {
+  MOVED_ON,
+  describeHardest,
+  describeHint,
+  describePosition,
+  describeStep,
+} from './announce';
 import { CloseIcon, HelpIcon, HintIcon, PlayIcon } from './icons';
 import { guideIdFor, techniqueQuestion, type GuideId } from './techniqueGuide';
 import type { Notice } from './useSudoku';
@@ -10,6 +16,18 @@ export interface HintBarProps {
    * next change of any kind, or else the selected cell's remembered hint.
    */
   hint: Hint | null;
+  /**
+   * The houses of the step a step hint names (see `Sudoku.hintHouses`), so
+   * the words can say where a step with no one house of its own is; none by
+   * default.
+   */
+  houses?: readonly Unit[];
+  /**
+   * Whether the step hint on show is one the board has moved on from (see
+   * `Sudoku.isHintMovedOn`): the bar then says so, naming no step — and so
+   * asks no "What's a …?" about one.
+   */
+  isMovedOn?: boolean;
   /**
    * The id to give the hint's words, so the selected cell can be described
    * by them (see Board's `describedBy`).
@@ -30,10 +48,31 @@ export interface HintBarProps {
   onOpenGuide: (entry: GuideId) => void;
 }
 
-/** The technique a hint names, if it names one. */
+/** The technique a hint names, if it names one: a step hint's is the next step's. */
 function namedTechnique(hint: Hint): TechniqueId | null {
-  return hint.kind === 'single' || hint.kind === 'deduction' ? hint.technique : null;
+  return hint.kind === 'single' || hint.kind === 'deduction' || hint.kind === 'step'
+    ? hint.technique
+    : null;
 }
+
+/**
+ * A hint's words. A step hint's hardest step is a sentence of its own, which
+ * all but the widest bars leave out of sight (layout.css), to keep the bar
+ * to its two lines — it is still read out, as part of the cell's
+ * description too, and Show me names every step.
+ */
+function HintWords({ hint, houses }: { hint: Hint; houses: readonly Unit[] }) {
+  const hardest = describeHardest(hint);
+  if (hint.kind !== 'step' || hardest === null) return describeHint(hint, houses);
+  return (
+    <>
+      {describeStep(hint, houses)}
+      <span className="hint-bar__hardest"> {hardest}</span>
+    </>
+  );
+}
+
+const NO_HOUSES: readonly Unit[] = [];
 
 /**
  * The line under the board: the hint ("Hidden single: there's only one place
@@ -42,7 +81,8 @@ function namedTechnique(hint: Hint): TechniqueId | null {
  * empty, so a message arriving never shoves the controls down the page.
  *
  * A hint that names a technique ends with a question — "What's a hidden
- * single?" — that opens the guide at it. On the narrowest phones, where the
+ * single?", or for a step hint the next step's technique — that opens the
+ * guide at it. On the narrowest phones, where the
  * words would push the bar to a third line, it is a question-mark icon that
  * keeps the words as its name (see layout.css). A hint with a walkthrough
  * then offers "Show me", named for the cell it solves ("Show me how to solve
@@ -55,6 +95,8 @@ function namedTechnique(hint: Hint): TechniqueId | null {
  */
 export function HintBar({
   hint,
+  houses = NO_HOUSES,
+  isMovedOn = false,
   textId,
   onShowMe = null,
   notice,
@@ -62,7 +104,7 @@ export function HintBar({
   onOpenGuide,
 }: HintBarProps) {
   if (hint !== null) {
-    const technique = namedTechnique(hint);
+    const technique = isMovedOn ? null : namedTechnique(hint);
     const showMe =
       onShowMe === null || hint.kind === 'none' ? null : { index: hint.index, onClick: onShowMe };
     return (
@@ -70,7 +112,9 @@ export function HintBar({
         <p className="hint-bar__message hint-bar__message--hint">
           <HintIcon className="hint-bar__icon" />
           <span>
-            <span id={textId}>{describeHint(hint)}</span>
+            <span id={textId}>
+              {isMovedOn ? MOVED_ON : <HintWords hint={hint} houses={houses} />}
+            </span>
             {(technique !== null || showMe !== null) && (
               <>
                 {' '}

@@ -189,10 +189,21 @@ describe('HelpDialog', () => {
     );
     const showMe = within(hints).getByText(/walks through the steps that solve that cell/);
     expect(showMe).toHaveTextContent(
-      'Opening it counts as one more hint, the first time for each cell.',
+      'Each page counts as a hint the first time you see it, and says so; going back to a page you have seen, or opening Show me again, is free.',
     );
     expect(showMe).toHaveTextContent(
       'If a number on the board is wrong, or a candidate missing, it points at that instead, as Hint would.',
+    );
+  });
+
+  it('says a hint names the next step, how far there is to go, and what each step costs', () => {
+    render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={vi.fn()} />);
+    const hints = screen.getByRole('heading', { name: 'Hints' }).closest('section')!;
+    expect(within(hints).getByText(/names the next step towards it/)).toHaveTextContent(
+      '“Step 1 of 7: a box/line reduction in column 8.” — and tints where the step is on the board, which stays while you select cells in it to make the step. Make the step and ask again, and it moves on: “Step 2 of 7”, and so on to the single that fills the cell.',
+    );
+    expect(within(hints).getByText(/Each step a hint names/)).toHaveTextContent(
+      'Each step a hint names counts as a hint, once: asking again before you have made it is free, and so is a step you have already seen, however the route around it changes, whichever cell it is on the way to. Come back to a cell after placing numbers elsewhere, and if they have moved it on to a step you haven’t seen, it says so without naming it: ask again for its next step.',
     );
   });
 
@@ -217,7 +228,7 @@ describe('HelpDialog', () => {
       /Show help taken, in Settings, is on until you turn it off: once you take any help, it shows what you have taken so far, as History does — “Auto candidates · 2 hints” — beside the timer \(above the controls on a phone held upright\), or just the counts, or their total \(“Help 3”\), where there is no room for more\./,
     );
     expect(shown).toHaveTextContent(
-      /It ticks each time help is counted, so you can see that asking again for a hint you already have was free; Show me says what it cost as it opens;/,
+      /It ticks each time help is counted, so you can see that asking again for a hint you already have was free; Show me says what each page cost as you turn to it;/,
     );
     expect(shown).toHaveTextContent(/“Hint \(2 used\)”\. Turning it off only hides the count\./);
   });

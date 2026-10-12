@@ -6,6 +6,8 @@ import {
   type GameState,
   type Hint,
   type Puzzle,
+  type StepHint,
+  type Unit,
 } from '../core';
 import { WIKIPEDIA_PUZZLE, WIKIPEDIA_SOLUTION } from '../test/grids';
 import {
@@ -13,8 +15,10 @@ import {
   describeCell,
   describeCharge,
   describeChange,
+  describeHardest,
   describeHint,
   describePosition,
+  describeStep,
   describeUnit,
   type CellLabelParams,
   type DescribedAction,
@@ -291,6 +295,53 @@ describe('describeChange', () => {
       );
     });
 
+    it('speak the next step, how far there is to go, the hardest, and which cell it is for', () => {
+      const hint: Hint = {
+        kind: 'step',
+        index: R1C3,
+        technique: 'claiming',
+        unit: { kind: 'column', index: 7 },
+        step: 1,
+        of: 7,
+        hardest: 'xyChain',
+        id: 1,
+      };
+      expect(spoken({ type: 'hint', hint })).toBe(
+        'Step 1 of 7: a box/line reduction in column 8. ' +
+          'The hardest is an XY-Chain. Row 1, column 3.',
+      );
+    });
+
+    it('speak where a step with no one house is, from the houses it is given', () => {
+      const hint: Hint = {
+        kind: 'step',
+        index: R1C3,
+        technique: 'xWing',
+        unit: null,
+        step: 5,
+        of: 7,
+        hardest: 'xyChain',
+        id: 1,
+      };
+      const action: DescribedAction = { type: 'hint', hint };
+      const [before, after] = play(action);
+      const houses: Unit[] = [
+        { kind: 'column', index: 1 },
+        { kind: 'column', index: 6 },
+        { kind: 'row', index: 2 },
+        { kind: 'row', index: 7 },
+      ];
+      expect(describeChange(before, after, action, { stepHouses: houses })).toBe(
+        'Step 5 of 7: an X-Wing in columns 2 and 7. The hardest is an XY-Chain. Row 1, column 3.',
+      );
+    });
+
+    it('say nothing as a page of Show me is turned to: the dialog speaks for itself', () => {
+      const [game] = play();
+      const turned = { ...game, assists: { ...game.assists, hints: 2 } };
+      expect(describeChange(game, turned, { type: 'showStep', index: R1C3, id: 1 })).toBeNull();
+    });
+
     it('have no cell to point at once the puzzle is complete', () => {
       expect(spoken({ type: 'hint', hint: { kind: 'none' } })).toBe('The puzzle is complete.');
       expect(spoken({ type: 'hint', hint: { kind: 'struck', index: R1C3 } })).toBe(
@@ -349,6 +400,145 @@ describe('describeChange', () => {
 });
 
 describe('describeHint', () => {
+  /** A step towards cell 4 (row 1, column 5): step `step` of `of`. */
+  const step = (change: Partial<StepHint>): StepHint => ({
+    kind: 'step',
+    index: 4,
+    technique: 'hiddenTriple',
+    unit: { kind: 'row', index: 3 },
+    step: 2,
+    of: 7,
+    hardest: 'xyChain',
+    id: 1,
+    ...change,
+  });
+
+  it.each<[Hint, string]>([
+    [step({}), 'Step 2 of 7: a hidden triple in row 4. The hardest is an XY-Chain.'],
+    // The hardest said only when it is harder than the step.
+    [step({ technique: 'xyChain', unit: null, step: 6 }), 'Step 6 of 7: an XY-Chain.'],
+    [
+      step({ technique: 'nakedPair', unit: { kind: 'column', index: 1 }, hardest: 'nakedPair' }),
+      'Step 2 of 7: a naked pair in column 2.',
+    ],
+    // Boxes by number, as Show me's captions number them; the cell's own is "this box".
+    [
+      step({ technique: 'pointing', unit: { kind: 'box', index: 4 }, hardest: 'pointing' }),
+      'Step 2 of 7: a pointing pair or triple in box 5.',
+    ],
+    [
+      step({ technique: 'pointing', unit: { kind: 'box', index: 1 }, hardest: 'pointing' }),
+      'Step 2 of 7: a pointing pair or triple in this box.',
+    ],
+    // The last step: the single that fills the cell, said as a single always is.
+    [
+      step({
+        technique: 'hiddenSingleBox',
+        unit: { kind: 'box', index: 1 },
+        step: 7,
+        hardest: 'hiddenSingleBox',
+      }),
+      "Hidden single: there's only one place for a number in this box.",
+    ],
+    [
+      step({ technique: 'nakedSingle', unit: null, step: 1, of: 1, hardest: 'nakedSingle' }),
+      'Naked single: only one number fits in this cell.',
+    ],
+  ])('describes the step %o', (hint, text) => {
+    expect(describeHint(hint)).toBe(text);
+  });
+
+  const row = (index: number): Unit => ({ kind: 'row', index });
+  const column = (index: number): Unit => ({ kind: 'column', index });
+  const box = (index: number): Unit => ({ kind: 'box', index });
+
+  it.each<[string, Partial<StepHint>, Unit[], string]>([
+    // A single on the way fills another cell: never to be taken for this one's.
+    [
+      'a hidden single elsewhere in a house of the cell',
+      { technique: 'hiddenSingleBox', unit: box(1), hardest: 'hiddenSingleBox' },
+      [box(1)],
+      'Step 2 of 7: a hidden single elsewhere in this box.',
+    ],
+    [
+      'a hidden single in another house',
+      { technique: 'hiddenSingleLine', unit: row(5), hardest: 'hiddenSingleLine' },
+      [row(5)],
+      'Step 2 of 7: a hidden single in row 6.',
+    ],
+    [
+      'a naked single elsewhere, named by its box',
+      { technique: 'nakedSingle', unit: box(5), hardest: 'nakedSingle' },
+      [],
+      'Step 2 of 7: a naked single in box 6.',
+    ],
+    [
+      'a naked single elsewhere in the cell’s own box',
+      { technique: 'nakedSingle', unit: box(1), hardest: 'nakedSingle' },
+      [],
+      'Step 2 of 7: a naked single elsewhere in this box.',
+    ],
+    // A step with no one house says where it is from its houses.
+    [
+      'an X-Wing, by its base lines',
+      { technique: 'xWing', unit: null, hardest: 'xWing' },
+      [row(1), row(6), column(2), column(7)],
+      'Step 2 of 7: an X-Wing in rows 2 and 7.',
+    ],
+    [
+      'a Swordfish, by its base lines',
+      { technique: 'swordfish', unit: null, hardest: 'swordfish' },
+      [column(0), column(4), column(8), row(1), row(3), row(5)],
+      'Step 2 of 7: a Swordfish in columns 1, 5 and 9.',
+    ],
+    [
+      'a fish whose houses are all one kind',
+      { technique: 'xWing', unit: null, hardest: 'xWing' },
+      [row(1), row(6)],
+      'Step 2 of 7: an X-Wing in rows 2 and 7.',
+    ],
+    [
+      'a 2-String Kite, by its strong links',
+      { technique: 'twoStringKite', unit: null, hardest: 'twoStringKite' },
+      [row(2), column(4), box(1)],
+      'Step 2 of 7: a 2-String Kite in row 3 and column 5.',
+    ],
+    [
+      'a Skyscraper, by its strong links',
+      { technique: 'skyscraper', unit: null, hardest: 'skyscraper' },
+      [column(0), column(3), row(4)],
+      'Step 2 of 7: a Skyscraper in columns 1 and 4.',
+    ],
+    [
+      'a W-Wing, by the house that joins it, the cell’s own box as this box',
+      { technique: 'wWing', unit: null, hardest: 'wWing' },
+      [box(1)],
+      'Step 2 of 7: a W-Wing in this box.',
+    ],
+    [
+      'a chain, whose cells are tinted instead',
+      { technique: 'alternatingChain', unit: null, hardest: 'alternatingChain' },
+      [row(1), column(2)],
+      'Step 2 of 7: an alternating chain.',
+    ],
+  ])('says where %s is', (_name, change, houses, text) => {
+    expect(describeHint(step(change), houses)).toBe(text);
+    expect(describeStep(step(change), houses)).toBe(text);
+  });
+
+  it('says a step with its houses unknown without them', () => {
+    expect(describeStep(step({ technique: 'xWing', unit: null, hardest: 'xWing' }))).toBe(
+      'Step 2 of 7: an X-Wing.',
+    );
+  });
+
+  it('says the hardest step apart, and only for a step hint whose hardest is harder', () => {
+    expect(describeHardest(step({}))).toBe('The hardest is an XY-Chain.');
+    expect(describeStep(step({}))).toBe('Step 2 of 7: a hidden triple in row 4.');
+    expect(describeHardest(step({ hardest: 'hiddenTriple' }))).toBeNull();
+    expect(describeHardest({ kind: 'deduction', index: 4, technique: 'xyChain' })).toBeNull();
+  });
+
   it.each<[Hint, string]>([
     [{ kind: 'mistake', index: 4 }, 'This number is incorrect.'],
     // Kind, and no digit: which candidate is missing stays the player's to find.

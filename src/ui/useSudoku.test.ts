@@ -8,9 +8,12 @@ import {
   computeCandidates,
   dateKeyOf,
   digitsOf,
+  preparePlayback,
   reduce,
   valuesOf,
   serialiseGame,
+  stepId,
+  unitCells,
   verifyMoveLog,
   type Digit,
   type LoggedMove,
@@ -33,6 +36,7 @@ import { loadEncodedMoveLog, loadMoveLog, readMoveLogIds, storeMoveLog } from '.
 import { loadPreferences, setLastDifficulty } from '../storage/prefs';
 import { memoryStorage, type StorageLike } from '../storage/storage';
 import { STUCK_ON_AN_XY_CHAIN, STUCK_ON_A_HIDDEN_PAIR } from '../test/logic-fixtures';
+import { captionAt } from './playbackText';
 import type { PuzzleSource } from './puzzleSource';
 import {
   FIRST_EMPTY,
@@ -650,11 +654,21 @@ describe('useSudoku', () => {
     it('walk the stuck player through their cell, counted as a hint the first time only', async () => {
       const { result } = await stuck();
       act(() => result.current.actions.hint());
+      // The first of the three steps it takes, in its column.
       expect(result.current.game?.hint).toEqual({
-        kind: 'deduction',
+        kind: 'step',
         index: STUCK_ON_A_HIDDEN_PAIR.target,
         technique: 'hiddenPair',
+        unit: { kind: 'column', index: 5 },
+        step: 1,
+        of: 3,
+        hardest: 'hiddenPair',
+        id: stepId(result.current.walkthrough!.steps[0].step),
       });
+      expect(result.current.announcement?.text).toBe(
+        'Step 1 of 3: a hidden pair in column 6. Row 5, column 2. 1 hint used.',
+      );
+      expect(result.current.hintHouses).toEqual([{ kind: 'column', index: 5 }]);
       expect(result.current.game?.assists.hints).toBe(1);
       const said = result.current.announcement;
 
@@ -663,6 +677,7 @@ describe('useSudoku', () => {
       expect(dialog?.kind).toBe('walkthrough');
       if (dialog?.kind !== 'walkthrough') return;
       expect(dialog.step).toBe(0);
+      expect(dialog.numbering).toEqual({ step: 1, of: 3 });
       expect(dialog.walkthrough.target).toBe(STUCK_ON_A_HIDDEN_PAIR.target);
       expect(dialog.walkthrough.steps.map((trace) => trace.step.technique)).toEqual([
         'hiddenPair',
@@ -675,7 +690,7 @@ describe('useSudoku', () => {
       expect(result.current.announcement).toBe(said);
       expect(result.current.game?.assists.hints).toBe(2);
       // The hint stays, behind it.
-      expect(result.current.shownHint?.kind).toBe('deduction');
+      expect(result.current.shownHint?.kind).toBe('step');
 
       advance(30_000);
       act(() => result.current.actions.closeDialog());
@@ -687,28 +702,73 @@ describe('useSudoku', () => {
       expect(result.current.game?.assists.hints).toBe(2);
     });
 
-    it('put a remembered hint afresh once the board has moved on, as Show me would show it', async () => {
+    it('name no step for free once the board has moved on to one not seen, which Hint then counts', async () => {
       const { result } = await stuck();
       const { target } = STUCK_ON_A_HIDDEN_PAIR;
       act(() => result.current.actions.hint());
-      // Two right digits elsewhere, and the hidden pair is no longer needed.
+      const given = result.current.shownHint;
+      // Two right digits elsewhere, and the hidden pair is no longer needed:
+      // the cell's next step is now its naked single, which nobody has seen.
       enter(result, rc(5, 5), 9);
       enter(result, rc(5, 6), 5);
       act(() => result.current.actions.select(target));
+      expect(result.current.isHintMovedOn).toBe(true);
+      expect(result.current.shownHint).toEqual(given);
+      expect(result.current.hintHouses).toEqual([]);
+      expect(result.current.hintTint).toEqual([]);
+      expect(result.current.isShowMeOffered).toBe(true);
+      expect(result.current.game?.assists.hints).toBe(1);
+      // Hint names it, counted: the one step it reveals.
+      act(() => result.current.actions.hint());
+      expect(result.current.shownHint).toMatchObject({
+        kind: 'step',
+        technique: 'nakedSingle',
+        step: 3,
+        of: 3,
+      });
+      expect(result.current.isHintMovedOn).toBe(false);
+      expect(result.current.game?.assists.hints).toBe(2);
+      // Selected again, it is on show as given: paid for.
+      act(() => result.current.actions.select(rc(1, 1)));
+      act(() => result.current.actions.select(target));
+      expect(result.current.shownHint).toMatchObject({ technique: 'nakedSingle', step: 3 });
+      expect(result.current.isHintMovedOn).toBe(false);
+      expect(result.current.game?.assists.hints).toBe(2);
+    });
+
+    it('put a remembered hint afresh once the board has moved on to a step seen, as Show me would show it', async () => {
+      const { result } = await stuck();
+      const { target } = STUCK_ON_A_HIDDEN_PAIR;
+      act(() => result.current.actions.hint());
+      // Every page of Show me seen: three hints more.
+      act(() => result.current.actions.showMe());
+      act(() => result.current.actions.showStep(1));
+      act(() => result.current.actions.showStep(2));
+      act(() => result.current.actions.closeDialog());
+      expect(result.current.game?.assists.hints).toBe(4);
+      enter(result, rc(5, 5), 9);
+      enter(result, rc(5, 6), 5);
+      act(() => result.current.actions.select(target));
+      // The last of the three steps it was, its numbering kept: seen on its page.
+      expect(result.current.isHintMovedOn).toBe(false);
       expect(result.current.shownHint).toEqual({
-        kind: 'single',
+        kind: 'step',
         index: target,
         technique: 'nakedSingle',
         unit: null,
+        step: 3,
+        of: 3,
+        hardest: 'nakedSingle',
+        id: stepId(result.current.walkthrough!.steps[0].step),
       });
       expect(result.current.walkthrough?.steps.map((trace) => trace.step.technique)).toEqual([
         'nakedSingle',
       ]);
-      // Remembered as it was given, and asked for once.
+      // Remembered as it was given, and nothing more counted.
       expect(result.current.game?.cellHints.get(target)?.fill).toMatchObject({
         technique: 'hiddenPair',
       });
-      expect(result.current.game?.assists.hints).toBe(1);
+      expect(result.current.game?.assists.hints).toBe(4);
     });
 
     it('offer Show me whatever the rest of the board holds, and point at a mistake when pressed', async () => {
@@ -774,19 +834,30 @@ describe('useSudoku', () => {
       act(() => result.current.actions.hint());
       act(() => result.current.actions.showMe());
       const walkthrough = result.current.walkthrough!;
+      const numbering = { step: 1, of: 3 };
       act(() => result.current.actions.openTechniques('pointing', 1));
       expect(result.current.dialog).toEqual({
         kind: 'techniques',
         initial: 'pointing',
-        returnTo: { kind: 'walkthrough', walkthrough, step: 1 },
+        returnTo: { kind: 'walkthrough', walkthrough, step: 1, numbering },
       });
       act(() => result.current.actions.closeDialog());
-      expect(result.current.dialog).toEqual({ kind: 'walkthrough', walkthrough, step: 1 });
+      expect(result.current.dialog).toEqual({
+        kind: 'walkthrough',
+        walkthrough,
+        step: 1,
+        numbering,
+      });
       expect(result.current.pauseReason).toBe('dialog');
       // Without a step to go back to, it goes back where it was.
       act(() => result.current.actions.openTechniques('hiddenPair'));
       act(() => result.current.actions.closeDialog());
-      expect(result.current.dialog).toEqual({ kind: 'walkthrough', walkthrough, step: 1 });
+      expect(result.current.dialog).toEqual({
+        kind: 'walkthrough',
+        walkthrough,
+        step: 1,
+        numbering,
+      });
       act(() => result.current.actions.closeDialog());
       expect(result.current.dialog).toBeNull();
       expect(result.current.phase).toBe('playing');
@@ -1020,10 +1091,11 @@ describe('useSudoku', () => {
         act(() => result.current.actions.setAutoCandidates(true));
         for (const [row, col, digit] of entries) enter(result, rc(row, col), digit);
         act(() => result.current.actions.hint());
-        expect(result.current.shownHint).toEqual({
-          kind: 'deduction',
+        expect(result.current.shownHint).toMatchObject({
+          kind: 'step',
           index: target,
-          technique: 'xyChain',
+          technique: 'claiming',
+          hardest: 'xyChain',
         });
         const first = () => result.current.walkthrough?.steps[0].step.technique;
         expect(first()).toBe('claiming');
@@ -1041,10 +1113,366 @@ describe('useSudoku', () => {
           'hiddenTriple',
         );
         act(() => result.current.actions.closeDialog());
-        // Hint again, free for the cell, brings the bar up to date.
+        // Hint again brings the bar up to date — free, as the step it names
+        // was seen on Show me's page.
         act(() => result.current.actions.hint());
         expect(result.current.game?.selected).toBe(target);
         expect(first()).toBe('hiddenTriple');
+        expect(result.current.game?.assists.hints).toBe(2);
+      });
+    });
+
+    describe('a step at a time (the report)', () => {
+      const { givens, solution, entries, strikes, target } = STUCK_ON_AN_XY_CHAIN;
+
+      /** The report's player, in auto candidate mode, at row 2, column 1. */
+      async function reported(options: SetupOptions = {}) {
+        const view = await started({
+          source: fakeSource({ givens, solution, difficulty: 'expert' }),
+          ...options,
+        });
+        act(() => view.result.current.actions.setAutoCandidates(true));
+        for (const [row, col, digit] of entries) enter(view.result, rc(row, col), digit);
+        return view;
+      }
+
+      /** Make the step the hint bar's Show me starts with, striking what it removes. */
+      function take(result: Awaited<ReturnType<typeof reported>>['result']) {
+        const [{ step }] = result.current.walkthrough!.steps;
+        for (const { index, mask } of step.eliminations) {
+          for (const digit of digitsOf(mask)) {
+            act(() => result.current.actions.toggleCandidate(index, digit as Digit));
+          }
+        }
+      }
+
+      it('names the next step, moves on to the next as each is made, and ends at the single', async () => {
+        const { result } = await reported();
+        act(() => result.current.actions.hint());
+        expect(result.current.game?.selected).toBe(target);
+        expect(result.current.shownHint).toMatchObject({
+          kind: 'step',
+          technique: 'claiming',
+          unit: { kind: 'column', index: 7 },
+          step: 1,
+          of: 7,
+          hardest: 'xyChain',
+        });
+        expect(result.current.announcement?.text).toBe(
+          'Step 1 of 7: a box/line reduction in column 8. ' +
+            'The hardest is an XY-Chain. Row 2, column 1. 1 hint used.',
+        );
+        // Column 8 and box 9 are tinted.
+        expect(result.current.hintHouses).toEqual([
+          { kind: 'column', index: 7 },
+          { kind: 'box', index: 8 },
+        ]);
+
+        // The 2s struck from row 8, column 9 and row 9, column 9: the bar
+        // holds until asked, then moves on, and counts the step it names.
+        for (const [row, col, digit] of strikes) {
+          act(() => result.current.actions.toggleCandidate(rc(row, col), digit as Digit));
+        }
+        act(() => result.current.actions.select(target));
+        expect(result.current.shownHint).toMatchObject({ technique: 'claiming', step: 1 });
+        act(() => result.current.actions.hint());
+        expect(result.current.shownHint).toMatchObject({
+          technique: 'hiddenTriple',
+          unit: { kind: 'row', index: 3 },
+          step: 2,
+          of: 7,
+        });
+        expect(result.current.announcement?.text).toBe(
+          'Step 2 of 7: a hidden triple in row 4. ' +
+            'The hardest is an XY-Chain. Row 2, column 1. 2 hints used.',
+        );
+        // Asked again with nothing changed: free, and said without a count.
+        act(() => result.current.actions.hint());
+        expect(result.current.game?.assists.hints).toBe(2);
+        expect(result.current.announcement?.text).not.toMatch(/used/);
+
+        // Every step after it, one at a time, a hint after each: each new step
+        // counts, until the cell is the hidden single it ends with.
+        const named: string[] = [];
+        while (result.current.walkthrough!.steps.length > 1) {
+          take(result);
+          act(() => result.current.actions.hint());
+          const hint = result.current.shownHint!;
+          named.push(hint.kind === 'step' ? `${hint.step}/${hint.technique}` : hint.kind);
+        }
+        expect(named).toEqual([
+          '3/pointing',
+          '4/nakedPair',
+          '5/xWing',
+          '6/xyChain',
+          '7/hiddenSingleBox',
+        ]);
+        expect(result.current.game?.assists.hints).toBe(7);
+        expect(result.current.announcement?.text).toBe(
+          "Hidden single: there's only one place for a number in this box. Row 2, column 1. " +
+            '7 hints used.',
+        );
+        expect(result.current.hintHouses).toEqual([{ kind: 'box', index: 0 }]);
+        // The single that fills the cell is marked as any single is, untinted
+        // — on the bar, and while the player works in its box.
+        expect(result.current.hintTint).toEqual([]);
+        act(() => result.current.actions.select(rc(1, 1)));
+        expect(result.current.hintTint).toEqual([]);
+      });
+
+      /** The answer at row `row`, column `col`. */
+      const answerAt = (row: number, col: number) => solution.charCodeAt(rc(row, col)) - 48;
+      /** Column 8 and box 9: where the report's first step is. */
+      const FIRST_STEP_CELLS = [7, 16, 25, 34, 43, 52, 61, 70, 79, 60, 62, 69, 71, 78, 80];
+
+      it('tints where the step is, and keeps it while the player works in those cells', async () => {
+        const { result } = await reported();
+        act(() => result.current.actions.hint());
+        expect(result.current.hintTint).toEqual(FIRST_STEP_CELLS);
+        // Row 8, column 9, to strike its 2: the bar's words go, the tint stays.
+        act(() => result.current.actions.select(rc(8, 9)));
+        expect(result.current.shownHint).toBeNull();
+        expect(result.current.hintTint).toEqual(FIRST_STEP_CELLS);
+        act(() => result.current.actions.toggleCandidate(rc(8, 9), 2));
+        expect(result.current.hintTint).toEqual(FIRST_STEP_CELLS);
+        // Away from them, it goes; back, and it is there again, as paid for.
+        act(() => result.current.actions.select(rc(1, 1)));
+        expect(result.current.hintTint).toEqual([]);
+        act(() => result.current.actions.select(rc(9, 9)));
+        expect(result.current.hintTint).toEqual(FIRST_STEP_CELLS);
+        expect(result.current.game?.assists.hints).toBe(1);
+      });
+
+      it('names no step it has not been paid for, in words or tint, once a digit goes in elsewhere', async () => {
+        const { result } = await reported();
+        act(() => result.current.actions.hint());
+        const given = result.current.shownHint;
+        // The right 1 at row 4, column 3: r2c1's next step is now a naked single.
+        enter(result, rc(4, 3), answerAt(4, 3));
+        act(() => result.current.actions.select(target));
+        expect(result.current.isHintMovedOn).toBe(true);
+        expect(result.current.shownHint).toEqual(given);
+        expect(result.current.hintTint).toEqual([]);
+        expect(result.current.hintHouses).toEqual([]);
+        // Nor while working away from the cell, in the houses of the step it was.
+        act(() => result.current.actions.select(rc(9, 9)));
+        expect(result.current.hintTint).toEqual([]);
+        expect(result.current.game?.assists.hints).toBe(1);
+        // Hint names it, counted, and says where it is: on another cell.
+        act(() => result.current.actions.hint());
+        expect(result.current.shownHint).toMatchObject({
+          index: target,
+          technique: 'nakedSingle',
+          unit: { kind: 'box', index: 5 },
+        });
+        expect(result.current.announcement?.text).toBe(
+          'Step 1 of 7: a naked single in box 6. The hardest is an XY-Chain. ' +
+            'Row 2, column 1. 2 hints used.',
+        );
+        expect(result.current.hintTint).toEqual([33, 34, 35, 42, 43, 44, 51, 52, 53]);
+      });
+
+      it('says where an X-Wing is, and tints a chain’s own cells', async () => {
+        const { result } = await reported();
+        act(() => result.current.actions.hint());
+        for (const [row, col, digit] of strikes) {
+          act(() => result.current.actions.toggleCandidate(rc(row, col), digit as Digit));
+        }
+        act(() => result.current.actions.hint());
+        // Step by step, to the X-Wing, and the XY-Chain after it.
+        for (let k = 0; k < 3; k++) {
+          take(result);
+          act(() => result.current.actions.hint());
+        }
+        expect(result.current.shownHint).toMatchObject({ technique: 'xWing', unit: null, step: 5 });
+        const xWing = result.current.walkthrough!.steps[0].step;
+        expect(result.current.hintHouses).toEqual(xWing.houses);
+        expect(result.current.announcement?.text).toMatch(
+          /^Step 5 of 7: an X-Wing in (rows|columns) \d and \d\. The hardest is an XY-Chain\./,
+        );
+        take(result);
+        act(() => result.current.actions.hint());
+        const chain = result.current.walkthrough!.steps[0].step;
+        expect(chain.technique).toBe('xyChain');
+        expect(result.current.hintTint).toEqual(chain.pattern.map(({ index }) => index));
+      });
+
+      it('offers the solve to watch, its step hints and Show me’s pages played back', async () => {
+        const { result } = await reported();
+        act(() => result.current.actions.hint());
+        act(() => result.current.actions.showMe());
+        act(() => result.current.actions.showStep(1));
+        act(() => result.current.actions.closeDialog());
+        result.current.game!.cells.forEach((cell, index) => {
+          if (cell.value === 0) enter(result, index, Number(solution[index]));
+        });
+        advance(COMPLETION_DELAY_MS);
+        expect(result.current.dialog?.kind).toBe('completion');
+        expect(result.current.canWatchSolve).toBe(true);
+
+        act(() => result.current.actions.watchSolve());
+        const { dialog } = result.current;
+        if (dialog?.kind !== 'playback') throw new Error('No playback');
+        const prepared = preparePlayback(givens, 'expert', dialog.source.log);
+        if (!prepared.ok) throw new Error(prepared.reason);
+        const changes = prepared.playback.frames.map(({ change }) => change);
+        expect(changes.filter(({ op }) => op === 'page')).toMatchObject([
+          { cell: target, page: { step: 1, of: 7 } },
+          { cell: target, page: { step: 2, of: 7 } },
+        ]);
+        expect(changes).toContainEqual(
+          expect.objectContaining({ op: 'hint', hint: expect.objectContaining({ kind: 'step' }) }),
+        );
+      });
+
+      it('plays back the pages of a Show me opened once a step is taken, as they were headed', async () => {
+        const { result } = await reported();
+        act(() => result.current.actions.hint());
+        take(result);
+        act(() => result.current.actions.select(target));
+        act(() => result.current.actions.showMe());
+        /** The open page's heading, as Show me draws it (see `WalkthroughView`). */
+        const heading = () => {
+          const { dialog } = result.current;
+          if (dialog?.kind !== 'walkthrough' || dialog.numbering === undefined) {
+            throw new Error('No Show me');
+          }
+          const { step: first, of } = dialog.numbering;
+          return `step ${first + dialog.step} of ${of}`;
+        };
+        // Numbered on from the hint's "Step 1 of 7", the route one step shorter.
+        const headings = [heading()];
+        act(() => result.current.actions.showStep(3));
+        headings.push(heading());
+        expect(headings).toEqual(['step 2 of 7', 'step 5 of 7']);
+        act(() => result.current.actions.closeDialog());
+        result.current.game!.cells.forEach((cell, index) => {
+          if (cell.value === 0) enter(result, index, Number(solution[index]));
+        });
+        advance(COMPLETION_DELAY_MS);
+        act(() => result.current.actions.watchSolve());
+        const { dialog } = result.current;
+        if (dialog?.kind !== 'playback') throw new Error('No playback');
+        const prepared = preparePlayback(givens, 'expert', dialog.source.log);
+        if (!prepared.ok) throw new Error(prepared.reason);
+        const { playback } = prepared;
+        const captions = playback.frames.flatMap(({ change }, i) =>
+          change.op === 'page' ? [captionAt(playback, i + 1)] : [],
+        );
+        expect(captions).toEqual(headings.map((said) => `Show me for row 2, column 1: ${said}`));
+      });
+
+      it('counts each page of Show me the first time it is seen, and says so on the page', async () => {
+        const { result, storage } = await reported();
+        act(() => result.current.actions.hint());
+        for (const [row, col, digit] of strikes) {
+          act(() => result.current.actions.toggleCandidate(rc(row, col), digit as Digit));
+        }
+        act(() => result.current.actions.hint());
+        expect(result.current.game?.assists.hints).toBe(2);
+
+        // Opened: its first page, numbered as the bar numbers it, counted.
+        act(() => result.current.actions.showMe());
+        expect(result.current.dialog).toMatchObject({
+          kind: 'walkthrough',
+          step: 0,
+          numbering: { step: 2, of: 7 },
+          charge: '3 hints used.',
+        });
+        // Next names the page it goes to by number only, as it has not been seen.
+        expect(result.current.seenPages).toEqual([true, false, false, false, false, false]);
+        // A page not seen before: counted, and said on it — the opening's
+        // count, said already and now one behind, gone.
+        act(() => result.current.actions.showStep(1));
+        expect(result.current.game?.assists.hints).toBe(4);
+        expect(result.current.dialog).toMatchObject({
+          step: 1,
+          charge: null,
+          pageCharge: { step: 1, text: '4 hints used.' },
+        });
+        expect(result.current.seenPages).toEqual([true, true, false, false, false, false]);
+        // Back, and forward again: both seen, both free, and nothing said.
+        act(() => result.current.actions.showStep(0));
+        expect(result.current.dialog).toMatchObject({ step: 0, pageCharge: null });
+        act(() => result.current.actions.showStep(1));
+        expect(result.current.dialog).toMatchObject({ step: 1, pageCharge: null });
+        expect(result.current.game?.assists.hints).toBe(4);
+        // No such page.
+        act(() => result.current.actions.showStep(9));
+        act(() => result.current.actions.showStep(-1));
+        expect(result.current.dialog).toMatchObject({ step: 1 });
+        act(() => result.current.actions.closeDialog());
+
+        // Opened again at a page already seen: free.
+        act(() => result.current.actions.showMe());
+        expect(result.current.dialog).toMatchObject({ charge: null });
+        act(() => result.current.actions.closeDialog());
+        expect(result.current.game?.assists.hints).toBe(4);
+
+        // The step on the second page made, Hint names the one after it,
+        // free — it has been seen in full — and the page after that is new.
+        take(result);
+        act(() => result.current.actions.hint());
+        expect(result.current.shownHint).toMatchObject({ technique: 'pointing', step: 3 });
+        take(result);
+        act(() => result.current.actions.hint());
+        expect(result.current.shownHint).toMatchObject({ technique: 'nakedPair', step: 4 });
+        expect(result.current.game?.assists.hints).toBe(5);
+
+        // The pages that counted, and the opening, are logged, and replay as played.
+        act(() => {
+          window.dispatchEvent(new Event('pagehide'));
+        });
+        const log = loadMoveLog(storage, result.current.record!.id)!;
+        expect(log.moves.filter(({ op }) => op === 'page')).toHaveLength(3);
+        const puzzle: Puzzle = { givens, solution, difficulty: 'expert' };
+        expect(verifyMoveLog(puzzle, log, result.current.game!)).toBe(true);
+      });
+
+      it('says nothing of what a page cost with help taken hidden, though it is counted', async () => {
+        const storage = memoryStorage();
+        storage.setItem('sudoku.prefs', JSON.stringify({ settings: { showHelpTaken: false } }));
+        const { result } = await reported({ storage });
+        act(() => result.current.actions.hint());
+        act(() => result.current.actions.showMe());
+        act(() => result.current.actions.showStep(1));
+        expect(result.current.dialog).toMatchObject({ charge: null, pageCharge: null });
+        expect(result.current.game?.assists.hints).toBe(3);
+      });
+
+      it('turns no page with no walkthrough open', async () => {
+        const { result } = await reported();
+        act(() => result.current.actions.showStep(1));
+        expect(result.current.game?.assists.hints).toBe(0);
+        expect(result.current.dialog).toBeNull();
+      });
+
+      it('stays on the cell it was about while it is as near, wherever else the player goes', async () => {
+        const { result } = await reported();
+        act(() => result.current.actions.hint());
+        // An 8 at row 4, column 1: a hint from scratch would now name a naked
+        // pair for row 4, column 2; but row 2, column 1 is no further off, so
+        // the hint stays — on the step it named, which is free.
+        enter(result, rc(4, 1), 8);
+        act(() => result.current.actions.hint());
+        expect(result.current.game?.selected).toBe(target);
+        expect(result.current.shownHint).toMatchObject({ technique: 'claiming', step: 1, of: 7 });
+        expect(result.current.game?.assists.hints).toBe(1);
+      });
+
+      it('goes elsewhere once the cell it was about is further off than it was', async () => {
+        const { result } = await reported();
+        act(() => result.current.actions.hint());
+        // A 2 at row 1, column 9 makes row 2, column 9 a hidden single, and
+        // the easiest way to row 2, column 1 seventeen steps long.
+        enter(result, rc(1, 9), 2);
+        act(() => result.current.actions.hint());
+        expect(result.current.game?.selected).toBe(rc(2, 9));
+        expect(result.current.shownHint).toMatchObject({
+          technique: 'hiddenSingleBox',
+          step: 1,
+          of: 1,
+        });
         expect(result.current.game?.assists.hints).toBe(2);
       });
     });
@@ -1204,10 +1632,18 @@ describe('useSudoku', () => {
       const { result } = await started();
       act(() => result.current.actions.hint());
       const hint = result.current.game?.hint;
-      expect(hint?.kind).toBe('single');
-      expect(result.current.game?.selected).toBe(hint?.kind === 'single' ? hint.index : -1);
+      // A single: a route of one step, said as a single always is.
+      expect(hint).toMatchObject({ kind: 'step', step: 1, of: 1 });
+      expect(result.current.game?.selected).toBe(hint?.kind === 'step' ? hint.index : -1);
       expect(result.current.game?.assists.hints).toBe(1);
       expect(result.current.announcement?.text).toMatch(/single|full house/i);
+      // No tint: the cell's own row, column and box are where to read it from,
+      // whichever of its house's cells the player then selects.
+      expect(result.current.hintTint).toEqual([]);
+      if (hint?.kind !== 'step' || hint.unit === null) throw new Error('a single in a house');
+      const other = unitCells(hint.unit).find((index) => index !== hint.index)!;
+      act(() => result.current.actions.select(other));
+      expect(result.current.hintTint).toEqual([]);
     });
 
     it('point a hint at a mistake first', async () => {
@@ -1274,7 +1710,7 @@ describe('useSudoku', () => {
         ['undo', 5000],
         ['redo', 5500],
         ['hint', 6500],
-        ['walkthrough', 7000],
+        ['page', 7000],
         ['place', 8000],
         ['checkCell', 8500],
         ['place', 9000],

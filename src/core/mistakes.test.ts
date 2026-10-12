@@ -75,6 +75,26 @@ const HIDDEN_HINT: GameAction = {
   },
 };
 const SHOW_ME: GameAction = { type: 'walkthrough', index: HIDDEN };
+/** A step hint about HIDDEN, as `findStepHint` gives one, and a page of Show me for it. */
+const STEP_HINT: GameAction = {
+  type: 'hint',
+  hint: {
+    kind: 'step',
+    index: HIDDEN,
+    technique: 'hiddenSingleBox',
+    unit: { kind: 'box', index: 1 },
+    step: 1,
+    of: 1,
+    hardest: 'hiddenSingleBox',
+    id: 1,
+  },
+};
+const page = (id: number, opens?: boolean): GameAction => ({
+  type: 'showStep',
+  index: HIDDEN,
+  id,
+  opens,
+});
 const hintFor = (game: GameState): GameAction => ({
   type: 'hint',
   hint: findHint(hintBoardOf(game), gridValues(game.puzzle.solution)),
@@ -348,6 +368,48 @@ const SCENARIOS: readonly Scenario[] = [
       [500, place(NAKED, answer(NAKED))],
     ],
     expected: ONE,
+  },
+  {
+    name: 'a step hint inside the window settles it, unfixed: counted',
+    steps: [
+      [1000, place(NAKED, 6)],
+      [500, STEP_HINT],
+      [500, place(NAKED, answer(NAKED))],
+    ],
+    expected: ONE,
+  },
+  {
+    name: 'a page of Show me turned to inside the window settles it, unfixed: counted',
+    steps: [
+      [1000, STEP_HINT],
+      [0, page(1, true)],
+      [500, place(NAKED, 6)],
+      [500, page(2)],
+      [500, place(NAKED, answer(NAKED))],
+    ],
+    expected: ONE,
+  },
+  {
+    name: 'Show me opened again at a page seen, for free, is still help seen, and settles the window',
+    steps: [
+      [1000, STEP_HINT],
+      [0, page(1, true)],
+      [500, place(NAKED, 6)],
+      [500, page(1, true)],
+      [500, place(NAKED, answer(NAKED))],
+    ],
+    expected: ONE,
+  },
+  {
+    name: 'a page seen already, turned back to, is no help seen: the obvious slip put right is forgiven',
+    steps: [
+      [1000, STEP_HINT],
+      [0, page(1, true)],
+      [500, place(NAKED, 6)],
+      [500, page(1)],
+      [500, place(NAKED, answer(NAKED))],
+    ],
+    expected: NONE,
   },
   {
     name: 'a struck answer the wrong-marks hint points at inside the window: counted',
