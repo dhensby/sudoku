@@ -913,6 +913,46 @@ describe('App', () => {
       ).toHaveFocus();
     });
 
+    it('compares the solve with the friend’s from the Solved dialog and from History, focus back each time', async () => {
+      renderApp({ search });
+      await screen.findByRole('heading', { name: 'Ready?' });
+      fireEvent.click(within(screen.getByRole('main')).getByRole('button', { name: 'Start' }));
+      await screen.findByRole('grid');
+      for (const index of [0, 40, 80]) {
+        fireEvent.click(cells()[index]);
+        press(String(answerAt(index, puzzle)));
+      }
+      const solved = await screen.findByRole('dialog', { name: 'Solved!' });
+      fireEvent.click(within(solved).getByRole('button', { name: 'Compare solves' }));
+      const compare = screen.getByRole('dialog', { name: 'You vs Dan' });
+      const chart = within(compare).getByRole('slider', { name: 'Time' });
+      expect(chart).toHaveFocus();
+      // Its keys are its own: the game behind hears nothing.
+      fireEvent.keyDown(chart, { key: 'Home' });
+      expect(chart).toHaveAttribute('aria-valuenow', '0');
+      fireEvent.click(within(compare).getByRole('button', { name: 'Close' }));
+      expect(
+        within(screen.getByRole('dialog', { name: 'Solved!' })).getByRole('button', {
+          name: 'Compare solves',
+        }),
+      ).toHaveFocus();
+      fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+
+      fireEvent.click(screen.getByRole('button', { name: 'History' }));
+      const history = screen.getByRole('dialog', { name: 'History' });
+      fireEvent.click(within(history).getByRole('button', { name: /^Compare solves, Easy/ }));
+      fireEvent.click(
+        within(screen.getByRole('dialog', { name: 'You vs Dan' })).getByRole('button', {
+          name: 'Close',
+        }),
+      );
+      expect(
+        within(screen.getByRole('dialog', { name: 'History' })).getByRole('button', {
+          name: /^Compare solves, Easy/,
+        }),
+      ).toHaveFocus();
+    });
+
     it('is free from the offer to play a puzzle solved already, focus back on it after', async () => {
       const storage = memoryStorage();
       upsertRecord(storage, {

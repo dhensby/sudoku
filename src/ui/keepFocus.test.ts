@@ -83,6 +83,19 @@ describe('focusQuietly', () => {
     button.remove();
   });
 
+  it('leaves the page where it is when asked, with or without a ring', () => {
+    stop = trackInputModality();
+    const button = document.createElement('button');
+    document.body.append(button);
+    const focus = vi.spyOn(button, 'focus');
+    focusQuietly(button, { preventScroll: true });
+    expect(focus).toHaveBeenLastCalledWith({ focusVisible: false, preventScroll: true });
+    fireEvent.keyDown(document.body, { key: 'Tab' });
+    focusQuietly(button, { preventScroll: true });
+    expect(focus).toHaveBeenLastCalledWith({ preventScroll: true });
+    button.remove();
+  });
+
   it('does nothing with nothing to focus', () => {
     expect(() => focusQuietly(null)).not.toThrow();
     expect(() => focusQuietly(undefined)).not.toThrow();

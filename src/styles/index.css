@@ -109,6 +109,25 @@
   --success: #11532a;
 
   /*
+   * Compare solves: the player's and a friend's, side by side. Two series
+   * colours for the chart's lines and marks — an ultramarine for the player,
+   * as their own numbers are blue, and a vermilion for the friend — chosen
+   * for identity in each palette (inside the chart's lightness band, apart
+   * under colour-blindness, 3:1 on a dialog) and never asked to be text; and
+   * two inks of the same hues, deep enough for the overlaid board's digits
+   * at 7:1. Who is who is carried by more than colour everywhere they are
+   * used: solid against dashed lines, filled against open marks, upright
+   * against italic digits, a solid rule under one and a dashed rule under
+   * the other.
+   */
+  --series-you: #2f5fd0;
+  --series-friend: #c9541a;
+  --ink-you: #1f3fae;
+  --ink-friend: #8a3a0e;
+  /* The digits both players had, quiet beside the givens' ink. */
+  --ink-both: #5a5348;
+
+  /*
    * Keys are paper boxes, each ruled round with --key-border (3:1 against
    * the page, so a key's shape stands on its own): at rest, under the
    * pointer (--key-bg-active), and held down.
@@ -189,6 +208,11 @@
     --danger: #ff988a;
     --danger-selected: #8a1209;
     --success: #7fdb9b;
+    --series-you: #6585ec;
+    --series-friend: #dd6a2c;
+    --ink-you: #b8c6ff;
+    --ink-friend: #ffb48a;
+    --ink-both: #b6ae9f;
     --key-bg: #2b2924;
     --key-bg-active: #37342e;
     --key-bg-pressed: #46423a;
@@ -240,6 +264,11 @@
   --danger: #ff988a;
   --danger-selected: #8a1209;
   --success: #7fdb9b;
+  --series-you: #6585ec;
+  --series-friend: #dd6a2c;
+  --ink-you: #b8c6ff;
+  --ink-friend: #ffb48a;
+  --ink-both: #b6ae9f;
   --key-bg: #2b2924;
   --key-bg-active: #37342e;
   --key-bg-pressed: #46423a;
@@ -313,6 +342,11 @@
   --danger: #ffa093;
   --danger-selected: #8a1209;
   --success: #7dff9b;
+  --series-you: #6889fc;
+  --series-friend: #e46c26;
+  --ink-you: #b8c8ff;
+  --ink-friend: #ffb98f;
+  --ink-both: #a8a8a8;
   --key-bg: #121212;
   --key-bg-active: #262626;
   --key-bg-pressed: #3a3a3a;
@@ -364,6 +398,11 @@
     --danger: #ffa093;
     --danger-selected: #8a1209;
     --success: #7dff9b;
+    --series-you: #6889fc;
+    --series-friend: #e46c26;
+    --ink-you: #b8c8ff;
+    --ink-friend: #ffb98f;
+    --ink-both: #a8a8a8;
     --key-bg: #121212;
     --key-bg-active: #262626;
     --key-bg-pressed: #3a3a3a;
@@ -441,6 +480,11 @@
     --danger: CanvasText;
     --danger-selected: HighlightText;
     --success: CanvasText;
+    --series-you: LinkText;
+    --series-friend: CanvasText;
+    --ink-you: LinkText;
+    --ink-friend: CanvasText;
+    --ink-both: CanvasText;
     --key-bg: ButtonFace;
     --key-bg-active: Highlight;
     --key-bg-pressed: Highlight;

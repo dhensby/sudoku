@@ -5,6 +5,7 @@ import {
   OWN_SOLVE_TITLE,
   WATCHED_RECORD_TEXT,
   WATCHED_SOLVE_TEXT,
+  compareSource,
   friendSolveSource,
   friendsSolve,
   isWatchable,
@@ -116,5 +117,43 @@ describe('a solve after watching one', () => {
       'Solved — no time recorded: you watched a solve of this puzzle first',
     );
     expect(WATCHED_RECORD_TEXT).toBe('Solved after watching a solve');
+  });
+});
+
+describe('compareSource', () => {
+  const friend = {
+    givens: puzzle.givens,
+    difficulty: 'hard' as const,
+    daily: null,
+    challenge: {
+      name: 'Dan',
+      seconds: 323,
+      assists: { autoCandidates: false, hints: 0, checks: 0, reveals: 0 },
+      log: 'theirs',
+    },
+    log: 'theirs',
+  };
+  const game = { givens: puzzle.givens, difficulty: 'hard' as const, elapsedMs: 301_900 };
+
+  it('gives both logs, the puzzle named as a playback names it, and both times', () => {
+    expect(compareSource(game, 'mine', friend, '2026-10-13')).toEqual({
+      givens: puzzle.givens,
+      difficulty: 'hard',
+      puzzleName: 'Hard',
+      mine: { log: 'mine', seconds: 301 },
+      theirs: { log: 'theirs', name: 'Dan', seconds: 323 },
+    });
+  });
+
+  it('names a daily, and gives no time for a solve after watching one', () => {
+    const source = compareSource(
+      { ...game, daily: '2026-10-12', watched: true },
+      'mine',
+      { ...friend, challenge: { ...friend.challenge, name: null } },
+      '2026-10-13',
+    );
+    expect(source.puzzleName).toBe('Daily · 12 Oct · Hard');
+    expect(source.mine.seconds).toBeNull();
+    expect(source.theirs.name).toBeNull();
   });
 });

@@ -146,6 +146,11 @@ your browser.
   play and pause, a step either way, a scrubber marked with your mistakes, the slips you put right
   in time and the help you took, and speeds up to 8×. Watching changes nothing (see
   [Watch your solve](#watch-your-solve)). A friend's solve, from their link, plays the same way.
+- **Compare solves** — once you have solved a puzzle a friend shared with their solve, set the two
+  side by side: a chart of the cells each of you had solved over the time you played, your line
+  solid and theirs dashed, your mistakes and help marked on each, and under it one board showing,
+  at the moment you pick on the chart, who had filled each cell and with what. Comparing changes
+  nothing either (see [Comparing solves](#comparing-solves)).
 - **A guide to the solving techniques** — every technique the grader knows, from a full house to
   the alternating chain: its other names, what it is, why it works, how to spot it, and a worked
   example from a real puzzle, drawn with the pattern ringed (and a chain's links traced), the
@@ -215,8 +220,9 @@ The design keeps a hard line between logic and presentation:
   and walkthroughs from the player's own candidates (Show me: the steps one cell depends on, sliced
   from a solve, pruned of any it can do without and checked step by step; a hint, the next of
   them), share-link codec, clock arithmetic, the game reducer (which remembers each cell's hints,
-  and the steps seen), the move log that replays it, and playback (a solve shown again move by
-  move, from its log). No DOM, no React and no
+  and the steps seen), the move log that replays it, playback (a solve shown again move by move,
+  from its log) and the comparison of two solves (their progress over play time, and the board
+  they overlay). No DOM, no React and no
   English; `reduce(state, action)` is a pure function, randomness is passed in, and the whole
   directory is held to 100% coverage.
 - **`src/storage/`** — a thin, injectable `localStorage` layer for preferences, the history and
@@ -715,6 +721,71 @@ to watch." A solve that checks out is kept with the challenge (`Challenge.log`).
 The player is the one your own solves play in (see [Watch your solve](#watch-your-solve)),
 headed "Dan's solve" over the puzzle's tier, or its daily, and their time.
 
+## Comparing solves
+
+Once you have solved a puzzle whose link carried a friend's solve, **Compare solves**, beside
+**Watch Dan's solve** — in the Solved dialog's head-to-head, the offer to play a solved puzzle
+again, and the solved game's row in History — sets your solve against theirs (`CompareDialog`). It
+is offered only when both play back: your own move log (see [The move log](#the-move-log)) and the
+one the link carried (`Challenge.log`). A solve recorded with no time, after watching theirs
+first, can be compared too: it simply shows no time. Like watching, comparing changes nothing —
+no record, count or time moves, and nothing is written — the game behind stays paused, as for any
+dialog, and closing it goes back where it was opened, focus on its Compare solves.
+
+- **The heading:** "You vs Dan" ("You vs your friend" for a link with no name), over the puzzle
+  and both times: "Easy · You 5:23 · Dan 6:40", or "You: no time recorded".
+- **The chart:** the cells each of you had solved — the puzzle's empty cells holding their answer
+  — over play time, from 0:00 to the end of the longer solve, a step line each: yours solid, your
+  friend's dashed. The mistakes that counted (of both kinds) are triangles on the line, and each
+  move of help — a hint, Show me or a page of it, a check or a reveal — a diamond; yours filled, theirs open, each
+  ringed in the dialog's own colour where it crosses a line, and theirs drawn over yours as an
+  outline, so a spot you share (both at 0 cells at the start, a mistake each in the same second)
+  shows your fill inside their ring. Auto candidates and Checked as entered, switches rather than
+  moves, are not marked: the head-to-head has them. Each line is labelled where it ends with whose
+  it is and the time ("You 5:23", "Dan 6:40"), above the chart; where the faster line's label would
+  run into the other's, it sits beside its own line's end dot instead, inside the chart — never
+  stacked, and never over the other line's end. A legend says the same. The axes are hairlines with a
+  few round times (0:30, 1:00, 5:00…) and cell counts, the full count at the top.
+- **The cursor:** a vertical line at the moment on show, with the counts there above the chart —
+  "2:15 — You 34 cells, Dan 28 cells". The chart is the control: press or tap to put the cursor
+  there, drag along it to scrub (a finger moving up or down scrolls the dialog and leaves the
+  cursor where it was), or, with it focused (it is a
+  slider, which a screen reader hears by the same words), <kbd>←</kbd>/<kbd>→</kbd> a second,
+  <kbd>Page Up</kbd>/<kbd>Page Down</kbd> ten, <kbd>Home</kbd> and <kbd>End</kbd> to either end. It
+  opens where the faster solve finished. Nothing plays by itself.
+- **The table:** **Show as table**, after the board (so it never comes between the chart and the
+  board it drives), lists the cells each of you had solved at round times to the end, and every
+  mistake that counted and move of help, when and whose.
+- **Names:** one longer than 12 characters is cut short ("Bartholomew…") where it shares a line
+  with others — the chart's labels, its legend and readout, and the board's key; the heading, the
+  times, the tables and every name a screen reader hears keep it whole.
+- **On a phone on its side** the board sits beside the chart, both in view as it opens: the card
+  takes the screen's height, and the chart and the board are sized from what its body has.
+- **The board:** the game's own, read-only (as a playback's), at the cursor. Givens as ever; a
+  number you both had in a quiet ink, upright; one only you had in your ink, upright, over a solid
+  rule; one only your friend had in theirs, slanted, over a dashed rule; and where you had
+  different numbers (one of you wrong then), both, small — yours top left, theirs bottom right. So
+  it reads without colour, in High contrast and in Windows High Contrast, and at 320px wide. A key
+  under it says which is which, and each cell's name says it in words ("7, yours", "yours 3, Dan's
+  7").
+- **Time** is counted in whole seconds, the unit times are shown in: at 5:23 the board shows
+  every move made by then, so a solve the player was told took 5:23 is finished there.
+- **Colour:** two series colours of the theme's own (`--series-you`, an ultramarine, and
+  `--series-friend`, a vermilion, stepped for each palette) for the chart's lines and marks only —
+  chosen with the data-visualisation palette checks: inside the chart's lightness band, a chroma
+  that reads as a colour, apart in normal vision and under simulated protanopia and deuteranopia,
+  and 3:1 against the dialog — and two inks of the same hues (`--ink-you`, `--ink-friend`) for the
+  board's numbers at 7:1. Text is never in a series colour. `src/styles/contrast.test.ts` holds all
+  of it in every palette.
+- **What it is worked out from:** the two playbacks (`src/core/playback.ts`) and nothing else, by
+  `src/core/compare.ts`: each player's progress, kept a point a second where it changed (an Undo,
+  an Erase or a Reset can bring it down), the cells solved at any second (a binary search), the
+  overlaid board at any second (each cell given, empty, both, yours, theirs or different), the
+  marks from the mistakes `analyseMistakes` counted and the moves of help, and the chart's ticks,
+  scales and where its end labels go (above the chart, or beside the line's end). The chart draws
+  what stays put once for the solves and its size, so moving the cursor redraws only the cursor.
+  The words are the UI's (`src/ui/compareText.ts`).
+
 ## Racing friends
 
 A share link carries the puzzle itself, so it opens the same puzzle for anyone, on any version of
@@ -885,6 +956,12 @@ of the logs here were shed, none of the file's logs are taken.
   an older or a newer build or a broken one; watching is checked to write nothing. A log with
   step hints and Show me's pages in it plays back, each captioned with the step or page it
   revealed.
+  Comparing solves is held to each player's progress (two moves in a second, an Undo, a Redo and a
+  Reset, and a second ending where the one before ended), the lookups at every second, the
+  overlaid board's every kind of cell, the marks (a slip forgiven left off), the ticks and where
+  the end labels go; its chart to its keys, a press and a drag, a finger's tap, drag and swipe to
+  scroll, its readout, its table and its board's key; and its button to the solves it needs, both
+  playing back, writing nothing.
   Share links are held to the versions before them: a copy of the assists decoder every earlier
   version shipped must read a new link's help unchanged, skipping its mistakes, and an old link
   must read as mistakes not recorded, never 0. A solve in a link is held to its puzzle and its
@@ -906,6 +983,10 @@ of the logs here were shed, none of the file's logs are taken.
   sharing a solve between browsers (one plays first and then watches it for nothing, another
   watches first and solves it with no time, one who has solved it watches without being asked,
   and a daily's, watched first, kept out of the streak),
+  comparing two solves between browsers (opened from the Solved dialog and from History, the
+  cursor moved by keys and by a press, the readout and the board following it, focus back on
+  Compare solves, and fitting a 320px phone and a phone on its side, opened at the top and, on its
+  side, the chart and the board both in view),
   watching a solve with a mistake played back from the Solved dialog and from History (stepped,
   scrubbed and played at 8× on Playwright's clock, its mistake marked and captioned, focus back on
   Watch as it closes, and fitting a 320px phone and a phone on its side) and the phone layout from
@@ -923,9 +1004,9 @@ of the logs here were shed, none of the file's logs are taken.
   every kind of mark, the error counter and help taken in both their places, the Ready and Paused
   cards, the menus (the "…" menu's "Hint (1 used)" among them),
   every dialog (Show me's, the daily calendar's, a solve played back, the warning before watching
-  a friend's solve and Share with the solve included among them), each guide entry and a step
-  hint's tinted houses — in both themes, and the board (its tint included), the dialogs, the menus
-  and the calendar in High contrast, both chosen in
+  a friend's solve, two solves compared and Share with the solve included among them), each guide
+  entry and a step hint's tinted houses — in both themes, and the board (its tint included), the
+  dialogs, the menus and the calendar in High contrast, both chosen in
   Settings on a dark device and from a dark system asking for more contrast, measuring its heavier
   lines and its same-number ring kept off the digits — and allows no violations. Three projects:
 
@@ -956,22 +1037,23 @@ no change is needed — the base is derived from the repository name at build ti
 
 ## Controls
 
-| Action                         | Keyboard                                                                                 | Mouse / Touch                        |
-| ------------------------------ | ---------------------------------------------------------------------------------------- | ------------------------------------ |
-| Select a cell                  | <kbd>Tab</kbd> to the board                                                              | Click or tap it                      |
-| Move the selection             | Arrow keys                                                                               | Tap another cell                     |
-| Enter a number                 | <kbd>1</kbd>–<kbd>9</kbd>                                                                | Number pad                           |
-| Erase                          | <kbd>Backspace</kbd> / <kbd>Delete</kbd>                                                 | Erase button                         |
-| Switch Normal / Candidate      | <kbd>Space</kbd>                                                                         | Mode buttons                         |
-| Switch while held              | Hold <kbd>Shift</kbd> or <kbd>Alt</kbd>                                                  | —                                    |
-| Toggle one candidate           | —                                                                                        | Click its spot in the selected cell  |
-| Undo                           | <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Z</kbd>                                                | Undo button                          |
-| Redo                           | <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd>, <kbd>Ctrl</kbd>+<kbd>Y</kbd> | Redo button                          |
-| Pause or resume                | <kbd>P</kbd>                                                                             | The timer                            |
-| Hint, check, reveal, reset     | —                                                                                        | The "…" menu                         |
-| Show me how to solve a cell    | —                                                                                        | Show me, after a hint                |
-| New game, or today's puzzles   | —                                                                                        | The + button                         |
-| Daily calendar and streaks     | Arrow keys, Home/End, Page Up/Page Down in the month                                     | The calendar in the header, or +     |
-| History, share, settings, help | —                                                                                        | The header (on a phone, the ☰ menu) |
-| Solving techniques             | —                                                                                        | The header, or a hint's question     |
-| Watch your solve               | <kbd>Space</kbd>, <kbd>←</kbd>/<kbd>→</kbd>, <kbd>Home</kbd>/<kbd>End</kbd>              | Watch your solve, or History's Watch |
+| Action                         | Keyboard                                                                                           | Mouse / Touch                        |
+| ------------------------------ | -------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| Select a cell                  | <kbd>Tab</kbd> to the board                                                                        | Click or tap it                      |
+| Move the selection             | Arrow keys                                                                                         | Tap another cell                     |
+| Enter a number                 | <kbd>1</kbd>–<kbd>9</kbd>                                                                          | Number pad                           |
+| Erase                          | <kbd>Backspace</kbd> / <kbd>Delete</kbd>                                                           | Erase button                         |
+| Switch Normal / Candidate      | <kbd>Space</kbd>                                                                                   | Mode buttons                         |
+| Switch while held              | Hold <kbd>Shift</kbd> or <kbd>Alt</kbd>                                                            | —                                    |
+| Toggle one candidate           | —                                                                                                  | Click its spot in the selected cell  |
+| Undo                           | <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Z</kbd>                                                          | Undo button                          |
+| Redo                           | <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd>, <kbd>Ctrl</kbd>+<kbd>Y</kbd>           | Redo button                          |
+| Pause or resume                | <kbd>P</kbd>                                                                                       | The timer                            |
+| Hint, check, reveal, reset     | —                                                                                                  | The "…" menu                         |
+| Show me how to solve a cell    | —                                                                                                  | Show me, after a hint                |
+| New game, or today's puzzles   | —                                                                                                  | The + button                         |
+| Daily calendar and streaks     | Arrow keys, Home/End, Page Up/Page Down in the month                                               | The calendar in the header, or +     |
+| History, share, settings, help | —                                                                                                  | The header (on a phone, the ☰ menu) |
+| Solving techniques             | —                                                                                                  | The header, or a hint's question     |
+| Watch your solve               | <kbd>Space</kbd>, <kbd>←</kbd>/<kbd>→</kbd>, <kbd>Home</kbd>/<kbd>End</kbd>                        | Watch your solve, or History's Watch |
+| Compare solves                 | <kbd>←</kbd>/<kbd>→</kbd>, <kbd>Page Up</kbd>/<kbd>Page Down</kbd>, <kbd>Home</kbd>/<kbd>End</kbd> | Tap or drag along the chart          |

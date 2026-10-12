@@ -343,4 +343,31 @@ describe('CompletionDialog', () => {
       expect(screen.getByRole('button', { name: 'Share your time' })).toHaveFocus();
     });
   });
+
+  describe('comparing the two solves', () => {
+    it('is offered in the head-to-head, focus still opening on Share', () => {
+      const onCompare = vi.fn();
+      renderCompletion({ challenge: challenger('Dan', 300), onWatchFriend: vi.fn(), onCompare });
+      const region = screen.getByRole('region', { name: 'Head to head' });
+      fireEvent.click(within(region).getByRole('button', { name: 'Compare solves' }));
+      expect(onCompare).toHaveBeenCalledTimes(1);
+      expect(screen.getByRole('button', { name: 'Share your time' })).toHaveFocus();
+    });
+
+    it('takes focus back as the dialog comes back from the comparison', () => {
+      renderCompletion({
+        challenge: challenger('Dan', 300),
+        onWatchFriend: vi.fn(),
+        onCompare: vi.fn(),
+        isBackFromCompare: true,
+      });
+      expect(screen.getByRole('button', { name: 'Compare solves' })).toHaveFocus();
+    });
+
+    it('leaves focus on Share when there is no comparison to go back to', () => {
+      renderCompletion({ challenge: challenger('Dan', 300), isBackFromCompare: true });
+      expect(screen.getByRole('button', { name: 'Share your time' })).toHaveFocus();
+      expect(screen.queryByRole('button', { name: 'Compare solves' })).toBeNull();
+    });
+  });
 });

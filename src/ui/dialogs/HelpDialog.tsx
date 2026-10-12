@@ -110,6 +110,16 @@ const CONTROLS: readonly Control[] = [
     pointer: 'The buttons and the bar under its board',
   },
   {
+    action: 'Compare solves',
+    keyboard: (
+      <>
+        <kbd>←</kbd> <kbd>→</kbd> a second, <kbd>Page Up</kbd> <kbd>Page Down</kbd> ten,{' '}
+        <kbd>Home</kbd> <kbd>End</kbd> to the start or the end
+      </>
+    ),
+    pointer: 'Tap or drag along the chart',
+  },
+  {
     action: 'History, share, settings, help',
     keyboard: null,
     pointer: 'The header (on a phone, the ☰ menu)',
@@ -333,6 +343,29 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
               game asks first. If you watch anyway, that puzzle never records a time for you — not
               the game you were playing, nor any later one. You can still solve it, and it counts as
               solved, but with no time: no best, no average, no streak, and no time to share.
+            </li>
+          </ul>
+        </section>
+
+        <section className="help__section">
+          <h3 className="help__heading">Comparing solves</h3>
+          <ul className="help__list">
+            <li>
+              Once you&apos;ve solved a puzzle a friend shared with their solve,{' '}
+              <strong>Compare solves</strong> — beside{' '}
+              <strong>Watch your friend&apos;s solve</strong> in the Solved dialog and in History —
+              sets your solve against theirs. It needs both solves recorded move by move.
+            </li>
+            <li>
+              A chart shows the cells each of you had solved as you played: yours a solid line,
+              theirs dashed, with the mistakes that counted and the hints, checks and reveals you
+              took marked on each. Tap or drag along it, or use the arrow keys, to pick a moment.
+            </li>
+            <li>
+              The board below shows that moment: numbers you both had, numbers only you had
+              (upright, underlined), only your friend had (slanted, with a dashed line), and, where
+              you had different numbers, both, small. Comparing changes nothing, as watching
+              doesn&apos;t.
             </li>
           </ul>
         </section>

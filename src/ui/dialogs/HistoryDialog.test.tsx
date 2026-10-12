@@ -767,6 +767,42 @@ describe('HistoryDialog', () => {
       ).toHaveTextContent("Watch your friend's solve");
     });
 
+    it('offers the two solves compared on the rows it is told can, and nowhere by default', () => {
+      const { unmount } = renderHistory({ records: [watchedSolve], currentId: null });
+      expect(screen.queryByRole('button', { name: /^Compare solves/ })).toBeNull();
+      unmount();
+      const onCompare = vi.fn();
+      renderHistory({
+        records: [watchedSolve],
+        currentId: null,
+        canCompare: (entry) => entry.id === 'seen',
+        onCompare,
+      });
+      const compare = screen.getByRole('button', {
+        name: 'Compare solves, Hard puzzle from Today 14:05',
+      });
+      expect(compare).toHaveTextContent('Compare solves');
+      fireEvent.click(compare);
+      expect(onCompare).toHaveBeenCalledWith('seen', {
+        filter: 'all',
+        limit: 100,
+        id: 'seen',
+        solve: 'compare',
+      });
+    });
+
+    it('comes back with focus on Compare solves, back from the comparison', () => {
+      renderHistory({
+        records: [watchedSolve],
+        currentId: null,
+        canWatch: () => true,
+        canWatchChallenge: () => true,
+        canCompare: () => true,
+        place: { filter: 'all', limit: 100, id: 'seen', solve: 'compare' },
+      });
+      expect(screen.getByRole('button', { name: /^Compare solves, / })).toHaveFocus();
+    });
+
     it("comes back with focus on the friend's Watch, not the row's own", () => {
       renderHistory({
         records: [watchedSolve],

@@ -1,19 +1,22 @@
 import {
   formatDuration,
   isPlayable,
+  toSeconds,
   type DateKey,
   type Difficulty,
   type GridString,
 } from '../core';
 import type { Challenge } from '../storage/history';
 import { dailyName } from './daily';
+import type { CompareSource } from './dialogs/CompareDialog';
 import type { PlaybackSource } from './dialogs/PlaybackDialog';
 import { DIFFICULTY_LABEL } from './format';
 
 /*
  * "Watch your solve", and a friend's: which solves can be watched, and what
  * the playback is given (see `PlaybackDialog`) — the givens and the encoded
- * log, and words to head it, never the record itself.
+ * log, and words to head it, never the record itself. And "Compare solves",
+ * which is given both logs (see `CompareDialog`).
  */
 
 /** The heading of a player's own solve played back. */
@@ -97,6 +100,13 @@ export interface FriendSolve {
   log: string;
 }
 
+/** A puzzle as a playback's heading names it: its tier, or the daily it is ("Daily · 13 Oct · Hard"). */
+function puzzleNameOf(difficulty: Difficulty, daily: DateKey | null | undefined, today: DateKey) {
+  return daily === undefined || daily === null
+    ? DIFFICULTY_LABEL[difficulty]
+    : dailyName(daily, difficulty, today);
+}
+
 /**
  * What a friend's solve's playback is given: their log, headed with whose it
  * is ("Dan's solve", the name to be isolated as it is drawn) over the
@@ -104,7 +114,7 @@ export interface FriendSolve {
  */
 export function friendSolveSource(solve: FriendSolve, today: DateKey): PlaybackSource {
   const { givens, difficulty, daily, challenge, log } = solve;
-  const name = daily === null ? DIFFICULTY_LABEL[difficulty] : dailyName(daily, difficulty, today);
+  const name = puzzleNameOf(difficulty, daily, today);
   return {
     givens,
     difficulty,
@@ -124,15 +134,34 @@ export function friendSolveSource(solve: FriendSolve, today: DateKey): PlaybackS
  */
 export function ownSolveSource(game: SolvedGame, encoded: string, today: DateKey): PlaybackSource {
   const { givens, difficulty, daily, elapsedMs, watched = false } = game;
-  const name =
-    daily === undefined || daily === null
-      ? DIFFICULTY_LABEL[difficulty]
-      : dailyName(daily, difficulty, today);
+  const name = puzzleNameOf(difficulty, daily, today);
   return {
     givens,
     difficulty,
     log: encoded,
     title: OWN_SOLVE_TITLE,
     subtitle: watched ? name : `${name} · ${formatDuration(elapsedMs)}`,
+  };
+}
+
+/**
+ * What "Compare solves" is given: the player's solved game and its log, and
+ * the friend's solve it was raced against (see `CompareDialog`), named as a
+ * playback names its puzzle — and the player's time, or none for a solve
+ * after watching one, which has no time recorded.
+ */
+export function compareSource(
+  game: SolvedGame,
+  encoded: string,
+  friend: FriendSolve,
+  today: DateKey,
+): CompareSource {
+  const { givens, difficulty, daily, elapsedMs, watched = false } = game;
+  return {
+    givens,
+    difficulty,
+    puzzleName: puzzleNameOf(difficulty, daily, today),
+    mine: { log: encoded, seconds: watched ? null : toSeconds(elapsedMs) },
+    theirs: { log: friend.log, name: friend.challenge.name, seconds: friend.challenge.seconds },
   };
 }

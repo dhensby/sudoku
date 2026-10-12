@@ -14,7 +14,7 @@ import {
   type GameState,
 } from '../core';
 import type { Settings } from '../storage/prefs';
-import { Cell, type Highlight } from './Cell';
+import { Cell, type CellOverlay, type Highlight } from './Cell';
 import { focusQuietly } from './keepFocus';
 
 /** The settings that change how the board is drawn. */
@@ -62,6 +62,12 @@ export interface BoardProps {
    * which has no hint bar to name a step.
    */
   tinted?: readonly number[];
+  /**
+   * On a read-only board, cells to draw their own way, by index (null, or
+   * none, for a cell drawn from the game): two solves overlaid, say (see
+   * `CellOverlay`).
+   */
+  overlay?: readonly (CellOverlay | null)[];
 }
 
 const NO_CELLS: readonly number[] = [];
@@ -90,6 +96,7 @@ export function Board({
   isReadOnly = false,
   current = null,
   tinted = NO_CELLS,
+  overlay,
 }: BoardProps) {
   const gridRef = useRef<HTMLDivElement>(null);
   const cellRefs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -198,6 +205,7 @@ export function Board({
                 registerRef={registerRef}
                 isReadOnly={isReadOnly}
                 isCurrent={isReadOnly && index === current}
+                overlay={isReadOnly ? (overlay?.[index] ?? undefined) : undefined}
               />
             );
           })}

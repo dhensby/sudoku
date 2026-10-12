@@ -17,6 +17,7 @@ import {
   formatDay,
 } from '../format';
 import { DownloadIcon, UploadIcon } from '../icons';
+import { COMPARE_LABEL } from '../compareText';
 import { WATCHED_RECORD_TEXT, watchFriendLabel } from '../watch';
 import { WatchFriendText } from '../WatchFriendText';
 import { Dialog } from './Dialog';
@@ -51,6 +52,14 @@ export interface HistoryDialogProps {
   /** Watch the friend's solve a row's game was raced against, from the list as it is now. */
   onWatchChallenge?: (id: string, place: HistoryPlace) => void;
   /**
+   * Whether a row offers its solve compared with the friend's it was raced
+   * against: both play back. Asked only of the rows built; keep it stable,
+   * as every row is memoised on it.
+   */
+  canCompare?: (record: GameRecord) => boolean;
+  /** Compare a row's solve with the friend's, from the list as it is now. */
+  onCompare?: (id: string, place: HistoryPlace) => void;
+  /**
    * The list as it was when a game was watched from it: it opens the same —
    * filtered, as long, and with focus on that row's Watch, scrolled to —
    * rather than back at the top of every game.
@@ -72,8 +81,11 @@ export interface HistoryPlace {
   readonly limit: number;
   /** The row whose Watch was pressed: focus goes back to it. */
   readonly id: string;
-  /** Which of its Watch buttons: the player's own solve (the default), or the friend's. */
-  readonly solve?: 'own' | 'friend';
+  /**
+   * Which of its buttons: Watch for the player's own solve (the default), or
+   * the friend's, or Compare solves.
+   */
+  readonly solve?: 'own' | 'friend' | 'compare';
 }
 
 const FILTERS: readonly Filter[] = ['all', ...DIFFICULTIES];
@@ -130,17 +142,20 @@ interface HistoryRowProps {
   canWatch: boolean;
   /** Solved, raced against a friend whose link carried a solve that plays back. */
   canWatchChallenge: boolean;
+  /** Solved, with its log and the friend's both playing back. */
+  canCompare: boolean;
   /**
    * A solve of the row's was just watched — its own, or the friend's: focus
    * goes back to that Watch as the list comes back. Null for every other row.
    */
-  watched: 'own' | 'friend' | null;
+  watched: 'own' | 'friend' | 'compare' | null;
   isConfirming: boolean;
   onResume: (id: string) => void;
   onReplay: (id: string) => void;
   onShare: (id: string) => void;
   onWatch: (id: string) => void;
   onWatchChallenge: (id: string) => void;
+  onCompare: (id: string) => void;
   onRequestDelete: (id: string) => void;
   onCancelDelete: () => void;
   onConfirmDelete: (id: string) => void;
@@ -159,6 +174,7 @@ const HistoryRow = memo(function HistoryRow({
   canReplay,
   canWatch,
   canWatchChallenge,
+  canCompare,
   watched,
   isConfirming,
   onResume,
@@ -166,6 +182,7 @@ const HistoryRow = memo(function HistoryRow({
   onShare,
   onWatch,
   onWatchChallenge,
+  onCompare,
   onRequestDelete,
   onCancelDelete,
   onConfirmDelete,
@@ -327,6 +344,17 @@ const HistoryRow = memo(function HistoryRow({
               <WatchFriendText name={challenge.name} />
             </button>
           )}
+          {canCompare && challenge !== null && (
+            <button
+              type="button"
+              className="button button--small"
+              aria-label={`${COMPARE_LABEL}, ${context}`}
+              data-autofocus={watched === 'compare' || undefined}
+              onClick={() => onCompare(id)}
+            >
+              {COMPARE_LABEL}
+            </button>
+          )}
           <button
             type="button"
             className="button button--small"
@@ -439,6 +467,8 @@ export function HistoryDialog({
   onWatch = IGNORE,
   canWatchChallenge = NEVER,
   onWatchChallenge = IGNORE,
+  canCompare = NEVER,
+  onCompare = IGNORE,
   place = null,
   onDelete,
   onExport,
@@ -507,6 +537,10 @@ export function HistoryDialog({
   const watchChallenge = useCallback(
     (id: string) => onWatchChallenge(id, { filter, limit, id, solve: 'friend' }),
     [onWatchChallenge, filter, limit],
+  );
+  const compare = useCallback(
+    (id: string) => onCompare(id, { filter, limit, id, solve: 'compare' }),
+    [onCompare, filter, limit],
   );
   const requestDelete = useCallback((id: string) => setConfirmingId(id), []);
   const cancelDelete = useCallback(() => setConfirmingId(null), []);
@@ -657,6 +691,7 @@ export function HistoryDialog({
                     )}
                     canWatch={canWatch(record)}
                     canWatchChallenge={canWatchChallenge(record)}
+                    canCompare={canCompare(record)}
                     watched={record.id === place?.id ? (place.solve ?? 'own') : null}
                     isConfirming={record.id === confirmingId}
                     onResume={onResume}
@@ -664,6 +699,7 @@ export function HistoryDialog({
                     onShare={onShare}
                     onWatch={watch}
                     onWatchChallenge={watchChallenge}
+                    onCompare={compare}
                     onRequestDelete={requestDelete}
                     onCancelDelete={cancelDelete}
                     onConfirmDelete={confirmDelete}

@@ -386,4 +386,34 @@ describe('Comparison', () => {
       expect(within(region()).getByRole('button')).toHaveAttribute('data-autofocus');
     });
   });
+
+  describe('comparing the two solves', () => {
+    it('is offered beside Watch, when both solves play back', () => {
+      const onCompare = vi.fn();
+      renderComparison({ onWatch: vi.fn(), onCompare });
+      const buttons = within(region()).getAllByRole('button');
+      expect(buttons.map((button) => button.textContent)).toEqual([
+        "Watch Dan's solve",
+        'Compare solves',
+      ]);
+      fireEvent.click(buttons[1]);
+      expect(onCompare).toHaveBeenCalledTimes(1);
+      expect(buttons[1]).not.toHaveAttribute('data-autofocus');
+    });
+
+    it('is not offered unless asked for', () => {
+      renderComparison({ onWatch: vi.fn() });
+      expect(within(region()).queryByRole('button', { name: 'Compare solves' })).toBeNull();
+    });
+
+    it('takes focus when asked, back from the comparison', () => {
+      renderComparison({ onWatch: vi.fn(), onCompare: vi.fn(), isCompareFocused: true });
+      expect(within(region()).getByRole('button', { name: 'Compare solves' })).toHaveAttribute(
+        'data-autofocus',
+      );
+      expect(
+        within(region()).getByRole('button', { name: "Watch Dan's solve" }),
+      ).not.toHaveAttribute('data-autofocus');
+    });
+  });
 });

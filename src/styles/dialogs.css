@@ -703,10 +703,14 @@
   text-align: center;
 }
 
-/* "Watch Dan's solve", under the verdict it follows from. */
+/* "Watch Dan's solve" and "Compare solves", under the verdict they follow
+   from: side by side, wrapping where the card is narrow. */
 .comparison__watch {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
   margin: 10px 0 0;
-  text-align: center;
 }
 
 /* ---- Stats: tiles and table ---- */
@@ -2899,6 +2903,497 @@
 
   .playback__caption {
     min-height: 1.35em;
+  }
+}
+
+/* ==========================================================================
+   Compare solves: the player's solve against a friend's
+
+   A progress chart — the cells each had solved over play time, a line each,
+   their mistakes and help marked on it — which is also the slider for the
+   moment on show, and under it one board overlaying the two solves at that
+   moment. The chart's marks wear the two series colours (--series-you,
+   --series-friend); its text, the legend's and the board's key wear the
+   text's inks, never a series colour. Who is who reads without colour too:
+   the player's line solid and their marks filled, the friend's dashed and
+   theirs open; on the board the player's numbers upright over a solid rule,
+   the friend's italic over a dashed one, and where they differ, both small,
+   the player's top left and the friend's bottom right.
+
+   Beside each other on a phone on its side; one over the other elsewhere,
+   the body scrolling on a short phone. The board is the game's own (Board's
+   read-only mode), drawn from a size of its own with the game's geometry,
+   as a playback's is.
+   ========================================================================== */
+
+.dialog--compare {
+  max-width: 520px;
+}
+
+.compare__subtitle {
+  margin: 0 0 4px;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.compare {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.compare__chart {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* ---- The legend: a line key for each player, and the marks' shapes ---- */
+
+.compare-legend,
+.compare-key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 0;
+  padding: 0;
+  color: var(--text);
+  font-size: 0.8125rem;
+  list-style: none;
+}
+
+.compare-legend__item,
+.compare-key__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.compare-legend__key {
+  flex: none;
+  width: 28px;
+  height: 12px;
+  overflow: visible;
+}
+
+.compare-legend__key--mark {
+  width: 14px;
+  height: 14px;
+}
+
+/* The shapes' meaning is the same for both players, so they are keyed in
+   the muted ink rather than either player's colour. */
+.compare-legend__mark {
+  fill: var(--text-muted);
+}
+
+/* The values lead: the time and the two counts in heavy figures. */
+.compare-chart__readout {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.875rem;
+}
+
+/* Figures of one width, so the line holds still under a drag. */
+.compare-chart__readout strong {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- The chart ---- */
+
+.compare-chart {
+  /* The chart's height, which it measures and draws to (CompareChart.tsx):
+     lower on a phone on its side, below. */
+  --chart-height: 196px;
+
+  width: 100%;
+  min-width: 0;
+}
+
+/* The slider: a press sets the cursor and a drag scrubs it across, while a
+   finger moving up or down scrolls the body and leaves the cursor be. */
+.compare-chart__plot {
+  display: block;
+  height: var(--chart-height);
+  border-radius: var(--radius);
+  cursor: col-resize;
+  touch-action: pan-y;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.compare-chart__plot:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* The plot's size: drawn to the size measured (CompareChart.tsx), so a
+   first frame drawn before the measure never stretches it. */
+.compare-chart__svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+/* Recessive: hairlines a step off the surface, and the baseline a step more. */
+.compare-chart__grid line {
+  stroke: var(--border);
+  stroke-width: 1px;
+}
+
+.compare-chart__axis {
+  stroke: var(--key-border);
+  stroke-width: 1px;
+}
+
+.compare-chart__ticks text {
+  fill: var(--text-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.compare-chart__line {
+  fill: none;
+  stroke-width: calc(2px + var(--line-boost));
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.compare-chart__line--mine {
+  stroke: var(--series-you);
+}
+
+.compare-chart__line--theirs {
+  stroke: var(--series-friend);
+  stroke-dasharray: 6 4;
+  stroke-linecap: butt;
+}
+
+/* The player's marks filled, ringed 2px in the surface where they cross a
+   line (a 4px stroke, half of it under the fill); the friend's open, an
+   outline drawn over a halo of the surface just as wide. The outline has no
+   fill of its own, and is drawn last (CompareChart.tsx), so a mark of the
+   player's in the same spot shows through it: both, not just the friend's. */
+.compare-chart__shape--mine {
+  fill: var(--series-you);
+  stroke: var(--surface-raised);
+  stroke-width: 4px;
+  paint-order: stroke;
+}
+
+.compare-chart__halo {
+  fill: var(--surface-raised);
+  stroke: var(--surface-raised);
+  stroke-width: 6px;
+}
+
+.compare-chart__shape--theirs {
+  fill: none;
+  stroke: var(--series-friend);
+  stroke-width: 2px;
+}
+
+.compare-chart__cursor {
+  stroke: var(--text);
+  stroke-width: 1.5px;
+}
+
+/* A label moved down beside its line's end dot can sit over a line or the
+   cursor: a halo of the surface keeps it clear of them. */
+.compare-chart__label text {
+  fill: var(--text);
+  stroke: var(--surface-raised);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  paint-order: stroke;
+}
+
+/* ---- The tables, after the board ---- */
+
+.compare__tables {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.compare__table-toggle {
+  margin: 0;
+}
+
+.compare-tables {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.compare-tables[hidden] {
+  display: none;
+}
+
+.compare-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.compare-table__caption {
+  margin-bottom: 4px;
+  font-weight: 700;
+  text-align: left;
+}
+
+.compare-table th,
+.compare-table td {
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+
+.compare-table thead th {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.compare-tables__none {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+/* ---- The overlaid board ---- */
+
+.compare__board {
+  --board-size: clamp(200px, calc(100vw - 74px), 360px);
+  --frame: calc(clamp(3px, 3px + (var(--board-size) - 399.98px) * 1000, 4px) + var(--line-boost));
+  --thick: calc(clamp(2px, 2px + (var(--board-size) - 399.98px) * 1000, 3px) + var(--line-boost));
+  --thin: 1px;
+  --lines: calc(2 * var(--frame) + 2 * var(--thick) + 6 * var(--thin));
+  --cell: calc((var(--board-size) - var(--lines)) / 9);
+  --board-outer: calc(9 * var(--cell) + var(--lines));
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+@supports (width: round(down, 10.5px, 1px)) {
+  .compare__board {
+    --cell: round(down, calc((var(--board-size) - var(--lines)) / 9), 1px);
+  }
+}
+
+.compare__board .board-area {
+  width: var(--board-outer);
+}
+
+.compare-key {
+  justify-content: center;
+}
+
+/* A sample cell for the key, drawn as a cell of the board is. */
+.compare-key__cell {
+  --cell: 30px;
+
+  position: relative;
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: var(--cell);
+  height: var(--cell);
+  border: 1px solid var(--grid-thin);
+  background: var(--cell-bg);
+  font-family: var(--font);
+  font-size: calc(var(--cell) * 0.56);
+  font-weight: 600;
+  line-height: 1;
+}
+
+/*
+ * A number on the overlaid board: in a quieter ink when both had it —
+ * agreement, the quiet case, so the differences stand out, and set apart
+ * from a given's full ink, slab and screen — or in one player's own ink and
+ * style. The rule under it, solid for the player and
+ * dashed for the friend, is drawn in the number's own ink, so it holds the
+ * ink's 7:1 against the cell. Its colours are drawn as given, in forced
+ * colours too, where the tokens become system colours: the two styles still
+ * tell the players apart.
+ */
+.compare-digit {
+  position: relative;
+  display: inline-block;
+  line-height: 1;
+  forced-color-adjust: none;
+}
+
+.compare-digit--both {
+  color: var(--ink-both);
+}
+
+.compare-digit--mine {
+  color: var(--ink-you);
+}
+
+.compare-digit--theirs {
+  color: var(--ink-friend);
+  font-style: italic;
+}
+
+.compare-digit--mine::after,
+.compare-digit--theirs::after {
+  position: absolute;
+  right: -0.06em;
+  bottom: -0.18em;
+  left: -0.06em;
+  height: max(2px, 0.09em);
+  content: '';
+}
+
+.compare-digit--mine::after {
+  background: currentColor;
+}
+
+.compare-digit--theirs::after {
+  background: repeating-linear-gradient(to right, currentColor 0 3px, transparent 3px 5px);
+}
+
+/* Each player's number where they differ: both small, the player's top left
+   and the friend's bottom right, clear of the rules under them. */
+.compare-split {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  padding: max(2px, calc(var(--cell) * 0.08)) max(2px, calc(var(--cell) * 0.1))
+    max(4px, calc(var(--cell) * 0.14));
+  font-size: max(10px, calc(var(--cell) * 0.36));
+  font-weight: 700;
+}
+
+.compare-split .compare-digit--mine {
+  grid-area: 1 / 1;
+  align-self: start;
+  justify-self: start;
+}
+
+.compare-split .compare-digit--theirs {
+  grid-area: 2 / 2;
+  align-self: end;
+  justify-self: end;
+}
+
+.compare__refusal {
+  margin: 0;
+}
+
+/* ---- On a phone: the sheet's full width ---- */
+@media (max-width: 499px) {
+  .dialog--compare .dialog__body {
+    padding-right: 16px;
+    padding-left: 16px;
+  }
+
+  .compare__board {
+    --board-size: clamp(160px, calc(100vw - 32px), 400px);
+  }
+}
+
+/* ---- A phone on its side: the board beside the chart ----
+   Both in view at once, at the top of the body as the dialog opens. The
+   card takes the screen's height and its body is a size container (as the
+   walkthrough's is), so both columns are sized from the body's real height
+   (`cqh`) — whatever the header takes. On the left the chart's column (the
+   times, the legend, the readout and the plot, which takes what they leave)
+   is exactly that high; on the right the board is that high less its key,
+   set in two rows of two to keep it short. The tables follow the chart, and
+   the body scrolls for them. */
+@media (max-height: 500px) and (min-width: 500px) {
+  .dialog--compare {
+    max-width: 760px;
+    height: calc(100vh - 24px);
+    height: calc(100dvh - 24px);
+  }
+
+  .dialog--compare .dialog__body {
+    container: compare-body / size;
+    padding: 6px 16px 12px;
+  }
+
+  .compare {
+    display: grid;
+    grid-template-areas:
+      'chart board'
+      'tables board';
+    grid-template-rows: auto 1fr;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    column-gap: 16px;
+    row-gap: 0;
+  }
+
+  /* Smaller type over the plot, so a long name wraps no line of it. */
+  .compare__chart {
+    grid-area: chart;
+    height: 100cqh;
+    gap: 4px;
+  }
+
+  .compare__subtitle,
+  .compare-chart__readout {
+    font-size: 0.8125rem;
+  }
+
+  .compare-legend {
+    gap: 2px 10px;
+    font-size: 0.75rem;
+  }
+
+  .compare-legend__key {
+    width: 22px;
+  }
+
+  .compare-chart {
+    --chart-height: 100%;
+
+    flex: 1 1 0;
+    min-height: 100px;
+  }
+
+  .compare__tables {
+    grid-area: tables;
+    margin-top: 12px;
+  }
+
+  /* The key's two rows of 22px and the gap over them take 56px. */
+  .compare__board {
+    --board-size: clamp(150px, calc(100cqh - 56px), 360px);
+
+    grid-area: board;
+    gap: 8px;
+  }
+
+  .compare-key {
+    display: grid;
+    grid-template-columns: repeat(2, auto);
+    gap: 4px 10px;
+    font-size: 0.75rem;
+  }
+
+  .compare-key__cell {
+    --cell: 22px;
   }
 }
 

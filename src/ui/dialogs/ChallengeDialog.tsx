@@ -31,6 +31,13 @@ export interface ChallengeDialogProps {
   onWatch?: () => void;
   /** Focus opens on that Watch rather than Play again: back from the playback it opened. */
   isBackFromWatch?: boolean;
+  /**
+   * Compare the earlier solve with the friend's the link carried; given only
+   * when both play back (see `Comparison`).
+   */
+  onCompare?: () => void;
+  /** Focus opens on Compare solves: back from the comparison it opened. */
+  isBackFromCompare?: boolean;
   onClose: () => void;
 }
 
@@ -50,8 +57,9 @@ function whenSolved(epochMs: number, now: number): string {
  * from New game: say so, with the help and mistakes it took (the mistakes
  * when known), compare with the link's time if it carried one, and offer a
  * fresh attempt. Closing keeps whatever game was on screen. A link that
- * carried the friend's solve offers it to watch, under the head-to-head:
- * the puzzle is solved, so it gives nothing away. An earlier solve after
+ * carried the friend's solve offers it to watch, and to compare with the
+ * earlier solve, under the head-to-head: the puzzle is solved, so it gives
+ * nothing away. An earlier solve after
  * watching one has no time, and says so.
  */
 export function ChallengeDialog({
@@ -62,6 +70,8 @@ export function ChallengeDialog({
   onPlayAgain,
   onWatch,
   isBackFromWatch = false,
+  onCompare,
+  isBackFromCompare = false,
   onClose,
 }: ChallengeDialogProps) {
   const ids = useId();
@@ -75,6 +85,7 @@ export function ChallengeDialog({
   const solvedAt = previous.completedAt ?? previous.updatedAt;
   const isTimed = hasRecordedTime(previous);
   const isWatchFocused = isBackFromWatch && onWatch !== undefined;
+  const isCompareFocused = isBackFromCompare && onCompare !== undefined && challenge !== null;
 
   return (
     <Dialog
@@ -87,7 +98,7 @@ export function ChallengeDialog({
           <button
             type="button"
             className="button button--primary"
-            data-autofocus={isWatchFocused ? undefined : true}
+            data-autofocus={isWatchFocused || isCompareFocused ? undefined : true}
             onClick={onPlayAgain}
           >
             Play again
@@ -119,6 +130,8 @@ export function ChallengeDialog({
           verdictId={verdictId}
           onWatch={onWatch}
           isWatchFocused={isWatchFocused}
+          onCompare={onCompare}
+          isCompareFocused={isCompareFocused}
         />
       )}
     </Dialog>

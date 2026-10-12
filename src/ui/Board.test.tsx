@@ -332,5 +332,31 @@ describe('Board', () => {
       renderBoard({ game, current: 3 });
       expect(document.querySelectorAll('.cell--current')).toHaveLength(0);
     });
+
+    it('draws a cell its own way where an overlay says, named as the overlay says', () => {
+      const overlay = new Array(81).fill(null);
+      overlay[3] = {
+        content: <span className="drawn">7</span>,
+        label: '7, yours',
+        className: 'cell--overlaid',
+      };
+      overlay[4] = { content: null, label: 'empty' };
+      renderBoard({ game, isReadOnly: true, overlay });
+      const cells = screen.getAllByRole('cell');
+      expect(cells[3]).toHaveAccessibleName('7, yours');
+      expect(cells[3]).toHaveClass('cell--overlaid');
+      // In place of what the game had there: its note.
+      expect(cells[3].querySelector('.drawn')).toHaveTextContent('7');
+      expect(cells[3].querySelector('.cell__candidates')).toBeNull();
+      expect(cells[4]).toHaveAccessibleName('empty');
+      // Every other cell as the game had it.
+      expect(cells[0]).toHaveAccessibleName('5, given, conflict');
+    });
+
+    it('draws no overlay on a board in play', () => {
+      const overlay = new Array(81).fill({ content: null, label: 'overlaid' });
+      renderBoard({ game, overlay });
+      expect(screen.getAllByRole('gridcell')[3]).toHaveAccessibleName('empty, candidates 4');
+    });
   });
 });
