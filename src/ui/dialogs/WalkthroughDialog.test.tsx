@@ -220,6 +220,65 @@ describe('WalkthroughDialog', () => {
     ).toEqual(['Done']);
   });
 
+  it('numbers its steps on from where the hint bar has the cell’s route', () => {
+    render(
+      <WalkthroughDialog
+        walkthrough={stuck()}
+        numbering={{ step: 5, of: 7 }}
+        onOpenGuide={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(stepHeading()).toHaveAccessibleName('Step 5 of 7: Hidden pair');
+    fireEvent.click(within(pager()).getByRole('button', { name: /^Next/ }));
+    expect(stepHeading()).toHaveAccessibleName('Step 6 of 7: Pointing pair or triple');
+    fireEvent.click(within(pager()).getByRole('button', { name: /^Next/ }));
+    expect(stepHeading()).toHaveAccessibleName('Step 7 of 7: Naked single');
+  });
+
+  it('names a page it has not seen by number only, and one it has by its technique', () => {
+    const props = {
+      walkthrough: stuck(),
+      numbering: { step: 5, of: 7 },
+      onOpenGuide: vi.fn(),
+      onClose: vi.fn(),
+    };
+    const { rerender } = render(<WalkthroughDialog {...props} seenPages={[true, false, false]} />);
+    const next = within(pager()).getByRole('button', { name: /^Next/ });
+    expect(next).toHaveAccessibleName('Next: Step 6 of 7');
+    expect(next).not.toHaveTextContent(/Pointing/);
+    // Turned to, and seen: named by its technique, from either side.
+    rerender(<WalkthroughDialog {...props} seenPages={[true, true, false]} />);
+    expect(within(pager()).getByRole('button', { name: /^Next/ })).toHaveAccessibleName(
+      'Next: Pointing pair or triple',
+    );
+    fireEvent.click(within(pager()).getByRole('button', { name: /^Next/ }));
+    expect(within(pager()).getByRole('button', { name: /^Previous/ })).toHaveAccessibleName(
+      'Previous: Hidden pair',
+    );
+    expect(within(pager()).getByRole('button', { name: /^Next/ })).toHaveAccessibleName(
+      'Next: Step 7 of 7',
+    );
+  });
+
+  it('says each page turned to, and says what it cost on that page, once, with its heading', () => {
+    const onStep = vi.fn();
+    const props = { walkthrough: stuck(), onOpenGuide: vi.fn(), onClose: vi.fn(), onStep };
+    const { rerender } = render(<WalkthroughDialog {...props} />);
+    fireEvent.click(within(pager()).getByRole('button', { name: /^Next/ }));
+    expect(onStep).toHaveBeenLastCalledWith(1);
+    // The hook hands back what the page cost.
+    rerender(<WalkthroughDialog {...props} pageCharge={{ step: 1, text: '3 hints used.' }} />);
+    expect(stepHeading()).toHaveAccessibleDescription('3 hints used.');
+    expect(screen.getByText('3 hints used.')).toHaveClass('walkthrough__charge--page');
+    // Another page's charge says nothing here.
+    rerender(<WalkthroughDialog {...props} pageCharge={{ step: 2, text: '4 hints used.' }} />);
+    expect(stepHeading()).not.toHaveAttribute('aria-describedby');
+    expect(document.querySelector('.walkthrough__charge--page')).toBeNull();
+    fireEvent.click(within(pager()).getByRole('button', { name: /^Previous/ }));
+    expect(onStep).toHaveBeenLastCalledWith(0);
+  });
+
   it('closes with Escape, as every dialog does', () => {
     const { onClose } = renderWalkthrough();
     fireEvent.keyDown(document, { key: 'Escape' });

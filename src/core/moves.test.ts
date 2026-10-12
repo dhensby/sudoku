@@ -62,6 +62,10 @@ const BARE = 34 * 81;
 const CHECK_GUESSES_ON = BARE + 5;
 const CHECK_GUESSES_OFF = BARE + 6;
 const HINT_AT = (cell: number) => 28 * 81 + cell;
+/** A page of Show me: after Check guesses, a code a cell, added later still. */
+const PAGE_AT = (cell: number) => BARE + 7 + cell;
+/** Step hints' descriptors: 256 + the step's technique's code × 28 + unit, added later. */
+const STEP_DESCRIPTOR_BASE = 256;
 
 /*
  * The hint descriptors, written out from the format: a mistake 0, a deduction
@@ -112,11 +116,30 @@ function descriptorOf(hint: LoggedHint): number {
     return hint.technique === null ? UNNAMED_DESCRIPTOR : DEDUCTION_DESCRIPTORS[hint.technique];
   }
   const unit = hint.unit === null ? 0 : 1 + UNIT_KIND_CODES[hint.unit.kind] * 9 + hint.unit.index;
+  if (hint.kind === 'step') {
+    return STEP_DESCRIPTOR_BASE + DEDUCTION_DESCRIPTORS[hint.technique] * 28 + unit;
+  }
   return SINGLE_DESCRIPTOR_BASE + SINGLE_TECHNIQUE_CODES[hint.technique] * 28 + unit;
 }
 
 /** A 12-bit number as two chars. */
 const pair = (value: number) => ALPHABET[value >> 6] + ALPHABET[value & 63];
+
+/** A step's id as four chars, most significant first. */
+const idChars = (id: number) =>
+  [18, 12, 6, 0].map((shift) => ALPHABET[Math.floor(id / 2 ** shift) % 64]).join('');
+
+/**
+ * A step hint's chars after its code, from the format: its descriptor, its
+ * hardest technique's code, where it falls and of how many (each a varint;
+ * these are under 32, so one char), and its id.
+ */
+const stepChars = (hint: Extract<LoggedHint, { kind: 'step' }>) =>
+  pair(descriptorOf(hint)) +
+  ALPHABET[DEDUCTION_DESCRIPTORS[hint.hardest]] +
+  ALPHABET[hint.step] +
+  ALPHABET[hint.of] +
+  idChars(hint.id);
 
 /** A body with its check: the low 18 bits of FNV-1a, in three chars. */
 function withCheck(body: string): string {
@@ -152,6 +175,39 @@ const ALL_TECHNIQUES: readonly TechniqueId[] = [
   'alternatingChain',
 ];
 const UNIT_KINDS: readonly UnitKind[] = ['row', 'column', 'box'];
+
+/** A step hint about `index`, every part of it settable. */
+const stepHint = (
+  index: number,
+  change: Partial<Extract<LoggedHint, { kind: 'step' }>> = {},
+): Extract<LoggedHint, { kind: 'step' }> => ({
+  kind: 'step',
+  index,
+  technique: 'claiming',
+  unit: { kind: 'column', index: 7 },
+  step: 2,
+  of: 7,
+  hardest: 'xyChain',
+  id: 0xabcdef,
+  ...change,
+});
+
+/** Step hints by every technique, in every kind of unit and none, at a few places on routes. */
+function everyStepHint(index: number): LoggedHint[] {
+  return ALL_TECHNIQUES.flatMap((technique, t) => [
+    stepHint(index, { technique, unit: null, step: 1, of: 1, hardest: technique, id: t }),
+    ...UNIT_KINDS.map((kind, k) =>
+      stepHint(index, {
+        technique,
+        unit: { kind, index: (t + k) % 9 },
+        step: 1 + k,
+        of: 40 + t,
+        hardest: ALL_TECHNIQUES[(t + 3) % ALL_TECHNIQUES.length],
+        id: 2 ** 24 - 1 - t * 3 - k,
+      }),
+    ),
+  ]);
+}
 
 /** Every hint the log can hold, about `index`. */
 function everyHint(index: number): LoggedHint[] {
@@ -196,6 +252,8 @@ function everyMove(): Move[] {
       moves.push({ op, cell });
     }
     moves.push(...everyHint(cell).map((hint): Move => ({ op: 'hint', hint })));
+    moves.push(...everyStepHint(cell).map((hint): Move => ({ op: 'hint', hint })));
+    for (const id of [0, 1, 0x5a5a5a, 2 ** 24 - 1]) moves.push({ op: 'page', cell, id });
   }
   moves.push({ op: 'hint', hint: { kind: 'deduction', index: -1, technique: 'xWing' } });
   for (const op of [
@@ -394,6 +452,60 @@ describe('moveFor', () => {
     }
   });
 
+  describe('a page of Show me', () => {
+    const hinted = reduce(game, { type: 'hint', hint: stepHint(3) });
+    const page = (id: number, opens?: boolean): GameAction => ({
+      type: 'showStep',
+      index: 3,
+      id,
+      opens,
+    });
+
+    it('logs a page counted as it is seen, opening or turned to', () => {
+      expect(moveFor(hinted, page(17, true))).toEqual({ op: 'page', cell: 3, id: 17 });
+      expect(moveFor(hinted, page(17))).toEqual({ op: 'page', cell: 3, id: 17 });
+    });
+
+    it('logs Show me opened at a page seen already, free: it is help seen', () => {
+      const seen = reduce(hinted, page(17));
+      expect(reduce(seen, page(17, true))).toBe(seen);
+      expect(moveFor(seen, page(17, true))).toEqual({ op: 'page', cell: 3, id: 17 });
+    });
+
+    it('logs nothing for a page seen already turned back to while Show me is open', () => {
+      const seen = reduce(hinted, page(17));
+      expect(moveFor(seen, page(17))).toBeNull();
+    });
+
+    it('logs nothing for a page that does not show', () => {
+      // No fill hint for the cell, a cell off the grid, an id that is no step's.
+      expect(moveFor(game, page(17, true))).toBeNull();
+      expect(moveFor(hinted, { type: 'showStep', index: 81, id: 17, opens: true })).toBeNull();
+      expect(moveFor(hinted, page(2 ** 24, true))).toBeNull();
+      expect(moveFor(hinted, page(-1, true))).toBeNull();
+      // A cell holding a value, its hint kept while the value is wrong.
+      expect(moveFor(reduce(hinted, place(3, 2)), page(17, true))).toBeNull();
+      // A wrong-marks hint, whose own page Show me opens instead.
+      const auto = reduce(createGame(PUZZLE, { autoCandidates: true }), {
+        type: 'hint',
+        hint: stepHint(3),
+      });
+      const struck = reduce(reduce(auto, pencil(3, 6)), {
+        type: 'hint',
+        hint: { kind: 'struck', index: 3 },
+      });
+      expect(moveFor(struck, page(17, true))).toBeNull();
+    });
+  });
+
+  it('logs a step hint whole, and exactly as decoding gives it back', () => {
+    const hint = { ...stepHint(9), extra: 'not logged' } as Hint;
+    expect(moveFor(game, { type: 'hint', hint })).toStrictEqual({
+      op: 'hint',
+      hint: stepHint(9),
+    });
+  });
+
   it('logs Check guesses switched on and off, with no cell: it acts on none', () => {
     const on = { type: 'setCheckGuesses', enabled: true } as const;
     expect(moveFor(game, on)).toEqual({ op: 'checkGuessesOn' });
@@ -469,6 +581,17 @@ describe('moveFor', () => {
       'a fractional unit',
       { kind: 'single', index: 3, technique: 'fullHouse', unit: { kind: 'row', index: 0.5 } },
     ],
+    ['a step by an unknown technique', stepHint(3, { technique: 'guessing' as TechniqueId })],
+    ['a step in an unknown unit', stepHint(3, { unit: { kind: 'band' as UnitKind, index: 0 } })],
+    ['a step whose hardest is unknown', stepHint(3, { hardest: 'guessing' as TechniqueId })],
+    ['a step numbered 0', stepHint(3, { step: 0 })],
+    ['a step past the end of its route', stepHint(3, { step: 8, of: 7 })],
+    ['a step numbered by a fraction', stepHint(3, { step: 1.5 })],
+    ['a route of a fractional length', stepHint(3, { of: 7.5 })],
+    ['a route too long to write', stepHint(3, { of: 32 ** 6 })],
+    ['a step with an id of 24 bits and more', stepHint(3, { id: 2 ** 24 })],
+    ['a step with a negative id', stepHint(3, { id: -1 })],
+    ['a step with a fractional id', stepHint(3, { id: 0.5 })],
   ])('throws for a hint the log has no code for: %s', (_, hint) => {
     const action = { type: 'hint', hint } as GameAction;
     expect(() => moveFor(game, action)).toThrow(RangeError);
@@ -586,20 +709,68 @@ describe('encodeMoveLog and decodeMoveLog', () => {
     expect(encodeMoveLog(written)).toBe(withCheck(body.join('')));
   });
 
+  it('writes a step hint and a page exactly as the format describes', () => {
+    const hint = stepHint(9);
+    const written = logOf(
+      [
+        { op: 'hint', hint },
+        { op: 'page', cell: 9, id: 0x123456 },
+      ],
+      100,
+    );
+    const body = [
+      header(),
+      // A box/line reduction (7) in column 8 (unit 1 + 9 + 7): 256 + 7 × 28 + 17 = 469;
+      // its hardest an XY-Chain (18); step 2 of 7; its id, 24 bits; 1 tick in.
+      pair(HINT_AT(9)) + pair(469) + ALPHABET[18] + 'CH' + idChars(0xabcdef) + ALPHABET[1],
+      pair(PAGE_AT(9)) + idChars(0x123456) + ALPHABET[1],
+    ];
+    expect(stepChars(hint)).toBe(pair(469) + ALPHABET[18] + 'CH' + idChars(0xabcdef));
+    expect(encodeMoveLog(written)).toBe(withCheck(body.join('')));
+    expect(decodeMoveLog(withCheck(body.join('')))).toEqual(written);
+  });
+
+  it('writes where a step falls on a long route in varints, as the gaps are written', () => {
+    const hint = stepHint(9, { step: 40, of: 1100 });
+    const text = encodeMoveLog(logOf([{ op: 'hint', hint }], 0));
+    // 40 is 8 and 1 more; 1100 is 12, 2 and 1 more.
+    const tail = ALPHABET[8 | 32] + ALPHABET[1] + ALPHABET[12 | 32] + ALPHABET[2 | 32] + 'B';
+    expect(text).toBe(
+      withCheck(
+        header() + pair(HINT_AT(9)) + pair(469) + ALPHABET[18] + tail + idChars(0xabcdef) + 'A',
+      ),
+    );
+    expect(decodeMoveLog(text)?.moves[0]).toEqual({ op: 'hint', hint, at: 0 });
+  });
+
   it('writes Check guesses on and off in the codes kept for them, after the hint off the grid', () => {
     const written = logOf([{ op: 'checkGuessesOn' }, { op: 'checkGuessesOff' }], 100);
     const body = `${header()}${pair(CHECK_GUESSES_ON)}${ALPHABET[1]}${pair(CHECK_GUESSES_OFF)}${ALPHABET[1]}`;
     expect(encodeMoveLog(written)).toBe(withCheck(body));
   });
 
-  it('accepts every code this rules version uses, Check guesses’ included, and refuses the rest', () => {
+  it('accepts every code this rules version uses, Check guesses’ and pages’ included, and refuses the rest', () => {
     const accepted: number[] = [];
     for (let code = 0; code < 4096; code++) {
       const isHint = code === BARE + 4 || Math.floor(code / 81) === 28;
-      const body = header() + pair(code) + (isHint ? pair(0) : '') + 'A';
+      const isPage = code >= PAGE_AT(0);
+      const body = header() + pair(code) + (isHint ? pair(0) : '') + (isPage ? 'AAAA' : '') + 'A';
       if (decodeMoveLog(withCheck(body)) !== null) accepted.push(code);
     }
-    expect(accepted).toEqual(Array.from({ length: CHECK_GUESSES_OFF + 1 }, (_, code) => code));
+    expect(accepted).toEqual(Array.from({ length: PAGE_AT(80) + 1 }, (_, code) => code));
+    expect(PAGE_AT(0)).toBe(CHECK_GUESSES_OFF + 1);
+  });
+
+  it('accepts every step descriptor, each technique’s units in turn, and refuses the rest', () => {
+    const accepted: number[] = [];
+    for (let descriptor = STEP_DESCRIPTOR_BASE; descriptor < 4096; descriptor++) {
+      const tail = ALPHABET[18] + 'BB' + 'AAAA';
+      const body = header() + pair(HINT_AT(40)) + pair(descriptor) + tail + 'A';
+      if (decodeMoveLog(withCheck(body)) !== null) accepted.push(descriptor);
+    }
+    // The techniques' codes run from 2 (a full house) to 20; 28 units each.
+    expect(accepted).toEqual(Array.from({ length: 19 * 28 }, (_, i) => 312 + i));
+    expect(everyStepHint(40).every((hint) => descriptorOf(hint) < 844)).toBe(true);
   });
 
   it('accepts every hint descriptor in the table and refuses the rest', () => {
@@ -634,7 +805,7 @@ describe('encodeMoveLog and decodeMoveLog', () => {
     ['plain base64', withCheck('BBA') + '+'],
     ['padded', `${withCheck('BBA')}=`],
     ['with a space', withCheck('BB A')],
-    ['far too long', 'A'.repeat(3 + MAX_MOVES * 10 + 4)],
+    ['far too long', 'A'.repeat(3 + MAX_MOVES * 27 + 4)],
   ])('refuses a string that is not a log: %s', (_, text) => {
     expect(decodeMoveLog(text)).toBeNull();
   });
@@ -680,6 +851,14 @@ describe('encodeMoveLog and decodeMoveLog', () => {
     ['a gap that runs out', header() + pair(BARE) + 'g'],
     ['a gap written with a needless char', header() + pair(BARE) + 'gA'],
     ['a gap of more than six chars', header() + pair(BARE) + 'gggggg' + 'B'],
+    ['a step without its hardest technique', header() + pair(HINT_AT(0)) + pair(469)],
+    ['a step whose hardest is no technique', header() + pair(HINT_AT(0)) + pair(469) + 'BBBAAAAA'],
+    ['a step without where it falls', header() + pair(HINT_AT(0)) + pair(469) + 'S'],
+    ['a step without its route’s length', header() + pair(HINT_AT(0)) + pair(469) + 'SB'],
+    ['a step numbered 0', header() + pair(HINT_AT(0)) + pair(469) + 'SAH' + 'AAAA' + 'A'],
+    ['a step past its route', header() + pair(HINT_AT(0)) + pair(469) + 'SIH' + 'AAAA' + 'A'],
+    ['a step with its id cut short', header() + pair(HINT_AT(0)) + pair(469) + 'SBH' + 'AAA'],
+    ['a page with its id cut short', header() + pair(PAGE_AT(0)) + 'AAA'],
   ])('refuses a body that is not well formed: %s', (_, body) => {
     expect(decodeMoveLog(withCheck(body))).toBeNull();
   });
@@ -706,6 +885,8 @@ describe('encodeMoveLog and decodeMoveLog', () => {
       'a hint with no code',
       { op: 'hint', hint: { kind: 'deduction', index: 2, technique: 'guess' } },
     ],
+    ['a page off the grid', { op: 'page', cell: 81, id: 0 }],
+    ['a page with no step’s id', { op: 'page', cell: 2, id: 2 ** 24 }],
   ])('throws for a log appendMove could not have built: %s', (_, move) => {
     const log: MoveLog = {
       autoCandidates: false,
@@ -987,6 +1168,71 @@ describe('verifyMoveLog, with a wrong-marks hint', () => {
 
   it('does not vouch for a game that differs in whether its Show me was opened', () => {
     expect(verifyMoveLog(PUZZLE, log, withStruck({ walkthrough: false }))).toBe(false);
+  });
+});
+
+describe('verifyMoveLog, with steps named and pages shown', () => {
+  // A step hint at cell 3, its page and another's, and a step hint at cell 40.
+  const { game, log } = playActions([
+    { type: 'hint', hint: stepHint(3) },
+    { type: 'showStep', index: 3, id: 99, opens: true },
+    { type: 'showStep', index: 3, id: 100 },
+    {
+      type: 'hint',
+      hint: stepHint(40, { step: 1, of: 1, technique: 'nakedSingle', unit: null, id: 5 }),
+    },
+  ]);
+  const withSteps = (index: number, change: Partial<RememberedHints>): GameState => ({
+    ...game,
+    cellHints: new Map([...game.cellHints, [index, { ...game.cellHints.get(index)!, ...change }]]),
+  });
+
+  it('vouches for the game the log rebuilds, as played and as reloaded', () => {
+    expect(game.assists.hints).toBe(4);
+    expect(game.seenSteps).toEqual({ named: [0xabcdef, 5], shown: [99, 100] });
+    expect(game.hintedCell).toBe(40);
+    expect(verifyMoveLog(PUZZLE, log, game)).toBe(true);
+    expect(verifyMoveLog(PUZZLE, log, reload(game))).toBe(true);
+  });
+
+  it('vouches for a game reloaded after a step hint and the stall’s deduction for the same cell', () => {
+    // The deduction is free (the cell has a fill hint): the reload must not count it.
+    const stalled = playActions([
+      { type: 'hint', hint: stepHint(3) },
+      { type: 'hint', hint: { kind: 'deduction', index: 3, technique: null } },
+    ]);
+    expect(stalled.game.assists.hints).toBe(1);
+    expect(verifyMoveLog(PUZZLE, stalled.log, reload(stalled.game))).toBe(true);
+  });
+
+  it('vouches for a game reloaded after a step hint free by a page, and the stall’s deduction after it', () => {
+    // A deduction for cell 3 and its page, counted; a step hint for cell 40
+    // whose step that page showed, free; then the stall's deduction for 40,
+    // free as 40 has a fill hint. No step is named: the reload must count
+    // neither deduction past the two hints taken.
+    const paged = playActions([
+      { type: 'hint', hint: { kind: 'deduction', index: 3, technique: null } },
+      { type: 'showStep', index: 3, id: 99, opens: true },
+      { type: 'hint', hint: stepHint(40, { id: 99 }) },
+      { type: 'hint', hint: { kind: 'deduction', index: 40, technique: null } },
+    ]);
+    expect(paged.game.assists.hints).toBe(2);
+    expect(paged.game.seenSteps).toEqual({ named: [], shown: [99] });
+    expect(verifyMoveLog(PUZZLE, paged.log, reload(paged.game))).toBe(true);
+  });
+
+  it.each([
+    ['the pages shown', () => ({ ...game, seenSteps: { named: [0xabcdef, 5], shown: [99] } })],
+    ['the steps named', () => ({ ...game, seenSteps: { named: [], shown: [99, 100] } })],
+    ['no steps seen at all', () => ({ ...game, seenSteps: { named: [], shown: [] } })],
+    ['the cell the last step hint was about', () => ({ ...game, hintedCell: 3 })],
+    ['where its step falls', () => withSteps(3, { fill: stepHint(3, { step: 3 }) })],
+    ['how long its route is', () => withSteps(3, { fill: stepHint(3, { of: 8 }) })],
+    ['its hardest step', () => withSteps(3, { fill: stepHint(3, { hardest: 'xWing' }) })],
+    ['which step it names', () => withSteps(3, { fill: stepHint(3, { id: 1 }) })],
+    ['its unit', () => withSteps(3, { fill: stepHint(3, { unit: null }) })],
+  ])('does not vouch for a game that differs in %s', (_, changed) => {
+    expect(verifyMoveLog(PUZZLE, log, changed())).toBe(false);
   });
 });
 

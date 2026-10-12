@@ -262,6 +262,19 @@ describe('the board', () => {
       /@container board-column \(max-width: 399\.98px\)\s*\{\s*\.cell__candidates,\s*\.cell__ghosts\s*\{\s*font-weight:\s*600;/,
     );
   });
+
+  it('marks a hinted step’s cells by a dashed line in forced colours, where its tint is lost', () => {
+    // The tint falls back to the cell's own system colour, and a wing's or
+    // a chain's cells are named nowhere in the hint's words.
+    expect(FORCED['hl-step']).toBe(FORCED['cell-bg']);
+    const forced = BOARD.slice(BOARD.indexOf('@media (forced-colors: active)'));
+    expect(rule(forced, '.cell--step')).toMatch(/outline:\s*2px dashed CanvasText/);
+    expect(rule(forced, '.cell--step.cell--selected')).toMatch(/outline-color:\s*HighlightText/);
+    // After the givens' line, so it wins on a given; before focus, which
+    // draws over it.
+    expect(forced.indexOf('.cell--step {')).toBeGreaterThan(forced.indexOf('.cell--given {'));
+    expect(forced.indexOf('.cell--step {')).toBeLessThan(forced.indexOf('.cell:focus-visible {'));
+  });
 });
 
 describe("the cards' buttons", () => {

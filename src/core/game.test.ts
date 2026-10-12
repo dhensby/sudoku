@@ -20,6 +20,7 @@ import {
   type RememberedHints,
   type SerialisedCellHints,
   type SerialisedGame,
+  type StepHint,
 } from './game';
 import { bit, computeCandidates, formatGrid, maskOf, parseGrid } from './grid';
 import { createBoard } from './techniques';
@@ -50,6 +51,19 @@ const NEWER_HINT: Hint = {
 };
 /** A deduction hint for cell 3 (solution 6). */
 const DEDUCTION: Hint = { kind: 'deduction', index: 3, technique: 'pointing' };
+/** A step hint for cell 3: step `step` of 5, the step `id`. */
+const stepAt3 = (id: number, step = 1, of = 5): StepHint => ({
+  kind: 'step',
+  index: 3,
+  technique: 'claiming',
+  unit: { kind: 'row', index: 0 },
+  step,
+  of,
+  hardest: 'xWing',
+  id,
+});
+/** A page of Show me for cell 3: the step `id`. */
+const page3 = (id: number): GameAction => ({ type: 'showStep', index: 3, id });
 /** "Nothing to suggest" — shown, but not counted as help. */
 const NONE: GameAction = { type: 'hint', hint: { kind: 'none' } };
 const NO_ASSISTS: Assists = { autoCandidates: false, hints: 0, checks: 0, reveals: 0 };
@@ -965,6 +979,303 @@ describe('remembered hints', () => {
     ])('is ignored for %s', (_name, setup, index) => {
       const state = play(newGame(), ...setup);
       expect(reduce(state, { type: 'walkthrough', index })).toBe(state);
+    });
+  });
+});
+
+describe('steps towards a cell', () => {
+  const hinted = reduce(newGame(), { type: 'hint', hint: stepAt3(1) });
+  const seenOf = (state: GameState) => state.seenSteps;
+
+  describe('named by a hint', () => {
+    it('counts a step not seen before, remembers the hint and the step, and the cell it is about', () => {
+      expect(hinted.assists.hints).toBe(1);
+      expect(hinted.selected).toBe(3);
+      expect(hinted.hint).toEqual(stepAt3(1));
+      expect(hinted.cellHints.get(3)).toEqual<RememberedHints>({
+        fill: stepAt3(1),
+        mistake: null,
+        walkthrough: false,
+        struck: null,
+      });
+      expect(seenOf(hinted)).toEqual({ named: [1], shown: [] });
+      expect(hinted.hintedCell).toBe(3);
+    });
+
+    it('counts the next step for the same cell, and each new one after it', () => {
+      const next = play(hinted, { type: 'hint', hint: stepAt3(2, 2) });
+      expect(next.assists.hints).toBe(2);
+      expect(seenOf(next)).toEqual({ named: [1, 2], shown: [] });
+      expect(next.cellHints.get(3)?.fill).toEqual(stepAt3(2, 2));
+    });
+
+    it('is free asked again, and free for a step named before however its route is numbered now', () => {
+      const again = reduce(hinted, { type: 'hint', hint: stepAt3(1) });
+      expect(again.assists.hints).toBe(1);
+      // The route planned afresh: the same step, numbered otherwise.
+      const replanned = play(
+        hinted,
+        { type: 'hint', hint: stepAt3(2, 2) },
+        { type: 'hint', hint: stepAt3(1, 3, 6) },
+      );
+      expect(replanned.assists.hints).toBe(2);
+      expect(replanned.cellHints.get(3)?.fill).toEqual(stepAt3(1, 3, 6));
+      expect(seenOf(replanned)).toEqual({ named: [1, 2], shown: [] });
+    });
+
+    it('is free for a step already seen on a page of Show me', () => {
+      const shown = play(hinted, page3(2));
+      expect(shown.assists.hints).toBe(2);
+      expect(reduce(shown, { type: 'hint', hint: stepAt3(2, 2) }).assists.hints).toBe(2);
+    });
+
+    it('is free for a step seen on the way to another cell, which it is now the hint for', () => {
+      // Step 1 named for cell 3, then the same step first on cell 40's route.
+      const elsewhere = reduce(hinted, { type: 'hint', hint: { ...stepAt3(1), index: 40 } });
+      expect(elsewhere.assists.hints).toBe(1);
+      expect(elsewhere.cellHints.get(40)?.fill).toEqual({ ...stepAt3(1), index: 40 });
+      expect(elsewhere.hintedCell).toBe(40);
+    });
+
+    it('counts a step for a cell whose hint was of the kind before steps were named', () => {
+      const old = play(
+        newGame(),
+        { type: 'hint', hint: DEDUCTION },
+        { type: 'hint', hint: stepAt3(1) },
+      );
+      expect(old.assists.hints).toBe(2);
+      // And the old kind, asked for after a step, is free as it always was.
+      expect(reduce(old, { type: 'hint', hint: DEDUCTION }).assists.hints).toBe(2);
+    });
+
+    it('leaves the cell last hinted alone for a hint of any other kind', () => {
+      const state = play(hinted, place(5, 1), {
+        type: 'hint',
+        hint: { kind: 'mistake', index: 5 },
+      });
+      expect(state.hintedCell).toBe(3);
+      expect(reduce(hinted, { type: 'hint', hint: { ...DEDUCTION, index: 40 } }).hintedCell).toBe(
+        3,
+      );
+    });
+
+    it('takes the candidates it was given from as the ones the bar is worded from', () => {
+      expect(hinted.checkedCandidates).toEqual(hintBoardOf(newGame()).candidates);
+    });
+  });
+
+  describe('shown on a page of Show me', () => {
+    it('counts a page the first time its step is seen on one, and not after', () => {
+      const shown = reduce(hinted, page3(1));
+      expect(shown.assists.hints).toBe(2);
+      expect(seenOf(shown)).toEqual({ named: [1], shown: [1] });
+      expect(reduce(shown, page3(1))).toBe(shown);
+      const next = reduce(shown, page3(7));
+      expect(next.assists.hints).toBe(3);
+      expect(seenOf(next)).toEqual({ named: [1], shown: [1, 7] });
+    });
+
+    it('is free for a step seen on a page on the way to another cell', () => {
+      const shown = play(hinted, page3(7), { type: 'hint', hint: { ...DEDUCTION, index: 40 } });
+      expect(reduce(shown, { type: 'showStep', index: 40, id: 7 })).toBe(shown);
+    });
+
+    it('counts pages for a cell whose hint was of the kind before steps were named', () => {
+      const old = play(newGame(), { type: 'hint', hint: DEDUCTION }, page3(5));
+      expect(old.assists.hints).toBe(2);
+      expect(seenOf(old)).toEqual({ named: [], shown: [5] });
+    });
+
+    it('is free, every page, for a cell whose Show me was counted once for them all', () => {
+      // What an older build did: Show me opened, and counted, for the cell.
+      const paid = play(
+        newGame(),
+        { type: 'hint', hint: DEDUCTION },
+        { type: 'walkthrough', index: 3 },
+      );
+      expect(paid.assists.hints).toBe(2);
+      expect(reduce(paid, page3(5))).toBe(paid);
+      expect(reduce(paid, page3(6))).toBe(paid);
+    });
+
+    it('leaves the hint on show, as Show me does', () => {
+      expect(reduce(hinted, page3(1)).hint).toEqual(stepAt3(1));
+    });
+
+    it.each<[string, () => GameState, GameAction]>([
+      ['a cell with no hint', () => newGame(), page3(1)],
+      ['a cell off the grid', () => hinted, { type: 'showStep', index: 81, id: 1 }],
+      ['a cell holding a value', () => reduce(hinted, place(3, 2)), page3(1)],
+      ['a cell with only a mistake hint', () => mistaken(), page3(1)],
+      ['an id no step has', () => hinted, page3(2 ** 24)],
+      ['an id that is no number', () => hinted, page3(0.5)],
+      ['a solved game', () => solvedGame(), { type: 'showStep', index: 2, id: 1 }],
+    ])('is ignored for %s', (_name, state, action) => {
+      const before = state();
+      expect(reduce(before, action)).toBe(before);
+    });
+
+    it('is ignored for a cell with a wrong-marks hint, whose page Show me opens instead', () => {
+      const struck = play(newGame(true), { type: 'hint', hint: stepAt3(1) }, note(3, 6), {
+        type: 'hint',
+        hint: { kind: 'struck', index: 3 },
+      });
+      expect(reduce(struck, page3(1))).toBe(struck);
+    });
+
+    /** Cell 3 holding a wrong 1, pointed out. */
+    function mistaken(): GameState {
+      return play(newGame(), place(3, 1), { type: 'hint', hint: { kind: 'mistake', index: 3 } });
+    }
+  });
+
+  describe('remembered', () => {
+    const seen = play(hinted, page3(1), page3(2));
+
+    it('past the cell taking its answer, and through Undo', () => {
+      const answered = reduce(seen, place(3, 6));
+      expect(answered.cellHints.has(3)).toBe(false);
+      expect(seenOf(answered)).toBe(seenOf(seen));
+      // The steps are still the steps seen: asked for again, free.
+      const undone = play(answered, UNDO, { type: 'hint', hint: stepAt3(1) });
+      expect(undone.assists.hints).toBe(seen.assists.hints);
+    });
+
+    it('until a Reset, which forgets them and the cell last hinted', () => {
+      const reset = reduce(seen, RESET);
+      expect(seenOf(reset)).toEqual({ named: [], shown: [] });
+      expect(reset.hintedCell).toBe(-1);
+    });
+
+    it('so that a Reset does something with nothing else to forget', () => {
+      const fresh = newGame();
+      expect(reduce(fresh, RESET)).toBe(fresh);
+      const named = { ...fresh, seenSteps: { named: [1], shown: [] } };
+      expect(reduce(named, RESET)).not.toBe(named);
+      const pointed = { ...fresh, hintedCell: 3 };
+      expect(reduce(pointed, RESET)).not.toBe(pointed);
+    });
+  });
+
+  describe('saved and loaded', () => {
+    const saved = serialiseGame(play(hinted, page3(2), page3(9)));
+    const load = (data: Partial<typeof saved>) => deserialiseGame({ ...saved, ...data })!;
+
+    it('saves the steps seen and the cell last hinted, only when there are some', () => {
+      expect(saved.seenSteps).toEqual({ named: [1], shown: [2, 9] });
+      expect(saved.hintedCell).toBe(3);
+      expect(saved.cellHints).toEqual<SerialisedCellHints[]>([
+        { index: 3, fill: stepAt3(1), mistake: 0, walkthrough: false },
+      ]);
+      const plain = serialiseGame(reduce(newGame(), { type: 'hint', hint: DEDUCTION }));
+      expect(plain).not.toHaveProperty('seenSteps');
+      expect(plain).not.toHaveProperty('hintedCell');
+    });
+
+    it('round-trips them through JSON, still free to see again', () => {
+      const restored = deserialiseGame(JSON.parse(JSON.stringify(saved)))!;
+      expect(restored.cellHints.get(3)).toEqual<RememberedHints>({
+        fill: stepAt3(1),
+        mistake: null,
+        walkthrough: false,
+        struck: null,
+      });
+      expect(restored.seenSteps).toEqual({ named: [1], shown: [2, 9] });
+      expect(restored.hintedCell).toBe(3);
+      const again = play(restored, { type: 'hint', hint: stepAt3(1) }, page3(9), page3(2));
+      expect(again.assists.hints).toBe(restored.assists.hints);
+    });
+
+    it('raises the hints taken to cover every step seen, the step hint counted with its step', () => {
+      expect(load({ assists: NO_ASSISTS }).assists.hints).toBe(3);
+    });
+
+    it('counts no hint of the kind before steps once a step has been named, which may have been free', () => {
+      // A step hint, then the stall's deduction for the same cell: free.
+      const state = play(hinted, { type: 'hint', hint: { ...DEDUCTION, index: 3 } });
+      expect(state.assists.hints).toBe(1);
+      const restored = deserialiseGame(JSON.parse(JSON.stringify(serialiseGame(state))))!;
+      expect(restored.assists.hints).toBe(1);
+      expect(deserialiseGame({ ...serialiseGame(state), assists: NO_ASSISTS })!.assists.hints).toBe(
+        1,
+      );
+      // With no step seen at all, a hint of that kind was counted, and still is.
+      const plain = reduce(newGame(), { type: 'hint', hint: DEDUCTION });
+      expect(deserialiseGame({ ...serialiseGame(plain), assists: NO_ASSISTS })!.assists.hints).toBe(
+        1,
+      );
+    });
+
+    it('counts no hint of the kind before steps once a page has been seen, as a step hint may have been free by it', () => {
+      // The deduction for cell 3 and its page, both counted; then a step hint
+      // for cell 40 free by that page, and the stall's deduction for 40, free
+      // as 40 has a fill hint already. Two hints taken, and no step named.
+      const state = play(
+        newGame(),
+        { type: 'hint', hint: { ...DEDUCTION, technique: null } },
+        page3(5),
+        { type: 'hint', hint: { ...stepAt3(5), index: 40 } },
+        { type: 'hint', hint: { ...DEDUCTION, index: 40, technique: null } },
+      );
+      expect(state.assists.hints).toBe(2);
+      expect(seenOf(state)).toEqual({ named: [], shown: [5] });
+      const restored = deserialiseGame(JSON.parse(JSON.stringify(serialiseGame(state))))!;
+      expect(restored.assists.hints).toBe(2);
+      // Short of the stored count, only the page is certain: a floor, never more.
+      expect(deserialiseGame({ ...serialiseGame(state), assists: NO_ASSISTS })!.assists.hints).toBe(
+        1,
+      );
+    });
+
+    it.each<[string, unknown, GameState['seenSteps']]>([
+      ['not an object', 'steps', { named: [], shown: [] }],
+      ['empty', { named: [], shown: [] }, { named: [], shown: [] }],
+      ['lists that are not lists', { named: 1, shown: 'two' }, { named: [], shown: [] }],
+      [
+        'ids that are no step’s, or listed twice',
+        { named: [1, 1, -1, 2 ** 24, 0.5, '3'], shown: [new Array(1), 2] },
+        { named: [1], shown: [2] },
+      ],
+    ])(
+      'keeps only the steps that can be trusted when they are %s',
+      (_name, seenSteps, expected) => {
+        expect(load({ seenSteps: seenSteps as typeof saved.seenSteps }).seenSteps).toEqual(
+          expected,
+        );
+      },
+    );
+
+    it.each<[string, unknown]>([
+      ['absent', undefined],
+      ['off the grid', 81],
+      ['no whole number', 2.5],
+      ['not a number', '3'],
+    ])('takes a cell last hinted that is %s as none', (_name, hintedCell) => {
+      expect(load({ hintedCell: hintedCell as number }).hintedCell).toBe(-1);
+    });
+
+    it.each<[string, unknown]>([
+      ['by a technique there is none of', { ...stepAt3(1), technique: 'guessing' }],
+      ['with a hardest technique there is none of', { ...stepAt3(1), hardest: 'guessing' }],
+      ['in a unit that is no unit', { ...stepAt3(1), unit: { kind: 'band', index: 0 } }],
+      ['with no unit at all', { ...stepAt3(1), unit: undefined }],
+      ['numbered 0', stepAt3(1, 0)],
+      ['past the end of its route', stepAt3(1, 6, 5)],
+      ['numbered by no number', { ...stepAt3(1), step: '1' }],
+      ['on a route of no length', { ...stepAt3(1), of: null }],
+      ['with an id no step has', stepAt3(2 ** 24)],
+    ])('forgets a step hint %s', (_name, fill) => {
+      const [at3] = saved.cellHints!;
+      expect(
+        load({ cellHints: [{ ...at3, fill } as SerialisedCellHints] }).cellHints.get(3)?.fill ??
+          null,
+      ).toBeNull();
+    });
+
+    it('keeps a step hint with no unit, as a wing or a chain has', () => {
+      const [at3] = saved.cellHints!;
+      const fill = { ...stepAt3(1), unit: null };
+      expect(load({ cellHints: [{ ...at3, fill }] }).cellHints.get(3)?.fill).toEqual(fill);
     });
   });
 });
@@ -2116,7 +2427,12 @@ describe('serialiseGame / deserialiseGame', () => {
   it('lists every top-level field a save has as one this version knows', () => {
     // `saveGameBlob` carries over only fields not on this list, so one this
     // version writes but leaves off it could have a stale value brought back.
-    const checked = { ...play(rich, CHECK_GUESSES_ON), checkedCandidates: new Uint16Array(81) };
+    const checked = {
+      ...play(rich, CHECK_GUESSES_ON),
+      checkedCandidates: new Uint16Array(81),
+      seenSteps: { named: [1], shown: [2] },
+      hintedCell: 3,
+    };
     const everything = serialiseGame(checked);
     expect(Object.keys(everything).sort()).toEqual([...SERIALISED_GAME_FIELDS].sort());
   });

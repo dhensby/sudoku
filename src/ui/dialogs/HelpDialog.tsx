@@ -219,10 +219,21 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
           <ul className="help__list">
             <li>
               <strong>Hint</strong>, in the “…” menu, points at a cell you can fill next and names
-              the technique that gets you there, without giving the number away. It works from your
-              own candidates — the automatic ones less those you crossed out, or your notes, with a
-              cell you haven’t marked counting as having every candidate — so a step you have
-              already taken is never the one it points you to again.
+              the next step towards it, without giving the number away. Where the cell takes several
+              steps, it says how far there is to go — “Step 1 of 7: a box/line reduction in column
+              8.” — and tints where the step is on the board, which stays while you select cells in
+              it to make the step. Make the step and ask again, and it moves on: “Step 2 of 7”, and
+              so on to the single that fills the cell. It works from your own candidates — the
+              automatic ones less those you crossed out, or your notes, with a cell you haven’t
+              marked counting as having every candidate — so a step you have already taken is never
+              the one it points you to again, and it stays with its cell while you fill in others.
+            </li>
+            <li>
+              Each step a hint names counts as a hint, once: asking again before you have made it is
+              free, and so is a step you have already seen, however the route around it changes,
+              whichever cell it is on the way to. Come back to a cell after placing numbers
+              elsewhere, and if they have moved it on to a step you haven’t seen, it says so without
+              naming it: ask again for its next step.
             </li>
             <li>
               If you have crossed out a candidate, or left it out of your notes, when nothing rules
@@ -238,10 +249,11 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
             </li>
             <li>
               Still stuck? <strong>Show me</strong>, beside the hint, walks through the steps that
-              solve that cell, one at a time, each drawn on your own board, and ends with the
-              answer. Opening it counts as one more hint, the first time for each cell. If a number
-              on the board is wrong, or a candidate missing, it points at that instead, as Hint
-              would.
+              solve that cell, a page each, numbered as the hint numbers them, each drawn on your
+              own board, and ends with the answer. Each page counts as a hint the first time you see
+              it, and says so; going back to a page you have seen, or opening Show me again, is
+              free. A step you have seen on a page is free when a hint names it. If a number on the
+              board is wrong, or a candidate missing, it points at that instead, as Hint would.
             </li>
             <li>Hints are recorded next to your time, as checks and reveals are.</li>
             <li>
@@ -250,8 +262,8 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
               · 2 hints” — beside the timer (above the controls on a phone held upright), or just
               the counts, or their total (“Help 3”), where there is no room for more. It ticks each
               time help is counted, so you can see that asking again for a hint you already have was
-              free; Show me says what it cost as it opens; and Hint in the “…” menu says how many
-              you have used: “Hint (2 used)”. Turning it off only hides the count.
+              free; Show me says what each page cost as you turn to it; and Hint in the “…” menu
+              says how many you have used: “Hint (2 used)”. Turning it off only hides the count.
             </li>
           </ul>
         </section>

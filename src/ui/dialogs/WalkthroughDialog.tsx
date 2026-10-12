@@ -1,6 +1,6 @@
 import { useId, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
-import type { Walkthrough } from '../../core';
+import type { StepNumber, Walkthrough } from '../../core';
 import { describePosition } from '../announce';
 import { capitalise } from '../format';
 import { BookIcon } from '../icons';
@@ -24,6 +24,13 @@ export interface WalkthroughDialogProps {
   /** The step to open at, from 0: where the reader was before looking in the guide. */
   initialStep?: number;
   /**
+   * Where the first step falls on the cell's route, as the hint bar numbers
+   * it (see `stepNumbering`): with two steps of the route as first shown
+   * behind, "Step 3 of 7" — and the pages go on from there. Step 1 of the
+   * steps here by default.
+   */
+  numbering?: StepNumber;
+  /**
    * What opening it cost ("2 hints used."), shown after its introduction and
    * so said with it as it opens: the game's status region is outside the
    * dialog, hidden from a screen reader behind it, and the help taken beside
@@ -31,6 +38,24 @@ export interface WalkthroughDialogProps {
    * Null when it was free: opened again for a hint already counted.
    */
   charge?: string | null;
+  /**
+   * What turning to a page cost ("3 hints used."), shown on that page — `step`
+   * — under its heading, and said with it as focus moves to it: once, as it
+   * is turned to. Null, or another page's, says nothing.
+   */
+  pageCharge?: { step: number; text: string } | null;
+  /**
+   * A page on show, turned to: each new page counts as a hint (the hook
+   * keeps count, and hands back what it cost as `pageCharge`).
+   */
+  onStep?: (step: number) => void;
+  /**
+   * For each page, whether its step has been seen (see `Sudoku.seenPages`):
+   * Previous and Next name the technique of a page seen, and only its
+   * number for one not — that would tell, for free, what the page costs a
+   * hint to see. Every page seen by default.
+   */
+  seenPages?: readonly boolean[];
   /** Open the guide at a step's technique; `step` is where to come back to. */
   onOpenGuide: (entry: GuideId, step: number) => void;
   /**
@@ -49,14 +74,16 @@ function stepTitle(walkthrough: Walkthrough, step: number): string {
 
 interface PageProps {
   direction: 'previous' | 'next';
+  /** The page's technique, once its step has been seen; else its number ("Step 4 of 7"). */
   title: string;
   onClick: () => void;
 }
 
 /**
  * Previous or Next, showing which step it goes to, as the guide's do — and
- * named in full ("Next: Pointing pair or triple") by a label rather than by
- * its two lines of text, which browsers join with spaces of their own.
+ * named in full ("Next: Pointing pair or triple", or "Next: Step 4 of 7"
+ * for a page not yet seen) by a label rather than by its two lines of
+ * text, which browsers join with spaces of their own.
  */
 function Page({ direction, title, onClick }: PageProps) {
   const word = direction === 'previous' ? 'Previous' : 'Next';
@@ -79,7 +106,10 @@ function Page({ direction, title, onClick }: PageProps) {
  * "Show me": the steps that solve one cell, one at a time, each drawn on the
  * player's own board — their candidates — as it stands at that step — the cell being solved marked on
  * every one — with the guide's caption for its technique, a way into the
- * guide's entry for it, and, on the last, the answer.
+ * guide's entry for it, and, on the last, the answer. Numbered as the hint
+ * bar numbers the cell's route, so the page after the step the bar named is
+ * the step after it; each page seen for the first time counts as a hint,
+ * and says so.
  *
  * A carousel: Previous and Next are pinned at the foot, so on a phone they
  * stay under the thumb however long a caption is, and the last step ends
@@ -90,7 +120,11 @@ function Page({ direction, title, onClick }: PageProps) {
 export function WalkthroughDialog({
   walkthrough,
   initialStep = 0,
+  numbering,
   charge = null,
+  pageCharge = null,
+  onStep,
+  seenPages,
   onOpenGuide,
   autoCandidates = false,
   onClose,
@@ -104,8 +138,12 @@ export function WalkthroughDialog({
   const id = useId();
 
   const show = (step: number) => {
-    // Committed at once, so the new heading is there to focus.
-    flushSync(() => setCurrent(step));
+    // Committed at once — the page, and what turning to it cost — so the new
+    // heading is there to focus, described by its cost.
+    flushSync(() => {
+      setCurrent(step);
+      onStep?.(step);
+    });
     // The dialog's body is what scrolls (see Dialog), and the steps are always in it.
     rootRef.current!.closest('.dialog__body')!.scrollTop = 0;
     focusQuietly(headingRef.current);
@@ -119,15 +157,21 @@ export function WalkthroughDialog({
   const position = describePosition(target);
   const introId = `${id}-intro`;
   const headingId = `${id}-heading`;
-  const count = `Step ${current + 1} of ${steps.length}`;
+  const chargeId = `${id}-charge`;
+  const { step: first, of } = numbering ?? { step: 1, of: steps.length };
+  const count = `Step ${first + current} of ${of}`;
+  const turnCharge = pageCharge?.step === current ? pageCharge.text : null;
   const title = stepTitle(walkthrough, current);
+  /** What Previous or Next calls page `step`: see `seenPages`. */
+  const pageTitle = (step: number) =>
+    seenPages?.[step] === false ? `Step ${first + step} of ${of}` : stepTitle(walkthrough, step);
 
   const footer = (
     <nav className="walkthrough__pager" aria-label="Steps">
       {current > 0 && (
         <Page
           direction="previous"
-          title={stepTitle(walkthrough, current - 1)}
+          title={pageTitle(current - 1)}
           onClick={() => show(current - 1)}
         />
       )}
@@ -140,11 +184,7 @@ export function WalkthroughDialog({
           Done
         </button>
       ) : (
-        <Page
-          direction="next"
-          title={stepTitle(walkthrough, current + 1)}
-          onClick={() => show(current + 1)}
-        />
+        <Page direction="next" title={pageTitle(current + 1)} onClick={() => show(current + 1)} />
       )}
     </nav>
   );
@@ -180,6 +220,7 @@ export function WalkthroughDialog({
               // Named outright: its two lines are set as blocks, and browsers
               // join blocks' words with spaces of their own, or none.
               aria-label={`${count}: ${title}`}
+              aria-describedby={turnCharge === null ? undefined : chargeId}
               data-autofocus
             >
               <span className="walkthrough__count">{count}</span>
@@ -193,6 +234,11 @@ export function WalkthroughDialog({
               <BookIcon className="walkthrough__question-icon" />
               {techniqueQuestion(technique)}
             </button>
+            {turnCharge !== null && (
+              <p className="walkthrough__charge walkthrough__charge--page" id={chargeId}>
+                {turnCharge}
+              </p>
+            )}
           </header>
           <TechniqueDiagram
             trace={trace}

@@ -1,6 +1,6 @@
 import { checkGivens } from './codec';
 import type { GameState } from './game';
-import { bit } from './grid';
+import { bit, gridValues } from './grid';
 import { analyseMistakes, type MistakeEvent } from './mistakes';
 import {
   MOVE_LOG_FORMAT,
@@ -11,7 +11,8 @@ import {
   type LoggedMove,
   type MoveLog,
 } from './moves';
-import type { Difficulty, Digit, Puzzle } from './types';
+import type { Difficulty, Digit, Puzzle, Values } from './types';
+import { showMeRoute, stepId, type StepNumber } from './walkthrough';
 
 /*
  * Playback: a solved game shown again move by move, from nothing but its
@@ -22,8 +23,8 @@ import type { Difficulty, Digit, Puzzle } from './types';
  * Everything a player sees while watching is worked out here, once, as the
  * playback is prepared: the game after every move (the reducer replays the
  * log, so the candidates, marks and help are exactly as they were), the cell
- * each move acted on, what a candidate move did (pencilled, struck, a value cleared), the
- * mistakes each move made and how they came out (`mistakes.ts`), and the
+ * each move acted on, what a candidate move did (pencilled, struck, a value cleared), which
+ * step of its cell's route a page of Show me showed, the mistakes each move made and how they came out (`mistakes.ts`), and the
  * marks along the scrubber. The words are the UI's (`src/ui/playbackText.ts`):
  * the engine speaks no English.
  *
@@ -93,14 +94,26 @@ export type CandidateChange = Extract<LoggedMove, { readonly op: 'candidate' }> 
   readonly cleared: Digit | null;
 };
 
+/** A page of Show me, with what the log leaves implicit (see `MoveChange`). */
+export type PageChange = Extract<LoggedMove, { readonly op: 'page' }> & {
+  /**
+   * The page's place on its cell's route, as Show me numbered it ("Step 3
+   * of 7"); null for a step the route then had no page for, which only a
+   * log from outside could hold.
+   */
+  readonly page: StepNumber | null;
+};
+
 /**
- * What a move did, for its caption: its move — and, for a candidate move,
- * what the log leaves implicit: what it did to the digit's candidate and the
- * value it cleared, worked out from the game before and after it (as
+ * What a move did, for its caption: its move — and what the log leaves
+ * implicit. For a candidate move, what it did to the digit's candidate and
+ * the value it cleared, worked out from the game before and after it (as
  * `mistakes.ts` judges a struck answer), not from what was on show, which a
- * filled cell has none of.
+ * filled cell has none of. For a page of Show me, which page it was: the log
+ * holds only its step's id.
  */
-export type MoveChange = Exclude<LoggedMove, { readonly op: 'candidate' }> | CandidateChange;
+export type MoveChange =
+  Exclude<LoggedMove, { readonly op: 'candidate' | 'page' }> | CandidateChange | PageChange;
 
 /** One move of a playback, and the game after it. */
 export interface PlaybackFrame {
@@ -113,7 +126,7 @@ export interface PlaybackFrame {
   /**
    * The cell the move acted on, outlined while it is on show: where a digit
    * or note went, the cell erased, checked, revealed or hinted at, the cell
-   * Show me solved, the cell an Undo or Redo changed. Null for a move about
+   * Show me (or a page of it) solved, the cell an Undo or Redo changed. Null for a move about
    * no one cell — checking the puzzle, switching a setting or auto
    * candidates (which change every cell), Reset, a hint off the grid, an
    * Undo of a change to every cell.
@@ -152,6 +165,7 @@ export type PreparedPlayback =
 const HELP_OPS: ReadonlySet<LoggedMove['op']> = new Set([
   'hint',
   'walkthrough',
+  'page',
   'checkCell',
   'checkPuzzle',
   'reveal',
@@ -188,6 +202,7 @@ function cellOf(move: LoggedMove, before: GameState): number | null {
     case 'candidate':
     case 'erase':
     case 'walkthrough':
+    case 'page':
     case 'checkCell':
     case 'reveal':
       return move.cell;
@@ -203,11 +218,38 @@ function cellOf(move: LoggedMove, before: GameState): number | null {
 }
 
 /**
+ * Which page of its cell's Show me a page move showed, numbered as Show me
+ * numbered it. Show me walks the route from the board as it was when it
+ * opened, held to the solution, numbered on from the cell's last step hint
+ * (see `showMeRoute`, which both use) — and a page turned changes neither the
+ * board nor the hint, so the board before the move rebuilds it. The log's
+ * id picks out the page; null if it names none of them.
+ */
+function pageOf(
+  move: Extract<LoggedMove, { readonly op: 'page' }>,
+  before: GameState,
+  solution: Values,
+): StepNumber | null {
+  const route = showMeRoute(before, move.cell, solution);
+  const at = route?.walkthrough.steps.findIndex(({ step }) => stepId(step) === move.id) ?? -1;
+  if (at === -1) return null;
+  const { step, of } = route!.numbering;
+  return { step: step + at, of };
+}
+
+/**
  * The move with what it did (see `MoveChange`): for a candidate move, whether
  * the digit left the cell's candidates (a note turned off, or a computed
- * candidate struck out) or joined them, and the value it cleared.
+ * candidate struck out) or joined them, and the value it cleared; for a
+ * page of Show me, which page it was.
  */
-function changeOf(move: LoggedMove, before: GameState, after: GameState): MoveChange {
+function changeOf(
+  move: LoggedMove,
+  before: GameState,
+  after: GameState,
+  solution: Values,
+): MoveChange {
+  if (move.op === 'page') return { ...move, page: pageOf(move, before, solution) };
   if (move.op !== 'candidate') return move;
   const mask = bit(move.digit);
   const was = before.cells[move.cell];
@@ -258,6 +300,7 @@ export function preparePlayback(
   const puzzle: Puzzle = { givens, solution: check.solution, difficulty };
 
   const { events } = analyseMistakes(puzzle, log);
+  const solution = gridValues(puzzle.solution);
   const byMove = new Map<number, MistakeEvent[]>();
   for (const event of events) byMove.set(event.move, [...(byMove.get(event.move) ?? []), event]);
   let start: GameState | null = null;
@@ -266,7 +309,7 @@ export function preparePlayback(
     start ??= before;
     frames.push({
       index,
-      change: changeOf(move, before, after),
+      change: changeOf(move, before, after, solution),
       state: after,
       cell: cellOf(move, before),
       mistakes: byMove.get(index) ?? [],

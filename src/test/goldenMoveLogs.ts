@@ -33,6 +33,7 @@ import {
   solveWithAutoCandidates,
   solveWithNotes,
   startPlaying,
+  stepHintsTour,
   thinking,
   tourTheRules,
   type Played,
@@ -94,10 +95,18 @@ export interface PinnedState {
   assists: string;
   /**
    * Each cell's remembered hints, as `cell:fill:mistake value:walkthrough`,
-   * and `:struck/Show me` after a cell with a wrong-marks hint — only
-   * then, so the logs pinned before there were any pin as they did.
+   * and `:struck/Show me` after a cell with a wrong-marks hint — only then,
+   * so the logs pinned before there were any pin as they did. A step hint's
+   * fill says where its step falls, its hardest technique and its id as well.
    */
   cellHints: string;
+  /**
+   * The steps seen, as `named/shown`, ids dot-separated: left out when there
+   * are none, so the logs pinned before steps were named pin as they did.
+   */
+  seenSteps?: string;
+  /** The cell the last step hint was about: left out when none, for the same reason. */
+  hintedCell?: number;
   undo: number;
   redo: number;
 }
@@ -118,6 +127,7 @@ export function pinnedState(state: GameState): PinnedState {
   const { autoCandidates, hints, checks, reveals, checkGuesses } = state.assists;
   // Said only once it was ever on, for the same reason as `checkGuesses`.
   const checked = checkGuesses === true ? ' checkGuesses:true' : '';
+  const { seenSteps } = state;
   return {
     values: formatGrid(valuesOf(state)),
     marks: state.cells.map((cell) => MARK_CODES[cell.mark]).join(''),
@@ -131,12 +141,20 @@ export function pinnedState(state: GameState): PinnedState {
       .sort(([a], [b]) => a - b)
       .map(([index, { fill, mistake, walkthrough, struck }]) => {
         const unit =
-          fill?.kind === 'single' && fill.unit ? `${fill.unit.kind}${fill.unit.index}` : '';
-        const filled = fill === null ? '-' : `${fill.kind}/${fill.technique}/${unit}`;
+          fill !== null && fill.kind !== 'deduction' && fill.unit
+            ? `${fill.unit.kind}${fill.unit.index}`
+            : '';
+        const route =
+          fill?.kind === 'step' ? `/${fill.step}of${fill.of}/${fill.hardest}/${fill.id}` : '';
+        const filled = fill === null ? '-' : `${fill.kind}/${fill.technique}/${unit}${route}`;
         const marks = struck === null ? '' : `:struck/${struck.walkthrough}`;
         return `${index}:${filled}:${mistake?.value ?? 0}:${walkthrough}${marks}`;
       })
       .join(' '),
+    ...(seenSteps.named.length + seenSteps.shown.length === 0
+      ? {}
+      : { seenSteps: `${seenSteps.named.join('.')}/${seenSteps.shown.join('.')}` }),
+    ...(state.hintedCell === -1 ? {} : { hintedCell: state.hintedCell }),
     undo: state.undoStack.length,
     redo: state.redoStack.length,
   };
@@ -210,7 +228,8 @@ function entered(step: ReplayStep, op: 'place' | 'candidate') {
 function hinted(step: ReplayStep, kind: 'fill' | 'mistake' | 'struck') {
   if (step.move.op !== 'hint' || step.move.hint.index < 0) return null;
   const { kind: hint } = step.move.hint;
-  if ((hint === 'single' || hint === 'deduction' ? 'fill' : hint) !== kind) return null;
+  const isFill = hint === 'single' || hint === 'deduction' || hint === 'step';
+  if ((isFill ? 'fill' : hint) !== kind) return null;
   const { index } = step.move.hint;
   return {
     cell: step.before.cells[index],
@@ -219,6 +238,26 @@ function hinted(step: ReplayStep, kind: 'fill' | 'mistake' | 'struck') {
     was: step.before.cellHints.get(index),
     is: step.after.cellHints.get(index),
   };
+}
+
+/** A step hint about a cell: the hint, the cell's remembered hints and the steps seen before it. */
+function stepHinted(step: ReplayStep) {
+  if (step.move.op !== 'hint' || step.move.hint.kind !== 'step') return null;
+  const { hint } = step.move;
+  const was = step.before.cellHints.get(hint.index);
+  return { hint, was, seen: step.before.seenSteps };
+}
+
+/** Whether a step hint names a step seen before it, named or on a page. */
+function isSeenStep(h: NonNullable<ReturnType<typeof stepHinted>>): boolean {
+  return h.seen.named.includes(h.hint.id) || h.seen.shown.includes(h.hint.id);
+}
+
+/** A page of Show me: its cell's remembered hints, and the steps seen on pages, before it. */
+function paged(step: ReplayStep) {
+  if (step.move.op !== 'page') return null;
+  const was = step.before.cellHints.get(step.move.cell);
+  return { was, shown: step.before.seenSteps.shown };
 }
 
 /** A Reset: whether the board changed, and what the game held before. */
@@ -615,6 +654,148 @@ export const GOLDEN_SITUATIONS: readonly {
       after === before &&
       before.cellHints.get(move.cell)?.struck?.walkthrough === true,
   },
+  // The next step towards a cell, and Show me a page at a time
+  {
+    name: 'a step hint for a cell that has had none, its step new, counted and remembered',
+    occurs: (step) => {
+      const h = stepHinted(step);
+      return (
+        !!h &&
+        h.was?.fill?.kind !== 'step' &&
+        !isSeenStep(h) &&
+        hintsTaken(step) === 1 &&
+        step.after.seenSteps.named.includes(h.hint.id) &&
+        step.after.hintedCell === h.hint.index
+      );
+    },
+  },
+  {
+    name: 'the next step for a cell, after progress on its route, counted',
+    occurs: (step) => {
+      const h = stepHinted(step);
+      return (
+        !!h &&
+        h.was?.fill?.kind === 'step' &&
+        h.was.fill.id !== h.hint.id &&
+        !isSeenStep(h) &&
+        hintsTaken(step) === 1
+      );
+    },
+  },
+  {
+    name: 'a step hint asked for again, nothing changed, for free',
+    occurs: (step) => {
+      const h = stepHinted(step);
+      return (
+        !!h &&
+        hintsTaken(step) === 0 &&
+        h.was?.fill?.kind === 'step' &&
+        h.was.fill.id === h.hint.id &&
+        h.was.fill.step === h.hint.step &&
+        h.was.fill.of === h.hint.of
+      );
+    },
+  },
+  {
+    name: 'a step named before, on its route planned afresh, for free',
+    occurs: (step) => {
+      const h = stepHinted(step);
+      return (
+        !!h &&
+        hintsTaken(step) === 0 &&
+        h.seen.named.includes(h.hint.id) &&
+        h.was?.fill?.kind === 'step' &&
+        (h.was.fill.id !== h.hint.id || h.was.fill.step !== h.hint.step)
+      );
+    },
+  },
+  {
+    name: 'a step hint for a step seen on a page of Show me, for free',
+    occurs: (step) => {
+      const h = stepHinted(step);
+      return (
+        !!h &&
+        hintsTaken(step) === 0 &&
+        h.seen.shown.includes(h.hint.id) &&
+        !h.seen.named.includes(h.hint.id)
+      );
+    },
+  },
+  {
+    name: 'a step hint for a cell that has had none, its step seen on the way to another, for free',
+    occurs: (step) => {
+      const h = stepHinted(step);
+      return !!h && h.was?.fill?.kind !== 'step' && isSeenStep(h) && hintsTaken(step) === 0;
+    },
+  },
+  {
+    name: 'a hint of the kind before steps, for a cell that has had a step hint, for free',
+    occurs: (step) => {
+      const h = hinted(step, 'fill');
+      return (
+        !!h &&
+        step.move.op === 'hint' &&
+        step.move.hint.kind !== 'step' &&
+        h.was?.fill?.kind === 'step' &&
+        hintsTaken(step) === 0
+      );
+    },
+  },
+  {
+    name: 'Show me’s page for a step not seen on one, counted',
+    occurs: (step) => {
+      const p = paged(step);
+      return !!p && p.shown.length === 0 && hintsTaken(step) === 1;
+    },
+  },
+  {
+    name: 'a page of Show me not seen before, after one that was, counted',
+    occurs: (step) => {
+      const p = paged(step);
+      return !!p && p.shown.length > 0 && hintsTaken(step) === 1;
+    },
+  },
+  {
+    name: 'Show me opened again at a page seen, for free',
+    occurs: (step) => {
+      const p = paged(step);
+      return (
+        !!p && step.after === step.before && p.shown.includes((step.move as { id: number }).id)
+      );
+    },
+  },
+  {
+    name: 'a page of Show me for a cell whose hint is of the kind before steps, counted',
+    occurs: (step) => {
+      const p = paged(step);
+      return !!p && !!p.was?.fill && p.was.fill.kind !== 'step' && hintsTaken(step) === 1;
+    },
+  },
+  {
+    name: 'a page of Show me for a cell whose Show me was counted once a cell, for free',
+    occurs: (step) => {
+      const p = paged(step);
+      return (
+        !!p &&
+        p.was?.walkthrough === true &&
+        !p.shown.includes((step.move as { id: number }).id) &&
+        step.after === step.before
+      );
+    },
+  },
+  {
+    name: 'a Reset forgetting the steps seen and the cell the last step hint was about',
+    occurs: (step) => {
+      const r = resetOf(step);
+      return (
+        !!r &&
+        r.before.seenSteps.named.length > 0 &&
+        r.before.hintedCell !== -1 &&
+        step.after.seenSteps.named.length === 0 &&
+        step.after.hintedCell === -1
+      );
+    },
+  },
   // Check guesses when entered
   {
     name: 'Check guesses switched on, judging nothing already entered',
@@ -809,6 +990,11 @@ const GOLDEN_GAMES: readonly { name: string; puzzle: Puzzle; play: () => Played 
     name: 'Expert, hints from the player’s own candidates, and the wrong-marks hint',
     puzzle: CANDIDATE_HINTS_PUZZLE,
     play: () => candidateHintsTour(createRng('golden/candidate-hints')),
+  },
+  {
+    name: 'Expert, the next step towards a cell, and Show me a page at a time',
+    puzzle: CANDIDATE_HINTS_PUZZLE,
+    play: () => stepHintsTour(createRng('golden/step-hints')),
   },
 ];
 

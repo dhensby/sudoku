@@ -369,6 +369,8 @@ export function App({ options }: AppProps = {}) {
                     onToggleCandidate={actions.toggleCandidate}
                     takeFocusRequest={takeFocusRequest}
                     describedBy={isCellDescribed ? hintTextId : undefined}
+                    // Where the step the hint bar names is, tinted with it.
+                    tinted={isHintShown ? sudoku.hintTint : undefined}
                   />
                 ) : (
                   <BoardOverlay
@@ -382,6 +384,8 @@ export function App({ options }: AppProps = {}) {
               </div>
               <HintBar
                 hint={isHintShown ? sudoku.shownHint : null}
+                houses={sudoku.hintHouses}
+                isMovedOn={sudoku.isHintMovedOn}
                 textId={hintTextId}
                 onShowMe={sudoku.isShowMeOffered ? actions.showMe : null}
                 notice={sudoku.notice}
@@ -486,7 +490,11 @@ export function App({ options }: AppProps = {}) {
           <WalkthroughDialog
             walkthrough={dialog.walkthrough}
             initialStep={dialog.step}
+            numbering={dialog.numbering}
             charge={dialog.charge ?? null}
+            pageCharge={dialog.pageCharge ?? null}
+            seenPages={sudoku.seenPages}
+            onStep={actions.showStep}
             onOpenGuide={actions.openTechniques}
             autoCandidates={sudoku.game?.autoCandidates}
             onClose={actions.closeDialog}

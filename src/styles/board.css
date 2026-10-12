@@ -156,6 +156,16 @@
   background: var(--hl-same-given);
 }
 
+/* The houses of the step a hint names (see Board), in place of the
+   selection's row, column and box while the hint is on show. */
+.cell--step {
+  background: var(--hl-step);
+}
+
+.cell--given.cell--step {
+  background: var(--hl-step-given);
+}
+
 .cell--correct {
   color: var(--digit-correct);
 }
@@ -489,7 +499,7 @@
    highlight that means something. */
 @media (hover: hover) {
   .board:not([aria-readonly='true'], .board--read-only)
-    .cell:not(.cell--given, .cell--peer, .cell--same, .cell--selected):hover {
+    .cell:not(.cell--given, .cell--peer, .cell--same, .cell--step, .cell--selected):hover {
     background: var(--hl-peer);
   }
 }
@@ -687,7 +697,9 @@
    which index.css remaps to system colours in this mode — grid lines
    CanvasText, givens ButtonFace, the selection Highlight with every ink and
    mark on it HighlightText. What is left is marking givens by more than a
-   fill that can match Canvas in some themes, and a heavier focus line.
+   fill that can match Canvas in some themes, the cells of a hinted step
+   likewise (their tint has no system colour: it falls back to the cell's
+   own), and a heavier focus line.
    ========================================================================== */
 
 @media (forced-colors: active) {
@@ -699,6 +711,23 @@
   .cell--given {
     outline: 1px solid GrayText;
     outline-offset: -4px;
+  }
+
+  /* A dashed line inside each cell of the step a hint names, as the
+     technique guide dashes its shaded houses here: a wing's or a chain's
+     cells are named nowhere in the hint's words, so without the tint this
+     is all that says where the step is. Heavier and further in than a
+     given's solid line, which it takes the place of on a given — still told
+     apart by its ButtonFace fill and its CanvasText digit. In the block's
+     own ink on the selection, as the focus line is; focus, which comes
+     after, draws over it. */
+  .cell--step {
+    outline: 2px dashed CanvasText;
+    outline-offset: -6px;
+  }
+
+  .cell--step.cell--selected {
+    outline-color: HighlightText;
   }
 
   .cell:focus-visible {

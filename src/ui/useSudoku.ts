@@ -8,24 +8,34 @@ import {
   explainCell,
   explainHint,
   findHint,
+  findStepRoute,
   formatDuration,
   gridValues,
   hintBoardOf,
   isBoardFull,
+  showMeRoute,
   shownHint,
+  stepHint,
+  stepId,
   toSeconds,
+  unitCells,
   walkthroughHint,
   type DateKey,
   type Difficulty,
   type Digit,
   type Direction,
-  type GridString,
+  type GameAction,
   type GameState,
+  type GridString,
   type Hint,
   type InputMode,
   type MistakeTally,
   type Puzzle,
+  type SolveStep,
   type SolverBoard,
+  type StepNumber,
+  type TechniqueId,
+  type Unit,
   type Walkthrough,
 } from '../core';
 import { ArchiveUnavailableError, dailies as appDailies, type DailyStore } from '../daily/dailies';
@@ -65,7 +75,12 @@ import {
 } from '../storage/prefs';
 import { DIFFICULTIES, browserStorage, type StorageLike } from '../storage/storage';
 import type { DailyLedger } from '../storage/streaks';
-import { describeCharge, describeChange, type DescribedAction } from './announce';
+import {
+  describeCharge,
+  describeChange,
+  type DescribeOptions,
+  type DescribedAction,
+} from './announce';
 import { capitalise, DIFFICULTY_LABEL } from './format';
 import { dailyPhrase, statusesOn, streakNote, type StreakNote } from './daily';
 import type { TodayDailies } from './DifficultyMenu';
@@ -200,16 +215,28 @@ export interface CalendarView {
   today: DateKey;
 }
 
-/** "Show me" open: the steps that solve the hinted cell, at `step` (from 0). */
+/** "Show me" open: the steps that solve the hinted cell, a page each, at `step` (from 0). */
 export interface WalkthroughView {
   kind: 'walkthrough';
   walkthrough: Walkthrough;
   step: number;
   /**
+   * Where its first page falls on the cell's route, numbered as the hint bar
+   * numbers it (see `stepNumbering`): "Step 3 of 7" when two steps of the
+   * route as first shown are behind. Its first page alone when absent.
+   */
+  numbering?: StepNumber;
+  /**
    * What opening it cost, said as it opens ("2 hints used."), while "Show
    * help taken" is on; null when it was free, or once back from the guide.
    */
   charge?: string | null;
+  /**
+   * What turning to a page cost ("3 hints used."), and the page, said on
+   * that page as it is turned to — once: turning to it again is free, and
+   * says nothing. Null when the last page turned to was free.
+   */
+  pageCharge?: { step: number; text: string } | null;
 }
 
 /**
@@ -320,6 +347,13 @@ export interface SudokuActions {
    */
   showMe: () => void;
   /**
+   * From Show me: its page `step` (from 0) on show. The first time that
+   * step is seen on a page, on whichever cell's route, it counts as a hint
+   * (see the reducer's `showStep` and `GameState.seenSteps`), and the page
+   * says so; after that it is free.
+   */
+  showStep: (step: number) => void;
+  /**
    * From the wrong-marks hint's Show me: put the missing digit back among
    * its cell's candidates, as an ordinary candidate entry (undoable, and
    * logged as one), closing the page.
@@ -420,9 +454,17 @@ export interface Sudoku {
   /**
    * The hint for the hint bar: the one just asked for, until the next
    * change, and otherwise the selected cell's remembered hint (`shownHint`)
-   * — a fill hint put afresh for the board as it now stands.
+   * — a fill hint put afresh for the board as it now stands, as far as the
+   * player has paid to see it (see `isHintMovedOn`).
    */
   shownHint: Hint | null;
+  /**
+   * Whether the step hint on show is one the board has moved on from: its
+   * cell's next step now is one the player hasn't seen, so the bar says
+   * only that, and Hint names it — counted, as any new step is. Never
+   * named here for free.
+   */
+  isHintMovedOn: boolean;
   /**
    * The steps "Show me" walks through for that hint, if it has any, read
    * from the board as the player sees it. Pressed with a mistake on the
@@ -435,6 +477,26 @@ export interface Sudoku {
    * the solution, so it gives nothing away.
    */
   isShowMeOffered: boolean;
+  /**
+   * The houses of the step a step hint on show names, from its walkthrough,
+   * which it is the first step of — for the bar to say where a step is that
+   * the hint's one house doesn't (an X-Wing's rows); none for any other
+   * hint.
+   */
+  hintHouses: readonly Unit[];
+  /**
+   * The cells to tint for the step the last step hint named (see
+   * `tintOf`): while the bar shows it, and while the player works on it in
+   * those cells — selecting one to make the step keeps the tint, where the
+   * bar's words, which are about the hinted cell, go. None otherwise.
+   */
+  hintTint: readonly number[];
+  /**
+   * For each page of the open Show me, whether its step has been seen —
+   * named by a hint or on a page — so Next can name the page after it
+   * without giving away what it hasn't paid for. Empty with no Show me open.
+   */
+  seenPages: readonly boolean[];
   /** The record of the game on screen. */
   record: GameRecord | null;
   /**
@@ -522,6 +584,12 @@ const BAD_LINK_KEPT = "That puzzle link doesn't work, so here's the game you wer
 
 const NO_MODIFIERS: ReadonlySet<string> = new Set();
 
+const NO_HOUSES: readonly Unit[] = [];
+
+const NO_CELLS: readonly number[] = [];
+
+const NO_PAGES: readonly boolean[] = [];
+
 /**
  * A puzzle being generated. Each request is a fresh object, so asking again
  * for the same tier (a retry) is still a change the generation effect sees.
@@ -569,17 +637,122 @@ function walkthroughFor(game: GameState | null): Walkthrough | null {
   return explainHint(checkedBoardOf(game), hint);
 }
 
+/** What the hint bar shows (see `hintOnShow`). */
+interface HintView {
+  hint: Hint | null;
+  /** See `Sudoku.isHintMovedOn`. */
+  isMovedOn: boolean;
+  /** The step a step hint names, as its walkthrough has it; null for any other hint. */
+  step: SolveStep | null;
+}
+
+const NO_HINT_VIEW: HintView = { hint: null, isMovedOn: false, step: null };
+
+/** Whether a step (see `stepId`) has been seen — named by a hint or on a page — and so paid for. */
+function isSeenStep(game: GameState, id: number): boolean {
+  return game.seenSteps.named.includes(id) || game.seenSteps.shown.includes(id);
+}
+
 /**
- * The hint for the hint bar (see `shownHint`), with a cell's remembered
- * fill hint put afresh from its walkthrough: the board may have moved on
- * since it was given, and the bar must name what Show me beside it shows —
- * not the hidden pair a cell needed three moves ago, when a single will do
- * now. A hint just asked for is shown as it was given (and spoken).
+ * The hint for the hint bar (see `shownHint`). A hint just asked for is
+ * shown as it was given (and spoken). A cell's remembered fill hint is put
+ * afresh from its walkthrough: the board may have moved on since it was
+ * given, and the bar must not name what Show me beside it no longer shows —
+ * the hidden pair a cell needed three moves ago, when a single will do now.
+ *
+ * A step hint is put afresh as the next step on the route as it now stands,
+ * numbered on from the hint it was (see `stepNumbering`) — but only if that
+ * step has been seen, named by a hint or on a page: the bar never names a
+ * step for free that Hint would count. One that hasn't is the board having
+ * moved on (`isMovedOn`), and the bar says so without naming it. The hints
+ * from before steps were named are put afresh as they always were (see
+ * `walkthroughHint`).
  */
-function hintOnShow(game: GameState, walkthrough: Walkthrough | null): Hint | null {
+function hintOnShow(game: GameState, walkthrough: Walkthrough | null): HintView {
   const hint = shownHint(game);
-  if (game.hint !== null || walkthrough === null || hint === null) return hint;
-  return walkthroughHint(walkthrough);
+  if (hint === null) return NO_HINT_VIEW;
+  if (hint.kind !== 'step') {
+    const isFill = hint.kind === 'single' || hint.kind === 'deduction';
+    const isAfresh = game.hint === null && walkthrough !== null && isFill;
+    return { hint: isAfresh ? walkthroughHint(walkthrough) : hint, isMovedOn: false, step: null };
+  }
+  if (walkthrough?.target !== hint.index) return { hint, isMovedOn: false, step: null };
+  const first = walkthrough.steps[0].step;
+  if (game.hint !== null) {
+    // Read from the same board as the hint, so the same step — checked all
+    // the same, as the tint and words must be the step the hint named.
+    return { hint, isMovedOn: false, step: stepId(first) === hint.id ? first : null };
+  }
+  const afresh = stepHint(walkthrough, hint);
+  return isSeenStep(game, afresh.id)
+    ? { hint: afresh, isMovedOn: false, step: first }
+    : { hint, isMovedOn: true, step: null };
+}
+
+/** The techniques whose cells are tinted rather than houses: see `tintOf`. */
+const CELL_TINTED: ReadonlySet<TechniqueId> = new Set([
+  'xyWing',
+  'xyzWing',
+  'xyChain',
+  'alternatingChain',
+]);
+
+/**
+ * The cells to tint for a step hint and the step it names: the step's
+ * houses — or, for a naked single on the way, the box the hint names it in
+ * (see `stepHint`) — so the player sees where to look. A wing or a chain,
+ * whose houses are none or many, has its own cells tinted instead. None for
+ * the hinted cell's own single, the last step, which the selection marks as
+ * any single's hint is marked; and none for any other hint.
+ */
+function tintOf(hint: Hint | null, step: SolveStep | null): readonly number[] {
+  if (hint?.kind !== 'step' || step === null) return NO_CELLS;
+  // The hinted cell's own single: its house in place of the selection's
+  // peers would hide the very row, column and box the player reads it from.
+  if (step.placement?.index === hint.index) return NO_CELLS;
+  if (CELL_TINTED.has(step.technique)) return step.pattern.map(({ index }) => index);
+  const houses = step.houses.length > 0 ? step.houses : hint.unit === null ? [] : [hint.unit];
+  if (houses.length === 0) return NO_CELLS;
+  return [...new Set(houses.flatMap(unitCells))];
+}
+
+/**
+ * The walkthrough to the cell the last step hint was about (see
+ * `GameState.hintedCell`), read from the board a remembered hint is put
+ * afresh from (see `checkedBoardOf`); null with none, or once it is filled.
+ */
+function hintedRouteOf(
+  cells: GameState['cells'],
+  checkedCandidates: GameState['checkedCandidates'],
+  hintedCell: number,
+): Walkthrough | null {
+  if (hintedCell === -1 || cells[hintedCell].value !== 0) return null;
+  return explainCell(checkedBoardOf({ cells, checkedCandidates }), hintedCell);
+}
+
+/**
+ * The tint for the step the last step hint named, while the player works on
+ * it away from the hinted cell (see `Sudoku.hintTint`): the selection in one
+ * of its cells, nothing else on the bar, and the step one the player has
+ * seen. Null when it doesn't apply.
+ */
+function workingTint(game: GameState, route: Walkthrough | null): readonly number[] | null {
+  const fill = route === null ? null : game.cellHints.get(route.target)?.fill;
+  if (route === null || fill?.kind !== 'step') return null;
+  const hint = stepHint(route, fill);
+  if (!isSeenStep(game, hint.id)) return null;
+  const tint = tintOf(hint, route.steps[0].step);
+  return tint.includes(game.selected) ? tint : null;
+}
+
+/**
+ * For each page of a walkthrough, whether its step has been seen (see
+ * `Sudoku.seenPages`) — every page, for a cell whose Show me an older build
+ * counted once for them all (see the reducer's `showStep`).
+ */
+function seenPagesOf(game: GameState, walkthrough: Walkthrough): readonly boolean[] {
+  const isPaid = game.cellHints.get(walkthrough.target)?.walkthrough === true;
+  return walkthrough.steps.map(({ step }) => isPaid || isSeenStep(game, stepId(step)));
 }
 
 /**
@@ -754,6 +927,15 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     session === null || session.game.status === 'solved' ? null : friendSolveOf(session.record);
   // And the one the Solved dialog's, or the offer's, head-to-head offers.
   const dialogSolve = dialogFriendSolve(dialog, session);
+  // The route to the cell the last step hint was about, for its tint while
+  // the player works elsewhere on the board: kept while the selection moves.
+  const cells = game?.cells;
+  const checkedCandidates = game?.checkedCandidates ?? null;
+  const hintedCell = game?.hintedCell ?? -1;
+  const hintedRoute = useMemo(
+    () => (cells === undefined ? null : hintedRouteOf(cells, checkedCandidates, hintedCell)),
+    [cells, checkedCandidates, hintedCell],
+  );
   const effectiveMode: InputMode =
     game === null ? 'normal' : heldModifiers.size > 0 ? flip(game.mode) : game.mode;
 
@@ -1197,7 +1379,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
    * effect would only see it a render later, and the time must be taken from
    * the clock at the moment of the move.
    */
-  const run = (action: DescribedAction): void => {
+  const run = (action: DescribedAction, describe: DescribeOptions = {}): void => {
     if (session === null || (phase !== 'playing' && phase !== 'solved')) return;
     const previous = session.game;
     const advanced = advance(session, action, clock());
@@ -1211,7 +1393,10 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     }
 
     const said = withCharge(
-      describeChange(previous, next, action, { conflicts: settings.highlightConflicts }),
+      describeChange(previous, next, action, {
+        ...describe,
+        conflicts: settings.highlightConflicts,
+      }),
       previous,
       next,
     );
@@ -1482,15 +1667,27 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     undo: () => run({ type: 'undo' }),
     redo: () => run({ type: 'redo' }),
     hint: () => {
-      if (game === null || phase !== 'playing') return;
-      // Found here, not in the reducer, which only records it.
-      run({ type: 'hint', hint: findHint(hintBoardOf(game), gridValues(game.puzzle.solution)) });
+      if (session === null || phase !== 'playing') return;
+      const { game: current } = session;
+      // Found here, not in the reducer, which only records it: the next step
+      // towards the cell the last step hint was about while it can be
+      // reached, numbered on from the hint that cell last had. Spoken with
+      // the houses of that step, which the hint itself names only one of.
+      const { hint, route } = findStepRoute(
+        hintBoardOf(current),
+        gridValues(current.puzzle.solution),
+        {
+          prefer: current.hintedCell,
+          previous: (index) => current.cellHints.get(index)?.fill ?? null,
+        },
+      );
+      run({ type: 'hint', hint }, { stepHouses: route?.steps[0].step.houses });
     },
     showMe: () => {
       // Only from the hint bar, which offers it only while the board shows.
       if (session === null || phase !== 'playing') return;
       const { game: current } = session;
-      const shown = hintOnShow(current, walkthrough);
+      const { hint: shown } = hintOnShow(current, walkthrough);
       const struck = shown?.kind === 'struck' ? shown.index : null;
       if (walkthrough === null && struck === null) return;
       const board = hintBoardOf(current);
@@ -1504,8 +1701,13 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       // the mistake, counted as Hint counts it.
       let view: DialogState | null = null;
       if (struck === null) {
-        const checked = explainCell(board, index, solution);
-        if (checked !== null) view = { kind: 'walkthrough', walkthrough: checked, step: 0 };
+        // Numbered as the bar numbers the cell's route — and as playback
+        // numbers the pages logged here, from the same helper.
+        const route = showMeRoute(current, index, solution);
+        if (route !== null) {
+          const { walkthrough: checked, numbering } = route;
+          view = { kind: 'walkthrough', walkthrough: checked, step: 0, numbering };
+        }
       } else if (findHint(board, solution).kind !== 'mistake') {
         const { autoCandidates } = current;
         view = { kind: 'struck', index, digit: solution[index] as Digit, board, autoCandidates };
@@ -1515,10 +1717,15 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
         return;
       }
       const t = at();
-      // Counted as a hint the first time for the cell's hint — the reducer
-      // keeps count — and logged every time, as help seen; then the clock
-      // stops silently, as for any dialog.
-      const charged = advance(session, { type: 'walkthrough', index }, t.clock);
+      // Counted as a hint the first time — for a walkthrough, the first time
+      // its first page's step is seen; for a wrong-marks hint's page, once
+      // for the hint — the reducer keeps count — and logged every time, as
+      // help seen; then the clock stops silently, as for any dialog.
+      const action: GameAction =
+        view.kind === 'walkthrough'
+          ? { type: 'showStep', index, id: stepId(view.walkthrough.steps[0].step), opens: true }
+          : { type: 'walkthrough', index };
+      const charged = advance(session, action, t.clock);
       const next = pauseSession(charged, 'dialog', t.clock);
       persist(next, t);
       setSession(next);
@@ -1526,6 +1733,32 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       // outside a modal dialog, is hidden from a screen reader behind it.
       const charge = withCharge(null, session.game, charged.game);
       setDialog({ ...view, charge });
+    },
+    showStep: (step) => {
+      if (dialog?.kind !== 'walkthrough' || session === null) return;
+      const { walkthrough } = dialog;
+      const trace = walkthrough.steps.at(step);
+      if (step < 0 || trace === undefined) return;
+      const t = at();
+      const index = walkthrough.target;
+      // Counted the first time the step is seen on a page, on whichever
+      // cell's route, and logged then; free, and not logged, after that.
+      const next = advance(session, { type: 'showStep', index, id: stepId(trace.step) }, t.clock);
+      if (next !== session) {
+        persist(next, t);
+        setSession(next);
+      }
+      // Said on the page, as the opening's charge is: the status region is
+      // hidden behind the dialog.
+      // What opening it cost goes once a page is turned: it was said, and
+      // beside a page's own cost it would be a second, older total.
+      const charge = withCharge(null, session.game, next.game);
+      setDialog({
+        ...dialog,
+        step,
+        charge: null,
+        pageCharge: charge === null ? null : { step, text: charge },
+      });
     },
     putBack: () => {
       if (dialog?.kind !== 'struck' || session === null) return;
@@ -1690,11 +1923,12 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       // for any dialog, and nothing is recorded.
       pauseFor('dialog');
       if (dialog?.kind === 'walkthrough') {
-        // Back from the guide, without what opening it cost: that was said.
+        // Back from the guide, without what opening it or a page cost: that was said.
         const returnTo: WalkthroughView = {
           kind: 'walkthrough',
           walkthrough: dialog.walkthrough,
           step: step ?? dialog.step,
+          numbering: dialog.numbering,
         };
         setDialog({ kind: 'techniques', initial, returnTo });
         return;
@@ -1907,14 +2141,25 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     dismissNotice: () => setNotice(null),
   });
 
+  const onShow = game === null ? NO_HINT_VIEW : hintOnShow(game, walkthrough);
+  const hintTint =
+    onShow.hint !== null || game === null
+      ? tintOf(onShow.hint, onShow.step)
+      : (workingTint(game, hintedRoute) ?? NO_CELLS);
   return {
     phase,
     pauseReason: session?.pause ?? null,
     game,
-    shownHint: game === null ? null : hintOnShow(game, walkthrough),
+    shownHint: onShow.hint,
+    isHintMovedOn: onShow.isMovedOn,
     walkthrough,
-    isShowMeOffered:
-      walkthrough !== null || (game !== null && hintOnShow(game, walkthrough)?.kind === 'struck'),
+    isShowMeOffered: walkthrough !== null || onShow.hint?.kind === 'struck',
+    hintHouses: onShow.step?.houses ?? NO_HOUSES,
+    hintTint,
+    seenPages:
+      dialog?.kind === 'walkthrough' && game !== null
+        ? seenPagesOf(game, dialog.walkthrough)
+        : NO_PAGES,
     record: session?.record ?? null,
     hasBoardShown: session !== null && hasBoardShown(session),
     difficulty:

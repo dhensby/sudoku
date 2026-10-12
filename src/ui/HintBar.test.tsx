@@ -55,6 +55,80 @@ describe('HintBar', () => {
     },
   );
 
+  describe('a step towards a cell', () => {
+    const STEP: Hint = {
+      kind: 'step',
+      index: 9,
+      technique: 'claiming',
+      unit: { kind: 'column', index: 7 },
+      step: 1,
+      of: 7,
+      hardest: 'xyChain',
+      id: 1,
+    };
+
+    it('says the step, how far there is to go, and the hardest of them, a sentence apart', () => {
+      const { container } = renderBar({ hint: STEP, textId: 'hint-text', onShowMe: vi.fn() });
+      expect(container).toHaveTextContent(
+        'Step 1 of 7: a box/line reduction in column 8. ' +
+          "The hardest is an XY-Chain. What's a box/line reduction? Show me",
+      );
+      // The hardest in a sentence of its own, which the narrowest bars keep
+      // out of sight (layout.css) but still in the words a cell is described by.
+      expect(container.querySelector('.hint-bar__hardest')).toHaveTextContent(
+        /^The hardest is an XY-Chain\.$/,
+      );
+      expect(document.getElementById('hint-text')).toHaveTextContent(
+        /^Step 1 of 7: a box\/line reduction in column 8\. The hardest is an XY-Chain\.$/,
+      );
+    });
+
+    it('asks about the next step’s technique, not the hardest', () => {
+      const { props } = renderBar({ hint: STEP });
+      fireEvent.click(screen.getByRole('button', { name: "What's a box/line reduction?" }));
+      expect(props.onOpenGuide).toHaveBeenCalledExactlyOnceWith('claiming');
+    });
+
+    it('has no sentence of the hardest when the step is the hardest', () => {
+      const { container } = renderBar({ hint: { ...STEP, hardest: 'claiming' } });
+      expect(container.querySelector('.hint-bar__hardest')).toBeNull();
+    });
+
+    it('says where a step with no one house is, from the houses it is given', () => {
+      const xWing: Hint = { ...STEP, technique: 'xWing', unit: null, hardest: 'xWing' };
+      renderBar({
+        hint: xWing,
+        textId: 'hint-text',
+        houses: [
+          { kind: 'column', index: 1 },
+          { kind: 'column', index: 6 },
+          { kind: 'row', index: 2 },
+          { kind: 'row', index: 7 },
+        ],
+      });
+      expect(document.getElementById('hint-text')).toHaveTextContent(
+        /^Step 1 of 7: an X-Wing in columns 2 and 7\.$/,
+      );
+    });
+
+    it('names no step once the board has moved on from it, and asks about none, but still offers Show me', () => {
+      const { container } = renderBar({
+        hint: STEP,
+        isMovedOn: true,
+        textId: 'hint-text',
+        onShowMe: vi.fn(),
+      });
+      expect(document.getElementById('hint-text')).toHaveTextContent(
+        /^The board has moved on\. Ask again for this cell's next step\.$/,
+      );
+      expect(container).not.toHaveTextContent(/box\/line|XY-Chain/);
+      expect(screen.queryByRole('button', { name: /^What's/ })).not.toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Show me how to solve row 2, column 1' }),
+      ).toBeVisible();
+    });
+  });
+
   it.each<Hint>([
     { kind: 'mistake', index: 3 },
     { kind: 'struck', index: 3 },

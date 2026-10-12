@@ -63,6 +63,14 @@
   --hl-peer-given: #cebc86;
   --hl-same-given: #9a9ec7;
   --hl-selected-given: #162e86;
+  /*
+   * The houses of the step a hint names: a sage wash, darker than paper and
+   * paler than the same number's periwinkle, which takes the place of the
+   * selection's manila while the hint is on show (so the two never meet),
+   * with a greyer twin for a given.
+   */
+  --hl-step: #aed3bd;
+  --hl-step-given: #afc0b6;
   --hl-ring: #17150f;
   /* Keyboard focus on the selected cell: a paper line inside the ring. */
   --cell-focus: #fffcf5;
@@ -160,6 +168,8 @@
     --hl-peer-given: #4d3b16;
     --hl-same-given: #3f4f8e;
     --hl-selected-given: #a9b8ff;
+    --hl-step: #1b3729;
+    --hl-step-given: #2d4338;
     --hl-ring: #f3eee4;
     --cell-focus: #13120f;
     --hl-same-ring: transparent;
@@ -209,6 +219,8 @@
   --hl-peer-given: #4d3b16;
   --hl-same-given: #3f4f8e;
   --hl-selected-given: #a9b8ff;
+  --hl-step: #1b3729;
+  --hl-step-given: #2d4338;
   --hl-ring: #f3eee4;
   --cell-focus: #13120f;
   --hl-same-ring: transparent;
@@ -280,6 +292,8 @@
   --hl-peer-given: #32384a;
   --hl-same-given: #524e06;
   --hl-selected-given: #e6be00;
+  --hl-step: #122e1d;
+  --hl-step-given: #293d31;
   --hl-ring: #ffffff;
   --cell-focus: #000000;
   --hl-same-ring: #ffd60a;
@@ -329,6 +343,8 @@
     --hl-peer-given: #32384a;
     --hl-same-given: #524e06;
     --hl-selected-given: #e6be00;
+    --hl-step: #122e1d;
+    --hl-step-given: #293d31;
     --hl-ring: #ffffff;
     --cell-focus: #000000;
     --hl-same-ring: #ffd60a;
@@ -404,6 +420,8 @@
     --hl-peer-given: ButtonFace;
     --hl-same-given: ButtonFace;
     --hl-selected-given: Highlight;
+    --hl-step: Canvas;
+    --hl-step-given: ButtonFace;
     --hl-ring: HighlightText;
     --cell-focus: HighlightText;
     --hl-same-ring: transparent;

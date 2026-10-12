@@ -12,6 +12,7 @@ import {
   dailyRecord,
   emptyCells,
   getStuck,
+  getStuckOnAnXyChain,
   gotoPuzzle,
   leaveOutAnAnswer,
   modeButton,
@@ -33,9 +34,10 @@ import {
  * Accessibility, checked by machine: axe-core runs its WCAG 2.2 A and AA
  * rules over the states a player meets — the board in play with every kind
  * of mark on it, the Ready and Paused cards, the "…" menu, every dialog (each
- * step of Show me, and the Show me of a missing candidate, among them) and
- * each entry of the technique guide — in the light theme and the dark (and
- * the main ones in High contrast), and each must come back with no
+ * step of Show me, and the Show me of a missing candidate, among them),
+ * each entry of the technique guide, and a step hint with its houses tinted
+ * on the board — in the light theme and the dark (and the main ones, the
+ * tint among them, in High contrast), and each must come back with no
  * violations at all, with no rule switched off.
  * Contrast is the rule that a palette change is likeliest to break:
  * contrast.test.ts holds the tokens to their targets pair by pair, and this
@@ -339,6 +341,13 @@ for (const scheme of ['light', 'dark'] as const) {
       }
     });
 
+    test('a step hint, its houses tinted on the board', async ({ page }) => {
+      await getStuckOnAnXyChain(page);
+      await chooseMore(page, 'Hint');
+      await expectTintedStep(page);
+      await expectAccessible(page, 'a step hint with its houses tinted');
+    });
+
     test('a hint about a missing candidate, and the Show me that names it', async ({ page }) => {
       await leaveOutAnAnswer(page);
       await chooseMore(page, 'Hint');
@@ -567,6 +576,20 @@ async function expectHighContrast(page: Page, isChosen: boolean): Promise<void> 
 }
 
 /**
+ * The report's step hint on show (see `getStuckOnAnXyChain`): the next step
+ * for row 2, column 1, a box/line reduction, with column 8 and box 9 tinted
+ * — candidates, givens and the player's digits among them.
+ */
+async function expectTintedStep(page: Page): Promise<void> {
+  await expect(page.locator('.hint-bar')).toContainText(
+    'Step 1 of 7: a box/line reduction in column 8.',
+  );
+  await expect(page.locator('.cell--step')).toHaveCount(15);
+  await expect(page.locator('.cell--step.cell--given')).not.toHaveCount(0);
+  await expect(page.locator('.cell--step .cell__candidates')).not.toHaveCount(0);
+}
+
+/**
  * Select a given, so its number's other cells take High contrast's yellow
  * ring, and measure the board: box lines at least 3px inside a frame of at
  * least 4px, at whatever size the board is, and the ring clear of every
@@ -656,6 +679,16 @@ for (const { way, isChosen, media } of HIGH_CONTRAST_WAYS) {
       await watchASolve(page, 'History');
     });
 
+    test('a step hint, its houses tinted on the board', async ({ page }) => {
+      await page.emulateMedia(media);
+      await getStuckOnAnXyChain(page);
+      if (isChosen) await chooseHighContrast(page);
+      await expectHighContrast(page, isChosen);
+      await chooseMore(page, 'Hint');
+      await expectTintedStep(page);
+      await expectAccessible(page, 'a step hint with its houses tinted');
+    });
+
     test('the daily calendar, its marks and a day chosen', async ({ page }) => {
       await page.emulateMedia(media);
       await openSeededCalendar(page);
@@ -675,6 +708,38 @@ for (const { way, isChosen, media } of HIGH_CONTRAST_WAYS) {
     });
   });
 }
+
+test.describe('Windows High Contrast (forced colours)', () => {
+  test.skip(({ isMobile }) => isMobile, 'a desktop mode; the phones have their own pass');
+
+  test('a step hint, its cells told apart from the rest without their tint', async ({ page }) => {
+    await page.emulateMedia({ forcedColors: 'active' });
+    await getStuckOnAnXyChain(page);
+    await chooseMore(page, 'Hint');
+    await expectTintedStep(page);
+    // The tint falls back to the cell's own system colour here, so the
+    // step's cells must differ from every other cell of their kind by more
+    // than it: no look a step cell has may be one a plain cell has.
+    const looks = await page.evaluate(() => {
+      const lookOf = (cell: Element) => {
+        const style = getComputedStyle(cell);
+        return [style.backgroundColor, style.outlineStyle, style.outlineWidth].join(' ');
+      };
+      const looksOf = (selector: string) =>
+        [...document.querySelectorAll(`.board ${selector}:not(.cell--selected)`)].map(lookOf);
+      return {
+        step: looksOf('.cell--step:not(.cell--given)'),
+        stepGiven: looksOf('.cell--step.cell--given'),
+        plain: looksOf('.cell:not(.cell--step, .cell--given)'),
+        given: looksOf('.cell--given:not(.cell--step)'),
+      };
+    });
+    expect(looks.step.length).toBeGreaterThan(0);
+    expect(looks.stepGiven.length).toBeGreaterThan(0);
+    expect(looks.step.filter((look) => looks.plain.includes(look))).toEqual([]);
+    expect(looks.stepGiven.filter((look) => looks.given.includes(look))).toEqual([]);
+  });
+});
 
 test.describe('on a phone', () => {
   test.skip(({ isMobile }) => !isMobile, 'the phone layout');

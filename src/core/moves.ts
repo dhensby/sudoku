@@ -6,6 +6,7 @@ import {
   type GameState,
   type NewGameOptions,
   type RememberedHints,
+  type SeenSteps,
 } from './game';
 import { seedFromString } from './rng';
 import type {
@@ -15,6 +16,7 @@ import type {
   Puzzle,
   SingleTechniqueId,
   TechniqueId,
+  Unit,
   UnitKind,
 } from './types';
 
@@ -31,16 +33,18 @@ import type {
  * is undone once a new move forks the timeline, and is not saved.
  *
  * What is logged (see `moveFor`): placing and pencilling a digit, erasing,
- * hints, Show me, Check (a cell or the puzzle), Reveal, auto candidates on
- * and off, "Check guesses when entered" on and off, Undo, Redo and Reset.
- * Not logged: selecting and moving the
+ * hints, Show me and each page of it, Check (a cell or the puzzle), Reveal,
+ * auto candidates on and off, "Check guesses when entered" on and off, Undo,
+ * Redo and Reset. Not logged: selecting and moving the
  * selection, the input mode, pauses, and a hint that has nothing to say (the
  * board is full). One move is logged that changes nothing: Show me opened
  * again for a cell already charged for it, which is still help seen (it ends a
- * slip's grace, as any help does). A move fills in what its replay needs and
- * the action left to the state — the cell an entry or erase went to, the mode
- * a digit went in, and the selected cell for the moves that act on it — so a
- * replay never depends on selections it was not told about.
+ * slip's grace, as any help does) — a page already seen, turned back to while
+ * it is open, is not: the opening ended any grace already. A move fills in
+ * what its replay needs and the action left to the state — the cell an entry
+ * or erase went to, the mode a digit went in, and the selected cell for the
+ * moves that act on it — so a replay never depends on selections it was not
+ * told about.
  *
  * The encoded form is meant to go anywhere a string can, a share link
  * included, and to be read back with nothing but the puzzle: base64url only
@@ -60,10 +64,19 @@ import type {
  *             2756 check the puzzle, 2757 reset, 2758 a hint off the grid
  *             (which the reducer counts but cannot point at), 2759 "Check
  *             guesses when entered" on and 2760 off (added after the
- *             others, with no new rules version: see below).
+ *             others, with no new rules version: see below);
+ *             and 2761 + cell (2761–2841), a page of Show me on show, added
+ *             later still in codes then unused.
  *           A hint adds 2 chars: its kind, technique and unit, from the fixed
  *           table below (`describeHint`). Show me (29) opens a cell's
- *           wrong-marks hint's page while it has one, else its walkthrough.
+ *           wrong-marks hint's page while it has one, else its walkthrough,
+ *           counted once a cell — what older logs hold; since pages are
+ *           counted one by one, a walkthrough is logged a page at a time
+ *           (2761 + cell) instead. A step hint's descriptor (256 + technique × 28 +
+ *           unit) is followed by its hardest technique's code (1 char),
+ *           where the step falls on the route and the route's length (two
+ *           varints, as below) and the step's id (4 chars, 24 bits, most
+ *           significant first); a page adds the id of its step (4 chars).
  *           Then the time since the previous move (or the start), in 100 ms
  *           units, as a base-32 varint: 5 bits a char, least significant
  *           first, with the char's sixth bit set while more follow.
@@ -158,6 +171,15 @@ export type Move =
   | { readonly op: CellOp; readonly cell: number }
   /** A hint shown. An index off the grid is logged as -1. */
   | { readonly op: 'hint'; readonly hint: LoggedHint }
+  /**
+   * A page of Show me on show for `cell`'s fill hint: the step `id` (see
+   * `stepId`), which the reducer counts the first time that step is seen on
+   * a page, on whichever cell's route, and not after that (see
+   * `GameState.seenSteps`). What the page was can be told again from the log and the puzzle
+   * alone: the walkthrough is the one the board then gave (see
+   * `explainCell`), and `id` picks out its page.
+   */
+  | { readonly op: 'page'; readonly cell: number; readonly id: number }
   | { readonly op: BareOp };
 
 /**
@@ -236,6 +258,17 @@ const DEDUCTION_CODE: Readonly<Record<TechniqueId, number>> = {
 /** Single hints take descriptors from here: `SINGLE_BASE + technique × 28 + unit`. */
 const SINGLE_BASE = 64;
 
+/**
+ * Step hints take descriptors from here: `STEP_BASE + DEDUCTION_CODE[technique]
+ * × 28 + unit`, the step's own technique and unit — 312 to 843, in codes no
+ * build before them reads, so they needed no new rules version. 256 to 311,
+ * where no technique has a code, are never written.
+ */
+const STEP_BASE = 256;
+
+/** The chars a step's id takes (see `stepId`): 4 chars of 6 bits, its 24 bits. */
+const STEP_ID_CHARS = 4;
+
 /** A single's technique code. */
 const SINGLE_CODE: Readonly<Record<SingleTechniqueId, number>> = {
   fullHouse: 0,
@@ -247,7 +280,7 @@ const SINGLE_CODE: Readonly<Record<SingleTechniqueId, number>> = {
 /** A single's unit code is 0 for none, else `1 + kind × 9 + index`. */
 const UNIT_KIND_CODE: Readonly<Record<UnitKind, number>> = { row: 0, column: 1, box: 2 };
 
-/** The unit codes per single technique: none, then 9 rows, 9 columns and 9 boxes. */
+/** The unit codes per technique: none, then 9 rows, 9 columns and 9 boxes. */
 const UNITS_PER_SINGLE = 28;
 
 /** The op codes (see the module comment) of the ops with a cell. */
@@ -282,8 +315,15 @@ const BARE_CODE: Readonly<Record<BareOp, number>> = {
 /** A hint whose index is off the grid (no cell to put in the code). */
 const OFF_GRID_HINT = BARE_BASE + 4;
 
+/**
+ * A page of Show me on show: `PAGE_BASE + cell`, then the id of its step.
+ * After Check guesses, in codes then unused, so it needed no new rules
+ * version — and no older build reads it as the Show me (29) it replaced.
+ */
+const PAGE_BASE = BARE_BASE + 7;
+
 /** The first code this build does not use. */
-const UNUSED_CODES = BARE_BASE + 7;
+const UNUSED_CODES = PAGE_BASE + 81;
 
 const FLAG_AUTO_CANDIDATES = 1;
 const FLAG_TRUNCATED = 2;
@@ -301,8 +341,14 @@ const MAX_GAP_CHARS = 6;
 /** The longest gap a log can hold, in ticks. `appendMove` caps a longer one here. */
 const MAX_GAP_TICKS = 32 ** MAX_GAP_CHARS - 1;
 
-/** The longest a well-formed log can be: `MAX_MOVES` hints with the longest gaps, header and check. */
-const MAX_ENCODED_LENGTH = 3 + MAX_MOVES * (2 + 2 + MAX_GAP_CHARS) + CHECK_CHARS;
+/**
+ * The most chars one move can take: a step hint's code, descriptor, hardest
+ * technique, two varints and id, with the longest gap.
+ */
+const MAX_MOVE_CHARS = 2 + 2 + 1 + 2 * MAX_GAP_CHARS + STEP_ID_CHARS + MAX_GAP_CHARS;
+
+/** The longest a well-formed log can be: `MAX_MOVES` of the longest moves, header and check. */
+const MAX_ENCODED_LENGTH = 3 + MAX_MOVES * MAX_MOVE_CHARS + CHECK_CHARS;
 
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
 
@@ -345,6 +391,23 @@ function isDigit(digit: unknown): digit is Digit {
   return Number.isInteger(digit) && (digit as number) >= 1 && (digit as number) <= 9;
 }
 
+/** A unit's code: 0 for none, else `1 + kind × 9 + index`; null for a unit that is no unit. */
+function unitCode(unit: Unit | null): number | null {
+  if (unit === null) return 0;
+  const kind = UNIT_KIND_CODES.get(unit.kind);
+  const { index } = unit;
+  if (kind === undefined || !Number.isInteger(index) || index < 0 || index > 8) return null;
+  return 1 + kind * 9 + index;
+}
+
+/** The unit a code from 0 to 27 stands for (see `unitCode`). */
+function unitFor(code: number): Unit | null {
+  if (code === 0) return null;
+  // Every unit code from 1 to 27 is a kind (0–2) and an index (0–8).
+  const kind = UNIT_KINDS_BY_CODE.get(Math.floor((code - 1) / 9))!;
+  return { kind, index: (code - 1) % 9 };
+}
+
 /**
  * A logged hint's descriptor: its kind, technique and unit, from the fixed
  * table. Null if the table has no code for it.
@@ -356,47 +419,90 @@ function describeHint(hint: LoggedHint): number | null {
     if (hint.technique === null) return UNNAMED_DEDUCTION;
     return DEDUCTION_CODES.get(hint.technique) ?? null;
   }
-  const technique = SINGLE_CODES.get(hint.technique);
-  if (technique === undefined) return null;
-  let unit = 0;
-  if (hint.unit !== null) {
-    const kind = UNIT_KIND_CODES.get(hint.unit.kind);
-    const { index } = hint.unit;
-    if (kind === undefined || !Number.isInteger(index) || index < 0 || index > 8) return null;
-    unit = 1 + kind * 9 + index;
-  }
-  return SINGLE_BASE + technique * UNITS_PER_SINGLE + unit;
+  const technique =
+    hint.kind === 'step' ? DEDUCTION_CODES.get(hint.technique) : SINGLE_CODES.get(hint.technique);
+  const unit = unitCode(hint.unit);
+  if (technique === undefined || unit === null) return null;
+  const base = hint.kind === 'step' ? STEP_BASE : SINGLE_BASE;
+  return base + technique * UNITS_PER_SINGLE + unit;
 }
 
-/** The hint a descriptor stands for, about cell `index`; null for one the table doesn't have. */
-function hintFor(descriptor: number, index: number): LoggedHint | null {
+/** Whether a number is a step's id: see `stepId`. */
+function isStepId(id: unknown): id is number {
+  return Number.isInteger(id) && (id as number) >= 0 && (id as number) < 64 ** STEP_ID_CHARS;
+}
+
+/** A step's id in its 4 chars, most significant first. */
+function idChars(id: number): string {
+  let text = '';
+  for (let shift = 6 * (STEP_ID_CHARS - 1); shift >= 0; shift -= 6) {
+    text += ALPHABET[Math.floor(id / 2 ** shift) % 64];
+  }
+  return text;
+}
+
+/**
+ * What a logged hint writes after its move code: its descriptor and, for a
+ * step, the rest of it (see the module comment). Null if the table has no
+ * code for it, or a step's numbers are out of their range.
+ */
+function hintChars(hint: LoggedHint): string | null {
+  const descriptor = describeHint(hint);
+  if (descriptor === null) return null;
+  if (hint.kind !== 'step') return pair(descriptor);
+  const hardest = DEDUCTION_CODES.get(hint.hardest);
+  const { step, of, id } = hint;
+  if (hardest === undefined || !isStepId(id) || !Number.isInteger(step)) return null;
+  if (!Number.isInteger(of) || step < 1 || step > of || of > MAX_GAP_TICKS) return null;
+  return pair(descriptor) + ALPHABET[hardest] + varint(step) + varint(of) + idChars(id);
+}
+
+/**
+ * The hint whose chars (see `hintChars`) `reader` is at, about cell `index`;
+ * null for one the table doesn't have, or written otherwise than
+ * `hintChars` writes it.
+ */
+function readHint(reader: Reader, index: number): LoggedHint | null {
+  const descriptor = reader.pair();
+  if (descriptor === null) return null;
   if (descriptor === MISTAKE_HINT) return { kind: 'mistake', index };
   if (descriptor === UNNAMED_DEDUCTION) return { kind: 'deduction', index, technique: null };
   if (descriptor === STRUCK_HINT) return { kind: 'struck', index };
   const deduction = DEDUCTIONS_BY_CODE.get(descriptor);
   if (deduction !== undefined) return { kind: 'deduction', index, technique: deduction };
+  if (descriptor >= STEP_BASE) return readStep(reader, index, descriptor - STEP_BASE);
   // Below the singles' base this is negative, and so is the technique code.
   const single = descriptor - SINGLE_BASE;
   const technique = SINGLES_BY_CODE.get(Math.floor(single / UNITS_PER_SINGLE));
   if (technique === undefined) return null;
-  const unit = (single % UNITS_PER_SINGLE) - 1;
-  if (unit === -1) return { kind: 'single', index, technique, unit: null };
-  // Every unit code from 1 to 27 is a kind (0–2) and an index (0–8).
-  const kind = UNIT_KINDS_BY_CODE.get(Math.floor(unit / 9))!;
-  return { kind: 'single', index, technique, unit: { kind, index: unit % 9 } };
+  return { kind: 'single', index, technique, unit: unitFor(single % UNITS_PER_SINGLE) };
+}
+
+/** A step hint about cell `index`, its descriptor read as `code` above `STEP_BASE`. */
+function readStep(reader: Reader, index: number, code: number): LoggedHint | null {
+  const technique = DEDUCTIONS_BY_CODE.get(Math.floor(code / UNITS_PER_SINGLE));
+  const hardestCode = reader.digit();
+  const hardest = hardestCode === null ? undefined : DEDUCTIONS_BY_CODE.get(hardestCode);
+  const step = reader.varint();
+  const of = reader.varint();
+  const id = reader.id();
+  if (technique === undefined || hardest === undefined || id === null) return null;
+  if (step === null || of === null || step < 1 || step > of) return null;
+  const unit = unitFor(code % UNITS_PER_SINGLE);
+  return { kind: 'step', index, technique, unit, step, of, hardest, id };
 }
 
 /**
  * A hint as the log keeps it: exactly what decoding it gives back, so a log
  * replays the same before and after a round trip. Throws for a hint the table
- * has no code for — which only a hint `findHint` could never make can be.
+ * has no code for — which only a hint `findStepHint` could never make can be.
  */
 function loggedHint(hint: LoggedHint): LoggedHint {
-  const descriptor = describeHint(hint);
-  if (descriptor === null) {
+  const chars = hintChars(hint);
+  if (chars === null) {
     throw new RangeError(`No move log code for the hint ${JSON.stringify(hint)}`);
   }
-  return hintFor(descriptor, isCellIndex(hint.index) ? hint.index : -1)!;
+  return readHint(new Reader(chars, 0), isCellIndex(hint.index) ? hint.index : -1)!;
 }
 
 // ---------------------------------------------------------------------------
@@ -416,6 +522,17 @@ function opensWalkthrough(state: GameState, index: number): boolean {
   return state.cellHints.has(index);
 }
 
+/**
+ * Whether a page of Show me for `index` shows — charged or not — as the
+ * reducer's `showStep` decides: an empty cell with a fill hint and no
+ * wrong-marks hint, and a step's id to show.
+ */
+function showsPage(state: GameState, index: number, id: number): boolean {
+  if (!opensWalkthrough(state, index) || !isStepId(id)) return false;
+  const entry = state.cellHints.get(index)!;
+  return entry.fill !== null && entry.struck === null;
+}
+
 /** An empty log for a game created with `options` (see `createGame`). */
 export function createMoveLog(options: NewGameOptions = {}): MoveLog {
   return { autoCandidates: options.autoCandidates ?? false, moves: [], truncated: false };
@@ -429,9 +546,11 @@ export function createMoveLog(options: NewGameOptions = {}): MoveLog {
  * save reducing twice.
  *
  * The one move logged that changes nothing is Show me opened again for a cell
- * already charged for it. It is free, so the reducer does nothing; but the
- * walkthrough is on show again, and help seen ends a slip's grace (see
- * `mistakes.ts`), so the log must hold it. It replays as the no-op it was.
+ * already charged for it — or, page by page, opened at a page already seen
+ * (`opens`). It is free, so the reducer does nothing; but the walkthrough is
+ * on show again, and help seen ends a slip's grace (see `mistakes.ts`), so
+ * the log must hold it. It replays as the no-op it was. A page turned back
+ * to while Show me is open is not logged: opening it ended any grace.
  *
  * The move carries what its replay needs from `previous`: the cell an entry or
  * erase defaulted to, the mode a digit defaulted to (as `place` or
@@ -450,6 +569,11 @@ export function moveFor(
     return opensWalkthrough(previous, action.index)
       ? { op: 'walkthrough', cell: action.index }
       : null;
+  }
+  if (action.type === 'showStep') {
+    const { index, id } = action;
+    const isLogged = next !== previous || (action.opens === true && showsPage(previous, index, id));
+    return isLogged ? { op: 'page', cell: index, id } : null;
   }
   if (next === previous) return null;
   switch (action.type) {
@@ -514,14 +638,23 @@ function isBareMove(move: Move): move is Extract<Move, { op: BareOp }> {
   return Object.hasOwn(BARE_CODE, move.op);
 }
 
-/** A move's code and, for a hint, its descriptor. Throws for a move no log could hold. */
-function codeOf(move: Move): readonly [code: number, descriptor: number | null] {
-  if (isBareMove(move)) return [BARE_CODE[move.op], null];
+/**
+ * A move's code, and the chars that follow it (a hint's descriptor, and
+ * more for a step; a page's step id). Throws for a move no log could hold.
+ */
+function codeOf(move: Move): readonly [code: number, chars: string] {
+  if (isBareMove(move)) return [BARE_CODE[move.op], ''];
   if (move.op === 'hint') {
-    const descriptor = describeHint(move.hint);
-    if (descriptor === null) throw new RangeError(`No move log code for ${JSON.stringify(move)}`);
+    const chars = hintChars(move.hint);
+    if (chars === null) throw new RangeError(`No move log code for ${JSON.stringify(move)}`);
     const { index } = move.hint;
-    return [isCellIndex(index) ? CELL_OP_CODE.hint * 81 + index : OFF_GRID_HINT, descriptor];
+    return [isCellIndex(index) ? CELL_OP_CODE.hint * 81 + index : OFF_GRID_HINT, chars];
+  }
+  if (move.op === 'page') {
+    if (!isCellIndex(move.cell) || !isStepId(move.id)) {
+      throw new RangeError(`No move log code for ${JSON.stringify(move)}`);
+    }
+    return [PAGE_BASE + move.cell, idChars(move.id)];
   }
   const isDigitMove = move.op === 'place' || move.op === 'candidate';
   if (!isCellIndex(move.cell) || (isDigitMove && !isDigit(move.digit))) {
@@ -531,7 +664,7 @@ function codeOf(move: Move): readonly [code: number, descriptor: number | null] 
   if (move.op === 'place') op = (move.clearPeerNotes ? PLACE_CLEARING : PLACE) + move.digit - 1;
   else if (move.op === 'candidate') op = CANDIDATE + move.digit - 1;
   else op = CELL_OP_CODE[move.op];
-  return [op * 81 + move.cell, null];
+  return [op * 81 + move.cell, ''];
 }
 
 /** The check written after a log's body: the low 18 bits of its FNV-1a hash, in 3 chars. */
@@ -577,14 +710,12 @@ export function encodeMoveLog(log: MoveLog): string {
   const parts = [ALPHABET[MOVE_LOG_FORMAT], ALPHABET[MOVES_VERSION], ALPHABET[flags]];
   let previous = 0;
   for (const move of log.moves) {
-    const [code, descriptor] = codeOf(move);
+    const [code, chars] = codeOf(move);
     const ticks = (move.at - previous) / MOVE_TICK_MS;
     if (!Number.isInteger(ticks) || ticks < 0 || ticks > MAX_GAP_TICKS) {
       throw new RangeError(`No move log code for ${JSON.stringify(move)} after ${previous} ms`);
     }
-    parts.push(pair(code));
-    if (descriptor !== null) parts.push(pair(descriptor));
-    parts.push(varint(ticks));
+    parts.push(pair(code), chars, varint(ticks));
     previous = move.at;
   }
   const body = parts.join('');
@@ -615,6 +746,17 @@ class Reader {
     return high === null || low === null ? null : high * 64 + low;
   }
 
+  /** A step's id: the next `STEP_ID_CHARS` chars, most significant first; null if they run out. */
+  id(): number | null {
+    let value = 0;
+    for (let i = 0; i < STEP_ID_CHARS; i++) {
+      const digit = this.digit();
+      if (digit === null) return null;
+      value = value * 64 + digit;
+    }
+    return value;
+  }
+
   /**
    * A varint, or null if it runs out, runs past `MAX_GAP_CHARS`, or is not
    * written as `varint` writes it (a needless last char of 0).
@@ -633,16 +775,21 @@ class Reader {
   }
 }
 
-/** The move a code stands for, reading a hint's descriptor from `reader`; null if there is none. */
+/**
+ * The move a code stands for, reading what follows it — a hint, a page's
+ * step id — from `reader`; null if there is none.
+ */
 function readMove(code: number, reader: Reader): Move | null {
   if (code === OFF_GRID_HINT || Math.floor(code / 81) === CELL_OP_CODE.hint) {
-    const descriptor = reader.pair();
-    const index = code === OFF_GRID_HINT ? -1 : code % 81;
-    const hint = descriptor === null ? null : hintFor(descriptor, index);
+    const hint = readHint(reader, code === OFF_GRID_HINT ? -1 : code % 81);
     return hint === null ? null : { op: 'hint', hint };
   }
-  // Codes from here up to `UNUSED_CODES` (refused before this) are bare ops,
-  // the hint off the grid having been read above.
+  if (code >= PAGE_BASE) {
+    const id = reader.id();
+    return id === null ? null : { op: 'page', cell: code - PAGE_BASE, id };
+  }
+  // Codes from here up to the pages are bare ops, the hint off the grid
+  // having been read above.
   if (code >= BARE_BASE) return { op: BARE_OPS_BY_CODE.get(code)! };
   const op = Math.floor(code / 81);
   const cell = code % 81;
@@ -753,6 +900,8 @@ function actionsOf(move: Move): GameAction[] {
       return [{ type: 'hint', hint: move.hint }];
     case 'walkthrough':
       return [{ type: 'walkthrough', index: move.cell }];
+    case 'page':
+      return [{ type: 'showStep', index: move.cell, id: move.id }];
     case 'checkCell':
       return [SELECT(move.cell), { type: 'check', scope: 'cell' }];
     case 'reveal':
@@ -822,8 +971,13 @@ function isSameAssists(a: Assists, b: Assists): boolean {
 function fillKey(hint: FillHint | null): string {
   if (hint === null) return '';
   const unit =
-    hint.kind === 'single' && hint.unit !== null ? `${hint.unit.kind}${hint.unit.index}` : '';
-  return `${hint.kind}/${hint.index}/${hint.technique}/${unit}`;
+    hint.kind !== 'deduction' && hint.unit !== null ? hint.unit.kind + hint.unit.index : '';
+  const key = `${hint.kind}/${hint.index}/${hint.technique}/${unit}`;
+  return hint.kind === 'step' ? `${key}/${hint.step}/${hint.of}/${hint.hardest}/${hint.id}` : key;
+}
+
+function seenKey({ named, shown }: SeenSteps): string {
+  return `${named.join(',')}/${shown.join(',')}`;
 }
 
 function struckKey(struck: RememberedHints['struck']): string {
@@ -843,7 +997,8 @@ function isSameHints(a: RememberedHints, b: RememberedHints | undefined): boolea
 /** Whether two games of the same puzzle are the same game, as saved: see `verifyMoveLog`. */
 function isSameGame(a: GameState, b: GameState): boolean {
   if (a.autoCandidates !== b.autoCandidates || a.status !== b.status) return false;
-  if (a.checkGuesses !== b.checkGuesses) return false;
+  if (a.checkGuesses !== b.checkGuesses || a.hintedCell !== b.hintedCell) return false;
+  if (seenKey(a.seenSteps) !== seenKey(b.seenSteps)) return false;
   if (!isSameAssists(a.assists, b.assists) || a.cellHints.size !== b.cellHints.size) return false;
   for (const [index, hints] of a.cellHints)
     if (!isSameHints(hints, b.cellHints.get(index))) return false;
@@ -862,7 +1017,7 @@ function isSameGame(a: GameState, b: GameState): boolean {
  * Whether replaying the log rebuilds `state` — a game of `puzzle`, such as one
  * just loaded from storage — as a save records it: every cell's value, notes,
  * auto candidate eliminations and mark, the help taken, the hints remembered,
- * the status, and whether auto candidate mode and Check guesses are on. Selection and input mode
+ * the steps seen and the cell the last step hint was about, the status, and whether auto candidate mode and Check guesses are on. Selection and input mode
  * are not compared (they are not logged), nor are the undo and redo stacks (a
  * saved game has none). A truncated log stops short of the game, so it never
  * vouches for one.

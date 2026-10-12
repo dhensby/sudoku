@@ -1106,6 +1106,30 @@
 }
 
 /*
+ * A step hint's hardest step ("The hardest is an XY-Chain.") is the longest
+ * part of the longest hints, and only the widest bars have room for it. So
+ * below them it goes out of sight, kept for assistive technology — and as
+ * the selected cell's description — while Show me still names every step.
+ * Measured in the bundled face, in Chromium: the longest step hint with its
+ * hardest step, its question and "Show me" ("Step 12 of 22: a pointing pair
+ * or triple in this box. The hardest is an alternating chain.") takes a
+ * third line on bars up to 452px at 13px and 474px at 14px; without its
+ * hardest step every step hint fits two lines down to a 243px bar at 13px
+ * (a phone's), and a 275px one at 14px (the desktop's, whose bar is never
+ * under 320px). In em, so a larger font moves the breakpoint with it.
+ */
+@container hint-bar (max-width: 30.5em) {
+  .hint-bar__hardest {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+
+/*
  * On the narrowest bars — a 320×568 phone's 268px (its board shrinks to fit
  * the height), and a phone on its side's 288px — the hint's own mark gives
  * way to "Show me", which keeps its words: with the mark, a hidden single's

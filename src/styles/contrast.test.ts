@@ -37,6 +37,13 @@ import {
  *   two are held in normal vision only. They sit between the ladders rather than on one, and a
  *   given carries its typeface and its ink as well as its screen.
  *
+ * The houses of a step a hint names take a fill of their own, in place of
+ * the peer fill while the hint is on show (so the two never meet): held as
+ * the peer fill is — every ink on it, the rules and marks, 1.25:1 from
+ * plain (for colour-blind players too) and 1.1:1 from a given beside it, a
+ * given's twin 1.15:1 from it — and a clear step from the same-number fill
+ * and the selected block, which can sit among its cells.
+ *
  * High contrast is held to all of that, and more: everything it sets as
  * text at 7:1, and its same-number ring at 3:1 against the fill it sits on
  * (below).
@@ -69,11 +76,13 @@ const PLAIN_FILLS = [
   ['plain', 'cell-bg'],
   ['peer (and hover)', 'hl-peer'],
   ['same-number', 'hl-same'],
+  ['hinted step', 'hl-step'],
 ] as const;
 const GIVEN_FILLS = [
   ['given', 'cell-given-bg'],
   ['peer given', 'hl-peer-given'],
   ['same-number given', 'hl-same-given'],
+  ['hinted step given', 'hl-step-given'],
 ] as const;
 const ALL_FILLS = [...PLAIN_FILLS, ...GIVEN_FILLS];
 
@@ -113,6 +122,7 @@ const PAIRS: Pair[] = [
   // holds the number.
   ['candidate of the selected number on a plain cell', 'candidate-same', 'cell-bg', TEXT],
   ['candidate of the selected number on a peer cell', 'candidate-same', 'hl-peer', TEXT],
+  ['candidate of the selected number on a hinted step cell', 'candidate-same', 'hl-step', TEXT],
 
   // ---- Lines ----
   // The thin rules hold 3:1 on every fill but the same number's. There,
@@ -124,6 +134,8 @@ const PAIRS: Pair[] = [
   ['thin rule against a given cell', 'grid-thin', 'cell-given-bg', NON_TEXT],
   ['thin rule against a peer cell', 'grid-thin', 'hl-peer', NON_TEXT],
   ['thin rule against a peer given cell', 'grid-thin', 'hl-peer-given', NON_TEXT],
+  ['thin rule against a hinted step cell', 'grid-thin', 'hl-step', NON_TEXT],
+  ['thin rule against a hinted step given cell', 'grid-thin', 'hl-step-given', NON_TEXT],
   ['box line against a plain cell', 'grid-thick', 'cell-bg', AAA],
   // The boxes must read whatever is highlighted inside them. The selected
   // block is left out: its ring, in the box line's own ink, is what meets
@@ -159,6 +171,17 @@ const PAIRS: Pair[] = [
   ['selected given against same-number', 'hl-selected-given', 'hl-same', 1.6],
   ['selected against given', 'hl-selected', 'cell-given-bg', NON_TEXT],
   ['selected given against plain', 'hl-selected-given', 'cell-bg', NON_TEXT],
+  // A hinted step's houses: a step from plain, and from a given beside
+  // them; a given inside them keeps its screen; and the same numbers and
+  // the selected block among them stand out as they do on the peer fill.
+  ['hinted step against plain', 'hl-step', 'cell-bg', 1.25],
+  ['given against hinted step', 'cell-given-bg', 'hl-step', 1.1],
+  ['hinted step given against given', 'hl-step-given', 'cell-given-bg', 1.25],
+  ['hinted step given against hinted step', 'hl-step-given', 'hl-step', 1.15],
+  ['same-number against hinted step', 'hl-same', 'hl-step', 1.15],
+  ['same-number given against hinted step given', 'hl-same-given', 'hl-step-given', 1.15],
+  ['selected against hinted step', 'hl-selected', 'hl-step', 1.6],
+  ['selected given against hinted step given', 'hl-selected-given', 'hl-step-given', 1.6],
 
   // ---- The selection's ring, and keyboard focus inside it ----
   ...ALL_FILLS.map(([name, fill]): Pair => [
@@ -412,6 +435,13 @@ describe.each([
         expect(contrast(colours[i], colours[i - 1])).toBeGreaterThanOrEqual(STEPS[i - 1]);
       }
       expect(contrast(colours[3], colours[0])).toBeGreaterThanOrEqual(NON_TEXT);
+    });
+
+    it.each([
+      ['plain', 'cell-bg', 'hl-step'],
+      ['given', 'cell-given-bg', 'hl-step-given'],
+    ])('keeps a hinted step a clear step from a %s cell', (_kind, fill, step) => {
+      expect(contrast(seen(step), seen(fill))).toBeGreaterThanOrEqual(STEPS[0]);
     });
 
     it('keeps a danger mark at 3:1 on every cell', () => {

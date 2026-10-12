@@ -2938,6 +2938,14 @@
   font-weight: 600;
 }
 
+/* What turning to a page cost, on its own line under the step's heading
+   and question: said once, with the heading, as the page is turned to. */
+.walkthrough__charge--page {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 0.875rem;
+}
+
 .walkthrough__step {
   container: worked-example / inline-size;
   min-width: 0;
