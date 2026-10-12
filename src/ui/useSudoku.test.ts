@@ -2398,12 +2398,13 @@ describe('useSudoku', () => {
       expect(result.current.friends).toEqual([]);
     });
 
-    it("notes no one for a link from this browser's own ID", async () => {
+    it("notes no one, and races no one, for a link from this browser's own ID", async () => {
       const storage = memoryStorage();
       storage.setItem('sudoku.prefs', JSON.stringify({ playerId: ALLY }));
       const { result } = await started({ storage, search: LINK });
       expect(storage.getItem('sudoku.friends')).toBeNull();
-      expect(result.current.record?.challenge).toMatchObject({ name: 'Rude', playerId: ALLY });
+      // The player's own time is no time to beat.
+      expect(result.current.record?.challenge).toBeNull();
     });
 
     it('names the friend whose solve the card offers, and heads its playback, as renamed', async () => {
