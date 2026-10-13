@@ -51,6 +51,7 @@ import {
   pauseSession,
   phaseOf,
   planStartup,
+  previousSolve,
   puzzleOf,
   recordOf,
   restoreSession,
@@ -207,6 +208,35 @@ describe('attemptSource', () => {
     const storage = memoryStorage();
     markSeen(storage, PUZZLE.givens);
     expect(attemptSource(storage, [], PUZZLE.givens, 'shared')).toBe('replay');
+  });
+});
+
+describe('previousSolve', () => {
+  const solvedAs = (source: GameRecord['source'], ms: number, extra = {}): GameRecord => ({
+    ...createRecord(PUZZLE, source, ms, null, NO_HELP),
+    status: 'solved',
+    completedAt: ms + 60_000,
+    elapsedMs: 60_000,
+    ...extra,
+  });
+
+  it('offers the newest solve that counted towards the records', () => {
+    const counted = solvedAs('shared', NOW - 2000);
+    const replay = solvedAs('replay', NOW - 1000);
+    const watched = solvedAs('generated', NOW - 500, { watched: true });
+    const playing = createRecord(PUZZLE, 'replay', NOW, null, NO_HELP);
+    expect(previousSolve([playing, watched, replay, counted])).toBe(counted);
+  });
+
+  it("falls back on the newest solve when none counted, as a replay's was set on a board seen before", () => {
+    const older = solvedAs('replay', NOW - 2000);
+    const newer = solvedAs('replay', NOW - 1000);
+    expect(previousSolve([newer, older])).toBe(newer);
+  });
+
+  it('offers nothing for a puzzle never solved', () => {
+    expect(previousSolve([createRecord(PUZZLE, 'generated', NOW, null, NO_HELP)])).toBeUndefined();
+    expect(previousSolve([])).toBeUndefined();
   });
 });
 

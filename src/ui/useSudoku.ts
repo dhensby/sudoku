@@ -58,7 +58,6 @@ import {
   exportHistory,
   findAttempts,
   findDailyAttempts,
-  hasRecordedTime,
   hasSolved,
   hasWatched,
   importHistory,
@@ -115,6 +114,7 @@ import {
   pauseSession,
   phaseOf,
   planStartup,
+  previousSolve,
   puzzleOf,
   recordOf,
   restoreSession,
@@ -2053,10 +2053,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       // A daily with an attempt has its puzzle in the record: nothing to deal.
       const known = attempts.length === 0 ? null : puzzleOf(attempts[0]);
       if (known !== null && unfinishedAttempt(records, known.givens, t.wall) === null) {
-        const solves = attempts.filter((attempt) => attempt.status === 'solved');
-        const previous =
-          solves.find((attempt) => attempt.source !== 'replay' && hasRecordedTime(attempt)) ??
-          solves[0];
+        const previous = previousSolve(attempts);
         if (previous !== undefined) {
           // Solved already: say so, and offer it again.
           pauseFor('dialog', t);

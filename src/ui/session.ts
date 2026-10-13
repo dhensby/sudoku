@@ -280,6 +280,19 @@ export function phaseOf(session: Session | null, isGenerating: boolean): Phase {
 }
 
 /**
+ * The solve of a puzzle to offer it again with (see `ChallengeOffer`), from
+ * its attempts, newest first: the newest that counted towards the records —
+ * a replay's only if there is nothing else, as it was set on a board seen
+ * before. Undefined while the puzzle has never been solved.
+ */
+export function previousSolve(attempts: readonly GameRecord[]): GameRecord | undefined {
+  const solves = attempts.filter((attempt) => attempt.status === 'solved');
+  return (
+    solves.find((attempt) => attempt.source !== 'replay' && hasRecordedTime(attempt)) ?? solves[0]
+  );
+}
+
+/**
  * Where a new attempt at `givens` comes from. A puzzle the player has seen —
  * one in the history, or whose board was on show in an attempt since deleted
  * (see `hasSeen`) — is a replay, whatever brought it back: a link, the
@@ -952,9 +965,7 @@ export function planStartup(
     };
   }
 
-  const solves = attempts.filter((attempt) => attempt.status === 'solved');
-  const previous =
-    solves.find((attempt) => attempt.source !== 'replay' && hasRecordedTime(attempt)) ?? solves[0];
+  const previous = previousSolve(attempts);
   if (previous !== undefined) {
     return { ...linked, offer: { puzzle, previous, challenge } };
   }
