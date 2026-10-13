@@ -1079,6 +1079,14 @@
   gap: 6px;
 }
 
+/* A row open for editing in place of its buttons — a friend's name, say, or
+   their merge: the field (or the picker) takes the row, its two buttons
+   beneath it. */
+.history-item__actions--edit .field {
+  flex-basis: 100%;
+  margin: 0;
+}
+
 /* Mixed towards --text for the same contrast reason as .button--danger. */
 .history-item__delete {
   color: color-mix(in srgb, var(--danger) 85%, var(--text));
@@ -1172,13 +1180,6 @@
   align-items: center;
   gap: 4px 8px;
   overflow-wrap: anywhere;
-}
-
-/* Renaming or merging: the field (or the picker) takes the row, its two
-   buttons beneath it. */
-.friends-item__edit .field {
-  flex-basis: 100%;
-  margin: 0;
 }
 
 /* ---- Settings ---- */

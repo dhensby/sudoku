@@ -11,6 +11,7 @@ import { normaliseName } from '../../storage/storage';
 import { count, formatDate } from '../format';
 import { focusQuietly } from '../keepFocus';
 import { Dialog } from './Dialog';
+import { NameForm, escapeTo } from './NameForm';
 import { NAME_INPUT_MAX, friendOption } from './text';
 
 export interface FriendsDialogProps {
@@ -84,111 +85,6 @@ function statusParts(friend: Friend): ReactNode[] {
   return parts;
 }
 
-/**
- * For everything in an edit's group that can have focus: Escape backs out of
- * the edit rather than closing the whole dialog (which skips keys claimed
- * with preventDefault), as History's delete does.
- */
-function escapeTo(onCancel: () => void) {
-  return (event: React.KeyboardEvent) => {
-    if (event.key !== 'Escape') return;
-    event.preventDefault();
-    onCancel();
-  };
-}
-
-interface NameFormProps {
-  friend: Friend;
-  /** Read out with the row's own words, as its Rename was. */
-  context: string;
-  onSave: (name: string) => void;
-  onCancel: () => void;
-}
-
-/**
- * A row's name, open for editing in place of its buttons: the field, filled
- * with the name it goes by now, focused and selected as it opens — so typing
- * replaces it — with Save and Cancel beneath it.
- */
-function NameForm({ friend, context, onSave, onCancel }: NameFormProps) {
-  const ids = useId();
-  // The field's own copy, tidied only when it loses focus, as Share's is: on
-  // every keystroke it would eat the space between a first and last name.
-  const [name, setName] = useState(friend.name ?? latestSentAs(friend) ?? '');
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    focusQuietly(inputRef.current);
-    inputRef.current?.select();
-  }, []);
-
-  // On the field and both buttons.
-  const handleEscape = escapeTo(onCancel);
-
-  const handleFieldKey = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    // Enter while composing picks the candidate a keyboard offers, and no more.
-    if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
-      event.preventDefault();
-      onSave(name);
-      return;
-    }
-    handleEscape(event);
-  };
-
-  const inputId = `${ids}-name`;
-  const hintId = `${ids}-hint`;
-  return (
-    <div
-      className="history-item__actions friends-item__edit"
-      role="group"
-      aria-label={`Rename ${context}`}
-    >
-      <div className="field">
-        <label className="field__label" htmlFor={inputId}>
-          Their name
-        </label>
-        <input
-          id={inputId}
-          ref={inputRef}
-          className="field__input"
-          type="text"
-          value={name}
-          maxLength={NAME_INPUT_MAX}
-          // Not the player's own nickname, which a browser would offer here.
-          autoComplete="off"
-          spellCheck={false}
-          enterKeyHint="done"
-          aria-describedby={hintId}
-          onChange={(event) => setName(event.target.value)}
-          onBlur={() => setName(normaliseName(name))}
-          onKeyDown={handleFieldKey}
-        />
-        <p className="field__hint" id={hintId}>
-          Leave it empty to go by the names in their links.
-        </p>
-      </div>
-      <button
-        type="button"
-        className="button button--primary button--small"
-        aria-label={`Save name, ${context}`}
-        onClick={() => onSave(name)}
-        onKeyDown={handleEscape}
-      >
-        Save
-      </button>
-      <button
-        type="button"
-        className="button button--small"
-        aria-label={`Cancel renaming ${context}`}
-        onClick={onCancel}
-        onKeyDown={handleEscape}
-      >
-        Cancel
-      </button>
-    </div>
-  );
-}
-
 interface MergeFormProps {
   /** Everyone else, latest first: who this friend may be. Never empty. */
   others: readonly Friend[];
@@ -223,7 +119,7 @@ function MergeForm({ others, now, context, onMerge, onCancel }: MergeFormProps) 
   const hintId = `${ids}-hint`;
   return (
     <div
-      className="history-item__actions friends-item__edit"
+      className="history-item__actions history-item__actions--edit"
       role="group"
       aria-label={`Merge ${context}`}
     >
@@ -364,7 +260,11 @@ function FriendRow({
       )}
       {editing === 'rename' && (
         <NameForm
-          friend={friend}
+          initial={friend.name ?? latestSentAs(friend) ?? ''}
+          label="Their name"
+          hint="Leave it empty to go by the names in their links."
+          maxLength={NAME_INPUT_MAX}
+          normalise={normaliseName}
           context={context}
           onSave={(name) => onSave(key, name)}
           onCancel={() => onCancel(key, 'rename')}
