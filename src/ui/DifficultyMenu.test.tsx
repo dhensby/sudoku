@@ -19,6 +19,7 @@ function renderMenu(overrides: Partial<DifficultyMenuProps> = {}) {
     onSelect: vi.fn(),
     onSelectDaily: vi.fn(),
     onOpenCalendar: vi.fn(),
+    onEnterPuzzle: vi.fn(),
     onOpen: vi.fn(),
     ...overrides,
   };
@@ -90,7 +91,7 @@ describe('DifficultyMenu', () => {
       within(random)
         .getAllByRole('menuitem')
         .map((tier) => tier.textContent),
-    ).toEqual(['Easy', 'Medium', 'Hard', 'Expert']);
+    ).toEqual(['Easy', 'Medium', 'Hard', 'Expert', 'Enter a puzzle…']);
     const hard = within(random).getByRole('menuitem', { name: 'Hard (current)' });
     expect(hard.querySelector('.menu__check')).not.toBeNull();
     expect(
@@ -98,6 +99,18 @@ describe('DifficultyMenu', () => {
     ).toBeNull();
     fireEvent.click(within(random).getByRole('menuitem', { name: 'Expert' }));
     expect(props.onSelect).toHaveBeenCalledWith('expert');
+  });
+
+  it('offers to enter a puzzle from elsewhere last, after the tiers, never marked current', () => {
+    const props = renderMenu();
+    const items = within(group('Random puzzle')).getAllByRole('menuitem');
+    const enter = items[items.length - 1];
+    expect(enter).toHaveAccessibleName('Enter a puzzle…');
+    // No icon: the tiers above have none, so the labels stay in line.
+    expect(enter.querySelector('svg')).toBeNull();
+    fireEvent.click(enter);
+    expect(props.onEnterPuzzle).toHaveBeenCalled();
+    expect(props.onSelect).not.toHaveBeenCalled();
   });
 
   it('starts a new game of the current tier too', () => {
@@ -121,6 +134,13 @@ describe('DifficultyMenu', () => {
     expect(easy).toHaveTextContent('EasySolved');
     expect(easy.querySelectorAll('svg.icon:not(.daily-mark)')).toHaveLength(1);
     expect(easy.querySelector('.menu__check')).not.toBeNull();
+  });
+
+  it('marks nothing as current for a puzzle beyond the techniques, which no tier deals', () => {
+    renderMenu({ current: 'beyond' });
+    expect(within(group('Random puzzle')).getByRole('menuitem', { name: 'Expert' })).toBeVisible();
+    expect(screen.queryByRole('menuitem', { name: /\(current\)/ })).not.toBeInTheDocument();
+    expect(document.querySelector('.menu__check')).toBeNull();
   });
 
   it("marks nothing as current while a past day's daily is on show", () => {
@@ -151,13 +171,14 @@ describe('DifficultyMenu', () => {
   it('moves through both runs with the arrow keys, as through one list', () => {
     renderMenu();
     const items = screen.getAllByRole('menuitem');
-    expect(items).toHaveLength(9);
+    expect(items).toHaveLength(10);
     expect(items[0]).toHaveFocus();
     fireEvent.keyDown(items[0], { key: 'End' });
+    expect(items[9]).toHaveFocus();
+    expect(items[9]).toHaveAccessibleName('Enter a puzzle…');
+    fireEvent.keyDown(items[9], { key: 'ArrowUp' });
     expect(items[8]).toHaveFocus();
-    fireEvent.keyDown(items[8], { key: 'ArrowUp' });
-    expect(items[7]).toHaveFocus();
-    fireEvent.keyDown(items[7], { key: 'Home' });
+    fireEvent.keyDown(items[8], { key: 'Home' });
     fireEvent.keyDown(items[0], { key: 'ArrowDown' });
     expect(items[1]).toHaveFocus();
   });

@@ -100,6 +100,16 @@ const CONTROLS: readonly Control[] = [
     pointer: 'The calendar in the header (on a phone, the ☰ menu), or the + button',
   },
   {
+    action: 'Enter a puzzle',
+    keyboard: (
+      <>
+        <kbd>1</kbd>–<kbd>9</kbd> fill and move on, <kbd>Space</kbd> or <kbd>0</kbd> leave a blank,{' '}
+        <kbd>Backspace</kbd> goes back
+      </>
+    ),
+    pointer: 'New game › Enter a puzzle…, then tap a cell and a number',
+  },
+  {
     action: 'Watch your solve',
     keyboard: (
       <>
@@ -160,7 +170,8 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
             <li>
               Play today&apos;s from <strong>New game</strong>, under{' '}
               <strong>Today&apos;s puzzles</strong>. One you&apos;ve started carries on where you
-              left off. Random puzzles are still there too, under <strong>Random puzzle</strong>.
+              left off. Random puzzles are still there too, under <strong>Random puzzle</strong>,
+              with <strong>Enter a puzzle…</strong> after them for one of your own.
             </li>
             <li>
               The <strong>Daily puzzles</strong> calendar shows every day since the first, today
@@ -185,6 +196,45 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
               Sharing a daily names it. A friend who opens your link plays the same daily, and it
               counts towards their streak if they start it on the day.
             </li>
+          </ul>
+        </section>
+
+        <section className="help__section">
+          <h3 className="help__heading">Your own puzzles</h3>
+          <ul className="help__list">
+            <li>
+              <strong>Enter a puzzle…</strong>, last under Random puzzle in{' '}
+              <strong>New game</strong>, opens an empty grid to type in a puzzle from a newspaper or
+              a book.
+            </li>
+            <li>
+              Type it in row by row: a number fills a cell and moves on, <kbd>Space</kbd>,{' '}
+              <kbd>0</kbd> or a dot leaves a cell blank, <kbd>Backspace</kbd> takes back the last
+              number, and the arrow keys move. Or tap a cell, then a number on the pad, which goes
+              in where you tapped.
+            </li>
+            <li>
+              A number twice in a row, column or box is marked at once, and a line by the grid says
+              what the numbers make so far — too few for a puzzle, more than one solution, or none —
+              until they make a puzzle with exactly one solution, and how hard it is: “One solution:
+              a Hard puzzle.” Only then can you play it.
+            </li>
+            <li>
+              Check every number against your copy: one wrong number can still make a puzzle, just
+              not the one in the paper.
+            </li>
+            <li>
+              <strong>Play</strong> puts it behind <strong>Start</strong>, so you can share it
+              before you start: Share sends the puzzle alone. Once you&apos;ve solved it, Share
+              sends your time with it, as for any puzzle.
+            </li>
+            <li>
+              Typing it in isn&apos;t seeing it: its time counts as a new puzzle&apos;s, towards
+              your best and average — unless you&apos;d seen it before, in a game here. One you
+              haven&apos;t finished carries on where you left off; one you&apos;ve solved is offered
+              to play again.
+            </li>
+            <li>Closing the grid forgets what you typed.</li>
           </ul>
         </section>
 
@@ -382,9 +432,18 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
             </li>
             <li>
               <strong>Expert</strong> goes further, into techniques such as X-Wing, XY-Wing and
-              Skyscraper, needed while much of the grid is still empty.
+              Skyscraper — in a puzzle the game makes, needed while much of the grid is still empty.
             </li>
-            <li>Every puzzle is graded by the hardest step it needs, so the label never lies.</li>
+            <li>
+              <strong>Beyond Expert</strong> is a puzzle that needs more than every technique the
+              game knows. The game never makes one, so you&apos;ll only meet one in a link or a
+              puzzle you enter. Once the techniques run out, Hint can only point at the cell with
+              the fewest candidates, and there&apos;s no Show me.
+            </li>
+            <li>
+              Every puzzle is graded by the hardest step it needs, a link&apos;s and one you enter
+              included, so the label never lies.
+            </li>
             <li>
               A hint names the technique for the next step. Not sure what that is? The question
               after it — <strong>What&apos;s a hidden single?</strong> — opens the guide to the
@@ -409,9 +468,9 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
               until it runs again.
             </li>
             <li>
-              A puzzle from a friend&apos;s link, or one that arrives while this tab is hidden,
-              waits behind <strong>Start</strong>, so the clock only counts time you could see the
-              board.
+              A puzzle from a friend&apos;s link, one you enter yourself, or one that arrives while
+              this tab is hidden, waits behind <strong>Start</strong>, so the clock only counts time
+              you could see the board.
             </li>
             <li>Your game is saved as you play, and reopens paused after a reload.</li>
             <li>
@@ -457,7 +516,8 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
             <li>
               A puzzle you&apos;ve seen before — even in a game you&apos;ve since deleted —
               doesn&apos;t count towards your best or average, and sharing it shares the puzzle
-              without your time.
+              without your time. The one exception is a puzzle you enter yourself: typing in its
+              numbers isn&apos;t seeing it, so its first game here counts.
             </li>
             <li>Times are on the honour system. It's a game between friends.</li>
           </ul>

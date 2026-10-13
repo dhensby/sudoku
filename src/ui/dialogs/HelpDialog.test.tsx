@@ -12,6 +12,7 @@ describe('HelpDialog', () => {
     ).toEqual([
       'How to play',
       'Daily puzzles',
+      'Your own puzzles',
       'Entering numbers',
       'Auto candidates',
       'Hints',
@@ -145,7 +146,7 @@ describe('HelpDialog', () => {
     render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={vi.fn()} />);
     expect(screen.getByText(/the board hides until it runs again/)).toBeInTheDocument();
     expect(screen.getByText(/arrives while this tab is hidden/)).toHaveTextContent(
-      'waits behind Start',
+      /^A puzzle from a friend's link, one you enter yourself, or one that arrives while this tab is hidden, waits behind Start/,
     );
     expect(screen.getByText(/carries on with a game you haven.t finished/)).toHaveTextContent(
       'Play again starts a solved puzzle afresh',
@@ -300,6 +301,62 @@ describe('HelpDialog', () => {
       /It ticks each time help is counted, so you can see that asking again for a hint you already have was free; Show me says what each page cost as you turn to it;/,
     );
     expect(shown).toHaveTextContent(/“Hint \(2 used\)”\. Turning it off only hides the count\./);
+  });
+
+  it('says what Beyond Expert is, where it comes from, and what Hint can do there', () => {
+    render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={vi.fn()} />);
+    const section = screen.getByRole('heading', { name: 'Difficulty' }).parentElement!;
+    expect(section).toHaveTextContent(
+      /Beyond Expert is a puzzle that needs more than every technique the game knows\. The game never makes one, so you'll only meet one in a link or a puzzle you enter\./,
+    );
+    expect(section).toHaveTextContent(
+      /Hint can only point at the cell with the fewest candidates, and there's no Show me\./,
+    );
+    // An Expert needed early is the game's own rule, not every puzzle's.
+    expect(section).toHaveTextContent(/in a puzzle the game makes, needed while much of the grid/);
+  });
+
+  it('says how to type in a puzzle of your own, what is checked, and how its time counts', () => {
+    render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={vi.fn()} />);
+    const section = screen.getByRole('heading', { name: 'Your own puzzles' }).closest('section')!;
+    expect(section).toHaveTextContent(
+      /Enter a puzzle…, last under Random puzzle in New game, opens an empty grid/,
+    );
+    expect(section).toHaveTextContent(
+      /a number fills a cell and moves on, Space, 0 or a dot leaves a cell blank, Backspace takes back the last number/,
+    );
+    // A touch correction lands where it was tapped.
+    expect(section).toHaveTextContent(/a number on the pad, which goes in where you tapped/);
+    expect(section).toHaveTextContent(
+      /“One solution: a Hard puzzle\.” Only then can you play it\./,
+    );
+    expect(section).toHaveTextContent(/Check every number against your copy/);
+    expect(section).toHaveTextContent(
+      /so you can share it before you start: Share sends the puzzle alone/,
+    );
+    expect(section).toHaveTextContent(
+      /its time counts as a new puzzle's, towards your best and average/,
+    );
+    expect(section).toHaveTextContent(/Closing the grid forgets what you typed\./);
+    // Under Random puzzle in New game, as the dailies' section says.
+    expect(
+      screen.getByRole('heading', { name: 'Daily puzzles' }).closest('section'),
+    ).toHaveTextContent(
+      /under Random puzzle, with Enter a puzzle… after them for one of your own\./,
+    );
+    const row = within(screen.getByRole('table')).getByRole('row', { name: /^Enter a puzzle/ });
+    expect(row).toHaveTextContent(
+      '1–9 fill and move on, Space or 0 leave a blank, Backspace goes back',
+    );
+    expect(row).toHaveTextContent('New game › Enter a puzzle…, then tap a cell and a number');
+  });
+
+  it('makes a puzzle you enter the one exception to a puzzle seen before not counting', () => {
+    render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={vi.fn()} />);
+    const section = screen.getByRole('heading', { name: 'Racing friends' }).closest('section')!;
+    expect(within(section).getByText(/^A puzzle you've seen before/)).toHaveTextContent(
+      /The one exception is a puzzle you enter yourself: typing in its numbers isn't seeing it, so its first game here counts\.$/,
+    );
   });
 
   it('leads from Difficulty to the guide to the solving techniques', () => {

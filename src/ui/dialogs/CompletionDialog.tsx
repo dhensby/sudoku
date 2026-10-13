@@ -4,7 +4,7 @@ import {
   toSeconds,
   type Assists,
   type DateKey,
-  type Difficulty,
+  type Level,
   type MistakeTally,
 } from '../../core';
 import type { Challenge, DifficultyStats } from '../../storage/history';
@@ -41,7 +41,7 @@ function streakText(note: StreakNote, label: string): string {
 }
 
 export interface CompletionDialogProps {
-  difficulty: Difficulty;
+  difficulty: Level;
   /** The final time on the clock. */
   elapsedMs: number;
   /** The help taken during the game. */

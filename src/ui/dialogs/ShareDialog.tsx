@@ -1,5 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
-import type { Assists, DateKey, Difficulty, GridString, MistakeTally } from '../../core';
+import type { Assists, DateKey, GridString, Level, MistakeTally } from '../../core';
 import { normaliseName } from '../../storage/storage';
 import {
   buildShareText,
@@ -16,7 +16,7 @@ import { NAME_INPUT_MAX } from './text';
 
 export interface ShareDialogProps {
   givens: GridString;
-  difficulty: Difficulty;
+  difficulty: Level;
   /**
    * The player's result to include, or null to share the puzzle alone
    * (mid-game, or an unsolved history entry). Its mistakes are null when they

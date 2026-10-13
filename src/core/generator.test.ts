@@ -234,10 +234,10 @@ describe('generatePuzzle', () => {
      * What `generatePuzzle` should return, worked out the long way: replay
      * its attempts with the same random source, stop at the first one on
      * target (a Medium needing locked candidates, an Expert needing its
-     * technique with 40 cells empty), else keep the one whose label from
-     * `rate` is nearest the target — the easier tier on a tie, then one the
-     * set solves over one it can't, then the earlier — labelled with that
-     * real tier.
+     * technique with 40 cells empty), else keep the one whose label is
+     * nearest the target — the easier tier on a tie, then one the set solves
+     * over one it can't, then the earlier — labelled with that real tier,
+     * and Expert for one the set can't solve.
      */
     function expected(difficulty: Difficulty, seed: number, maxAttempts: number): Puzzle {
       const rng = mulberry32(seed);
@@ -254,7 +254,7 @@ describe('generatePuzzle', () => {
         if (result.difficulty === difficulty && meetsTierRule) {
           return { givens: formatGrid(givens), solution: formatGrid(solution), difficulty };
         }
-        // The label `rate` gives: Expert for a puzzle the set can't solve.
+        // The generator's label: Expert for a puzzle the set can't solve.
         const rank = DIFFICULTY_ORDER.indexOf(result.solved ? result.difficulty! : 'expert');
         const keys = [Math.abs(rank - target), rank, result.solved ? 0 : 1];
         if (best === null || isBefore(keys, best.keys)) best = { givens, solution, keys };
@@ -262,7 +262,7 @@ describe('generatePuzzle', () => {
       return {
         givens: formatGrid(best!.givens),
         solution: formatGrid(best!.solution),
-        difficulty: rate(best!.givens),
+        difficulty: grade(best!.givens).difficulty ?? 'expert',
       };
     }
 
@@ -284,14 +284,16 @@ describe('generatePuzzle', () => {
       expect(results.some((p) => p.difficulty !== difficulty)).toBe(true);
     });
 
-    it('rates a puzzle beyond the technique set as Expert, as rate() does', () => {
+    it('labels a puzzle beyond the technique set Expert, where rate() says beyond', () => {
       // Seed 34's first five attempts: Hard, Medium, beyond the set, Medium,
-      // Medium. Asked for Expert, the third is the closest — `rate` calls it
-      // Expert. Ranking it past Expert instead would hand back the Hard one,
+      // Medium. Asked for Expert, the third is the closest, and is dealt as
+      // Expert — the game deals only the four tiers, though `rate` calls it
+      // beyond. Ranking it past Expert instead would hand back the Hard one,
       // though the player asked for harder.
       const puzzle = generatePuzzle('expert', mulberry32(34), { maxAttempts: 5 });
       expect(puzzle.difficulty).toBe('expert');
       expect(grade(gridValues(puzzle.givens)).solved).toBe(false);
+      expect(rate(gridValues(puzzle.givens))).toBe('beyond');
     });
 
     it('prefers a puzzle the set solves to one rated the same that it cannot', () => {

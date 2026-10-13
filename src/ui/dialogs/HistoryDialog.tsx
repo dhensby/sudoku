@@ -1,13 +1,14 @@
 import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { dateKeyOf, formatDuration, type Difficulty } from '../../core';
+import { dateKeyOf, formatDuration, type Difficulty, type Level } from '../../core';
 import {
   computeStats,
+  levelOf,
   recordedMistakes,
   type DifficultyStats,
   type GameRecord,
   type ImportResult,
 } from '../../storage/history';
-import { DIFFICULTIES } from '../../storage/storage';
+import { DIFFICULTIES, LEVELS } from '../../storage/storage';
 import {
   DIFFICULTY_LABEL,
   count,
@@ -80,6 +81,13 @@ export interface HistoryDialogProps {
   onClose: () => void;
 }
 
+/**
+ * The tabs: every game, or one tier's. Puzzles beyond the techniques have no
+ * tab of their own — they are few, and a tab that went with the last of them
+ * would take focus, and a place to come back to, with it — so their games
+ * show under All alone, each named for what it is, and their stats in All's
+ * table.
+ */
 type Filter = 'all' | Difficulty;
 
 /** Where the list was when a game was watched from it (see `HistoryDialogProps.place`). */
@@ -195,7 +203,7 @@ const HistoryRow = memo(function HistoryRow({
   onCancelDelete,
   onConfirmDelete,
 }: HistoryRowProps) {
-  const { id, difficulty, status, elapsedMs, assists, challenge } = record;
+  const { id, status, elapsedMs, assists, challenge } = record;
   const deleteRef = useRef<HTMLButtonElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
   // Where focus goes once the row has swapped its buttons. Set only by this
@@ -210,7 +218,7 @@ const HistoryRow = memo(function HistoryRow({
   });
 
   const date = formatDate(record.createdAt, now);
-  const label = DIFFICULTY_LABEL[difficulty];
+  const label = DIFFICULTY_LABEL[levelOf(record)];
   // "13 Oct": the daily's own date, which need not be the day it was played.
   const day = record.daily === undefined ? null : formatDay(record.daily, dateKeyOf(now));
   // Every row has the same few buttons, so each name carries the row: "Delete"
@@ -426,8 +434,13 @@ function TierStats({ label, stats }: { label: string; stats: DifficultyStats }) 
   );
 }
 
-/** Every tier at once, one row each: the "All" summary. */
-function AllStats({ stats }: { stats: Record<Difficulty, DifficultyStats> }) {
+/**
+ * Every tier at once, one row each: the "All" summary — and a row for the
+ * puzzles beyond the techniques once there is one, which only a link or a
+ * puzzle typed in brings.
+ */
+function AllStats({ stats }: { stats: Record<Level, DifficultyStats> }) {
+  const levels = stats.beyond.played > 0 ? LEVELS : DIFFICULTIES;
   return (
     <table className="stats-table">
       <caption className="stats-table__caption">Stats by level</caption>
@@ -441,13 +454,13 @@ function AllStats({ stats }: { stats: Record<Difficulty, DifficultyStats> }) {
         </tr>
       </thead>
       <tbody>
-        {DIFFICULTIES.map((difficulty) => (
-          <tr key={difficulty}>
-            <th scope="row">{DIFFICULTY_LABEL[difficulty]}</th>
-            <td>{stats[difficulty].played}</td>
-            <td>{stats[difficulty].solved}</td>
-            <td>{formatStat(stats[difficulty].bestMs)}</td>
-            <td>{formatStat(stats[difficulty].averageMs)}</td>
+        {levels.map((level) => (
+          <tr key={level}>
+            <th scope="row">{DIFFICULTY_LABEL[level]}</th>
+            <td>{stats[level].played}</td>
+            <td>{stats[level].solved}</td>
+            <td>{formatStat(stats[level].bestMs)}</td>
+            <td>{formatStat(stats[level].averageMs)}</td>
           </tr>
         ))}
       </tbody>
@@ -509,7 +522,7 @@ export function HistoryDialog({
   // same numbers as the full list — so they are worked out once per history.
   const stats = useMemo(() => computeStats(records), [records]);
   const shown = useMemo(
-    () => (filter === 'all' ? records : records.filter((record) => record.difficulty === filter)),
+    () => (filter === 'all' ? records : records.filter((record) => levelOf(record) === filter)),
     [records, filter],
   );
   const visible = useMemo(() => shown.slice(0, limit), [shown, limit]);

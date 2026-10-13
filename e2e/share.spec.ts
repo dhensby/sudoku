@@ -23,6 +23,7 @@ import {
   typeDigits,
   waitForPlaying,
 } from './helpers';
+import { BEYOND_THE_SET } from '../src/test/logic-fixtures';
 
 /**
  * Sharing and racing, end to end. A link carries the puzzle itself (and the
@@ -121,6 +122,36 @@ test.describe('opening a link', () => {
     await startButton(page).click();
     await waitForPlaying(page);
     expect(await readBoard(page)).toBe(PUZZLES.medium.givens);
+  });
+
+  test('a link to a puzzle the techniques cannot finish names it Beyond Expert, and so does its share', async ({
+    page,
+  }) => {
+    await stubClipboard(page);
+    await gotoPuzzle(page, BEYOND_THE_SET.givens);
+    await expect(boardArea(page)).toContainText('Someone shared a Beyond Expert puzzle with you.');
+    await expect(page.getByRole('banner')).toContainText('Difficulty: Beyond Expert');
+    await startButton(page).click();
+    await waitForPlaying(page);
+    expect(await readBoard(page)).toBe(BEYOND_THE_SET.givens);
+
+    await openHeaderDialog(page, 'Share');
+    const share = page.getByRole('dialog', { name: 'Share this puzzle' });
+    await share.getByRole('button', { name: 'Copy', exact: true }).click();
+    await expect(share.getByRole('status')).toHaveText('Copied to clipboard');
+    const [message] = await copiedText(page);
+    expect(message.split('\n')[0]).toBe('Try this Beyond Expert Sudoku!');
+    await share.getByRole('button', { name: 'Close' }).click();
+
+    // History names it so, though it keeps it as an Expert game, flagged, for older versions.
+    await openHeaderDialog(page, 'History');
+    await expect(
+      page.getByRole('dialog', { name: 'History' }).locator('.history-item__difficulty'),
+    ).toHaveText(['Beyond Expert']);
+    const records = await page.evaluate(
+      () => JSON.parse(localStorage.getItem('sudoku.history')!) as object[],
+    );
+    expect(records).toMatchObject([{ difficulty: 'expert', beyond: true }]);
   });
 
   test('a link that is not a puzzle says so, and a fresh one is made instead', async ({ page }) => {

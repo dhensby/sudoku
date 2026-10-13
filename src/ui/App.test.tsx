@@ -1,14 +1,21 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { encodeGivens, type Puzzle } from '../core';
+import { dealtTier, encodeGivens, type Puzzle } from '../core';
 import { meetDevice, renameFriend } from '../storage/friends';
-import { exportHistory, loadFriends, updateFriends, upsertRecord } from '../storage/history';
+import {
+  exportHistory,
+  loadFriends,
+  saveCurrentId,
+  updateFriends,
+  upsertRecord,
+} from '../storage/history';
 import { loadPreferences } from '../storage/prefs';
 import { memoryStorage, type StorageLike } from '../storage/storage';
 import { App } from './App';
 import type { PuzzleSource } from './puzzleSource';
-import { STUCK_ON_A_HIDDEN_PAIR } from '../test/logic-fixtures';
+import { newSession, saveSession } from './session';
+import { BEYOND_THE_SET, HARDEST, STUCK_ON_A_HIDDEN_PAIR } from '../test/logic-fixtures';
 import {
   FIRST_EMPTY,
   PUZZLE,
@@ -759,13 +766,150 @@ describe('App', () => {
     expect(cells()[0]).toHaveFocus();
   });
 
+  it('calls a puzzle typed in the player’s own on its Ready card, not one someone shared', async () => {
+    // Left behind its Start card before a reload.
+    const storage = memoryStorage();
+    const now = { wall: Date.now(), clock: 0 };
+    const typed = newSession(nearlySolved([0, 1, 2]), {
+      source: 'shared',
+      challenge: null,
+      now,
+      autoCandidates: false,
+      start: 'ready',
+      isEntered: true,
+    });
+    saveSession(storage, typed, now);
+    saveCurrentId(storage, typed.record.id);
+    renderApp({ storage });
+    expect(screen.getByRole('heading', { name: 'Ready?' })).toBeInTheDocument();
+    expect(document.querySelector('.board-overlay__text')).toHaveTextContent(
+      /^Your Easy puzzle is ready\.$/,
+    );
+  });
+
+  describe('entering a puzzle', () => {
+    const HARD = HARDEST.nakedPair.givens;
+
+    /** Open Enter a puzzle from New game. */
+    function openEditor(): HTMLElement {
+      fireEvent.click(screen.getByRole('button', { name: 'New game' }));
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Enter a puzzle…' }));
+      return screen.getByRole('dialog', { name: 'Enter a puzzle' });
+    }
+
+    /** Type givens in from where focus is, a key a character, '0' a blank. */
+    function typeIn(givens: string) {
+      for (const ch of givens) press(ch, { code: `Digit${ch}` }, document.activeElement!);
+    }
+
+    const card = () => document.querySelector('.board-overlay__text');
+    const startOnCard = () =>
+      within(screen.getByRole('main')).getByRole('button', { name: 'Start' });
+
+    it('plays a puzzle typed in from behind its Ready card, the player’s own, with Start focused', async () => {
+      await startApp();
+      const editor = openEditor();
+      expect(within(editor).getAllByRole('gridcell')[0]).toHaveFocus();
+      // The game behind is hidden, as behind any dialog.
+      expect(screen.queryByRole('grid', { name: 'Sudoku board' })).not.toBeInTheDocument();
+      typeIn(HARD);
+      expect(within(editor).getByRole('status')).toHaveTextContent('One solution: a Hard puzzle.');
+      fireEvent.click(within(editor).getByRole('button', { name: 'Play' }));
+      await settle();
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Ready?' })).toBeInTheDocument();
+      expect(card()).toHaveTextContent(/^Your Hard puzzle is ready\.$/);
+      expect(screen.getByRole('banner')).toHaveTextContent('Difficulty: Hard');
+      expect(startOnCard()).toHaveFocus();
+      fireEvent.click(startOnCard());
+      expect(screen.getByRole('grid', { name: 'Sudoku board' })).toBeInTheDocument();
+      expect(cells()[0]).toHaveAccessibleName(`${HARD[0]}, given`);
+      expect(selectedCell()).toHaveFocus();
+    });
+
+    it('takes the keyboard to Start on the card of a puzzle typed in behind another’s', async () => {
+      await startApp();
+      // The first waits behind its card as the second is typed in: the same
+      // kind of card, but another game's, which takes focus as it arrives.
+      for (const [givens, label] of [
+        [HARD, 'Hard'],
+        [HARDEST.xWing.givens, 'Expert'],
+      ]) {
+        const button = screen.getByRole('button', { name: 'New game' });
+        button.focus();
+        // From the keyboard: a click with no count, as Enter gives.
+        fireEvent.click(button, { detail: 0 });
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Enter a puzzle…' }), { detail: 0 });
+        typeIn(givens);
+        fireEvent.click(screen.getByRole('button', { name: 'Play' }), { detail: 0 });
+        await settle();
+        expect(card()).toHaveTextContent(`Your ${label} puzzle is ready.`);
+        expect(startOnCard()).toHaveFocus();
+      }
+    });
+
+    it('closes on Escape, the game behind carrying on and what was typed forgotten', async () => {
+      await startApp();
+      openEditor();
+      typeIn('53');
+      fireEvent.keyDown(document, { key: 'Escape' });
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(screen.getByRole('grid', { name: 'Sudoku board' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Pause' })).toBeInTheDocument();
+      expect(cells()[0]).toHaveAccessibleName(`${PUZZLE.givens[0]}, given`);
+      const editor = openEditor();
+      expect(within(editor).getAllByRole('gridcell')[0]).toHaveAccessibleName('empty');
+    });
+
+    it('shares a puzzle typed in from its Ready card as the puzzle alone', async () => {
+      await startApp();
+      openEditor();
+      typeIn(HARD);
+      fireEvent.click(screen.getByRole('button', { name: 'Play' }));
+      await settle();
+      fireEvent.click(within(screen.getByRole('banner')).getByRole('button', { name: 'Share' }));
+      const share = screen.getByRole('dialog', { name: 'Share this puzzle' });
+      expect(share.querySelector('.share__text')).toHaveTextContent(/^Try this Hard Sudoku!$/);
+      const url = new URL(share.querySelector('.share__url')!.textContent!);
+      expect([...url.searchParams.keys()]).toEqual(['p']);
+      expect(url.searchParams.get('p')).toBe(encodeGivens(HARD));
+      // Sharing it starts nothing: it still waits behind its card.
+      fireEvent.click(within(share).getByRole('button', { name: 'Close' }));
+      expect(card()).toHaveTextContent(/^Your Hard puzzle is ready\.$/);
+    });
+  });
+
+  it('names a linked puzzle beyond the techniques Beyond Expert, on its card, the header and Share', async () => {
+    const { storage } = renderApp({ search: linkFor(BEYOND_THE_SET.givens) });
+    expect(screen.getByRole('heading', { name: 'Ready?' })).toBeInTheDocument();
+    expect(document.querySelector('.board-overlay__text')).toHaveTextContent(
+      'Someone shared a Beyond Expert puzzle with you.',
+    );
+    const banner = screen.getByRole('banner');
+    expect(banner).toHaveTextContent('Difficulty: Beyond Expert');
+    expect(banner).toHaveClass('header--beyond');
+    fireEvent.click(within(banner).getByRole('button', { name: 'Share' }));
+    const share = screen.getByRole('dialog', { name: 'Share this puzzle' });
+    expect(share.querySelector('.share__text')).toHaveTextContent(
+      /^Try this Beyond Expert Sudoku!$/,
+    );
+    fireEvent.click(within(share).getByRole('button', { name: 'Close' }));
+    // History names it so too, though it keeps it as an Expert game an older version can read.
+    fireEvent.click(within(banner).getByRole('button', { name: 'History' }));
+    const history = screen.getByRole('dialog', { name: 'History' });
+    expect(history.querySelector('.history-item__difficulty')).toHaveTextContent('Beyond Expert');
+    expect(JSON.parse(storage.getItem('sudoku.history')!)).toMatchObject([
+      { difficulty: 'expert', beyond: true },
+    ]);
+  });
+
   it('offers a fresh attempt at a linked puzzle already solved', async () => {
     const storage = memoryStorage();
     const puzzle: Puzzle = PUZZLE;
     upsertRecord(storage, {
       id: 'old-0001',
       givens: puzzle.givens,
-      difficulty: puzzle.difficulty,
+      difficulty: dealtTier(puzzle.difficulty),
       source: 'generated',
       createdAt: Date.now() - 86_400_000,
       updatedAt: Date.now() - 86_400_000,
@@ -892,7 +1036,7 @@ describe('App', () => {
     upsertRecord(storage, {
       id: 'old-0001',
       givens: PUZZLE.givens,
-      difficulty: PUZZLE.difficulty,
+      difficulty: dealtTier(PUZZLE.difficulty),
       source: 'shared',
       createdAt: Date.now() - 86_400_000,
       updatedAt: Date.now() - 86_400_000,
@@ -1012,7 +1156,7 @@ describe('App', () => {
       upsertRecord(storage, {
         id: 'mbx3k2f0-done',
         givens: puzzle.givens,
-        difficulty: puzzle.difficulty,
+        difficulty: dealtTier(puzzle.difficulty),
         source: 'generated',
         createdAt: 1,
         updatedAt: 2,
@@ -1158,7 +1302,7 @@ describe('App', () => {
       upsertRecord(storage, {
         id: 'mbx3k2f0-done',
         givens: puzzle.givens,
-        difficulty: puzzle.difficulty,
+        difficulty: dealtTier(puzzle.difficulty),
         source: 'generated',
         createdAt: 1,
         updatedAt: 2,
@@ -1316,7 +1460,7 @@ describe('App', () => {
       upsertRecord(other, {
         id: 'mbx3k2f0-race',
         givens: puzzle.givens,
-        difficulty: puzzle.difficulty,
+        difficulty: dealtTier(puzzle.difficulty),
         source: 'shared',
         createdAt: 1,
         updatedAt: 2,
@@ -1373,7 +1517,7 @@ describe('App', () => {
         upsertRecord(storage, {
           id: 'mbx3k2f0-done',
           givens: puzzle.givens,
-          difficulty: puzzle.difficulty,
+          difficulty: dealtTier(puzzle.difficulty),
           source: 'generated',
           createdAt: Date.now() - 86_400_000,
           updatedAt: Date.now() - 86_400_000,
@@ -1694,7 +1838,7 @@ describe('App', () => {
     upsertRecord(storage, {
       id: 'old-0001',
       givens: PUZZLE.givens,
-      difficulty: PUZZLE.difficulty,
+      difficulty: dealtTier(PUZZLE.difficulty),
       source: 'generated',
       createdAt: Date.now() - 86_400_000,
       updatedAt: Date.now() - 86_400_000,
@@ -1814,7 +1958,7 @@ describe('App', () => {
       upsertRecord(storage, {
         id: 'old-0001',
         givens: PUZZLE.givens,
-        difficulty: PUZZLE.difficulty,
+        difficulty: dealtTier(PUZZLE.difficulty),
         source: 'generated',
         createdAt: Date.now() - 86_400_000,
         updatedAt: Date.now() - 86_400_000,

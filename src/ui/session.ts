@@ -6,14 +6,14 @@ import {
   createGame,
   createMoveLog,
   dateKeyOf,
+  dealtTier,
   encodeMoveLog,
   deserialiseGame,
   elapsedMs,
-  gridValues,
   isRunning,
   moveFor,
   pauseClock,
-  rate,
+  puzzleFromGivens,
   reduce,
   serialiseGame,
   sharedSolveRefusal,
@@ -28,6 +28,7 @@ import {
   type GameAction,
   type GameState,
   type GridString,
+  type Level,
   type MistakeTally,
   type MoveLog,
   type Puzzle,
@@ -43,6 +44,7 @@ import {
   loadFriends,
   loadGameBlob,
   loadHistory,
+  levelOf,
   recordedMistakes,
   saveGameBlob,
   saveGameMoves,
@@ -84,9 +86,9 @@ export interface Moment {
 
 /**
  * Why the clock is stopped while a game is unsolved:
- *   - `ready`: a game waiting for its Start button — a shared puzzle, one
- *     that arrived while the tab was hidden, or one reopened before it was
- *     ever started;
+ *   - `ready`: a game waiting for its Start button — a shared puzzle, a
+ *     puzzle entered by hand, one that arrived while the tab was hidden, or
+ *     one reopened before it was ever started;
  *   - `user`: the pause button or P;
  *   - `hidden`: the tab was hidden;
  *   - `dialog`: a modal dialog is open — the one pause that lifts by itself;
@@ -97,7 +99,8 @@ export type PauseReason = 'ready' | 'user' | 'hidden' | 'dialog' | 'restored';
 /**
  * What the board area shows and what input does:
  *   - `loading`: a puzzle is being generated (spinner, no board);
- *   - `ready`: a shared puzzle before Start (card, no board);
+ *   - `ready`: a shared puzzle, or a puzzle entered by hand, before Start
+ *     (card, no board);
  *   - `playing`: the clock runs and the board takes input;
  *   - `paused`: the clock is stopped and the board is hidden;
  *   - `solved`: the board is on show, frozen.
@@ -153,7 +156,8 @@ export type SessionStart =
   | 'running'
   /**
    * Behind a Start button: a shared puzzle, so both players start from the
-   * same moment, or a puzzle that arrived while the tab was hidden.
+   * same moment; a puzzle entered by hand, to share or start as the player
+   * pleases; or a puzzle that arrived while the tab was hidden.
    */
   | 'ready'
   /** Paused behind a dialog that is still open, resuming (and first seen) when it closes. */
@@ -168,7 +172,7 @@ export type SessionStart =
  */
 export interface ShareTarget {
   givens: GridString;
-  difficulty: Difficulty;
+  difficulty: Level;
   /**
    * The time to beat, with its help and its mistakes — the mistakes only as
    * the solved record has them (`recordedMistakes`), and null when it has
@@ -203,7 +207,9 @@ export interface ChallengeOffer {
  * A link's claim that its puzzle is a date's daily (`&d=`), still to be
  * checked against that date's dailies (which is asynchronous: a daily may
  * have to be dealt first). `tier` is the tier the puzzle grades as, the
- * daily most worth checking first.
+ * daily most worth checking first — Expert for one beyond the techniques,
+ * which a daily can be in the rare case the generator ran out of attempts
+ * and fell back on one (see `generatePuzzle`).
  */
 export interface DailyHint {
   date: DateKey;
@@ -275,6 +281,19 @@ export function phaseOf(session: Session | null, isGenerating: boolean): Phase {
 }
 
 /**
+ * The solve of a puzzle to offer it again with (see `ChallengeOffer`), from
+ * its attempts, newest first: the newest that counted towards the records —
+ * a replay's only if there is nothing else, as it was set on a board seen
+ * before. Undefined while the puzzle has never been solved.
+ */
+export function previousSolve(attempts: readonly GameRecord[]): GameRecord | undefined {
+  const solves = attempts.filter((attempt) => attempt.status === 'solved');
+  return (
+    solves.find((attempt) => attempt.source !== 'replay' && hasRecordedTime(attempt)) ?? solves[0]
+  );
+}
+
+/**
  * Where a new attempt at `givens` comes from. A puzzle the player has seen —
  * one in the history, or whose board was on show in an attempt since deleted
  * (see `hasSeen`) — is a replay, whatever brought it back: a link, the
@@ -293,7 +312,10 @@ export function attemptSource(
 /**
  * A fresh record for a game of `puzzle` created at `now` (epoch ms) — an
  * attempt at the daily of date `daily`, if one is given, `isStarted` (its
- * clock running from now) or not yet.
+ * clock running from now) or not yet, and flagged `isEntered` for a puzzle
+ * the player typed in (see `GameRecord.entered`). A puzzle beyond the
+ * techniques is recorded as an Expert game flagged `beyond`, as the history
+ * keeps it.
  */
 export function createRecord(
   puzzle: Puzzle,
@@ -304,11 +326,12 @@ export function createRecord(
   daily?: DateKey,
   isStarted = true,
   isWatched = false,
+  isEntered = false,
 ): GameRecord {
   return {
     id: createGameId(now),
     givens: puzzle.givens,
-    difficulty: puzzle.difficulty,
+    difficulty: dealtTier(puzzle.difficulty),
     source,
     createdAt: now,
     updatedAt: now,
@@ -321,6 +344,8 @@ export function createRecord(
     ...(daily === undefined ? {} : { daily }),
     ...(daily !== undefined && isStarted ? { startedOn: dateKeyOf(now) } : {}),
     ...(isWatched ? { watched: true as const } : {}),
+    ...(puzzle.difficulty === 'beyond' ? { beyond: true as const } : {}),
+    ...(isEntered ? { entered: true as const } : {}),
   };
 }
 
@@ -352,6 +377,11 @@ export function newSession(
      * know it from the start.
      */
     isWatched?: boolean;
+    /**
+     * The player typed the puzzle in by hand (see `GameRecord.entered`): it
+     * waits behind Start as their own, not as one someone shared.
+     */
+    isEntered?: boolean;
   },
 ): Session {
   const {
@@ -363,6 +393,7 @@ export function newSession(
     start,
     daily,
     isWatched = false,
+    isEntered = false,
   } = options;
   const game = createGame(puzzle, { autoCandidates });
   const session: Session = {
@@ -375,6 +406,7 @@ export function newSession(
       daily,
       start === 'running',
       isWatched,
+      isEntered,
     ),
     game,
     clock: start === 'running' ? startClock(STOPPED_CLOCK, now.clock) : STOPPED_CLOCK,
@@ -513,7 +545,9 @@ export function hasBoardShown(session: Session): boolean {
  * rather than keeping it, so browsing the tiers neither fills History with
  * games nobody played nor counts them as played. Its puzzle stays seen
  * (`hasBoardShown`), so seeing it again is still a replay. A shared puzzle is
- * always kept: a friend sent it, and its link may carry a time to race.
+ * always kept: a friend sent it, and its link may carry a time to race. So
+ * is a puzzle entered by hand (see `GameRecord.entered`): the player typed
+ * it in to play it.
  *
  * Auto candidates and Check guesses are the assists a glimpse may carry:
  * with "Start new games in auto candidate mode" or "Check guesses when
@@ -653,13 +687,15 @@ function isUnstarted(elapsed: number, game: GameState): boolean {
 
 /**
  * A record for a saved game whose record has gone missing (pruned, or lost
- * to a failed write). Its time is lost with it, but the board is not.
+ * to a failed write). Its time is lost with it, but the board is not — nor
+ * its tier, though a puzzle beyond the techniques comes back as Expert: the
+ * saved game holds the tier dealt (see `serialiseGame`).
  */
 function orphanRecord(id: string, game: GameState, now: number): GameRecord {
   return {
     id,
     givens: game.puzzle.givens,
-    difficulty: game.puzzle.difficulty,
+    difficulty: dealtTier(game.puzzle.difficulty),
     source: 'generated',
     createdAt: now,
     updatedAt: now,
@@ -689,6 +725,10 @@ function orphanRecord(id: string, game: GameState, now: number): GameRecord {
  * is written before the record, and a crash or a refused write between the
  * two must not lose the player time they played — nor give them time to
  * think for free.
+ *
+ * The record says what the puzzle is labelled (see `levelOf`), so the game
+ * comes back with that label, not the tier its saved board holds (see
+ * `serialiseGame`).
  */
 export function restoreSession(
   storage: StorageLike,
@@ -719,7 +759,7 @@ export function restoreSession(
       assists: { ...game.assists },
       completedAt: isSolved ? (record.completedAt ?? now) : null,
     },
-    game,
+    game: { ...game, puzzle: { ...game.puzzle, difficulty: levelOf(record) } },
     clock: { bankedMs, runningSince: null },
     moves,
     pause,
@@ -733,7 +773,7 @@ export function restoreSession(
 export function puzzleOf(record: GameRecord): Puzzle | null {
   const check = checkGivens(record.givens);
   if (!check.ok) return null;
-  return { givens: record.givens, solution: check.solution, difficulty: record.difficulty };
+  return { givens: record.givens, solution: check.solution, difficulty: levelOf(record) };
 }
 
 /**
@@ -766,7 +806,7 @@ export function shareTargetOf(session: Session): ShareTarget {
   const seconds = toSeconds(clock.bankedMs);
   return {
     givens: record.givens,
-    difficulty: record.difficulty,
+    difficulty: levelOf(record),
     result: isRaceable
       ? {
           seconds,
@@ -794,7 +834,7 @@ export function shareTargetOfRecord(record: GameRecord, encoded: string | null):
   const seconds = toSeconds(record.elapsedMs);
   return {
     givens: record.givens,
-    difficulty: record.difficulty,
+    difficulty: levelOf(record),
     result: isRaceable
       ? {
           seconds,
@@ -881,14 +921,10 @@ export function planStartup(
   const link = readSharedLink(search);
   if (link === null) return plain;
   const opened: Startup = { ...plain, isLinkConsumed: true };
-  const check = link.givens === null ? null : checkGivens(link.givens);
-  if (link.givens === null || check === null || !check.ok) return { ...opened, isBadLink: true };
+  const checked = link.givens === null ? null : puzzleFromGivens(link.givens);
+  if (checked === null || !checked.ok) return { ...opened, isBadLink: true };
 
-  const puzzle: Puzzle = {
-    givens: link.givens,
-    solution: check.solution,
-    difficulty: rate(gridValues(link.givens)),
-  };
+  const { puzzle } = checked;
   // The player's own link, opened here, races no one: their time is no time
   // to beat, and their solve theirs to watch already. It opens as a link
   // without a time would.
@@ -907,7 +943,7 @@ export function planStartup(
     dailyHint:
       link.daily === null
         ? null
-        : { date: link.daily, givens: puzzle.givens, tier: puzzle.difficulty },
+        : { date: link.daily, givens: puzzle.givens, tier: dealtTier(puzzle.difficulty) },
     isSolveTooNew: refusal === 'newer',
     sharer:
       linkChallenge?.playerId === undefined
@@ -939,9 +975,7 @@ export function planStartup(
     };
   }
 
-  const solves = attempts.filter((attempt) => attempt.status === 'solved');
-  const previous =
-    solves.find((attempt) => attempt.source !== 'replay' && hasRecordedTime(attempt)) ?? solves[0];
+  const previous = previousSolve(attempts);
   if (previous !== undefined) {
     return { ...linked, offer: { puzzle, previous, challenge } };
   }

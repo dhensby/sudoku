@@ -1,4 +1,4 @@
-import type { Difficulty } from '../core';
+import type { Difficulty, Level } from '../core';
 
 /*
  * The storage seam every persisted thing goes through.
@@ -203,8 +203,16 @@ export function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/** Every tier, easiest first — the order stats are listed in. */
+/**
+ * Every tier the game deals, easiest first: New game's, the dailies' (in the
+ * order of their letters in the ledger) and the streaks'. Only ever these
+ * four, which is all an older version can read; a puzzle's label can be one
+ * more (see `LEVELS`).
+ */
 export const DIFFICULTIES: readonly Difficulty[] = ['easy', 'medium', 'hard', 'expert'];
+
+/** Every label a puzzle can be shown with, easiest first — the order stats are listed in. */
+export const LEVELS: readonly Level[] = [...DIFFICULTIES, 'beyond'];
 
 /** Whether a value read back from the outside world is a tier the game knows. */
 export function isDifficulty(value: unknown): value is Difficulty {

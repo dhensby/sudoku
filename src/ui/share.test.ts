@@ -301,6 +301,13 @@ describe('buildShareText', () => {
     expect(buildShareText({ difficulty: 'hard' })).toBe('Try this Hard Sudoku!');
   });
 
+  it('names a puzzle beyond the techniques Beyond Expert, solved or not', () => {
+    expect(buildShareText({ difficulty: 'beyond' })).toBe('Try this Beyond Expert Sudoku!');
+    expect(buildShareText({ difficulty: 'beyond', result: { seconds: 323, assists: NONE } })).toBe(
+      'Sudoku · Beyond Expert · 5:23\nCan you beat my time?',
+    );
+  });
+
   it('says, last, that a solve in the link can be watched — and nothing of how it went', () => {
     expect(
       buildShareText({ difficulty: 'easy', result: { seconds: 323, assists: NONE, log: 'BBA' } }),

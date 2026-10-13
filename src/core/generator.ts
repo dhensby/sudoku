@@ -192,7 +192,10 @@ function generateEasy(rng: RandomFn): Puzzle {
 interface Attempt {
   givens: Uint8Array;
   solution: Uint8Array;
-  /** Its true tier — the label it gets if it is the one returned. */
+  /**
+   * The tier it is labelled with if it is the one returned: its grade's, or
+   * Expert for one the set can't finish (see `preferenceOf`).
+   */
   difficulty: Difficulty;
   /** How close it is to the target: lower is better (see `preferenceOf`). */
   preference: number;
@@ -202,11 +205,12 @@ interface Attempt {
  * How close a graded attempt that missed is to the target, for the fallback:
  * lower is better.
  *
- * Closeness goes by the label the attempt would be returned with, which is
- * what `rate` says — so a puzzle the set can't solve counts as Expert, and an
- * Expert request takes it over a solved Hard. Ties go to the easier tier and,
- * within a tier, to a puzzle the set solves over one it can't: the easier of
- * the two again.
+ * Closeness goes by the label the attempt would be returned with. The game
+ * deals only the four tiers, so a puzzle the set can't solve is labelled
+ * Expert here, though `rate` would call it Beyond Expert — and an Expert
+ * request takes it over a solved Hard. Ties go to the easier tier and, within
+ * a tier, to a puzzle the set solves over one it can't: the easier of the two
+ * again.
  */
 function preferenceOf(result: Grade, target: Difficulty): number {
   const rank = TIER_RANK[result.difficulty ?? 'expert'];
@@ -223,11 +227,13 @@ function preferenceOf(result: Grade, target: Difficulty): number {
  * pairs or triples, and one in eight a fish, wing or chain early enough for
  * Expert, so no tier usually needs more than a few dozen attempts. If
  * `maxAttempts` (at least one is always made) runs out first, the attempt
- * whose tier — as `rate` would label it — is closest to the target is
- * returned, labelled with that actual tier, never the one asked for. An
- * Expert that needs its technique only late, like a Medium that needs only
- * singles, counts as the right tier there: it is what `rate` calls it, so it
- * beats anything easier or beyond the set.
+ * whose tier is closest to the target is returned, labelled with that actual
+ * tier, never the one asked for. The tier is the one `rate` would give, but
+ * for a puzzle the set can't finish, which is labelled Expert rather than
+ * Beyond Expert: the generator deals only the four tiers (see
+ * `preferenceOf`). An Expert that needs its technique only late, like a
+ * Medium that needs only singles, counts as the right tier there: it is what
+ * `rate` calls it, so it beats anything easier or beyond the set.
  */
 export function generatePuzzle(
   difficulty: Difficulty,

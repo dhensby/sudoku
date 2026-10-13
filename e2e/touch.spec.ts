@@ -20,6 +20,7 @@ import {
   typeDigits,
   waitForPlaying,
 } from './helpers';
+import { BEYOND_THE_SET } from '../src/test/logic-fixtures';
 
 /**
  * Phones: the game played by touch, and the layout's promise that the whole
@@ -1003,8 +1004,9 @@ for (const viewport of [
 }
 
 /*
- * A game past the hour, at the widest a header gets: Medium, the longest
- * tier name, and h:mm:ss on the clock. Something in the header gives way
+ * A game past the hour, at the widest a random game's header gets: Medium,
+ * the longest tier name, and h:mm:ss on the clock (a puzzle beyond the
+ * techniques, longer again, is below). Something in the header gives way
  * (the wordmark goes first), never the page: nothing scrolls sideways and
  * the Menu button stays whole, paused and playing.
  */
@@ -1030,6 +1032,51 @@ for (const viewport of [
         }
         expect((await overflow(page)).x, state).toBe(0);
         await expect(banner).toContainText('Difficulty: Medium');
+        for (const control of [
+          banner.getByRole('button', { name: /^(Pause|Resume)$/ }),
+          banner.getByRole('button', { name: 'New game' }),
+          banner.getByRole('button', { name: 'Menu' }),
+        ]) {
+          await expectOnScreen(page, control);
+        }
+      }
+    });
+  });
+}
+
+/*
+ * A puzzle beyond the techniques, from a link, past the hour: "Beyond
+ * Expert" is the widest label the header shows, wider than "Medium", and the
+ * header makes room for it as it does for a daily's "Daily ·" — the wordmark
+ * first, then, on the narrowest phone, the label shortens to "Exp+". Whole
+ * either way, paused and playing, with nothing scrolling sideways.
+ */
+for (const { viewport, shown } of [
+  { viewport: { width: 320, height: 568 }, shown: 'Exp+' },
+  { viewport: { width: 375, height: 667 }, shown: 'Beyond Expert' },
+]) {
+  test.describe(`a ${viewport.width}px-wide phone with a Beyond Expert puzzle at 1:23:45`, () => {
+    test.use({ viewport });
+
+    test(`shows "${shown}" in a header cut nowhere short`, async ({ page }) => {
+      await tapStart(page, BEYOND_THE_SET.givens);
+      await seedElapsed(page, (1 * 3600 + 23 * 60 + 45) * 1000);
+      const banner = page.getByRole('banner');
+      await expect(banner).toContainText('Difficulty: Beyond Expert');
+      await expect(banner.locator('.header__tier-short')).toBeVisible({
+        visible: shown === 'Exp+',
+      });
+      // The wordmark makes way first, at both widths: still the page's heading, but not on show.
+      const wordmark = (await banner.getByRole('heading', { name: 'Sudoku' }).boundingBox())!;
+      expect(wordmark.width, 'the wordmark on show').toBeLessThanOrEqual(1);
+      for (const state of ['paused', 'playing']) {
+        if (state === 'playing') {
+          await resumeButton(page).tap();
+          await waitForPlaying(page);
+        }
+        await expect(banner.locator('.timer__time')).toHaveText(/^1:23:4\d$/);
+        await expectHeaderWhole(page);
+        expect((await overflow(page)).x, state).toBe(0);
         for (const control of [
           banner.getByRole('button', { name: /^(Pause|Resume)$/ }),
           banner.getByRole('button', { name: 'New game' }),
@@ -1455,6 +1502,65 @@ for (const viewport of [
       for (const target of [field, picker]) {
         expect(await target.evaluate((el) => parseFloat(getComputedStyle(el).fontSize))).toBe(16);
       }
+    });
+  });
+}
+
+/*
+ * Enter a puzzle at each phone size, upright and on its side: on screen with
+ * nothing to scroll either way, for the board takes the height the rest
+ * leaves; every button a finger's 44px (the pad's nine keys, Erase, Play and
+ * the close button); and every cell at least WCAG's 24px, but on the shortest
+ * phone on its side, which leaves the board room for 22px (upright, it has
+ * 25px). A tap on a cell, then on the pad, puts the number in that cell and
+ * leaves it selected, for a correction to land there too.
+ */
+for (const viewport of [
+  { width: 320, height: 568 },
+  { width: 568, height: 320 },
+  { width: 667, height: 375 },
+  { width: 844, height: 390 },
+]) {
+  test.describe(`a ${viewport.width}×${viewport.height} phone entering a puzzle`, () => {
+    test.use({ viewport });
+
+    test('fits Enter a puzzle with nothing to scroll, every button 44px and every cell 24px', async ({
+      page,
+    }) => {
+      await tapStart(page);
+      await page.getByRole('banner').getByRole('button', { name: 'New game' }).tap();
+      await page.getByRole('menuitem', { name: 'Enter a puzzle…' }).tap();
+      const dialog = page.getByRole('dialog', { name: 'Enter a puzzle' });
+      await expect(dialog).toBeVisible();
+      await expectOnScreen(page, dialog);
+      expect((await overflow(page)).x).toBe(0);
+      const body = dialog.locator('.dialog__body');
+      expect(await body.evaluate((el) => el.scrollWidth - el.clientWidth)).toBe(0);
+      expect(await body.evaluate((el) => el.scrollHeight - el.clientHeight)).toBeLessThanOrEqual(1);
+
+      const buttons = await dialog.getByRole('button').all();
+      expect(buttons).toHaveLength(12);
+      for (const button of buttons) {
+        const size = (await button.boundingBox())!;
+        const label = (await button.getAttribute('aria-label')) ?? (await button.innerText());
+        expect(size.height, label).toBeGreaterThanOrEqual(44);
+        expect(size.width, label).toBeGreaterThanOrEqual(44);
+      }
+      const smallest = await dialog.getByRole('gridcell').evaluateAll((cells) =>
+        Math.min(
+          ...cells.flatMap((cell) => {
+            const box = cell.getBoundingClientRect();
+            return [box.width, box.height];
+          }),
+        ),
+      );
+      expect(smallest).toBeGreaterThanOrEqual(viewport.height === 320 ? 22 : 24);
+
+      const target = dialog.getByRole('gridcell').nth(40);
+      await target.tap();
+      await dialog.getByRole('button', { name: '5', exact: true }).tap();
+      await expect(target).toHaveAccessibleName('5, given');
+      await expect(target).toHaveAttribute('aria-selected', 'true');
     });
   });
 }

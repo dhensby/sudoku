@@ -50,8 +50,9 @@ export interface SharedLink {
  *
  * Nothing from the link is trusted beyond the givens themselves: the caller
  * still validates them, re-grades the puzzle rather than taking a
- * difficulty label on faith, checks a daily's date against that day's
- * puzzles, and replays a solve before offering it.
+ * difficulty label on faith (so a puzzle beyond the techniques the grader
+ * knows reads Beyond Expert, wherever it came from), checks a daily's date
+ * against that day's puzzles, and replays a solve before offering it.
  */
 export function readSharedLink(search: string): SharedLink | null {
   const params = new URLSearchParams(search);

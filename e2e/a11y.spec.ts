@@ -1,5 +1,5 @@
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { EXAMPLE_PUZZLES, gridValues, solve, type Puzzle, type TechniqueId } from '../src/core';
 import { GUIDE, GUIDE_ORDER } from '../src/ui/techniqueGuide';
 import {
@@ -11,17 +11,20 @@ import {
   chooseMore,
   dailyRecord,
   emptyCells,
+  enterGivens,
   getStuck,
   getStuckOnAnXyChain,
   gotoPuzzle,
   leaveOutAnAnswer,
   modeButton,
+  openEnterPuzzle,
   openHeaderDialog,
   placedSolve,
   puzzleLink,
   seedFriends,
   seedHistory,
   selectCell,
+  solutionOf,
   solveFromKeyboard,
   solveWithAMistake,
   startButton,
@@ -36,12 +39,14 @@ import {
  * rules over the states a player meets — the board in play with every kind
  * of mark on it, the Ready and Paused cards, the "…" menu, every dialog (each
  * step of Show me, the Show me of a missing candidate, Friends with a name
- * being changed and with two friends being merged, and "Who sent this?"
- * with friends to choose from, among them), each entry of the technique
- * guide, and a step hint with its houses tinted on the board — in the light
- * theme and the dark (and the main ones, the tint among them, in High
- * contrast), and each must come back with no violations at all, with no
- * rule switched off.
+ * being changed and with two friends being merged, "Who sent this?" with
+ * friends to choose from, and Enter a puzzle at each step on the way to a
+ * puzzle — empty, a clash dotted, too few numbers, more than one solution,
+ * and a Hard with one — among them), each entry of the technique guide, and
+ * a step hint with its houses tinted on the board — in the light theme and
+ * the dark (and the main ones, the tint and Enter a puzzle among them, in
+ * High contrast), and each must come back with no violations at all, with
+ * no rule switched off.
  * Contrast is the rule that a palette change is likeliest to break:
  * contrast.test.ts holds the tokens to their targets pair by pair, and this
  * is the check that the rendered page, every colour composed, agrees.
@@ -53,11 +58,12 @@ import {
  *
  * The desktop layout runs on Chromium; a shorter pass runs on the phones
  * (`iphone`, `android`), whose layout folds the header into a menu and the
- * guide into a bottom sheet. Motion is reduced so nothing is caught
- * mid-fade. High contrast has passes of its own, both ways it comes —
- * chosen in Settings, and from a dark system asking for more contrast —
- * which also measure what a colour check cannot: its heavier box lines,
- * and its same-number ring kept clear of the digits.
+ * guide into a bottom sheet — Enter a puzzle too, upright and on its side.
+ * Motion is reduced so nothing is caught mid-fade. High contrast has passes
+ * of its own, both ways it comes — chosen in Settings, and from a dark
+ * system asking for more contrast — which also measure what a colour check
+ * cannot: its heavier box lines, and its same-number ring kept clear of the
+ * digits.
  */
 
 /** Every WCAG 2.0, 2.1 and 2.2 rule at levels A and AA (axe has no rules tagged 2.2 A). */
@@ -340,6 +346,56 @@ async function friendsList(page: Page, before?: () => Promise<void>): Promise<vo
   await friends.getByRole('button', { name: /^Merge Ally,/ }).click();
   await expect(friends.getByRole('combobox', { name: 'Same person as' })).toBeFocused();
   await expectAccessible(page, 'Friends with two friends being merged');
+}
+
+/**
+ * Enter a puzzle at each step on the way to a puzzle, its line saying so,
+ * typed over an emptied grid: empty; two 5s in a row, both dotted; too few
+ * numbers; more than one solution; and a Hard with one — Play unavailable
+ * until then, and faded. `where` names the layout in a failure.
+ */
+async function scanEnterPuzzle(page: Page, editor: Locator, where = ''): Promise<void> {
+  const status = editor.getByRole('status');
+  await enterGivens(editor, '0'.repeat(81));
+  await expect(status).toHaveText('Type in the numbers from your puzzle.');
+  await expectAccessible(page, `Enter a puzzle, empty${where}`);
+
+  await enterGivens(editor, '55');
+  await expect(status).toHaveText('Two 5s in row 1.');
+  await expect(editor.getByRole('gridcell', { name: '5, given, conflict' })).toHaveCount(2);
+  await expectAccessible(page, `Enter a puzzle with a clash${where}`);
+
+  await enterGivens(editor, '123');
+  await expect(status).toHaveText('A puzzle needs at least 17 numbers.');
+  await expectAccessible(page, `Enter a puzzle with too few numbers${where}`);
+
+  const hard = PUZZLES.hard.givens;
+  await enterGivens(editor, '0'.repeat(18) + solutionOf(hard).slice(18));
+  await expect(status).toHaveText('More than one solution so far.');
+  await expectAccessible(page, `Enter a puzzle with more than one solution${where}`);
+
+  await enterGivens(editor, hard);
+  await expect(status).toHaveText('One solution: a Hard puzzle.');
+  await expect(editor.getByRole('button', { name: 'Play' })).not.toHaveAttribute('aria-disabled');
+  await expectAccessible(page, `Enter a puzzle with a Hard typed in${where}`);
+}
+
+/**
+ * Enter a puzzle opened over a game, its first cell focused, and scanned at
+ * each step (see `scanEnterPuzzle`). `before` runs first, on the game it
+ * opens over (to choose High contrast, say). Returns the dialog, still open.
+ */
+async function enterPuzzleStates(
+  page: Page,
+  { before, where = '' }: { before?: () => Promise<void>; where?: string } = {},
+): Promise<Locator> {
+  await page.goto('/');
+  await waitForPlaying(page);
+  if (before !== undefined) await before();
+  const editor = await openEnterPuzzle(page);
+  await expect(editor.getByRole('gridcell').first()).toBeFocused();
+  await scanEnterPuzzle(page, editor, where);
+  return editor;
 }
 
 /** London noon on a date of October 2026, in epoch ms. */
@@ -632,6 +688,11 @@ for (const scheme of ['light', 'dark'] as const) {
       await friendsList(page);
       await expectScheme(page, scheme);
     });
+
+    test('Enter a puzzle, on its way to a puzzle', async ({ page }) => {
+      await enterPuzzleStates(page);
+      await expectScheme(page, scheme);
+    });
   });
 }
 
@@ -842,6 +903,17 @@ for (const { way, isChosen, media } of HIGH_CONTRAST_WAYS) {
       await expectAccessible(page, 'the daily calendar on a day played every way');
       await page.keyboard.press('ArrowRight');
       await expectAccessible(page, 'the daily calendar under the keyboard');
+    });
+
+    test('Enter a puzzle, on its way to a puzzle', async ({ page }) => {
+      await page.emulateMedia(media);
+      await enterPuzzleStates(page, {
+        before: async () => {
+          if (isChosen) await chooseHighContrast(page);
+          await expectHighContrast(page, isChosen);
+        },
+      });
+      await expectHighContrast(page, isChosen);
     });
   });
 }
@@ -1060,6 +1132,19 @@ test.describe('on a phone', () => {
           `Watch your solve, ${size === upright ? 'upright' : 'on its side'}`,
         );
       }
+    });
+  }
+
+  for (const scheme of ['light', 'dark'] as const) {
+    test(`Enter a puzzle as a bottom sheet, and on its side, in the ${scheme} theme`, async ({
+      page,
+    }) => {
+      await page.emulateMedia({ colorScheme: scheme });
+      const upright = page.viewportSize()!;
+      const editor = await enterPuzzleStates(page, { where: ', upright' });
+      await expectScheme(page, scheme);
+      await page.setViewportSize({ width: upright.height, height: upright.width });
+      await scanEnterPuzzle(page, editor, ', on its side');
     });
   }
 });

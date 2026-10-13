@@ -53,7 +53,7 @@ const POSITION_MASK = (1n << POSITION_BITS) - 1n;
 const CHAR_VALUE = new Map<string, bigint>([...ALPHABET].map((ch, i) => [ch, BigInt(i)]));
 
 /** The fewest givens a uniquely solvable Sudoku can have (McGuire, Tugemann & Civario, 2012). */
-const MIN_GIVENS = 17;
+export const MIN_GIVENS = 17;
 
 /**
  * Compact base64url (A–Z a–z 0–9 - _) code for a puzzle's givens:

@@ -3,6 +3,7 @@ import {
   STOPPED_CLOCK,
   checkedBoardOf,
   dateKeyOf,
+  dealtTier,
   elapsedMs,
   encodeMoveLog,
   explainCell,
@@ -29,6 +30,7 @@ import {
   type GridString,
   type Hint,
   type InputMode,
+  type Level,
   type MistakeTally,
   type Puzzle,
   type SolveStep,
@@ -56,13 +58,13 @@ import {
   exportHistory,
   findAttempts,
   findDailyAttempts,
-  hasRecordedTime,
   hasSolved,
   hasWatched,
   importHistory,
   loadDailyLedger,
   loadFriends,
   loadHistory,
+  levelOf,
   markSeen,
   markWatched,
   recordedMistakes,
@@ -112,6 +114,7 @@ import {
   pauseSession,
   phaseOf,
   planStartup,
+  previousSolve,
   puzzleOf,
   recordOf,
   restoreSession,
@@ -203,7 +206,7 @@ export interface DailyResult {
 
 /** What the completion dialog shows, fixed at the moment of the solve. */
 export interface CompletionResult {
-  difficulty: Difficulty;
+  difficulty: Level;
   elapsedMs: number;
   assists: GameState['assists'];
   isNewBest: boolean;
@@ -214,7 +217,7 @@ export interface CompletionResult {
    * `GameRecord.watched`): recorded without a time.
    */
   isWatched: boolean;
-  /** The tier's stats, this game included. */
+  /** The stats of the puzzle's label (see `levelOf`), this game included. */
   stats: DifficultyStats;
   challenge: Challenge | null;
   /** The daily the game was, if it was one. */
@@ -368,11 +371,18 @@ export type DialogState =
    * puzzle again, waits behind it (see `closeDialog`).
    */
   | { kind: 'whoSent'; sharer: LinkSharer; offer: ChallengeOffer | null }
+  /**
+   * Enter a puzzle: one from elsewhere — the paper — typed in to play (see
+   * `playEntered`). What has been typed is the dialog's own, and goes as it
+   * closes.
+   */
+  | { kind: 'enter' }
   | PlaybackView
   | CompareView;
 
-/** The dialogs the header opens. */
-export type HeaderDialog = 'daily' | 'history' | 'settings' | 'techniques' | 'help' | 'share';
+/** The dialogs the header opens — Enter a puzzle from its New game menu. */
+export type HeaderDialog =
+  'daily' | 'history' | 'settings' | 'techniques' | 'help' | 'share' | 'enter';
 
 /** What the History dialog lists, read from storage when it opens. */
 export interface HistoryView {
@@ -450,8 +460,21 @@ export interface SudokuActions {
   closeDialog: () => void;
   /** From the completion dialog: share the time just set. */
   shareResult: () => void;
-  /** From the challenge dialog: a fresh attempt at the linked puzzle (or the unfinished one, if there is one). */
+  /**
+   * From the challenge dialog: a fresh attempt at the puzzle it offers — a
+   * link's, a solved daily's or one entered by hand — or the unfinished one,
+   * if there is one.
+   */
   playAgain: () => void;
+  /**
+   * From Enter a puzzle: play the puzzle typed in, checked and graded as its
+   * link would be (see `assessGivens`) — the unfinished attempt at it if
+   * there is one, resumed; else, if it has been solved, the offer to play it
+   * again; else a new attempt, waiting behind its Start card. Typing it in
+   * is not seeing it: the puzzle is seen once Start shows its board, so the
+   * new attempt's time counts, as a link's does.
+   */
+  playEntered: (puzzle: Puzzle) => void;
   resumeRecord: (id: string) => void;
   /** Play a history entry's puzzle again: the unfinished attempt at it if there is one, else a fresh one. */
   replayRecord: (id: string) => void;
@@ -610,8 +633,8 @@ export interface Sudoku {
    * with, not a charge.
    */
   hasBoardShown: boolean;
-  /** The tier on show: the one being generated, else the game's. */
-  difficulty: Difficulty;
+  /** The tier on show: the one being generated, else the game's label (see `levelOf`). */
+  difficulty: Level;
   /** The date of the daily on show (or being dealt), if it is one. */
   daily: DateKey | null;
   /** Today's dailies, as New game offers them. */
@@ -890,7 +913,7 @@ function seenPagesOf(game: GameState, walkthrough: Walkthrough): readonly boolea
  */
 function friendSolveOf(game: {
   givens: GridString;
-  difficulty: Difficulty;
+  difficulty: Level;
   daily?: DateKey | null;
   challenge: Challenge | null;
 }): FriendSolve | null {
@@ -1066,7 +1089,9 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     session !== null && solvedEncoded !== null && isWatchable(session.record.givens, solvedEncoded);
   // The friend's solve the game on screen's link carried, for its cards.
   const cardSolve =
-    session === null || session.game.status === 'solved' ? null : friendSolveOf(session.record);
+    session === null || session.game.status === 'solved'
+      ? null
+      : friendSolveOf({ ...session.record, difficulty: levelOf(session.record) });
   // And the one the Solved dialog's, or the offer's, head-to-head offers.
   const dialogSolve = dialogFriendSolve(dialog, session);
   // The route to the cell the last step hint was about, for its tint while
@@ -1218,7 +1243,11 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       const encoded = watchedLogOf(previous.id);
       if (previous.status !== 'solved' || encoded === null) return null;
       if (!isWatchable(previous.givens, encoded)) return null;
-      return { game: previous, encoded, today: dateKeyOf(now()) };
+      return {
+        game: { ...previous, difficulty: levelOf(previous) },
+        encoded,
+        today: dateKeyOf(now()),
+      };
     }
     return null;
   };
@@ -1371,7 +1400,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
 
   /** What resuming a game says: "Started" for one that never was. */
   const resumeMessage = (resumed: Session): string => {
-    const label = DIFFICULTY_LABEL[resumed.record.difficulty];
+    const label = DIFFICULTY_LABEL[levelOf(resumed.record)];
     return resumed.pause === 'ready' ? `Started ${label} puzzle.` : `Resumed ${label} puzzle.`;
   };
 
@@ -1393,7 +1422,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
         ...attempt,
         record: { ...attempt.record, challenge: challenge ?? attempt.record.challenge },
       };
-      return daily === undefined ? racing : asDaily(racing, daily, puzzle.difficulty);
+      return daily === undefined ? racing : asDaily(racing, daily, dealtTier(puzzle.difficulty));
     };
     const records = loadHistory(storage);
     const unfinished = unfinishedAttempt(records, puzzle.givens, t.wall);
@@ -1429,7 +1458,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
   const putDaily = (puzzle: Puzzle, date: DateKey, start: SessionStart): void => {
     const t = at();
     const records = loadHistory(storage);
-    const tier = puzzle.difficulty;
+    const tier = dealtTier(puzzle.difficulty);
     const unfinished = unfinishedAttempt(records, puzzle.givens, t.wall);
     if (unfinished !== null) {
       if (unfinished !== session) setAside(t);
@@ -1492,7 +1521,8 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     // The best to beat is the one before this game. Compared in whole
     // seconds, the unit times are shown in: a "new best" equal to the old
     // one on screen would look like a mistake.
-    const before = computeStats(loadHistory(storage))[record.difficulty].bestMs;
+    const level = levelOf(record);
+    const before = computeStats(loadHistory(storage))[level].bestMs;
     const today = dateKeyOf(t.wall);
     const stopped: Session = {
       ...solved,
@@ -1522,13 +1552,13 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       toSeconds(ms) < toSeconds(before);
     const solvedRecord = recordOf(next, t);
     setCompletionDue({
-      difficulty: record.difficulty,
+      difficulty: level,
       elapsedMs: ms,
       assists: board.assists,
       isNewBest,
       isReplay,
       isWatched,
-      stats: computeStats(records)[record.difficulty],
+      stats: computeStats(records)[level],
       challenge: record.challenge,
       daily:
         record.daily === undefined
@@ -2043,10 +2073,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       // A daily with an attempt has its puzzle in the record: nothing to deal.
       const known = attempts.length === 0 ? null : puzzleOf(attempts[0]);
       if (known !== null && unfinishedAttempt(records, known.givens, t.wall) === null) {
-        const solves = attempts.filter((attempt) => attempt.status === 'solved');
-        const previous =
-          solves.find((attempt) => attempt.source !== 'replay' && hasRecordedTime(attempt)) ??
-          solves[0];
+        const previous = previousSolve(attempts);
         if (previous !== undefined) {
           // Solved already: say so, and offer it again.
           pauseFor('dialog', t);
@@ -2219,6 +2246,40 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       if (dialog?.kind !== 'challenge') return;
       startPuzzle(dialog.offer.puzzle, dialog.offer.challenge, dialog.offer.daily);
     },
+    playEntered: (puzzle) => {
+      const t = at();
+      const records = loadHistory(storage);
+      // A puzzle has at most one unfinished attempt: that one, reopened and
+      // resumed, as Play again does.
+      if (unfinishedAttempt(records, puzzle.givens, t.wall) !== null) {
+        startPuzzle(puzzle, null);
+        return;
+      }
+      // Solved already: say so, and offer it again, the game behind left as
+      // the editor left it — to resume, if it was playing, as the offer closes.
+      const previous = previousSolve(findAttempts(records, puzzle.givens));
+      if (previous !== undefined) {
+        setDialog({ kind: 'challenge', offer: { puzzle, previous, challenge: null } });
+        return;
+      }
+      // Otherwise it waits behind Start as the player's own, a replay only if
+      // they have seen it, and is not seen until its board shows.
+      setAside(t);
+      adopt(
+        newSession(puzzle, {
+          source: attemptSource(storage, records, puzzle.givens, 'shared'),
+          challenge: null,
+          now: t,
+          autoCandidates: settings.startInAutoCandidate,
+          checkGuesses: settings.checkGuesses,
+          isWatched: hasWatched(storage, puzzle.givens),
+          isEntered: true,
+          start: 'ready',
+        }),
+        t,
+        `Your ${DIFFICULTY_LABEL[puzzle.difficulty]} puzzle is ready.`,
+      );
+    },
 
     resumeRecord: (id) => {
       if (session?.record.id === id) {
@@ -2262,7 +2323,11 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       // and writes nothing.
       setDialog({
         kind: 'playback',
-        source: ownSolveSource(record, encoded, dateKeyOf(now())),
+        source: ownSolveSource(
+          { ...record, difficulty: levelOf(record) },
+          encoded,
+          dateKeyOf(now()),
+        ),
         returnTo: { kind: 'history', place },
       });
     },
@@ -2316,7 +2381,9 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     watchRecordChallenge: (id, place) => {
       const record = history.records.find((entry) => entry.id === id);
       const solve =
-        record === undefined || record.status !== 'solved' ? null : friendSolveOf(record);
+        record === undefined || record.status !== 'solved'
+          ? null
+          : friendSolveOf({ ...record, difficulty: levelOf(record) });
       if (solve === null) return;
       // Solved, so free; the game behind stays paused, for History.
       showFriendSolve(solve, { kind: 'history', place });
@@ -2351,14 +2418,14 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       if (record === undefined || !actions.canCompareRecord(record)) return;
       // Both play back, as just asked.
       const encoded = watchedLogOf(id)!;
-      const solve = friendSolveOf(record)!;
+      const solve = friendSolveOf({ ...record, difficulty: levelOf(record) })!;
       // The game behind stays paused, for History, and nothing is written.
       // Theirs goes under the name given them, if any, as from the Solved
       // dialog: the stored record carries only the name its link gave.
       setDialog({
         kind: 'compare',
         source: compareSource(
-          record,
+          { ...record, difficulty: levelOf(record) },
           encoded,
           { ...solve, challenge: namedChallenge(friendIndex, solve.challenge) },
           dateKeyOf(now()),
@@ -2459,7 +2526,10 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     record: session?.record ?? null,
     hasBoardShown: session !== null && hasBoardShown(session),
     difficulty:
-      generating?.difficulty ?? session?.record.difficulty ?? vacancy ?? prefs.lastDifficulty,
+      generating?.difficulty ??
+      (session === null ? null : levelOf(session.record)) ??
+      vacancy ??
+      prefs.lastDifficulty,
     daily: generating === null ? (session?.record.daily ?? null) : (generating.daily ?? null),
     today,
     isLoadFailed,

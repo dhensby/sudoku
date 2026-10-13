@@ -2,7 +2,7 @@ import {
   localDateOf,
   type Assists,
   type DateKey,
-  type Difficulty,
+  type Level,
   type MistakeTally,
   type MonthKey,
   type TechniqueId,
@@ -14,12 +14,13 @@ import {
  * its ids become words.
  */
 
-/** Display names for the tiers. */
-export const DIFFICULTY_LABEL: Readonly<Record<Difficulty, string>> = {
+/** Display names for the tiers, and for a puzzle beyond the techniques the grader knows. */
+export const DIFFICULTY_LABEL: Readonly<Record<Level, string>> = {
   easy: 'Easy',
   medium: 'Medium',
   hard: 'Hard',
   expert: 'Expert',
+  beyond: 'Beyond Expert',
 };
 
 /** "hidden single" → "Hidden single": the first letter only, so "X-Wing" keeps its own capitals. */
@@ -32,6 +33,20 @@ export function joinList(items: readonly string[]): string {
   if (items.length <= 1) return items.join('');
   return `${items.slice(0, -1).join(', ')} and ${items.at(-1)}`;
 }
+
+/** The numbers up to nine in words, as prose spells them: "no" places, "two" 5s, "nine" cells. */
+export const NUMBER_WORD: readonly string[] = [
+  'no',
+  'one',
+  'two',
+  'three',
+  'four',
+  'five',
+  'six',
+  'seven',
+  'eight',
+  'nine',
+];
 
 /**
  * "an Easy", "a Hard", "an XY-Wing": the article follows the label's sound,

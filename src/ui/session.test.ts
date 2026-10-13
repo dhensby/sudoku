@@ -34,6 +34,7 @@ import {
   type GameRecord,
 } from '../storage/history';
 import { loadEncodedMoveLog, loadMoveLog } from '../storage/moveLogs';
+import { BEYOND_THE_SET } from '../test/logic-fixtures';
 import { LOG_IN_A_LATER_FORMAT, logFromAnotherBuild } from '../test/movePlayers';
 import { memoryStorage, type StorageLike } from '../storage/storage';
 import {
@@ -50,6 +51,7 @@ import {
   pauseSession,
   phaseOf,
   planStartup,
+  previousSolve,
   puzzleOf,
   recordOf,
   restoreSession,
@@ -179,6 +181,20 @@ describe('newSession', () => {
     expect(record.id).toMatch(/^[a-z0-9]+-[a-z0-9]{4}$/);
   });
 
+  it('flags a puzzle the player typed in, which is kept like any from a link', () => {
+    const options = {
+      source: 'shared',
+      challenge: null,
+      now: at(NOW),
+      autoCandidates: false,
+      start: 'ready',
+    } as const;
+    const typed = newSession(PUZZLE, { ...options, isEntered: true });
+    expect(typed.record).toMatchObject({ source: 'shared', entered: true });
+    expect(isGlimpse(resumeSession(typed, at(NOW), false))).toBe(false);
+    expect(newSession(PUZZLE, options).record).not.toHaveProperty('entered');
+  });
+
   it('starts in auto candidate mode when the setting says, and counts it as help from the start', () => {
     const session = newSession(PUZZLE, {
       source: 'generated',
@@ -206,6 +222,35 @@ describe('attemptSource', () => {
     const storage = memoryStorage();
     markSeen(storage, PUZZLE.givens);
     expect(attemptSource(storage, [], PUZZLE.givens, 'shared')).toBe('replay');
+  });
+});
+
+describe('previousSolve', () => {
+  const solvedAs = (source: GameRecord['source'], ms: number, extra = {}): GameRecord => ({
+    ...createRecord(PUZZLE, source, ms, null, NO_HELP),
+    status: 'solved',
+    completedAt: ms + 60_000,
+    elapsedMs: 60_000,
+    ...extra,
+  });
+
+  it('offers the newest solve that counted towards the records', () => {
+    const counted = solvedAs('shared', NOW - 2000);
+    const replay = solvedAs('replay', NOW - 1000);
+    const watched = solvedAs('generated', NOW - 500, { watched: true });
+    const playing = createRecord(PUZZLE, 'replay', NOW, null, NO_HELP);
+    expect(previousSolve([playing, watched, replay, counted])).toBe(counted);
+  });
+
+  it("falls back on the newest solve when none counted, as a replay's was set on a board seen before", () => {
+    const older = solvedAs('replay', NOW - 2000);
+    const newer = solvedAs('replay', NOW - 1000);
+    expect(previousSolve([newer, older])).toBe(newer);
+  });
+
+  it('offers nothing for a puzzle never solved', () => {
+    expect(previousSolve([createRecord(PUZZLE, 'generated', NOW, null, NO_HELP)])).toBeUndefined();
+    expect(previousSolve([])).toBeUndefined();
   });
 });
 
@@ -1592,6 +1637,53 @@ describe('planStartup', () => {
     // A guard against the plan drifting from what createGame makes.
     const plan = planStartup(memoryStorage(), linkFor(PUZZLE.givens), at(NOW), false);
     expect(plan.session?.game.cells).toEqual(createGame(PUZZLE).cells);
+  });
+});
+
+describe('a puzzle beyond the techniques', () => {
+  const BEYOND: Puzzle = { ...BEYOND_THE_SET, difficulty: 'beyond' };
+
+  it('is recorded as an Expert game flagged beyond, as an older version can read it', () => {
+    expect(createRecord(BEYOND, 'shared', NOW, null, NO_HELP)).toMatchObject({
+      difficulty: 'expert',
+      beyond: true,
+    });
+    const expert = createRecord({ ...BEYOND, difficulty: 'expert' }, 'shared', NOW, null, NO_HELP);
+    expect(expert.difficulty).toBe('expert');
+    expect(expert).not.toHaveProperty('beyond');
+  });
+
+  it('opens from a link labelled beyond, and is saved so', () => {
+    const storage = memoryStorage();
+    const plan = planStartup(storage, linkFor(BEYOND.givens), at(NOW), false);
+    expect(plan.session?.game.puzzle.difficulty).toBe('beyond');
+    expect(plan.session?.record).toMatchObject({ difficulty: 'expert', beyond: true });
+    saveAsCurrent(storage, plan.session!);
+    expect(loadHistory(storage)[0]).toMatchObject({ difficulty: 'expert', beyond: true });
+    // The board is saved with the tier any version reads; the record says the rest.
+    expect(loadGameBlob(storage, plan.session!.record.id)).toMatchObject({
+      puzzle: { difficulty: 'expert' },
+    });
+    const restored = planStartup(storage, '', at(NOW + 1000), false).session!;
+    expect(restored.record.id).toBe(plan.session!.record.id);
+    expect(restored.game.puzzle.difficulty).toBe('beyond');
+  });
+
+  it('checks a link’s daily date against the Expert daily', () => {
+    const plan = planStartup(
+      memoryStorage(),
+      `${linkFor(BEYOND.givens)}&d=2026-10-12`,
+      at(NOW),
+      false,
+    );
+    expect(plan.dailyHint).toEqual({ date: '2026-10-12', givens: BEYOND.givens, tier: 'expert' });
+  });
+
+  it('is played again, and shared, by its label', () => {
+    const session = running(BEYOND);
+    expect(puzzleOf(session.record)).toEqual(BEYOND);
+    expect(shareTargetOf(session).difficulty).toBe('beyond');
+    expect(shareTargetOfRecord(session.record, null).difficulty).toBe('beyond');
   });
 });
 

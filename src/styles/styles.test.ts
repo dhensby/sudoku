@@ -511,6 +511,30 @@ describe('the tally: help taken and the error counter', () => {
     );
   });
 
+  it('makes room for "Beyond Expert" the same way, 3.44em wider than "Medium"', () => {
+    // The wordmark first: on a phone, beside the tally on its side, and on a desktop.
+    for (const query of [
+      /@container header \(max-width: calc\(165px \+ 15\.6em\)\) \{\s*\.header--beyond \.header__title \{[^}]*clip-path: inset\(50%\);/,
+      /@container header \(max-width: calc\(173px \+ 27\.1em\)\) \{\s*\.header--tally\.header--beyond \.header__title \{[^}]*clip-path: inset\(50%\);/,
+      /@container header \(max-width: calc\(420px \+ 17em\)\) \{\s*\.header--beyond \.header__title \{[^}]*clip-path: inset\(50%\);/,
+      /@container header \(max-width: calc\(432px \+ 29\.5em\)\) \{\s*\.header--tally\.header--beyond \.header__title \{[^}]*clip-path: inset\(50%\);/,
+    ]) {
+      expect(LAYOUT).toMatch(query);
+    }
+    // Then, below the width the row needs for it without the wordmark, "Exp+".
+    for (const query of [
+      /@container header \(max-width: calc\(159px \+ 11\.2em\)\) \{\s*\.header--beyond \.header__tier \{[^}]*clip-path: inset\(50%\);[^}]*\}\s*\.header--beyond \.header__tier-short \{\s*display: inline;/,
+      /@container header \(max-width: calc\(167px \+ 22\.7em\)\) \{\s*\.header--tally\.header--beyond \.header__tier \{[^}]*clip-path: inset\(50%\);[^}]*\}\s*\.header--tally\.header--beyond \.header__tier-short \{\s*display: inline;/,
+      /@container header \(min-width: calc\(419px \+ 18\.7em\)\) and \(max-width: calc\(419px \+ 23\.6em\)\) \{\s*\.header--tally\.header--beyond \.header__tier \{[^}]*clip-path: inset\(50%\);[^}]*\}\s*\.header--tally\.header--beyond \.header__tier-short \{\s*display: inline;/,
+    ]) {
+      expect(LAYOUT).toMatch(query);
+    }
+    // And "Exp+", 0.31em wider than "Med", folds the seven buttons that much sooner.
+    expect(LAYOUT).toMatch(
+      /@container header \(max-width: calc\(419px \+ 18\.7em\)\) \{\s*\.header--tally\.header--beyond \.header__actions \.header__wide \{\s*display: none;\s*\}\s*\.header--tally\.header--beyond \.header__actions \.header__narrow \{\s*display: inline-flex;/,
+    );
+  });
+
   it('makes the row of seven buttons give way for it too, folding them into the Menu last', () => {
     // Inside the desktop's block, where the seven buttons show.
     const fold = LAYOUT.indexOf('@container header (max-width: calc(419px + 18.4em))');
@@ -523,7 +547,7 @@ describe('the tally: help taken and the error counter', () => {
       /@container header \(min-width: calc\(419px \+ 18\.4em\)\) and \(max-width: calc\(419px \+ 23\.4em\)\) \{\s*\.header--tally\.header--daily \.header__daily \{\s*display: none;/,
     );
     expect(block).toMatch(
-      /@container header \(min-width: calc\(419px \+ 18\.4em\)\) and \(max-width: calc\(419px \+ 20\.1em\)\) \{\s*\.header--tally \.header__tier \{[^}]*clip-path: inset\(50%\);[^}]*\}\s*\.header--tally \.header__tier-short \{\s*display: inline;/,
+      /@container header \(min-width: calc\(419px \+ 18\.4em\)\) and \(max-width: calc\(419px \+ 20\.1em\)\) \{\s*\.header--tally:not\(\.header--beyond\) \.header__tier \{[^}]*clip-path: inset\(50%\);[^}]*\}\s*\.header--tally:not\(\.header--beyond\) \.header__tier-short \{\s*display: inline;/,
     );
     // Then the five less-used actions fold into the Menu, as on a phone.
     expect(block).toMatch(
@@ -914,6 +938,55 @@ describe('Compare solves', () => {
     const watch = rule(DIALOGS, '.comparison__watch');
     expect(watch).toMatch(/display:\s*flex/);
     expect(watch).toMatch(/flex-wrap:\s*wrap/);
+  });
+});
+
+describe('Enter a puzzle', () => {
+  it('draws its board with the game’s own geometry, from a size of its own', () => {
+    const board = rule(DIALOGS, '.enter__board');
+    for (const name of ['--frame', '--thick', '--thin', '--lines', '--board-outer']) {
+      const own = new RegExp(`${name}:\\s*([^;]+);`).exec(rule(LAYOUT, '.app'))![1];
+      expect(board, name).toContain(`${name}: ${own};`);
+    }
+    expect(DIALOGS).toMatch(
+      /@supports \(width: round\(down, 10\.5px, 1px\)\) \{\s*\.enter__board \{\s*--cell: round\(down/,
+    );
+  });
+
+  it('sizes the board by the height the rest leaves, the pad’s keys counted in', () => {
+    // The touch suite holds the measured 228px to every phone it plays on.
+    expect(rule(DIALOGS, '.enter__board')).toMatch(
+      /100dvh - 228px - 2 \* var\(--enter-key\) - var\(--controls-gap\) -/,
+    );
+    expect(rule(DIALOGS, '.enter')).toMatch(/--enter-key:\s*min\(var\(--key-height\), 52px\)/);
+    expect(rule(DIALOGS, '.enter__pad')).toMatch(/grid-auto-rows:\s*var\(--enter-key\)/);
+  });
+
+  it('lays the pad out as a phone’s, two rows of five, Erase the tenth key', () => {
+    expect(rule(DIALOGS, '.enter__pad')).toMatch(
+      /grid-template-areas:\s*'d1 d2 d3 d4 d5'\s*'d6 d7 d8 d9 erase'/,
+    );
+  });
+
+  it('leaves its numbers pressable, though they are set as givens', () => {
+    expect(rule(DIALOGS, '.enter__board .cell--given')).toMatch(/cursor:\s*pointer/);
+  });
+
+  it('marks Play unavailable, still and faded in its own colour, without disabling it', () => {
+    const unavailable = rule(DIALOGS, ".enter__play[aria-disabled='true']:hover");
+    expect(unavailable).toMatch(/background:\s*var\(--accent\)/);
+    expect(unavailable).toMatch(/opacity:\s*0\.5/);
+  });
+
+  it('puts the board beside the rest on a phone on its side', () => {
+    const short = DIALOGS.slice(
+      DIALOGS.indexOf(
+        '@media (max-height: 500px) and (min-width: 500px)',
+        DIALOGS.indexOf('Enter a puzzle'),
+      ),
+    );
+    expect(short).toMatch(/\.enter\s*\{\s*flex-direction:\s*row/);
+    expect(short).toMatch(/--board-size:\s*clamp\(160px, calc\(100dvh - 104px\), 400px\)/);
   });
 });
 

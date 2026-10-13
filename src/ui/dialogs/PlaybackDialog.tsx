@@ -17,7 +17,7 @@ import {
   stateAt,
   steer,
   tickFraction,
-  type Difficulty,
+  type Level,
   type Playback,
   type PlaybackCommand,
   type PlaybackTickKind,
@@ -44,7 +44,7 @@ import { Dialog } from './Dialog';
 export interface PlaybackSource {
   givens: string;
   /** The puzzle's tier, carried with it (playback works it out from nothing else). */
-  difficulty: Difficulty;
+  difficulty: Level;
   /** The move log, as `encodeMoveLog` writes it. */
   log: string;
   /** Whose solve: "Your solve", "Dan's solve". */

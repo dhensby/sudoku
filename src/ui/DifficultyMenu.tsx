@@ -1,4 +1,4 @@
-import { DAILY_EPOCH, type DateKey, type Difficulty } from '../core';
+import { DAILY_EPOCH, type DateKey, type Difficulty, type Level } from '../core';
 import { DIFFICULTIES } from '../storage/storage';
 import type { DailyStatus } from '../storage/streaks';
 import { DailyMark } from './DailyMark';
@@ -15,8 +15,11 @@ export interface TodayDailies {
 }
 
 export interface DifficultyMenuProps {
-  /** The tier on show, marked in the list of random puzzles — or, for a daily, in today's. */
-  current: Difficulty;
+  /**
+   * The tier on show, marked in the list of random puzzles — or, for a daily,
+   * in today's. A puzzle beyond the techniques has no tier here to mark.
+   */
+  current: Level;
   /**
    * The date of the daily on show, if the game is one: no random tier stands
    * for it, but today's own daily of the tier is marked when it is today's.
@@ -29,6 +32,8 @@ export interface DifficultyMenuProps {
   onSelectDaily: (difficulty: Difficulty) => void;
   /** Open the daily calendar. */
   onOpenCalendar: () => void;
+  /** Open Enter a puzzle, to type in one from elsewhere. */
+  onEnterPuzzle: () => void;
   /** The menu is opening: bring `today` up to date (see `Menu`'s `onOpen`). */
   onOpen?: () => void;
 }
@@ -55,7 +60,8 @@ function statusDetail(status: DailyStatus) {
 /**
  * New game, in two runs: today's daily puzzles — one of each tier, the same
  * for everyone today, each marked with how it stands — with the calendar of
- * past days after them; then a random puzzle of each tier. The game on show
+ * past days after them; then a random puzzle of each tier, with Enter a
+ * puzzle after them, for one from elsewhere (the paper). The game on show
  * is marked current wherever it is in the menu — today's daily of its tier,
  * or its random tier (though choosing it still starts a new game like the
  * others); a past day's daily is in neither.
@@ -72,6 +78,7 @@ export function DifficultyMenu({
   onSelect,
   onSelectDaily,
   onOpenCalendar,
+  onEnterPuzzle,
   onOpen,
 }: DifficultyMenuProps) {
   // Only on a device whose clock is set before Daily #1: there is no daily yet.
@@ -110,12 +117,16 @@ export function DifficultyMenu({
         {
           key: 'random',
           label: 'Random puzzle',
-          items: DIFFICULTIES.map((difficulty) => ({
-            key: difficulty,
-            label: DIFFICULTY_LABEL[difficulty],
-            isCurrent: dailyOnShow === null && difficulty === current,
-            onSelect: () => onSelect(difficulty),
-          })),
+          items: [
+            ...DIFFICULTIES.map((difficulty) => ({
+              key: difficulty,
+              label: DIFFICULTY_LABEL[difficulty],
+              isCurrent: dailyOnShow === null && difficulty === current,
+              onSelect: () => onSelect(difficulty),
+            })),
+            // No icon: the tiers above have none to line up with.
+            { key: 'enter', label: 'Enter a puzzle…', onSelect: onEnterPuzzle },
+          ],
         },
       ]}
     >

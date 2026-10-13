@@ -67,6 +67,15 @@ describe('Header', () => {
     expect(screen.getByText('Expert')).not.toHaveAttribute('aria-hidden');
   });
 
+  it('names a puzzle beyond the techniques in full, and makes room for the longer name', () => {
+    renderHeader({ difficulty: 'beyond' });
+    expect(document.querySelector('.header__difficulty')).toHaveTextContent(
+      /^Difficulty: Beyond ExpertExp\+$/,
+    );
+    expect(screen.getByText('Exp+')).toHaveAttribute('aria-hidden', 'true');
+    expect(document.querySelector('header')?.className).toBe('header header--beyond');
+  });
+
   it.each([
     ['Daily puzzles', 'daily'],
     ['History', 'history'],
@@ -120,6 +129,17 @@ describe('Header', () => {
     fireEvent.click(screen.getByRole('button', { name: 'New game' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Daily puzzles' }));
     expect(props.onOpenDialog).toHaveBeenCalledWith('daily');
+  });
+
+  it('opens Enter a puzzle from the New game menu, and only from there', () => {
+    const props = renderHeader();
+    fireEvent.click(screen.getByRole('button', { name: 'New game' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Enter a puzzle…' }));
+    expect(props.onOpenDialog).toHaveBeenCalledWith('enter');
+    // Not among the header's own actions, nor the phone's menu of them.
+    expect(screen.queryByRole('button', { name: /Enter a puzzle/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
+    expect(screen.queryByRole('menuitem', { name: /Enter a puzzle/ })).not.toBeInTheDocument();
   });
 
   it("marks no random tier as current while a past day's daily is on show", () => {

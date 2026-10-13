@@ -1975,6 +1975,12 @@ describe('serialiseGame / deserialiseGame', () => {
     },
   );
 
+  it('saves a puzzle beyond the techniques as Expert, the tier any version reads', () => {
+    const state = createGame({ ...PUZZLE, difficulty: 'beyond' });
+    expect(serialiseGame(state).puzzle.difficulty).toBe('expert');
+    expect(deserialiseGame(serialiseGame(state))?.puzzle.difficulty).toBe('expert');
+  });
+
   it.each<[string, (d: SerialisedGame) => unknown]>([
     ['another version', (d) => ({ ...d, v: 2 })],
     ['no version', ({ v: _v, ...d }) => d],

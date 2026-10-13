@@ -375,6 +375,37 @@
 }
 
 /*
+ * "Beyond Expert", the label of a puzzle the techniques cannot finish, is
+ * 3.44em wider than "Medium" (measured, as above, with the bundled faces):
+ * the wordmark makes way for it first, and below the width the row needs for
+ * it without the wordmark it shortens to "Exp+" — four characters, no wider
+ * than "Hard".
+ */
+@container header (max-width: calc(165px + 15.6em)) {
+  .header--beyond .header__title {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    clip-path: inset(50%);
+  }
+}
+
+@container header (max-width: calc(159px + 11.2em)) {
+  .header--beyond .header__tier {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .header--beyond .header__tier-short {
+    display: inline;
+  }
+}
+
+/*
  * A phone on its side has room for the tally beside the timer: help taken
  * over the error counter, each line no wider than the counter's widest
  * ("Mistakes 12 · 12 candidates"; help taken is held to it, see
@@ -419,6 +450,32 @@
   @container header (max-width: calc(167px + 22.5em)) {
     .header--tally.header--daily .header__daily {
       display: none;
+    }
+  }
+
+  /* And "Beyond Expert" beside the tally: 3.44em more than "Medium", as
+     without it. */
+  @container header (max-width: calc(173px + 27.1em)) {
+    .header--tally.header--beyond .header__title {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      clip-path: inset(50%);
+    }
+  }
+
+  @container header (max-width: calc(167px + 22.7em)) {
+    .header--tally.header--beyond .header__tier {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+
+    .header--tally.header--beyond .header__tier-short {
+      display: inline;
     }
   }
 }
@@ -471,6 +528,16 @@
     }
   }
 
+  /* For "Beyond Expert", 3.44em sooner. */
+  @container header (max-width: calc(420px + 17em)) {
+    .header--beyond .header__title {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      clip-path: inset(50%);
+    }
+  }
+
   /* And the tally beside the timer, a size up here: the counter's widest
      and a gap more — and for a daily's "Daily ·", 3.3em more again. */
   @container header (max-width: calc(432px + 26em)) {
@@ -491,6 +558,15 @@
     }
   }
 
+  @container header (max-width: calc(432px + 29.5em)) {
+    .header--tally.header--beyond .header__title {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      clip-path: inset(50%);
+    }
+  }
+
   /*
    * Then, with the tally, the row of seven buttons still needs more than a
    * header held back by a short screen has (a large phone on its side is
@@ -502,7 +578,8 @@
    * letters, and then (below 418px + 18.32em, where even that no longer
    * fits) the five less-used actions fold into the Menu, as on a phone. The
    * row is then a phone's, and makes its room as one does (above), so the
-   * tier and "Daily ·" give way here only while the seven buttons show.
+   * tier and "Daily ·" give way here only while the seven buttons show —
+   * which for "Beyond Expert" (below) stop showing sooner.
    */
   @container header (min-width: calc(419px + 18.4em)) and (max-width: calc(419px + 23.4em)) {
     .header--tally.header--daily .header__daily {
@@ -511,7 +588,7 @@
   }
 
   @container header (min-width: calc(419px + 18.4em)) and (max-width: calc(419px + 20.1em)) {
-    .header--tally .header__tier {
+    .header--tally:not(.header--beyond) .header__tier {
       position: absolute;
       width: 1px;
       height: 1px;
@@ -520,7 +597,7 @@
       white-space: nowrap;
     }
 
-    .header--tally .header__tier-short {
+    .header--tally:not(.header--beyond) .header__tier-short {
       display: inline;
     }
   }
@@ -531,6 +608,35 @@
     }
 
     .header--tally .header__actions .header__narrow {
+      display: inline-flex;
+    }
+  }
+
+  /*
+   * "Beyond Expert" the same way: 3.44em more than "Medium" before it
+   * shortens, and "Exp+", 0.31em wider than "Med", before the actions fold.
+   */
+  @container header (min-width: calc(419px + 18.7em)) and (max-width: calc(419px + 23.6em)) {
+    .header--tally.header--beyond .header__tier {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+
+    .header--tally.header--beyond .header__tier-short {
+      display: inline;
+    }
+  }
+
+  @container header (max-width: calc(419px + 18.7em)) {
+    .header--tally.header--beyond .header__actions .header__wide {
+      display: none;
+    }
+
+    .header--tally.header--beyond .header__actions .header__narrow {
       display: inline-flex;
     }
   }

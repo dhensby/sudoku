@@ -71,6 +71,13 @@ export interface CellProps {
   isCurrent?: boolean;
   /** On a read-only board, what to draw in place of the cell's own state (see `CellOverlay`). */
   overlay?: CellOverlay;
+  /**
+   * The cell the dialog it is in opens on (`data-autofocus`, see Dialog):
+   * the selection of a grid in a dialog, Enter a puzzle's. A dialog takes its
+   * first focus itself, after its children's effects have run, so a cell
+   * focused by an effect of the grid's own would lose it again.
+   */
+  isAutofocus?: boolean;
 }
 
 function className({
@@ -152,6 +159,7 @@ function CellComponent(props: CellProps) {
     registerRef,
     isReadOnly = false,
     overlay,
+    isAutofocus = false,
   } = props;
   // How the press that led to the coming click began: only a mouse toggles a
   // candidate by its spot. A finger cannot see the ghosts before it lands,
@@ -217,6 +225,7 @@ function CellComponent(props: CellProps) {
       // in one step; the arrow keys move within it.
       tabIndex={isSelected ? 0 : -1}
       data-index={index}
+      data-autofocus={isAutofocus || undefined}
       ref={(element) => registerRef(index, element)}
       // The solve wave's delay: cells ripple out from the top-left corner.
       style={{ '--wave': ROW[index] + COL[index] } as CSSProperties}

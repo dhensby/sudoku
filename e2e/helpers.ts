@@ -457,6 +457,32 @@ export async function newGame(page: Page, label: string): Promise<void> {
 }
 
 /**
+ * Open Enter a puzzle from the header's New game menu, and wait for it. Find
+ * everything in it through the dialog returned: the board and the pad behind
+ * it stay on the page, so `cells` and `padKey` would find theirs as well.
+ */
+export async function openEnterPuzzle(page: Page): Promise<Locator> {
+  await page.getByRole('button', { name: 'New game' }).click();
+  await page
+    .getByRole('menu', { name: 'New game' })
+    .getByRole('menuitem', { name: 'Enter a puzzle…' })
+    .click();
+  const dialog = page.getByRole('dialog', { name: 'Enter a puzzle' });
+  await expect(dialog).toBeVisible();
+  return dialog;
+}
+
+/**
+ * Type `givens` into Enter a puzzle (see `openEnterPuzzle`) from its first
+ * cell, as a player copies a puzzle out: a key a cell, a number filling it
+ * and '0' leaving it blank, each moving on to the next.
+ */
+export async function enterGivens(dialog: Locator, givens: GridString): Promise<void> {
+  await dialog.getByRole('gridcell').first().click();
+  await dialog.page().keyboard.type(givens);
+}
+
+/**
  * Open one of the header's dialogs. On a desktop each has its own button; on
  * a phone they fold into the "Menu" overflow.
  */

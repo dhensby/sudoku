@@ -17,6 +17,7 @@ export { MAX_CHAIN_STRONG_LINKS, MAX_XY_CHAIN, createBoard, type SolverBoard } f
 export * from './game';
 export * from './moves';
 export * from './codec';
+export * from './entry';
 export * from './clock';
 export * from './dates';
 export * from './newerFields';

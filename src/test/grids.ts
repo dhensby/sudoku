@@ -31,3 +31,21 @@ export const WIKIPEDIA_SOLUTION = `
 
 /** A grid with no givens at all: valid, and wildly non-unique. */
 export const EMPTY_GRID = '.'.repeat(81);
+
+/**
+ * 17 clash-free givens with no solution, built to need a search deeper than
+ * `checkGivens` allows, which calls it too complex: 1, 2 and 3 can only go in
+ * r0c0 and r0c1 of the top-left box — three digits, two cells. Singles alone
+ * never see that, so the search must branch until it trips over it.
+ */
+export const THREE_DIGITS_TWO_CELLS = `
+  ... ... ...
+  ... 12. 3..
+  ... ..3 .12
+  4.1 .9. ...
+  ..2 ... .3.
+  ... ... 6..
+  ..3 .7. ...
+  .97 5.. ...
+  ... ... ...
+`;

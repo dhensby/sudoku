@@ -6,7 +6,7 @@ import {
   progressOf,
   sampleSeconds,
   solvedAt,
-  type Difficulty,
+  type Level,
   type OverlayCell,
   type Playback,
   type ProgressMark,
@@ -28,7 +28,7 @@ import { Dialog } from './Dialog';
 export interface CompareSource {
   givens: string;
   /** The puzzle's tier, carried with it. */
-  difficulty: Difficulty;
+  difficulty: Level;
   /** The puzzle as the line under the heading names it: "Hard", "Daily · 13 Oct · Hard". */
   puzzleName: string;
   /** The player's solve, and its time in whole seconds — null for one recorded without a time. */
