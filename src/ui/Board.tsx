@@ -53,7 +53,10 @@ export interface BoardProps {
    * selection. `onSelect` and `onToggleCandidate` are never called.
    */
   isReadOnly?: boolean;
-  /** On a read-only board, the cell to outline: the one the move on show acted on. */
+  /**
+   * On a read-only board, the cell to outline: the one the move on show
+   * acted on, or the next move's while a playback cues it.
+   */
   current?: number | null;
   /**
    * The cells of the step the hint bar names (see `Sudoku.hintTint`) —

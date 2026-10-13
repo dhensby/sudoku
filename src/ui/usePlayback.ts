@@ -1,8 +1,8 @@
 import { useEffect, useEffectEvent, useReducer } from 'react';
 import {
   INITIAL_CURSOR,
-  pauseBefore,
   steer,
+  waitBeforeAdvance,
   type Playback,
   type PlaybackCommand,
   type PlaybackCursor,
@@ -19,13 +19,16 @@ export interface PlaybackControl {
 /**
  * A playback's cursor, kept and moved on while it plays: the model is
  * `steer` (src/core/playback.ts), and this only waits out the pause before
- * each move — `pauseBefore`, shortened from the player's own and divided by
- * the speed — then shows it, until the solve.
+ * each move — the player's own, shortened and divided by the speed — in its
+ * two parts (`waitBeforeAdvance`): after the first the move's cell is
+ * outlined, and after the second, the cue, the move is shown; and so on until
+ * the solve.
  *
- * One timer at a time, set afresh whenever the cursor changes, so a step,
- * a seek or a change of speed starts the wait for the next move over: at
- * most one move's pause (never above 1.5 s) is waited again, which is
- * simpler than carrying part of a wait across. Timed by the browser's
+ * One timer at a time, set afresh whenever the cursor changes, so a step or
+ * a seek starts the wait for the next move over, and a change of speed the
+ * part of it under way (the pause less its cue, or the cue): at most one
+ * move's pause (never above 1.5 s) is waited again, which is simpler than
+ * carrying part of a wait across. Timed by the browser's
  * timers, so tests drive it with fake ones — as the end-to-end tests do with
  * Playwright's clock.
  *
@@ -49,7 +52,7 @@ export function usePlayback(playback: Playback, onFinish: () => void = noop): Pl
         dispatch({ type: 'advance' });
         if (!next.isPlaying) finish();
       },
-      pauseBefore(playback, cursor.position + 1, cursor.speed),
+      waitBeforeAdvance(playback, cursor),
     );
     return () => window.clearTimeout(id);
   }, [playback, cursor]);

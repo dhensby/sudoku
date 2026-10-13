@@ -4,7 +4,8 @@ import { NEARLY_DONE, openHeaderDialog, settle, solveWithAMistake } from './help
 /**
  * Watching a solve played back, end to end: a solve with a mistake that
  * counted, watched from the Solved dialog and from History — stepped through
- * by button and by key, scrubbed, played at 8× on Playwright's clock — with
+ * by button and by key, scrubbed, played on Playwright's clock (each move's
+ * cell outlined before the move is shown) and at 8× — with
  * the mistake marked on the scrubber and said in its caption, and nothing in
  * the game or its record changed by watching, and focus back on the Watch
  * that opened it as it closes. Then the player on a 320px
@@ -21,12 +22,20 @@ const scrubber = (page: Page): Locator => playback(page).getByRole('slider', { n
 const transport = (page: Page, name: string | RegExp): Locator =>
   playback(page).getByRole('group', { name: 'Playback' }).getByRole('button', { name });
 
+/**
+ * Let the playback run on Playwright's clock, 100 ms at a time, until
+ * `isDone` — for 4 s at most, which leaves what is waited for to fail the
+ * test that follows.
+ */
+async function runClockUntil(page: Page, isDone: () => Promise<boolean>): Promise<void> {
+  for (let i = 0; i < 40 && !(await isDone()); i++) await page.clock.runFor(100);
+}
+
 /** Let the playback run on Playwright's clock until its caption says the puzzle is solved. */
 async function playToTheSolve(page: Page): Promise<void> {
-  for (let i = 0; i < 40; i++) {
-    if (/— solved$/.test((await caption(page).textContent()) ?? '')) return;
-    await page.clock.runFor(100);
-  }
+  await runClockUntil(page, async () =>
+    /— solved$/.test((await caption(page).textContent()) ?? ''),
+  );
   await expect(caption(page)).toHaveText(/— solved$/);
 }
 
@@ -74,6 +83,27 @@ test.describe('watching a solve', () => {
     await expect(caption(page)).toHaveText('Before the first move');
     await page.keyboard.press('ArrowRight');
     await expect(caption(page)).toHaveText(/— a mistake$/);
+
+    // Played at 1×, the first move's cell is outlined while it is still
+    // empty and nothing is said of it, and only then is the move shown. The
+    // clock is held still between runs, so what is on show waits to be read.
+    await transport(page, 'To the start').click();
+    await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
+    await transport(page, 'Play').click();
+    const first = board.getByRole('cell').first();
+    await runClockUntil(page, async () =>
+      /\bcell--current\b/.test((await first.getAttribute('class')) ?? ''),
+    );
+    await expect(first).toHaveClass(/\bcell--current\b/);
+    await expect(first).toHaveAccessibleName('empty');
+    await expect(caption(page)).toHaveText('Before the first move');
+    // And stays so for a moment, the cue being 0.4 s.
+    await page.clock.runFor(200);
+    await expect(first).toHaveAccessibleName('empty');
+    await runClockUntil(page, async () => (await first.getAttribute('aria-label')) !== 'empty');
+    await expect(caption(page)).toHaveText(`${wrong} in row 1, column 1 — a mistake`);
+    await transport(page, 'Pause').click();
+    await page.clock.resume();
 
     // At 8×, from the start.
     await playback(page).getByText('8×').click();

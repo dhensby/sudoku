@@ -11,15 +11,18 @@ import {
 } from './moves';
 import {
   INITIAL_CURSOR,
+  LONGEST_CUE_MS,
   LONGEST_PAUSE_MS,
   MAX_SHARED_LOG_LENGTH,
   PLAYBACK_SPEEDS,
   SHARED_TIME_SLACK_MS,
   SHORTEST_PAUSE_MS,
   clampPosition,
+  cueBefore,
   frameAt,
   isPlayable,
   lengthOf,
+  outlinedCell,
   pauseBefore,
   playTimeAt,
   preparePlayback,
@@ -27,6 +30,7 @@ import {
   stateAt,
   steer,
   tickFraction,
+  waitBeforeAdvance,
   type Playback,
   type PlaybackCursor,
 } from './playback';
@@ -584,6 +588,21 @@ describe('positions and times', () => {
     expect(pauseBefore(PLAYBACK, 25, 1)).toBe(Number.POSITIVE_INFINITY);
   });
 
+  it('cues each move 0.4 s before it is shown, or half the pause before it if that is less', () => {
+    // 1 s before the first move, 1.5 s before the second (shortened), 0.5 s
+    // before the fourth, and the Redo spread to the shortest pause.
+    expect(cueBefore(PLAYBACK, 1, 1)).toBe(LONGEST_CUE_MS);
+    expect(cueBefore(PLAYBACK, 2, 1)).toBe(LONGEST_CUE_MS);
+    expect(cueBefore(PLAYBACK, 4, 1)).toBe(250);
+    expect(cueBefore(PLAYBACK, 12, 1)).toBe(SHORTEST_PAUSE_MS / 2);
+  });
+
+  it('cues as long at any speed as half the pause, divided by it, allows', () => {
+    expect(cueBefore(PLAYBACK, 2, 2)).toBe(LONGEST_PAUSE_MS / 4);
+    expect(cueBefore(PLAYBACK, 2, 8)).toBe(LONGEST_PAUSE_MS / 16);
+    expect(cueBefore(PLAYBACK, 1, 2)).toBe(250);
+  });
+
   it('places a mark along the scrubber by its move', () => {
     expect(tickFraction(PLAYBACK, { position: 0, kind: 'help' })).toBe(0);
     expect(tickFraction(PLAYBACK, { position: 6, kind: 'help' })).toBe(0.25);
@@ -591,13 +610,15 @@ describe('positions and times', () => {
   });
 });
 
-describe('steer', () => {
-  const at = (position: number, isPlaying = false, speed: PlaybackCursor['speed'] = 1) => ({
-    position,
-    isPlaying,
-    speed,
-  });
+/** A cursor: paused at 1× by default, and not cued. */
+const at = (
+  position: number,
+  isPlaying = false,
+  speed: PlaybackCursor['speed'] = 1,
+  isCued = false,
+): PlaybackCursor => ({ position, isPlaying, speed, isCued });
 
+describe('steer', () => {
   it('opens at the start, paused, at 1×', () => {
     expect(INITIAL_CURSOR).toEqual(at(0));
   });
@@ -633,15 +654,61 @@ describe('steer', () => {
     expect(steer(PLAYBACK, at(9), { type: 'seek', position: 400 })).toEqual(at(24));
   });
 
-  it('shows the next move as a pause ends, stopping at the solve', () => {
-    expect(steer(PLAYBACK, at(9, true), { type: 'advance' })).toEqual(at(10, true));
-    expect(steer(PLAYBACK, at(23, true), { type: 'advance' })).toEqual(at(24));
-    // A pause that ends after the viewer paused shows nothing.
+  it('cues the next move as the first part of its pause ends, and shows it as the cue does', () => {
+    expect(steer(PLAYBACK, at(9, true), { type: 'advance' })).toEqual(at(9, true, 1, true));
+    expect(steer(PLAYBACK, at(9, true, 1, true), { type: 'advance' })).toEqual(at(10, true));
+    // Stopping at the solve.
+    expect(steer(PLAYBACK, at(23, true, 1, true), { type: 'advance' })).toEqual(at(24));
+    // A wait that ends after the viewer paused does nothing.
     const paused = at(9);
     expect(steer(PLAYBACK, paused, { type: 'advance' })).toBe(paused);
   });
 
-  it('changes speed, keeping its place and whether it plays', () => {
+  it('drops a cue as it pauses or the viewer takes over, outlining the move on show again', () => {
+    const cued = at(9, true, 1, true);
+    expect(steer(PLAYBACK, cued, { type: 'pause' })).toEqual(at(9));
+    expect(steer(PLAYBACK, cued, { type: 'toggle' })).toEqual(at(9));
+    expect(steer(PLAYBACK, cued, { type: 'step', by: 1 })).toEqual(at(10));
+    expect(steer(PLAYBACK, cued, { type: 'step', by: -1 })).toEqual(at(8));
+    expect(steer(PLAYBACK, cued, { type: 'start' })).toEqual(at(0));
+    expect(steer(PLAYBACK, cued, { type: 'end' })).toEqual(at(24));
+    // Playing on, from where it is sent, the next move's pause waited afresh.
+    expect(steer(PLAYBACK, cued, { type: 'seek', position: 9 })).toEqual(at(9, true));
+    expect(steer(PLAYBACK, cued, { type: 'play' })).toEqual(at(9, true));
+  });
+
+  it('changes speed, keeping its place, whether it plays, and a cue', () => {
     expect(steer(PLAYBACK, at(9, true), { type: 'speed', speed: 8 })).toEqual(at(9, true, 8));
+    expect(steer(PLAYBACK, at(9, true, 1, true), { type: 'speed', speed: 8 })).toEqual(
+      at(9, true, 8, true),
+    );
+  });
+});
+
+describe('the waits and the outline as a playback plays', () => {
+  it('waits the pause less the cue, then the cue: the whole pause, as without one', () => {
+    expect(waitBeforeAdvance(PLAYBACK, at(1, true))).toBe(LONGEST_PAUSE_MS - LONGEST_CUE_MS);
+    expect(waitBeforeAdvance(PLAYBACK, at(1, true, 1, true))).toBe(LONGEST_CUE_MS);
+    for (const speed of PLAYBACK_SPEEDS) {
+      for (let position = 0; position < lengthOf(PLAYBACK); position++) {
+        const first = waitBeforeAdvance(PLAYBACK, at(position, true, speed));
+        const cue = waitBeforeAdvance(PLAYBACK, at(position, true, speed, true));
+        expect(first + cue).toBe(pauseBefore(PLAYBACK, position + 1, speed));
+        // The move on show is on show by itself for at least as long.
+        expect(first).toBeGreaterThanOrEqual(cue);
+      }
+    }
+  });
+
+  it('outlines the move on show’s cell, or the cued move’s', () => {
+    // Nothing before the first move, until it is cued.
+    expect(outlinedCell(PLAYBACK, at(0))).toBeNull();
+    expect(outlinedCell(PLAYBACK, at(0, true, 1, true))).toBe(0);
+    // The fourth move's cell, then the hint's about cell 80, cued.
+    expect(outlinedCell(PLAYBACK, at(4, true))).toBe(40);
+    expect(outlinedCell(PLAYBACK, at(4, true, 1, true))).toBe(80);
+    // None for a move about no one cell: checking the puzzle.
+    expect(outlinedCell(PLAYBACK, at(14, true, 1, true))).toBeNull();
+    expect(outlinedCell(PLAYBACK, at(15))).toBeNull();
   });
 });

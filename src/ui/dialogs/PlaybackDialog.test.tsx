@@ -1,5 +1,6 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import {
+  LONGEST_CUE_MS,
   LONGEST_PAUSE_MS,
   MOVES_VERSION,
   appendMove,
@@ -8,6 +9,7 @@ import {
   type Digit,
 } from '../../core';
 import { logFromAnotherBuild } from '../../test/movePlayers';
+import { passTime } from '../../test/time';
 import type { BoardSettings } from '../Board';
 import { shortSolve } from '../testFixtures';
 import { PlaybackDialog } from './PlaybackDialog';
@@ -175,21 +177,13 @@ describe('PlaybackDialog', () => {
     renderPlayback();
     fireEvent.click(button('Play'));
     expect(button('Pause')).toHaveFocus();
-    act(() => {
-      vi.advanceTimersByTime(1000);
-    });
+    passTime(1000);
     expect(caption()).toHaveTextContent('6 in row 1, column 1 — a mistake');
     // The moves played by themselves go unspoken…
     expect(spoken()).toBeEmptyDOMElement();
-    for (const ms of [LONGEST_PAUSE_MS, 1000, 1000]) {
-      act(() => {
-        vi.advanceTimersByTime(ms);
-      });
-    }
+    passTime(LONGEST_PAUSE_MS + 1000 + 1000);
     expect(spoken()).toBeEmptyDOMElement();
-    act(() => {
-      vi.advanceTimersByTime(LONGEST_PAUSE_MS);
-    });
+    passTime(LONGEST_PAUSE_MS);
     expect(caption()).toHaveTextContent('solved');
     expect(button('Watch again')).toHaveFocus();
     // …but getting to the solve is said, once.
@@ -207,10 +201,35 @@ describe('PlaybackDialog', () => {
     fireEvent.click(within(speeds).getByRole('radio', { name: '8×' }));
     expect(within(speeds).getByRole('radio', { name: '8×' })).toBeChecked();
     fireEvent.click(button('Play'));
-    act(() => {
-      vi.advanceTimersByTime(125);
-    });
+    passTime(125);
     expect(scrubber()).toHaveValue('1');
+  });
+
+  it('outlines the next move’s cell a moment before showing the move, as it plays', () => {
+    vi.useFakeTimers();
+    renderPlayback();
+    fireEvent.click(button('Play'));
+    passTime(1000 - LONGEST_CUE_MS);
+    // Where before what: the cell outlined but still empty, all else as it was.
+    expect(boardCell(0)).toHaveClass('cell--current');
+    expect(boardCell(0)).toHaveAccessibleName('empty');
+    expect(caption()).toHaveTextContent('Before the first move');
+    expect(scrubber()).toHaveValue('0');
+    expect(spoken()).toBeEmptyDOMElement();
+    passTime(LONGEST_CUE_MS);
+    expect(boardCell(0)).toHaveAccessibleName('6, conflict');
+    expect(caption()).toHaveTextContent('6 in row 1, column 1 — a mistake');
+    // Put right in the same cell, then the hint about row 5, column 5 cued:
+    // the outline moves on with the caption still the last move's.
+    passTime(LONGEST_PAUSE_MS + 1000 - LONGEST_CUE_MS);
+    expect(boardCell(40)).toHaveClass('cell--current');
+    expect(boardCell(0)).not.toHaveClass('cell--current');
+    expect(caption()).toHaveTextContent('5 in row 1, column 1');
+    // Paused, the outline goes back to the move on show, which is said.
+    fireEvent.click(button('Pause'));
+    expect(boardCell(0)).toHaveClass('cell--current');
+    expect(board().querySelectorAll('.cell--current')).toHaveLength(1);
+    expect(spoken()).toHaveTextContent('5 in row 1, column 1');
   });
 
   it('speaks the caption of a move taken by hand', () => {
@@ -229,16 +248,12 @@ describe('PlaybackDialog', () => {
     renderPlayback();
     fireEvent.click(button('Play'));
     expect(spoken()).toBeEmptyDOMElement();
-    act(() => {
-      vi.advanceTimersByTime(1000);
-    });
+    passTime(1000);
     fireEvent.click(button('Pause'));
     expect(spoken()).toHaveTextContent('6 in row 1, column 1 — a mistake');
     // And again with Space, a move on.
     press(' ', dialog());
-    act(() => {
-      vi.advanceTimersByTime(LONGEST_PAUSE_MS);
-    });
+    passTime(LONGEST_PAUSE_MS);
     press(' ', dialog());
     expect(spoken()).toHaveTextContent(`${SOLVE.puzzle.solution[0]} in row 1, column 1`);
   });
