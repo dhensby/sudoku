@@ -595,11 +595,10 @@
   line-height: 1.4;
 }
 
+/* The cards' buttons are sized by `.button`; this only spaces one that
+   stands alone (the failed card's Try again). */
 .board-overlay__button {
-  min-height: 48px;
   margin-top: 6px;
-  padding: 0 30px;
-  font-size: 1rem;
 }
 
 /* Start (or Resume) and, when a link carried one, "Watch Dan's solve" beside
@@ -614,11 +613,6 @@
 
 .board-overlay__actions .board-overlay__button {
   margin-top: 0;
-}
-
-/* The second choice: an outlined button, sized to its words. */
-.board-overlay__button--secondary {
-  padding: 0 18px;
 }
 
 .board-overlay__button .icon {
@@ -682,7 +676,6 @@
   }
 
   .board-overlay__button {
-    min-height: 44px;
     margin-top: 2px;
   }
 
