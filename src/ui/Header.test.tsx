@@ -131,15 +131,15 @@ describe('Header', () => {
     expect(props.onOpenDialog).toHaveBeenCalledWith('daily');
   });
 
-  it('opens Enter a puzzle from the New game menu, and only from there', () => {
+  it('opens Your puzzles from the New game menu, and only from there', () => {
     const props = renderHeader();
     fireEvent.click(screen.getByRole('button', { name: 'New game' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Enter a puzzle…' }));
-    expect(props.onOpenDialog).toHaveBeenCalledWith('enter');
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Your puzzles…' }));
+    expect(props.onOpenDialog).toHaveBeenCalledWith('puzzles');
     // Not among the header's own actions, nor the phone's menu of them.
-    expect(screen.queryByRole('button', { name: /Enter a puzzle/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Your puzzles/ })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
-    expect(screen.queryByRole('menuitem', { name: /Enter a puzzle/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: /Your puzzles/ })).not.toBeInTheDocument();
   });
 
   it("marks no random tier as current while a past day's daily is on show", () => {

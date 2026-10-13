@@ -24,6 +24,7 @@ describe('readSharedLink', () => {
       challenge: null,
       daily: null,
       solve: null,
+      title: null,
     });
   });
 
@@ -187,6 +188,7 @@ describe('readSharedLink', () => {
       challenge: null,
       daily: null,
       solve: null,
+      title: null,
     });
     expect(readSharedLink('?p=')).toEqual({
       code: '',
@@ -194,6 +196,7 @@ describe('readSharedLink', () => {
       challenge: null,
       daily: null,
       solve: null,
+      title: null,
     });
   });
 
@@ -205,6 +208,41 @@ describe('readSharedLink', () => {
       expect(readSharedLink(url.search)?.challenge).toBeNull();
     },
   );
+
+  it("reads a puzzle's name, with a time or without", () => {
+    const bare = buildShareUrl('https://x.test/', GIVENS, undefined, null, 'The Times #1,234');
+    expect(readSharedLink(searchOf(bare))).toMatchObject({
+      challenge: null,
+      title: 'The Times #1,234',
+    });
+    const timed = buildShareUrl(
+      'https://x.test/',
+      GIVENS,
+      { seconds: 60, name: 'Dan', assists: NONE },
+      null,
+      'The Times #1,234',
+    );
+    expect(readSharedLink(searchOf(timed))).toMatchObject({
+      challenge: { name: 'Dan', seconds: 60 },
+      title: 'The Times #1,234',
+    });
+  });
+
+  it.each([
+    ['empty', ''],
+    ['nothing but space and controls', ' \n\u202e '],
+  ])("reads a puzzle's name that is %s as none", (_label, l) => {
+    const url = new URL(buildShareUrl('https://x.test/', GIVENS));
+    url.searchParams.set('l', l);
+    expect(readSharedLink(url.search)?.title).toBeNull();
+  });
+
+  it("tidies a hostile puzzle's name as a puzzle's name is tidied", () => {
+    const url = new URL(buildShareUrl('https://x.test/', GIVENS));
+    url.searchParams.set('l', `  <b>\u202e\n${'x'.repeat(60)}`);
+    const title = readSharedLink(url.search)?.title;
+    expect(title).toBe(`<b> ${'x'.repeat(35)}…`);
+  });
 
   it('cleans a hostile name', () => {
     const url = new URL(buildShareUrl('https://x.test/', GIVENS));
@@ -223,7 +261,7 @@ describe('clearShareParams', () => {
     window.history.replaceState(
       {},
       '',
-      '/?p=abc&d=2026-10-13&t=10&n=Dan&u=k3x9q7za2m&a=c&s=BBA&keep=1#here',
+      '/?p=abc&d=2026-10-13&t=10&n=Dan&u=k3x9q7za2m&a=c&l=The+Times&s=BBA&keep=1#here',
     );
     clearShareParams();
     expect(window.location.search).toBe('?keep=1');

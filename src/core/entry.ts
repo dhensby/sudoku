@@ -5,14 +5,15 @@ import type { Digit, GridString, Puzzle, Unit, UnitKind, Values } from './types'
 
 /*
  * Puzzles from outside the game: a link's, or one the player types in from
- * the paper (Enter a puzzle…). Either way the givens are checked by
+ * the paper (Enter a puzzle). Either way the givens are checked by
  * `checkGivens` and labelled by the grader, the one way (`puzzleFromGivens`),
  * so the player who typed a puzzle in and the friend who opens their link
  * can never see it labelled differently.
  *
  * Typed in, the givens are also assessed as they grow (`assessGivens`): what
  * stands between them and a puzzle to play, one thing at a time, for the
- * editor to say in a line. Nothing here is English.
+ * editor to say in a line; pasted in, they are read from the text copied
+ * (`readGrid`). Nothing here is English.
  */
 
 /** What the givens typed in so far make (see `assessGivens`). */
@@ -114,4 +115,19 @@ export function assessGivens(cells: GridString, options: CheckOptions = {}): Giv
   if (opened.problem === 'multiple-solutions') return { kind: 'multiple' };
   if (opened.problem === 'no-solution') return { kind: 'none' };
   return { kind: 'too-complex' };
+}
+
+/**
+ * The grid in text pasted into the editor: its digits in reading order, a 0
+ * or a dot for each blank cell, and everything else — the spaces, line
+ * breaks, bars and dashes a grid is laid out with — passed over; null unless
+ * exactly 81 cells are left. So a grid copied from a page or a file reads as
+ * it is laid out, on one line or nine, and text that leaves any other count —
+ * a grid under a numbered heading, a link — reads as none: only a grid
+ * written out is read, never a link's code. What the grid makes, clashes and
+ * all, is `assessGivens`'s to say.
+ */
+export function readGrid(text: string): GridString | null {
+  const cells = text.replace(/[^0-9.]/g, '');
+  return cells.length === 81 ? cells.replaceAll('.', '0') : null;
 }

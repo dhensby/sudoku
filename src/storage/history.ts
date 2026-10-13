@@ -42,6 +42,7 @@ import {
   isObject,
   isPlayerId,
   normaliseName,
+  normaliseTitle,
   readItem,
   readJson,
   writeItem,
@@ -59,6 +60,7 @@ import {
   storeMoveLogs,
 } from './moveLogs';
 import { mergeFriendLists, normaliseFriends, type Friend } from './friends';
+import { mergePuzzleLists, normalisePuzzles, type SavedPuzzle } from './puzzles';
 import {
   EMPTY_LEDGER,
   addToLedger,
@@ -71,7 +73,7 @@ import {
  * The history of every game played, the saved state of unfinished ones, and
  * the puzzles the player has seen.
  *
- * Eight kinds of key here, and the move logs' two (see `moveLogs.ts`):
+ * Nine kinds of key here, and the move logs' two (see `moveLogs.ts`):
  *   sudoku.history      the list of `GameRecord`s, newest first
  *   sudoku.game.<id>    one game's saved state, opaque here (the game module
  *                       validates it on the way back in)
@@ -87,6 +89,8 @@ import {
  *   sudoku.friends      the friends whose links were opened: their devices, by the
  *                       player ID each one's links carry, and the name given each
  *                       friend (see friends.ts)
+ *   sudoku.puzzles      the puzzles typed in and kept, to play, edit and name
+ *                       again (see puzzles.ts)
  *   sudoku.moves.<id>   one game's move log
  *   sudoku.moveLogs     the ids that have a `sudoku.moves.<id>` key
  *
@@ -280,7 +284,7 @@ export interface GameRecord {
   beyond?: true;
   /**
    * Set on an attempt at a puzzle the player typed in by hand (Enter a
-   * puzzle…), beside a `source` of 'shared' — or 'replay', for one seen
+   * puzzle), beside a `source` of 'shared' — or 'replay', for one seen
    * before — so that it counts as a puzzle from a link counts, and is never
    * dropped as a glimpse, in this version and an older one alike, which
    * keeps the flag as a field it does not know (see `newerFields`). All the
@@ -289,6 +293,18 @@ export interface GameRecord {
    * never false.
    */
   entered?: true;
+  /**
+   * The puzzle's name, as a link to it gave it (`l=`, see `buildShareUrl`):
+   * its sender's for it in Your puzzles, or the one their own link gave,
+   * tidied as one is there (see `normaliseTitle`) — from the link the game
+   * came from, or the first to name it after (see `planStartup`). Never
+   * rewritten once set, and never ''; absent on a game no link named. A puzzle the player typed in is named
+   * by Your puzzles instead, as it is now, looked up wherever a game of it is
+   * drawn or shared (see `titledRecord`) — a name there wins over this one
+   * for the same numbers. Short enough for a version from before it to keep
+   * as a field it does not know (see `newerFields`).
+   */
+  title?: string;
 }
 
 /** Totals for one tier, or for the puzzles beyond the techniques. */
@@ -302,8 +318,13 @@ export interface DifficultyStats {
   averageMs: number | null;
 }
 
-/** What an import did, or that the file was not a Sudoku history at all. */
-export type ImportResult = { ok: true; added: number; updated: number } | { ok: false };
+/**
+ * What an import did — the games it added and updated, and the entries of
+ * Your puzzles it added or changed (see `mergePuzzleLists`) — or that the
+ * file was not a Sudoku history at all.
+ */
+export type ImportResult =
+  { ok: true; added: number; updated: number; puzzles: number } | { ok: false };
 
 /** The most records kept. Beyond it the oldest finished games go first. */
 export const MAX_RECORDS = 1000;
@@ -351,6 +372,7 @@ const SEEN_KEY = 'sudoku.seen';
 const LEDGER_KEY = 'sudoku.dailyLedger';
 const WATCHED_KEY = 'sudoku.watched';
 const FRIENDS_KEY = 'sudoku.friends';
+const PUZZLES_KEY = 'sudoku.puzzles';
 
 /** What a log in a link is made of (see `src/core/moves.ts`): base64url. */
 const SHARED_LOG_PATTERN = /^[A-Za-z0-9_-]+$/;
@@ -385,6 +407,7 @@ const RECORD_FIELDS = fieldsOf<GameRecord>({
   watched: true,
   beyond: true,
   entered: true,
+  title: true,
 });
 
 /** The fields of a challenge this version knows. */
@@ -598,8 +621,9 @@ function normaliseChallenge(value: unknown): Challenge | null {
  * still a game, just not one against a rival or on the calendar. So are
  * broken mistakes, which then read as not known (see `normaliseMistakes`).
  * `watched` and `entered` are kept only as `true`, and `beyond` only as
- * `true` on an Expert game. Small fields a newer version added are kept as
- * they are (see `newerFields`).
+ * `true` on an Expert game. A name is tidied (see `normaliseTitle`), and left
+ * off if nothing is left of it. Small fields a newer version added are kept
+ * as they are (see `newerFields`).
  */
 function normaliseRecord(value: unknown): GameRecord | null {
   if (!isObject(value)) return null;
@@ -621,6 +645,7 @@ function normaliseRecord(value: unknown): GameRecord | null {
   }
   const isDaily = isDailyDate(value.daily, createdAt);
   const mistakes = normaliseMistakes(value.mistakes);
+  const title = normaliseTitle(value.title);
   return {
     ...newerFields(value, RECORD_FIELDS),
     id,
@@ -646,6 +671,7 @@ function normaliseRecord(value: unknown): GameRecord | null {
     ...(value.watched === true ? { watched: true as const } : {}),
     ...(value.beyond === true && difficulty === 'expert' ? { beyond: true as const } : {}),
     ...(value.entered === true ? { entered: true as const } : {}),
+    ...(title === '' ? {} : { title }),
   };
 }
 
@@ -1741,6 +1767,42 @@ export function updateFriends(
 }
 
 // ---------------------------------------------------------------------------
+// Your puzzles
+// ---------------------------------------------------------------------------
+
+/*
+ * The puzzles typed in and kept: what they are, and every change to them, is
+ * `puzzles.ts`'s business. Here they are only read and written, as the
+ * friends are. A tab from before the library never reads the key, so it
+ * never writes it either.
+ */
+
+/** The puzzles kept, the latest first saved first (see `puzzles.ts`). Junk costs only itself. */
+export function loadPuzzles(storage: StorageLike): SavedPuzzle[] {
+  return normalisePuzzles(readJson(storage, PUZZLES_KEY));
+}
+
+/**
+ * Apply `change` to the list as stored now (another tab may have saved a
+ * puzzle since this one read it), and write the result with MAKE_ROOM unless
+ * it is the same list. Returns the list as changed, whether or not the write
+ * went through.
+ *
+ * Making room never sheds the list itself: each entry is a puzzle the player
+ * typed in, number by number, and at some 300 characters at most, a full
+ * list (see `MAX_SAVED_PUZZLES`) is a third the size of a full history.
+ */
+export function updatePuzzles(
+  storage: StorageLike,
+  change: (puzzles: readonly SavedPuzzle[]) => readonly SavedPuzzle[],
+): readonly SavedPuzzle[] {
+  const puzzles = loadPuzzles(storage);
+  const changed = change(puzzles);
+  if (changed !== puzzles) writeItem(storage, PUZZLES_KEY, JSON.stringify(changed), MAKE_ROOM);
+  return changed;
+}
+
+// ---------------------------------------------------------------------------
 // Export and import
 // ---------------------------------------------------------------------------
 
@@ -1751,11 +1813,13 @@ export function updateFriends(
  * before logs were kept has none, and still imports); the puzzles seen, so one
  * played and deleted here is no fresh puzzle there either; the puzzles whose
  * shared solve was watched, so none of them sets a time there; the daily
- * ledger, so streaks travel whole; and the friends list, so the names given
- * friends here name their races there. Not this browser's own player ID,
- * which is in the preferences, not the file: two browsers with one ID could
- * never be told apart. Safari deletes the storage of a site not visited for
- * seven days, so this file is the only backup there is.
+ * ledger, so streaks travel whole; the friends list, so the names given
+ * friends here name their races there; and Your puzzles, so the puzzles typed
+ * in here, and the names given them, can be played and edited there. Not
+ * this browser's own player ID, which is in the preferences, not the file:
+ * two browsers with one ID could never be told apart. Safari deletes the
+ * storage of a site not visited for seven days, so this file is the only
+ * backup there is.
  */
 export function exportHistory(storage: StorageLike, now: number): string {
   const records = loadHistory(storage);
@@ -1779,6 +1843,7 @@ export function exportHistory(storage: StorageLike, now: number): string {
   const watched = readWatched(storage);
   const dailyLedger = encodeLedger(loadDailyLedger(storage));
   const friends = loadFriends(storage);
+  const puzzles = loadPuzzles(storage);
   return JSON.stringify(
     {
       app: EXPORT_APP,
@@ -1791,6 +1856,7 @@ export function exportHistory(storage: StorageLike, now: number): string {
       watched,
       dailyLedger,
       friends,
+      puzzles,
     },
     null,
     2,
@@ -1824,7 +1890,11 @@ export function exportHistory(storage: StorageLike, now: number): string {
  * own, as the flag is never taken off. Its friends' devices new here are
  * added to the friends list too (see `mergeFriendLists`), never renaming,
  * merging or splitting a friend here; a file from before the list was
- * exported has none, which costs only the names given there.
+ * exported has none, which costs only the names given there. And its puzzles
+ * are merged into Your puzzles (see `mergePuzzleLists`): one both have, the
+ * copy changed later; one new here, into the room left under the cap; a file
+ * from before they were exported has none. The friends and the puzzles are
+ * merged whether or not the file brings a game.
  */
 export function importHistory(storage: StorageLike, json: string): ImportResult {
   let data: unknown;
@@ -1847,6 +1917,17 @@ export function importHistory(storage: StorageLike, json: string): ImportResult 
   mergeLedger(storage, data.dailyLedger);
   mergeWatched(storage, data.watched);
   updateFriends(storage, (local) => mergeFriendLists(local, normaliseFriends(data.friends)));
+  // Counted as they merge: each entry the file adds, or changes — a newer
+  // copy, or a name for one that had none — and one at least for a merge
+  // that only takes an entry here away, folded into another with its
+  // numbers, so History never says nothing is new after a write.
+  let puzzles = 0;
+  updatePuzzles(storage, (local) => {
+    const merged = mergePuzzleLists(local, normalisePuzzles(data.puzzles));
+    const kept = new Set(local);
+    puzzles = merged === local ? 0 : Math.max(1, merged.filter((entry) => !kept.has(entry)).length);
+    return merged;
+  });
 
   const current = loadCurrentId(storage);
   const records = loadHistory(storage);
@@ -1862,15 +1943,17 @@ export function importHistory(storage: StorageLike, json: string): ImportResult 
     // The flags are never taken off: a copy finished somewhere that knew
     // nothing of the watch is still an attempt made after it, a puzzle
     // beyond the techniques stays beyond them, and one typed in stays the
-    // player's own, whatever version last saved it.
+    // player's own, whatever version last saved it. Nor is the name its link
+    // gave, which is never rewritten.
     byId.set(incoming.id, {
       ...incoming,
       ...(existing?.watched === true ? { watched: true as const } : {}),
       ...(existing?.beyond === true ? { beyond: true as const } : {}),
       ...(existing?.entered === true ? { entered: true as const } : {}),
+      ...(existing?.title === undefined ? {} : { title: existing.title }),
     });
   }
-  if (added.size + updated.size === 0) return { ok: true, added: 0, updated: 0 };
+  if (added.size + updated.size === 0) return { ok: true, added: 0, updated: 0, puzzles };
 
   // A flagged record from the file makes its puzzle a watched one here, for
   // the attempts still to come, though the file had no list to say so.
@@ -1915,5 +1998,5 @@ export function importHistory(storage: StorageLike, json: string): ImportResult 
     );
 
   const addedCount = imported.filter((record) => added.has(record.id)).length;
-  return { ok: true, added: addedCount, updated: imported.length - addedCount };
+  return { ok: true, added: addedCount, updated: imported.length - addedCount, puzzles };
 }

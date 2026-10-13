@@ -12,6 +12,7 @@ function renderGrid(overrides: Partial<GivensGridProps> = {}) {
     settings: { highlightRowColumn: true, highlightBox: true },
     onSelect: vi.fn(),
     onKeyDown: vi.fn(),
+    onPaste: vi.fn(),
     ...overrides,
   };
   const view = render(<GivensGrid {...props} />);
@@ -58,6 +59,14 @@ describe('GivensGrid', () => {
     expect(cells.filter((cell) => cell.hasAttribute('data-autofocus'))).toEqual([cells[40]]);
     expect(cells[40]).toHaveAttribute('aria-selected', 'true');
     expect(cells[40]).toHaveClass('cell--selected');
+  });
+
+  it('leaves the dialog’s first focus to another control when told to, the selection kept', () => {
+    renderGrid({ isAutofocus: false });
+    const cells = within(grid()).getAllByRole('gridcell');
+    expect(cells.filter((cell) => cell.hasAttribute('data-autofocus'))).toEqual([]);
+    expect(cells.filter((cell) => cell.tabIndex === 0)).toEqual([cells[40]]);
+    expect(cells[40]).toHaveAttribute('aria-selected', 'true');
   });
 
   it('tints the selection’s row, column and box as the settings tint the board’s', () => {
@@ -116,5 +125,14 @@ describe('GivensGrid', () => {
     fireEvent.keyDown(grid(), { key: 'ArrowUp' });
     expect(props.onKeyDown).toHaveBeenCalledTimes(2);
     expect(vi.mocked(props.onKeyDown).mock.calls[0][0]).toMatchObject({ key: '5' });
+  });
+
+  it('hands a paste on a cell on, as Ctrl or Cmd+V fires it there', () => {
+    const { props } = renderGrid();
+    fireEvent.paste(cellAt(40), { clipboardData: { getData: () => '53' } });
+    expect(props.onPaste).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(props.onPaste).mock.calls[0][0].clipboardData.getData('text/plain')).toBe(
+      '53',
+    );
   });
 });

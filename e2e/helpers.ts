@@ -88,8 +88,11 @@ export interface LinkChallenge {
   assists?: string;
 }
 
-/** The path and query of a share link to `givens`, as the app's Share dialog builds it. */
-export function puzzleLink(givens: GridString, challenge?: LinkChallenge): string {
+/**
+ * The path and query of a share link to `givens`, as the app's Share dialog
+ * builds it — with the puzzle's name its sender gave it (`l=`), if `title` is.
+ */
+export function puzzleLink(givens: GridString, challenge?: LinkChallenge, title?: string): string {
   const params = new URLSearchParams({ p: encodeGivens(givens) });
   if (challenge !== undefined) {
     params.set('t', String(challenge.seconds));
@@ -97,6 +100,7 @@ export function puzzleLink(givens: GridString, challenge?: LinkChallenge): strin
     if (challenge.playerId !== undefined) params.set('u', challenge.playerId);
     if (challenge.assists !== undefined) params.set('a', challenge.assists);
   }
+  if (title !== undefined) params.set('l', title);
   return `/?${params.toString()}`;
 }
 
@@ -160,9 +164,9 @@ export const whoSentDialog = (page: Page): Locator =>
 export async function gotoPuzzle(
   page: Page,
   givens: GridString,
-  options: { challenge?: LinkChallenge } = {},
+  options: { challenge?: LinkChallenge; title?: string } = {},
 ): Promise<void> {
-  await page.goto(puzzleLink(givens, options.challenge));
+  await page.goto(puzzleLink(givens, options.challenge, options.title));
   await expect(
     boardArea(page).getByRole('heading').or(grid(page)).or(whoSentDialog(page)).first(),
   ).toBeVisible();
@@ -367,14 +371,18 @@ export async function setVisibility(page: Page, state: 'hidden' | 'visible'): Pr
  * Stand in for the clipboard and the share sheet. The real clipboard is
  * shared between test workers (and with the developer), and a real share
  * sheet would wait for a person. Whatever is written is kept on
- * `window.copied`, for `copiedText` to read back.
+ * `window.copied`, for `copiedText` to read back. `pasted` is what the
+ * clipboard holds to be read, or 'fails' for a read refused; left out, it
+ * cannot be read at all, as an older browser's cannot. (Granting the real
+ * clipboard leave to be read would not do: it is shared too, and WebKit
+ * throws at the grant.)
  */
 export async function stubClipboard(
   page: Page,
-  options: { clipboard?: 'works' | 'fails'; share?: boolean } = {},
+  options: { clipboard?: 'works' | 'fails'; share?: boolean; pasted?: string } = {},
 ): Promise<void> {
   await page.addInitScript(
-    ({ clipboard, share }) => {
+    ({ clipboard, share, pasted }) => {
       const w = window as unknown as { copied: string[]; shared: unknown[] };
       w.copied = [];
       w.shared = [];
@@ -385,6 +393,13 @@ export async function stubClipboard(
             if (clipboard === 'fails') throw new DOMException('Denied', 'NotAllowedError');
             w.copied.push(text);
           },
+          readText:
+            pasted === null
+              ? undefined
+              : async () => {
+                  if (pasted === 'fails') throw new DOMException('Denied', 'NotAllowedError');
+                  return pasted;
+                },
         },
       });
       Object.defineProperty(navigator, 'share', {
@@ -396,7 +411,12 @@ export async function stubClipboard(
         value: share ? () => true : undefined,
       });
     },
-    { clipboard: options.clipboard ?? 'works', share: options.share ?? false },
+    {
+      clipboard: options.clipboard ?? 'works',
+      share: options.share ?? false,
+      // Null rather than left out: an init script's argument goes as JSON.
+      pasted: options.pasted ?? null,
+    },
   );
 }
 
@@ -451,6 +471,19 @@ export async function seedFriends(page: Page, friends: readonly unknown[]): Prom
   }, friends);
 }
 
+/**
+ * Put puzzles in Your puzzles before the page loads (see
+ * `src/storage/puzzles.ts`), as a browser that has kept them holds them —
+ * once, so a reload does not put them back over a change made since.
+ */
+export async function seedPuzzles(page: Page, puzzles: readonly unknown[]): Promise<void> {
+  await page.addInitScript((seeded) => {
+    if (localStorage.getItem('e2e.seededPuzzles') !== null) return;
+    localStorage.setItem('sudoku.puzzles', JSON.stringify(seeded));
+    localStorage.setItem('e2e.seededPuzzles', '1');
+  }, puzzles);
+}
+
 /** A solved or unfinished daily attempt, as the history stores one, begun at `createdAt`. */
 export function dailyRecord(
   id: string,
@@ -485,21 +518,37 @@ export async function newGame(page: Page, label: string): Promise<void> {
     .click();
 }
 
-/**
- * Open Enter a puzzle from the header's New game menu, and wait for it. Find
- * everything in it through the dialog returned: the board and the pad behind
- * it stay on the page, so `cells` and `padKey` would find theirs as well.
- */
-export async function openEnterPuzzle(page: Page): Promise<Locator> {
+/** Open Your puzzles from the header's New game menu, and wait for it. */
+export async function openYourPuzzles(page: Page): Promise<Locator> {
   await page.getByRole('button', { name: 'New game' }).click();
   await page
     .getByRole('menu', { name: 'New game' })
-    .getByRole('menuitem', { name: 'Enter a puzzle…' })
+    .getByRole('menuitem', { name: 'Your puzzles…' })
     .click();
+  const dialog = page.getByRole('dialog', { name: 'Your puzzles' });
+  await expect(dialog).toBeVisible();
+  return dialog;
+}
+
+/**
+ * Open Enter a puzzle on an empty grid, from the header's New game menu
+ * through Your puzzles, and wait for it. Find everything in it through the
+ * dialog returned: the board and the pad behind it stay on the page, so
+ * `cells` and `padKey` would find theirs as well.
+ */
+export async function openEnterPuzzle(page: Page): Promise<Locator> {
+  const library = await openYourPuzzles(page);
+  await library.getByRole('button', { name: 'Enter a new puzzle' }).click();
   const dialog = page.getByRole('dialog', { name: 'Enter a puzzle' });
   await expect(dialog).toBeVisible();
   return dialog;
 }
+
+/**
+ * The editor's line saying what its numbers make (see `openEnterPuzzle`): the
+ * first of its two status regions — the other, unseen, says what Save did.
+ */
+export const enterStatus = (editor: Locator): Locator => editor.locator('.enter__status');
 
 /**
  * Type `givens` into Enter a puzzle (see `openEnterPuzzle`) from its first

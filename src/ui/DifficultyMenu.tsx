@@ -32,8 +32,8 @@ export interface DifficultyMenuProps {
   onSelectDaily: (difficulty: Difficulty) => void;
   /** Open the daily calendar. */
   onOpenCalendar: () => void;
-  /** Open Enter a puzzle, to type in one from elsewhere. */
-  onEnterPuzzle: () => void;
+  /** Open Your puzzles: the ones typed in from elsewhere, and a new one to type in. */
+  onOpenPuzzles: () => void;
   /** The menu is opening: bring `today` up to date (see `Menu`'s `onOpen`). */
   onOpen?: () => void;
 }
@@ -60,8 +60,8 @@ function statusDetail(status: DailyStatus) {
 /**
  * New game, in two runs: today's daily puzzles — one of each tier, the same
  * for everyone today, each marked with how it stands — with the calendar of
- * past days after them; then a random puzzle of each tier, with Enter a
- * puzzle after them, for one from elsewhere (the paper). The game on show
+ * past days after them; then a random puzzle of each tier, with Your
+ * puzzles after them, for one from elsewhere (the paper). The game on show
  * is marked current wherever it is in the menu — today's daily of its tier,
  * or its random tier (though choosing it still starts a new game like the
  * others); a past day's daily is in neither.
@@ -78,7 +78,7 @@ export function DifficultyMenu({
   onSelect,
   onSelectDaily,
   onOpenCalendar,
-  onEnterPuzzle,
+  onOpenPuzzles,
   onOpen,
 }: DifficultyMenuProps) {
   // Only on a device whose clock is set before Daily #1: there is no daily yet.
@@ -125,7 +125,7 @@ export function DifficultyMenu({
               onSelect: () => onSelect(difficulty),
             })),
             // No icon: the tiers above have none to line up with.
-            { key: 'enter', label: 'Enter a puzzle…', onSelect: onEnterPuzzle },
+            { key: 'puzzles', label: 'Your puzzles…', onSelect: onOpenPuzzles },
           ],
         },
       ]}

@@ -13,6 +13,7 @@ import {
   deployNewerVersion,
   emptyCells,
   enterGivens,
+  enterStatus,
   getStuck,
   getStuckOnAnXyChain,
   gotoPuzzle,
@@ -20,6 +21,7 @@ import {
   modeButton,
   openEnterPuzzle,
   openHeaderDialog,
+  openYourPuzzles,
   placedSolve,
   puzzleLink,
   seedFriends,
@@ -30,6 +32,7 @@ import {
   solveWithAMistake,
   startButton,
   startPuzzle,
+  stubClipboard,
   timer,
   typeDigits,
   updateOffer,
@@ -39,17 +42,18 @@ import {
 /**
  * Accessibility, checked by machine: axe-core runs its WCAG 2.2 A and AA
  * rules over the states a player meets — the board in play with every kind
- * of mark on it, the Ready and Paused cards, the "…" menu, every dialog (each
- * step of Show me, the Show me of a missing candidate, Friends with a name
- * being changed and with two friends being merged, "Who sent this?" with
- * friends to choose from, and Enter a puzzle at each step on the way to a
- * puzzle — empty, a clash dotted, too few numbers, more than one solution,
- * and a Hard with one — among them), each entry of the technique guide, a
- * step hint with its houses tinted on the board, and the offer of a new
- * version at the foot of the page — in the light theme and
- * the dark (and the main ones, the tint and Enter a puzzle among them, in
- * High contrast), and each must come back with no violations at all, with
- * no rule switched off.
+ * of mark on it, the Ready and Paused cards (a Ready card with a puzzle's name
+ * among them), the "…" menu, every dialog (each step of Show me, the Show me of
+ * a missing candidate, Friends with a name being changed and with two friends
+ * being merged, "Who sent this?" with friends to choose from, Enter a puzzle at
+ * each step on the way to a puzzle — empty, a clash dotted, too few numbers,
+ * more than one solution, and a Hard with one, saved — and Your puzzles, empty,
+ * with puzzles kept, a name being changed and a delete being confirmed, among
+ * them), each entry of the technique guide, a step hint with its houses tinted
+ * on the board, and the offer of a new version at the foot of the page — in
+ * the light theme and the dark (and the main ones, the tint, Enter a puzzle and
+ * Your puzzles among them, in High contrast), and each must come back with no
+ * violations at all, with no rule switched off.
  * Contrast is the rule that a palette change is likeliest to break:
  * contrast.test.ts holds the tokens to their targets pair by pair, and this
  * is the check that the rendered page, every colour composed, agrees.
@@ -61,7 +65,8 @@ import {
  *
  * The desktop layout runs on Chromium; a shorter pass runs on the phones
  * (`iphone`, `android`), whose layout folds the header into a menu and the
- * guide into a bottom sheet — Enter a puzzle too, upright and on its side.
+ * guide into a bottom sheet — Enter a puzzle and Your puzzles too, upright
+ * and on their sides.
  * Motion is reduced so nothing is caught mid-fade. High contrast has passes
  * of its own, both ways it comes — chosen in Settings, and from a dark
  * system asking for more contrast — which also measure what a colour check
@@ -353,15 +358,25 @@ async function friendsList(page: Page, before?: () => Promise<void>): Promise<vo
 
 /**
  * Enter a puzzle at each step on the way to a puzzle, its line saying so,
- * typed over an emptied grid: empty; two 5s in a row, both dotted; too few
- * numbers; more than one solution; and a Hard with one — Play unavailable
- * until then, and faded. `where` names the layout in a failure.
+ * typed over an emptied grid: empty; a paste with no puzzle in it, its line
+ * saying that instead (the clipboard as `enterPuzzleStates` stubs it); two
+ * 5s in a row, both dotted; too few numbers; more than one solution; and a
+ * Hard with one — Play and Share… unavailable until then, and faded, as Save
+ * is on the empty grid. `where` names the layout in a failure.
  */
 async function scanEnterPuzzle(page: Page, editor: Locator, where = ''): Promise<void> {
-  const status = editor.getByRole('status');
+  const status = enterStatus(editor);
   await enterGivens(editor, '0'.repeat(81));
   await expect(status).toHaveText('Type in the numbers from your puzzle.');
+  await expect(editor.getByRole('button', { name: 'Save' })).toHaveAttribute(
+    'aria-disabled',
+    'true',
+  );
   await expectAccessible(page, `Enter a puzzle, empty${where}`);
+
+  await editor.getByRole('button', { name: 'Paste' }).click();
+  await expect(status).toHaveText('No puzzle in what you copied.');
+  await expectAccessible(page, `Enter a puzzle with a paste of no puzzle${where}`);
 
   await enterGivens(editor, '55');
   await expect(status).toHaveText('Two 5s in row 1.');
@@ -379,25 +394,112 @@ async function scanEnterPuzzle(page: Page, editor: Locator, where = ''): Promise
 
   await enterGivens(editor, hard);
   await expect(status).toHaveText('One solution: a Hard puzzle.');
-  await expect(editor.getByRole('button', { name: 'Play' })).not.toHaveAttribute('aria-disabled');
+  for (const name of ['Play', 'Share…']) {
+    await expect(editor.getByRole('button', { name })).not.toHaveAttribute('aria-disabled');
+  }
   await expectAccessible(page, `Enter a puzzle with a Hard typed in${where}`);
 }
 
 /**
- * Enter a puzzle opened over a game, its first cell focused, and scanned at
- * each step (see `scanEnterPuzzle`). `before` runs first, on the game it
- * opens over (to choose High contrast, say). Returns the dialog, still open.
+ * Puzzles as a browser that has kept some holds them: one ready to play under
+ * a right-to-left name, one half typed in and unnamed, and one with a clash.
  */
-async function enterPuzzleStates(
+const KEPT_PUZZLES = [
+  {
+    id: 'kept-0001',
+    cells: PUZZLES.hard.givens,
+    title: 'סודוקו של יום שבת',
+    createdAt: Date.UTC(2026, 9, 3, 9),
+    updatedAt: Date.UTC(2026, 9, 3, 9),
+  },
+  {
+    id: 'kept-0002',
+    cells: PUZZLES.hard.givens.slice(0, 30).padEnd(81, '0'),
+    createdAt: Date.UTC(2026, 9, 2, 9),
+    updatedAt: Date.UTC(2026, 9, 2, 9),
+  },
+  {
+    id: 'kept-0003',
+    cells: '55'.padEnd(81, '0'),
+    title: 'Guardian 4,201',
+    createdAt: Date.UTC(2026, 9, 1, 9),
+    updatedAt: Date.UTC(2026, 9, 1, 9),
+  },
+];
+
+/**
+ * Your puzzles with puzzles kept, open: its rows, every kind — then with a
+ * name being changed, and a delete being confirmed. `where` names the layout
+ * in a failure.
+ */
+async function scanYourPuzzles(page: Page, library: Locator, where = ''): Promise<void> {
+  await expect(library.getByRole('listitem')).toHaveCount(KEPT_PUZZLES.length);
+  await expectAccessible(page, `Your puzzles with puzzles kept${where}`);
+
+  await library.getByRole('button', { name: /^Rename סודוקו/ }).click();
+  await expect(library.getByRole('textbox', { name: 'Name' })).toBeFocused();
+  await expectAccessible(page, `Your puzzles with a name being changed${where}`);
+  await page.keyboard.press('Escape');
+
+  await library.getByRole('button', { name: /^Delete untitled puzzle/ }).click();
+  const cancel = library.getByRole('button', { name: /^Cancel deleting untitled puzzle/ });
+  await expect(cancel).toBeFocused();
+  await expectAccessible(page, `Your puzzles asking to confirm a delete${where}`);
+  await page.keyboard.press('Escape');
+}
+
+/**
+ * Your puzzles opened over a game, empty, then — puzzles kept since — opened
+ * again and scanned with them (see `scanYourPuzzles`). `before` runs first,
+ * on the game it opens over (to choose High contrast, say). Returns the
+ * dialog, still open.
+ */
+async function yourPuzzlesStates(
   page: Page,
   { before, where = '' }: { before?: () => Promise<void>; where?: string } = {},
 ): Promise<Locator> {
   await page.goto('/');
   await waitForPlaying(page);
   if (before !== undefined) await before();
+  const library = await openYourPuzzles(page);
+  await expect(library.getByRole('button', { name: 'Enter a new puzzle' })).toBeFocused();
+  await expect(library).toContainText('No puzzles yet');
+  await expectAccessible(page, `Your puzzles, empty${where}`);
+  await closeDialog(page);
+  // As another tab would keep them: the list reads them afresh as it opens.
+  await page.evaluate((kept) => {
+    localStorage.setItem('sudoku.puzzles', JSON.stringify(kept));
+  }, KEPT_PUZZLES);
+  const again = await openYourPuzzles(page);
+  await scanYourPuzzles(page, again, where);
+  return again;
+}
+
+/**
+ * Enter a puzzle opened over a game, its first cell focused, and scanned at
+ * each step (see `scanEnterPuzzle`), then saved; the clipboard holds words
+ * with no puzzle in them, for Paste to say so. `before` runs first, on the
+ * game it opens over (to choose High contrast, say). Returns the dialog,
+ * still open.
+ */
+async function enterPuzzleStates(
+  page: Page,
+  { before, where = '' }: { before?: () => Promise<void>; where?: string } = {},
+): Promise<Locator> {
+  await stubClipboard(page, { pasted: 'Sudoku, by the paper' });
+  await page.goto('/');
+  await waitForPlaying(page);
+  if (before !== undefined) await before();
   const editor = await openEnterPuzzle(page);
   await expect(editor.getByRole('gridcell').first()).toBeFocused();
   await scanEnterPuzzle(page, editor, where);
+  // Saved: Save says so, unavailable and faded, until the grid changes.
+  await editor.getByRole('button', { name: 'Save' }).click();
+  await expect(editor.getByRole('button', { name: 'Saved' })).toHaveAttribute(
+    'aria-disabled',
+    'true',
+  );
+  await expectAccessible(page, `Enter a puzzle, saved${where}`);
   return editor;
 }
 
@@ -538,6 +640,10 @@ for (const scheme of ['light', 'dark'] as const) {
       await gotoPuzzle(page, PUZZLES.medium.givens);
       await expect(startButton(page)).toBeVisible();
       await expectAccessible(page, 'the Ready card');
+
+      await gotoPuzzle(page, PUZZLES.expert.givens, { title: 'The Times #1,234' });
+      await expect(boardArea(page).locator('.board-overlay__name')).toHaveText('The Times #1,234');
+      await expectAccessible(page, "the Ready card with a puzzle's name");
 
       await gotoPuzzle(page, PUZZLES.hard.givens, {
         challenge: { seconds: 323, name: 'Dan', assists: 'ch2m1' },
@@ -702,6 +808,13 @@ for (const scheme of ['light', 'dark'] as const) {
 
     test('Enter a puzzle, on its way to a puzzle', async ({ page }) => {
       await enterPuzzleStates(page);
+      await expectScheme(page, scheme);
+    });
+
+    test('Your puzzles, empty and with puzzles kept, renaming one and deleting one', async ({
+      page,
+    }) => {
+      await yourPuzzlesStates(page);
       await expectScheme(page, scheme);
     });
   });
@@ -936,6 +1049,19 @@ for (const { way, isChosen, media } of HIGH_CONTRAST_WAYS) {
       await expect(updateOffer(page)).toBeVisible();
       await expectAccessible(page, 'the offer of a new version');
     });
+
+    test('Your puzzles, empty and with puzzles kept, renaming one and deleting one', async ({
+      page,
+    }) => {
+      await page.emulateMedia(media);
+      await yourPuzzlesStates(page, {
+        before: async () => {
+          if (isChosen) await chooseHighContrast(page);
+          await expectHighContrast(page, isChosen);
+        },
+      });
+      await expectHighContrast(page, isChosen);
+    });
   });
 }
 
@@ -1073,8 +1199,11 @@ test.describe('on a phone', () => {
       page,
     }) => {
       await page.emulateMedia({ colorScheme: scheme });
-      await gotoPuzzle(page, PUZZLES.medium.givens);
+      await gotoPuzzle(page, PUZZLES.expert.givens, { title: 'The Times #1,234' });
       await expectScheme(page, scheme);
+      await expect(boardArea(page).locator('.board-overlay__name')).toHaveText('The Times #1,234');
+      await expectAccessible(page, "the Ready card with a puzzle's name");
+      await gotoPuzzle(page, PUZZLES.medium.givens);
       await expectAccessible(page, 'the Ready card');
 
       await playWithEveryMark(page);
@@ -1160,6 +1289,10 @@ test.describe('on a phone', () => {
     test(`Enter a puzzle as a bottom sheet, and on its side, in the ${scheme} theme`, async ({
       page,
     }) => {
+      // Every state the editor passes through, typed in key by key and
+      // scanned twice, upright and on its side: some 30 s on a CI runner's
+      // WebKit, which is past the default.
+      test.setTimeout(90_000);
       await page.emulateMedia({ colorScheme: scheme });
       const upright = page.viewportSize()!;
       const editor = await enterPuzzleStates(page, { where: ', upright' });
@@ -1182,6 +1315,17 @@ test.describe('on a phone', () => {
       const upright = page.viewportSize()!;
       await page.setViewportSize({ width: upright.height, height: upright.width });
       await expectAccessible(page, 'the offer of a new version, on its side');
+    });
+
+    test(`Your puzzles as a bottom sheet, and on its side, in the ${scheme} theme`, async ({
+      page,
+    }) => {
+      await page.emulateMedia({ colorScheme: scheme });
+      const upright = page.viewportSize()!;
+      const library = await yourPuzzlesStates(page, { where: ', upright' });
+      await expectScheme(page, scheme);
+      await page.setViewportSize({ width: upright.height, height: upright.width });
+      await scanYourPuzzles(page, library, ', on its side');
     });
   }
 });

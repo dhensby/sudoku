@@ -107,7 +107,16 @@ const CONTROLS: readonly Control[] = [
         <kbd>Backspace</kbd> goes back
       </>
     ),
-    pointer: 'New game › Enter a puzzle…, then tap a cell and a number',
+    pointer: 'New game › Your puzzles… › Enter a new puzzle, then tap a cell and a number',
+  },
+  {
+    action: 'Paste a puzzle in',
+    keyboard: (
+      <>
+        <Combo keys={['Ctrl', 'V']} /> on the grid
+      </>
+    ),
+    pointer: 'Paste, in Enter a puzzle',
   },
   {
     action: 'Watch your solve',
@@ -171,7 +180,7 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
               Play today&apos;s from <strong>New game</strong>, under{' '}
               <strong>Today&apos;s puzzles</strong>. One you&apos;ve started carries on where you
               left off. Random puzzles are still there too, under <strong>Random puzzle</strong>,
-              with <strong>Enter a puzzle…</strong> after them for one of your own.
+              with <strong>Your puzzles…</strong> after them for ones of your own.
             </li>
             <li>
               The <strong>Daily puzzles</strong> calendar shows every day since the first, today
@@ -203,9 +212,9 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
           <h3 className="help__heading">Your own puzzles</h3>
           <ul className="help__list">
             <li>
-              <strong>Enter a puzzle…</strong>, last under Random puzzle in{' '}
-              <strong>New game</strong>, opens an empty grid to type in a puzzle from a newspaper or
-              a book.
+              <strong>Your puzzles…</strong>, last under Random puzzle in <strong>New game</strong>,
+              lists the puzzles you&apos;ve typed in from a newspaper or a book.{' '}
+              <strong>Enter a new puzzle</strong> opens an empty grid for another.
             </li>
             <li>
               Type it in row by row: a number fills a cell and moves on, <kbd>Space</kbd>,{' '}
@@ -215,19 +224,26 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
               you tapped.
             </li>
             <li>
+              To paste one in whole, copied from a page or a file, press <strong>Paste</strong> or{' '}
+              <Combo keys={['Ctrl', 'V']} /> (<Combo keys={['⌘', 'V']} /> on a Mac) on the grid. Its
+              81 cells are read in order — a number for each given, a 0 or a dot for each blank,
+              anything else skipped — and put in place of what you&apos;ve typed.
+            </li>
+            <li>
               A number twice in a row, column or box is marked at once, and a line by the grid says
               what the numbers make so far — too few for a puzzle, more than one solution, or none —
               until they make a puzzle with exactly one solution, and how hard it is: “One solution:
-              a Hard puzzle.” Only then can you play it.
+              a Hard puzzle.” Only then can you play or share it.
             </li>
             <li>
               Check every number against your copy: one wrong number can still make a puzzle, just
               not the one in the paper.
             </li>
             <li>
-              <strong>Play</strong> puts it behind <strong>Start</strong>, so you can share it
-              before you start: Share sends the puzzle alone. Once you&apos;ve solved it, Share
-              sends your time with it, as for any puzzle.
+              <strong>Share…</strong> sends a friend the puzzle alone, without starting it.{' '}
+              <strong>Play</strong> puts it behind <strong>Start</strong>, so you can share it from
+              there too before you start. Once you&apos;ve solved it, Share sends your time with it,
+              as for any puzzle.
             </li>
             <li>
               Typing it in isn&apos;t seeing it: its time counts as a new puzzle&apos;s, towards
@@ -235,7 +251,17 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
               haven&apos;t finished carries on where you left off; one you&apos;ve solved is offered
               to play again.
             </li>
-            <li>Closing the grid forgets what you typed.</li>
+            <li>
+              Every grid you type in is kept in Your puzzles, finished or not: <strong>Save</strong>{' '}
+              keeps it as it is, and Play, Share… and closing the grid keep it too. Up to 1,000 are
+              kept.
+            </li>
+            <li>
+              From the list, <strong>Play</strong> or <strong>Share</strong> one that&apos;s ready,{' '}
+              <strong>Edit</strong> one to carry on typing or put a number right,{' '}
+              <strong>Rename</strong> one to tell it apart, or <strong>Delete</strong> it — its
+              games stay in your history.
+            </li>
           </ul>
         </section>
 
@@ -495,6 +521,11 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
               friend&apos;s game can tell your times from anyone else&apos;s.
             </li>
             <li>
+              A puzzle you&apos;ve named in Your puzzles sends its name with its link, solved or
+              not: your friend sees it on the Start card and in their history, and it goes on with
+              their link.
+            </li>
+            <li>
               <strong>Friends</strong>, at the foot of History, lists everyone who has sent you a
               time. Give someone a name there and it&apos;s the one you&apos;ll see on all their
               times, past ones too, whatever their links call them; until you do, each time shows
@@ -551,8 +582,8 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
             </table>
           </div>
           <p className="help__note">
-            On a Mac, undo with <Combo keys={['⌘', 'Z']} /> and redo with{' '}
-            <Combo keys={['⌘', 'Shift', 'Z']} />.
+            On a Mac, undo with <Combo keys={['⌘', 'Z']} />, redo with{' '}
+            <Combo keys={['⌘', 'Shift', 'Z']} /> and paste with <Combo keys={['⌘', 'V']} />.
           </p>
         </section>
 
@@ -566,6 +597,10 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
             </li>
             <li>
               The names you give friends never leave this browser, except in History&apos;s export.
+            </li>
+            <li>
+              The list of your puzzles never leaves this browser, except in History&apos;s export. A
+              puzzle&apos;s name goes with its link when you share it.
             </li>
             <li>
               Some browsers clear a site's data after a while away. Export your history from the

@@ -62,7 +62,7 @@ function renderHistory(overrides: Partial<HistoryDialogProps> = {}) {
     onShare: vi.fn(),
     onDelete: vi.fn(),
     onExport: vi.fn(() => '{"app":"sudoku"}'),
-    onImport: vi.fn(() => ({ ok: true as const, added: 3, updated: 1 })),
+    onImport: vi.fn(() => ({ ok: true as const, added: 3, updated: 1, puzzles: 0 })),
     onClose: vi.fn(),
     ...overrides,
   };
@@ -117,6 +117,19 @@ describe('HistoryDialog', () => {
       expect(row).toHaveTextContent('vs Dan 5:23');
       // The challenger's name is a stranger's free text: kept in its own direction.
       expect(within(row).getByText('Dan').tagName).toBe('BDI');
+    });
+
+    it("names a game's puzzle, when it has a name, on a line of its own under its heading", () => {
+      const [, won] = RECORDS;
+      renderHistory({ records: [{ ...won, title: 'The Times #1,234' }, RECORDS[2]] });
+      const name = within(rows()[0]).getByText('The Times #1,234');
+      // A name from a link is a stranger's free text: kept in its own direction.
+      expect(name.tagName).toBe('BDI');
+      expect(name.parentElement).toHaveClass('history-item__name');
+      expect(rows()[0].querySelector('.history-item__heading')?.nextElementSibling).toBe(
+        name.parentElement,
+      );
+      expect(rows()[1].querySelector('.history-item__name')).toBeNull();
     });
 
     it('shows guesses checked as entered as a chip of its own, after auto candidates', () => {
@@ -607,15 +620,31 @@ describe('HistoryDialog', () => {
     });
 
     it('counts a single game in the singular', async () => {
-      renderHistory({ onImport: () => ({ ok: true, added: 1, updated: 0 }) });
+      renderHistory({ onImport: () => ({ ok: true, added: 1, updated: 0, puzzles: 0 }) });
       await choose(json('{}'));
       expect(within(dialog()).getByRole('status')).toHaveTextContent(
         'Imported 1 new game, updated 0.',
       );
     });
 
+    it('says how many of your puzzles a file brought, when it brought some', async () => {
+      renderHistory({ onImport: () => ({ ok: true, added: 1, updated: 0, puzzles: 3 }) });
+      await choose(json('{}'));
+      expect(within(dialog()).getByRole('status')).toHaveTextContent(
+        'Imported 1 new game, updated 0, and 3 of your puzzles.',
+      );
+    });
+
+    it('says what a file of puzzles alone brought, though no game is new', async () => {
+      renderHistory({ onImport: () => ({ ok: true, added: 0, updated: 0, puzzles: 1 }) });
+      await choose(json('{}'));
+      expect(within(dialog()).getByRole('status')).toHaveTextContent(
+        'Imported 0 new games, updated 0, and 1 of your puzzles.',
+      );
+    });
+
     it('says when a file holds nothing new', async () => {
-      renderHistory({ onImport: () => ({ ok: true, added: 0, updated: 0 }) });
+      renderHistory({ onImport: () => ({ ok: true, added: 0, updated: 0, puzzles: 0 }) });
       await choose(json('{}'));
       expect(within(dialog()).getByRole('status')).toHaveTextContent(
         'Nothing new to import — those games are already here.',

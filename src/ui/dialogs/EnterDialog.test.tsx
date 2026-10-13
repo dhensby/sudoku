@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { formatGrid, parseGrid, puzzleFromGivens, type GridString } from '../../core';
 import { THREE_DIGITS_TWO_CELLS, WIKIPEDIA_PUZZLE, WIKIPEDIA_SOLUTION } from '../../test/grids';
 import { BEYOND_THE_SET, HARDEST } from '../../test/logic-fixtures';
@@ -8,25 +8,53 @@ const PUZZLE = formatGrid(parseGrid(WIKIPEDIA_PUZZLE));
 const SOLUTION = formatGrid(parseGrid(WIKIPEDIA_SOLUTION));
 const HARD = HARDEST.nakedPair.givens;
 
-function renderEditor() {
+const BLANK = '0'.repeat(81);
+
+interface EditorOptions {
+  initialCells?: GridString;
+  initialSelected?: number;
+  savedCells?: GridString | null;
+  isBackFromShare?: boolean;
+}
+
+/** The editor on a new puzzle, or as `options` open it: on a grid kept, say. */
+function renderEditor({
+  initialCells = BLANK,
+  initialSelected = 0,
+  savedCells = null,
+  isBackFromShare,
+}: EditorOptions = {}) {
   const onPlay = vi.fn();
+  const onShare = vi.fn();
+  const onSave = vi.fn();
   const onClose = vi.fn();
-  const view = render(
-    <EnterDialog
-      settings={{ highlightRowColumn: true, highlightBox: true }}
-      onPlay={onPlay}
-      onClose={onClose}
-    />,
-  );
-  return { ...view, onPlay, onClose };
+  const props = {
+    settings: { highlightRowColumn: true, highlightBox: true },
+    initialCells,
+    initialSelected,
+    savedCells,
+    onPlay,
+    onShare,
+    onSave,
+    onClose,
+    isBackFromShare,
+  };
+  const view = render(<EnterDialog {...props} />);
+  return { ...view, props, onPlay, onShare, onSave, onClose };
 }
 
 const dialog = () => screen.getByRole('dialog', { name: 'Enter a puzzle' });
 const cells = () => within(dialog()).getAllByRole('gridcell');
 const cell = (index: number) => cells()[index];
 const selected = () => cells().findIndex((it) => it.getAttribute('aria-selected') === 'true');
-const status = () => within(dialog()).getByRole('status');
+/** The line saying what the numbers make: the first of the two status regions. */
+const status = () => within(dialog()).getAllByRole('status')[0];
+/** What Save says it did, unseen: the second. */
+const saveStatus = () => within(dialog()).getAllByRole('status')[1];
 const play = () => within(dialog()).getByRole('button', { name: 'Play' });
+const share = () => within(dialog()).getByRole('button', { name: 'Share…' });
+const save = () => within(dialog()).getByRole('button', { name: /^Saved?$/ });
+const pasteButton = () => within(dialog()).getByRole('button', { name: 'Paste' });
 const padKey = (digit: number) =>
   within(dialog()).getByRole('button', { name: new RegExp(`^${digit}(, all placed)?$`) });
 
@@ -42,6 +70,32 @@ function press(key: string, init: Partial<KeyboardEventInit> = {}): boolean {
 /** Type `text` from the selection, a key a character: '0' leaves a blank. */
 function type(text: string) {
   for (const ch of text) press(ch);
+}
+
+/**
+ * Paste `text` where focus is, as Ctrl or Cmd+V does, and say whether it was
+ * let through (not prevented).
+ */
+function pasteText(text: string): boolean {
+  return fireEvent.paste(document.activeElement!, {
+    clipboardData: { getData: (type: string) => (type === 'text/plain' ? text : '') },
+  });
+}
+
+/** Give `navigator` a clipboard for one test, taken away afterwards: jsdom has none. */
+function stubClipboard(clipboard: Pick<Clipboard, 'readText'>) {
+  Object.defineProperty(navigator, 'clipboard', { value: clipboard, configurable: true });
+}
+
+afterEach(() => {
+  delete (navigator as unknown as Record<string, unknown>).clipboard;
+});
+
+/** Press Paste, and let the clipboard's answer land. */
+async function pressPaste() {
+  await act(async () => {
+    fireEvent.click(pasteButton());
+  });
 }
 
 /** What the grid holds, '0' for an empty cell, read from the cells' names. */
@@ -62,6 +116,28 @@ describe('EnterDialog', () => {
     );
     // No footer: Play is in the body, under the pad.
     expect(dialog().querySelector('.dialog__footer')).toBeNull();
+  });
+
+  it('opens on a grid kept, the selection just after its last number, typing on from there', () => {
+    const kept = '530070000600195'.padEnd(81, '0');
+    renderEditor({ initialCells: kept, initialSelected: 15, savedCells: kept });
+    expect(typed()).toBe(kept);
+    expect(selected()).toBe(15);
+    expect(cell(15)).toHaveFocus();
+    expect(status()).toHaveTextContent('A puzzle needs at least 17 numbers.');
+    type('98');
+    expect(typed().slice(0, 17)).toBe('53007000060019598');
+  });
+
+  it('hands up the grid as it was left as it closes, whichever way', () => {
+    const { onClose } = renderEditor();
+    type('53');
+    fireEvent.click(within(dialog()).getByRole('button', { name: 'Close' }));
+    expect(onClose).toHaveBeenLastCalledWith('53'.padEnd(81, '0'));
+    type('7');
+    press('Escape');
+    expect(onClose).toHaveBeenLastCalledWith('537'.padEnd(81, '0'));
+    expect(onClose).toHaveBeenCalledTimes(2);
   });
 
   describe('the keys', () => {
@@ -220,14 +296,14 @@ describe('EnterDialog', () => {
       for (const key of ['p', 'Tab', 'Enter']) expect(press(key), key).toBe(true);
       expect(typed()).toBe('0'.repeat(81));
       expect(selected()).toBe(0);
-      // Escape is the dialog's: it closes, and what was typed goes with it.
+      // Escape is the dialog's: it closes, with what was typed.
       press('Escape');
       expect(onClose).toHaveBeenCalledTimes(1);
     });
 
-    it('count only on the grid: Space on Play or a pad key presses it as ever', () => {
+    it('count only on the grid: Space on Play, Share…, Save, Paste or a pad key presses it as ever', () => {
       renderEditor();
-      for (const target of [play(), padKey(5)]) {
+      for (const target of [play(), share(), save(), pasteButton(), padKey(5)]) {
         target.focus();
         expect(press(' ')).toBe(true);
       }
@@ -250,9 +326,14 @@ describe('EnterDialog', () => {
       expect(selected()).toBe(40);
     });
 
-    it('keeps focus on the grid as a mouse presses its keys', () => {
+    it('keeps focus on the grid as a mouse presses its keys, Save or Paste', () => {
       renderEditor();
-      for (const key of [padKey(5), within(dialog()).getByRole('button', { name: 'Erase' })]) {
+      for (const key of [
+        padKey(5),
+        within(dialog()).getByRole('button', { name: 'Erase' }),
+        save(),
+        pasteButton(),
+      ]) {
         // Pressed, it takes no focus: the browser's own move is prevented.
         expect(fireEvent.mouseDown(key)).toBe(false);
       }
@@ -360,6 +441,215 @@ describe('EnterDialog', () => {
       expect(play()).toHaveAttribute('aria-disabled', 'true');
       fireEvent.click(play());
       expect(onPlay).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Share…', () => {
+    it('is unavailable until the numbers make a puzzle, saying why, and does nothing pressed', () => {
+      const { onShare } = renderEditor();
+      expect(share()).toHaveAttribute('aria-disabled', 'true');
+      expect(share()).toBeEnabled();
+      type('123');
+      expect(share()).toHaveAccessibleDescription('A puzzle needs at least 17 numbers.');
+      fireEvent.click(share());
+      expect(onShare).not.toHaveBeenCalled();
+    });
+
+    it('shares the puzzle typed in as Play would play it, with the cell selected to come back to', () => {
+      const { onShare, onPlay, onSave } = renderEditor();
+      type(HARD);
+      fireEvent.click(cell(30));
+      expect(share()).not.toHaveAttribute('aria-disabled');
+      expect(share()).toHaveAccessibleDescription('One solution: a Hard puzzle.');
+      fireEvent.click(share());
+      const checked = puzzleFromGivens(HARD);
+      expect(checked.ok).toBe(true);
+      expect(onShare).toHaveBeenCalledExactlyOnceWith(checked.ok && checked.puzzle, 30);
+      // Kept by the parent as it shares: Save is not pressed for it, nor Play.
+      expect(onSave).not.toHaveBeenCalled();
+      expect(onPlay).not.toHaveBeenCalled();
+    });
+
+    it('sits between Play and Save, the row shared out equally', () => {
+      renderEditor();
+      const row = dialog().querySelector('.enter__actions')!;
+      expect(
+        within(row as HTMLElement)
+          .getAllByRole('button')
+          .map((it) => it.textContent),
+      ).toEqual(['Play', 'Share…', 'Save', 'Paste']);
+    });
+
+    it('takes focus back as the editor opens again from Share, the selection where it was', () => {
+      renderEditor({
+        initialCells: HARD,
+        initialSelected: 30,
+        savedCells: HARD,
+        isBackFromShare: true,
+      });
+      expect(share()).toHaveFocus();
+      expect(selected()).toBe(30);
+      expect(cells().filter((it) => it.hasAttribute('data-autofocus'))).toEqual([]);
+      expect(save()).toHaveTextContent(/^Saved$/);
+    });
+  });
+
+  describe('Save', () => {
+    it('is unavailable on an empty grid, and does nothing pressed', () => {
+      const { onSave } = renderEditor();
+      expect(save()).toHaveTextContent(/^Save$/);
+      expect(save()).toHaveAttribute('aria-disabled', 'true');
+      expect(save()).toBeEnabled();
+      fireEvent.click(save());
+      expect(onSave).not.toHaveBeenCalled();
+    });
+
+    it('keeps any grid with a number in, finished or not, saying so unseen', () => {
+      const { onSave } = renderEditor();
+      type('55');
+      expect(status()).toHaveTextContent('Two 5s in row 1.');
+      expect(save()).not.toHaveAttribute('aria-disabled');
+      expect(saveStatus()).toBeEmptyDOMElement();
+      fireEvent.click(save());
+      expect(onSave).toHaveBeenCalledWith('55'.padEnd(81, '0'));
+      expect(saveStatus()).toHaveTextContent(/^Saved to Your puzzles\.$/);
+      // The line about the numbers keeps its words.
+      expect(status()).toHaveTextContent('Two 5s in row 1.');
+    });
+
+    it('says Saved, unavailable, while the grid is as saved, and Save again once it changes', () => {
+      const kept = '55'.padEnd(81, '0');
+      const { onSave, props, rerender } = renderEditor();
+      type('55');
+      fireEvent.click(save());
+      // As the parent has it once kept: saved as typed, the editor staying open.
+      rerender(<EnterDialog {...props} savedCells={kept} />);
+      expect(save()).toHaveTextContent(/^Saved$/);
+      expect(save()).toHaveAttribute('aria-disabled', 'true');
+      expect(typed()).toBe(kept);
+      fireEvent.click(save());
+      expect(onSave).toHaveBeenCalledTimes(1);
+      type('3');
+      expect(save()).toHaveTextContent(/^Save$/);
+      expect(save()).not.toHaveAttribute('aria-disabled');
+      // Back as it was saved, it is saved again.
+      press('Backspace');
+      expect(save()).toHaveTextContent(/^Saved$/);
+    });
+
+    it('opens as Saved on a grid kept, and says so again each time it saves', () => {
+      const kept = '6'.padEnd(81, '0');
+      const { onSave, props, rerender } = renderEditor({
+        initialCells: kept,
+        initialSelected: 1,
+        savedCells: kept,
+      });
+      expect(save()).toHaveTextContent(/^Saved$/);
+      const said: Element[] = [];
+      for (const digit of ['7', '8']) {
+        type(digit);
+        fireEvent.click(save());
+        const now = typed();
+        expect(onSave).toHaveBeenLastCalledWith(now);
+        rerender(<EnterDialog {...props} savedCells={now} />);
+        expect(saveStatus()).toHaveTextContent(/^Saved to Your puzzles\.$/);
+        said.push(saveStatus().firstElementChild!);
+      }
+      // A fresh message each time, though the words are the same, so each is announced.
+      expect(said[1]).not.toBe(said[0]);
+    });
+
+    it('is still unavailable on a grid kept that is erased to nothing', () => {
+      const kept = '6'.padEnd(81, '0');
+      const { onSave } = renderEditor({ initialCells: kept, initialSelected: 0, savedCells: kept });
+      press('Delete');
+      expect(save()).toHaveTextContent(/^Save$/);
+      expect(save()).toHaveAttribute('aria-disabled', 'true');
+      fireEvent.click(save());
+      expect(onSave).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('pasting', () => {
+    it('puts a grid copied in place of the one typed, from Ctrl or Cmd+V on the grid', () => {
+      renderEditor();
+      type('53');
+      fireEvent.click(cell(30));
+      // As a book prints it: nine lines, a dot for each blank.
+      expect(pasteText(WIKIPEDIA_PUZZLE)).toBe(false);
+      expect(typed()).toBe(PUZZLE);
+      // The selection where it was, and the line saying what the grid makes.
+      expect(selected()).toBe(30);
+      expect(cell(30)).toHaveFocus();
+      expect(status()).toHaveTextContent(/^One solution: an Easy puzzle\.$/);
+      expect(play()).not.toHaveAttribute('aria-disabled');
+    });
+
+    it('says when there is no grid in a paste, each time, until the grid changes', () => {
+      renderEditor();
+      type('53');
+      expect(pasteText('hello')).toBe(false);
+      expect(status()).toHaveTextContent(/^No puzzle in what you copied\.$/);
+      expect(typed()).toBe('53'.padEnd(81, '0'));
+      const first = status().firstElementChild;
+      // A paste of nothing, or a cell short: a fresh message, though the words are the same.
+      for (const text of ['', PUZZLE.slice(1)]) {
+        pasteText(text);
+        expect(status()).toHaveTextContent(/^No puzzle in what you copied\.$/);
+        expect(status().firstElementChild).not.toBe(first);
+      }
+      // Moving on leaves it; a number in brings back the line about the numbers.
+      press('ArrowRight');
+      expect(status()).toHaveTextContent(/^No puzzle in what you copied\.$/);
+      type('7');
+      expect(status()).toHaveTextContent(/^A puzzle needs at least 17 numbers\.$/);
+    });
+
+    it('goes back to the line about the numbers as a grid is pasted after one that was not', () => {
+      renderEditor();
+      pasteText('hello');
+      pasteText(PUZZLE);
+      expect(status()).toHaveTextContent(/^One solution: an Easy puzzle\.$/);
+    });
+
+    it('reads the clipboard as Paste is pressed, before anything else, and puts its grid in', async () => {
+      const readText = vi.fn<() => Promise<string>>().mockResolvedValue(WIKIPEDIA_PUZZLE);
+      stubClipboard({ readText });
+      renderEditor({ initialCells: HARD, initialSelected: 30, savedCells: HARD });
+      fireEvent.click(pasteButton());
+      // Asked within the press, as Safari and Firefox need, before its answer is awaited.
+      expect(readText).toHaveBeenCalledOnce();
+      expect(typed()).toBe(HARD);
+      await act(async () => {});
+      expect(typed()).toBe(PUZZLE);
+      expect(selected()).toBe(30);
+      expect(status()).toHaveTextContent(/^One solution: an Easy puzzle\.$/);
+      // Not the grid as kept, so it can be saved.
+      expect(save()).toHaveTextContent(/^Save$/);
+    });
+
+    it('says when the clipboard holds no grid', async () => {
+      stubClipboard({ readText: vi.fn().mockResolvedValue('https://example.com/') });
+      renderEditor();
+      await pressPaste();
+      expect(status()).toHaveTextContent(/^No puzzle in what you copied\.$/);
+      expect(typed()).toBe(BLANK);
+    });
+
+    it('says when the clipboard cannot be read — refused, or missing — each time', async () => {
+      stubClipboard({
+        readText: vi.fn().mockRejectedValue(new DOMException('No', 'NotAllowedError')),
+      });
+      renderEditor();
+      await pressPaste();
+      expect(status()).toHaveTextContent(/^Couldn't read the clipboard\.$/);
+      const first = status().firstElementChild;
+      // As an insecure page, or an older browser, has none.
+      delete (navigator as unknown as Record<string, unknown>).clipboard;
+      await pressPaste();
+      expect(status()).toHaveTextContent(/^Couldn't read the clipboard\.$/);
+      expect(status().firstElementChild).not.toBe(first);
+      expect(typed()).toBe(BLANK);
     });
   });
 });

@@ -58,6 +58,7 @@ import {
   resumeSession,
   saveSession,
   shareTargetOf,
+  shareTargetOfPuzzle,
   shareTargetOfRecord,
   type Moment,
   type Session,
@@ -1241,6 +1242,7 @@ describe('share targets', () => {
       difficulty: session.record.difficulty,
       result: null,
       solve: null,
+      title: null,
     });
     const played = advance(
       session,
@@ -1344,6 +1346,20 @@ describe('share targets', () => {
       difficulty: record.difficulty,
       result: null,
       solve: null,
+      title: null,
+    });
+  });
+
+  it('shares a puzzle of Your puzzles alone, by the label it was checked with', () => {
+    const beyond: Puzzle = { ...BEYOND_THE_SET, difficulty: 'beyond' };
+    expect(shareTargetOfPuzzle(beyond)).toEqual({
+      givens: beyond.givens,
+      difficulty: 'beyond',
+      result: null,
+      daily: null,
+      solve: null,
+      // Put on as Share opens, from the list: see `openShare`.
+      title: null,
     });
   });
 });
@@ -1684,6 +1700,67 @@ describe('a puzzle beyond the techniques', () => {
     expect(puzzleOf(session.record)).toEqual(BEYOND);
     expect(shareTargetOf(session).difficulty).toBe('beyond');
     expect(shareTargetOfRecord(session.record, null).difficulty).toBe('beyond');
+  });
+});
+
+describe("a puzzle's name in a link", () => {
+  const TITLE = 'The Times #1,234';
+
+  it('names a new attempt, waiting behind Start, and is saved with it', () => {
+    const storage = memoryStorage();
+    const plan = planStartup(storage, linkFor(PUZZLE.givens, { l: TITLE }), at(NOW), false);
+    expect(plan.session?.record).toMatchObject({ source: 'shared', title: TITLE });
+    expect(plan.session?.record.challenge).toBeNull();
+    saveAsCurrent(storage, plan.session!);
+    expect(loadHistory(storage)[0].title).toBe(TITLE);
+    // Reloaded before Start: the same game, under the same name.
+    expect(planStartup(storage, '', at(NOW + 1000), false).session?.record.title).toBe(TITLE);
+  });
+
+  it('names nothing for a link without one', () => {
+    const plan = planStartup(memoryStorage(), linkFor(PUZZLE.givens), at(NOW), false);
+    expect(plan.session?.record).not.toHaveProperty('title');
+    expect(createRecord(PUZZLE, 'shared', NOW, null, NO_HELP)).not.toHaveProperty('title');
+  });
+
+  it('names an unfinished attempt reopened only if it has no name of its own', () => {
+    const storage = memoryStorage();
+    const attempt = running();
+    saveAsCurrent(storage, attempt);
+    const named = planStartup(storage, linkFor(PUZZLE.givens, { l: TITLE }), at(NOW + 1000), false);
+    expect(named.session?.record).toMatchObject({ id: attempt.record.id, title: TITLE });
+    saveAsCurrent(storage, named.session!);
+    // A later link under another name, or none, leaves it as it is.
+    for (const search of [linkFor(PUZZLE.givens, { l: 'Puzzle 7' }), linkFor(PUZZLE.givens)]) {
+      expect(planStartup(storage, search, at(NOW + 2000), false).session?.record.title).toBe(TITLE);
+    }
+  });
+
+  it("offers a puzzle already solved under the link's name, else the earlier solve's", () => {
+    const storage = memoryStorage();
+    const solved: GameRecord = {
+      ...recordOf(running(), at(NOW)),
+      status: 'solved',
+      elapsedMs: 290_000,
+      completedAt: NOW,
+    };
+    upsertRecord(storage, solved);
+    const search = linkFor(PUZZLE.givens, { t: '323', l: TITLE });
+    expect(planStartup(storage, search, at(NOW + 1000), false).offer?.title).toBe(TITLE);
+    expect(
+      planStartup(storage, linkFor(PUZZLE.givens), at(NOW + 1000), false).offer,
+    ).not.toHaveProperty('title');
+    upsertRecord(storage, { ...solved, title: 'Puzzle 7' });
+    expect(planStartup(storage, linkFor(PUZZLE.givens), at(NOW + 1000), false).offer?.title).toBe(
+      'Puzzle 7',
+    );
+    expect(planStartup(storage, search, at(NOW + 1000), false).offer?.title).toBe(TITLE);
+  });
+
+  it('goes out again with the game, whether shared mid-game or from History', () => {
+    const plan = planStartup(memoryStorage(), linkFor(PUZZLE.givens, { l: TITLE }), at(NOW), false);
+    expect(shareTargetOf(plan.session!).title).toBe(TITLE);
+    expect(shareTargetOfRecord(plan.session!.record, null).title).toBe(TITLE);
   });
 });
 

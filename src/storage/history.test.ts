@@ -45,6 +45,7 @@ import {
   loadFriends,
   loadGameBlob,
   loadHistory,
+  loadPuzzles,
   levelOf,
   markSeen,
   saveCurrentId,
@@ -53,10 +54,12 @@ import {
   savedGameIds,
   sweepMoveLogs,
   updateFriends,
+  updatePuzzles,
   upsertRecord,
   type GameRecord,
 } from './history';
 import { meetDevice, mergeFriends, renameFriend, splitDevice, type Friend } from './friends';
+import { retitlePuzzle, savePuzzle, type SavedPuzzle } from './puzzles';
 import {
   loadEncodedMoveLog,
   loadMoveLog,
@@ -65,7 +68,7 @@ import {
   storeMoveLog,
   storeMoveLogs,
 } from './moveLogs';
-import { memoryStorage, type StorageLike } from './storage';
+import { memoryStorage, normaliseTitle, type StorageLike } from './storage';
 import { computeStreak, dailyStatuses } from './streaks';
 import { quotaStorage, throwingStorage } from '../test/misc-storage';
 import {
@@ -955,6 +958,7 @@ describe('the friends list', () => {
         ok: true,
         added: 0,
         updated: 0,
+        puzzles: 0,
       });
       expect(loadFriends(target).map((friend) => friend.name)).toEqual(['Ally', 'Zed']);
     });
@@ -966,11 +970,21 @@ describe('the friends list', () => {
     ])('imports a file with %s, the friends here left alone', (_label, friends) => {
       const storage = racedAgainst('Ally');
       const before = storage.getItem(FRIENDS);
-      expect(importHistory(storage, file(friends))).toEqual({ ok: true, added: 1, updated: 0 });
+      expect(importHistory(storage, file(friends))).toEqual({
+        ok: true,
+        added: 1,
+        updated: 0,
+        puzzles: 0,
+      });
       expect(storage.getItem(FRIENDS)).toBe(before);
       // Nor is an empty list written where there was none.
       const empty = memoryStorage();
-      expect(importHistory(empty, file(friends))).toEqual({ ok: true, added: 1, updated: 0 });
+      expect(importHistory(empty, file(friends))).toEqual({
+        ok: true,
+        added: 1,
+        updated: 0,
+        puzzles: 0,
+      });
       expect(empty.getItem(FRIENDS)).toBeNull();
     });
 
@@ -1018,6 +1032,227 @@ describe('the friends list', () => {
           ],
         },
       ]);
+    });
+  });
+});
+
+describe('your puzzles', () => {
+  const PUZZLES = 'sudoku.puzzles';
+  const TIMES = '53007'.padEnd(81, '0');
+  const HALF = '6'.padEnd(81, '0');
+  const kept = (puzzles: readonly SavedPuzzle[]) =>
+    savePuzzle(puzzles, { id: 'mbx3k2f0-q7za', cells: TIMES }, 5).list;
+  const TIMES_KEPT: SavedPuzzle = { id: 'mbx3k2f0-q7za', cells: TIMES, createdAt: 5, updatedAt: 5 };
+
+  it('reads nothing stored as no puzzles', () => {
+    expect(loadPuzzles(memoryStorage())).toEqual([]);
+  });
+
+  it.each([
+    ['not JSON', '['],
+    ['not a list', '{"mbx3k2f0-q7za":{"cells":"0"}}'],
+  ])('reads a stored list that is %s as no puzzles', (_label, raw) => {
+    const storage = memoryStorage();
+    storage.setItem(PUZZLES, raw);
+    expect(loadPuzzles(storage)).toEqual([]);
+  });
+
+  it('skips junk in the stored list one entry at a time', () => {
+    const storage = memoryStorage();
+    storage.setItem(
+      PUZZLES,
+      JSON.stringify([42, { id: 'BAD ID', cells: TIMES, createdAt: 1 }, TIMES_KEPT]),
+    );
+    expect(loadPuzzles(storage)).toStrictEqual([TIMES_KEPT]);
+  });
+
+  it('writes a change, and reads back what it wrote', () => {
+    const storage = memoryStorage();
+    const changed = updatePuzzles(storage, kept);
+    expect(changed).toStrictEqual([TIMES_KEPT]);
+    expect(loadPuzzles(storage)).toStrictEqual(changed);
+  });
+
+  it('writes nothing for a change that changes nothing', () => {
+    const storage = countingStorage();
+    updatePuzzles(storage, kept);
+    expect(storage.sets).toEqual([PUZZLES]);
+    // The same grid saved again, and a rename of nothing: the same list back.
+    updatePuzzles(storage, kept);
+    updatePuzzles(storage, (puzzles) => retitlePuzzle(puzzles, 'gone-0001', 'Gone', 6));
+    expect(storage.sets).toEqual([PUZZLES]);
+  });
+
+  it('applies a change to the list as stored now, keeping what another tab saved since', () => {
+    const storage = memoryStorage();
+    const read = updatePuzzles(storage, kept);
+    // Another tab saves a second puzzle, and names the first.
+    const other = savePuzzle(read, { id: 'mbw9a1c4-0d2e', cells: HALF }, 6).list;
+    storage.setItem(PUZZLES, JSON.stringify(retitlePuzzle(other, TIMES_KEPT.id, 'The Times', 7)));
+    const changed = updatePuzzles(storage, (puzzles) =>
+      retitlePuzzle(puzzles, 'mbw9a1c4-0d2e', 'Half', 8),
+    );
+    expect(changed).toStrictEqual([
+      { id: 'mbw9a1c4-0d2e', cells: HALF, title: 'Half', createdAt: 6, updatedAt: 8 },
+      { ...TIMES_KEPT, title: 'The Times', updatedAt: 7 },
+    ]);
+    expect(loadPuzzles(storage)).toStrictEqual(changed);
+  });
+
+  it('makes room in a full storage, then writes', () => {
+    const storage = quotaStorage();
+    const records: GameRecord[] = [];
+    for (let i = 0; i < 15; i++) {
+      records.push(playing(`p${i}`, i, { updatedAt: 100 + i }));
+      saveGameBlob(storage, `p${i}`, 'x'.repeat(1000));
+    }
+    seed(storage, records);
+    storage.capacity = storage.used() + 20;
+    updatePuzzles(storage, kept);
+    // Saved games of the least recently played went to make room.
+    expect(hasGameBlob(storage, 'p0')).toBe(false);
+    expect(loadPuzzles(storage)).toHaveLength(1);
+  });
+
+  it('is never shed to make room for another write', () => {
+    const storage = quotaStorage();
+    updatePuzzles(storage, kept);
+    storage.capacity = storage.used() + 20;
+    // A game too big to fit whatever is shed: the library stays as it was.
+    upsertRecord(storage, playing('big', 1));
+    saveGameBlob(storage, 'big', 'x'.repeat(10_000));
+    expect(loadPuzzles(storage)).toStrictEqual([TIMES_KEPT]);
+  });
+
+  it('gives up quietly when the storage refuses every write, still giving back the change', () => {
+    const storage = throwingStorage({ set: true });
+    let changed: readonly SavedPuzzle[] = [];
+    expect(() => {
+      changed = updatePuzzles(storage, kept);
+    }).not.toThrow();
+    expect(changed).toStrictEqual([TIMES_KEPT]);
+    expect(loadPuzzles(storage)).toEqual([]);
+  });
+
+  describe('export and import', () => {
+    const GUARDIAN = '008'.padEnd(81, '0');
+
+    /** A browser that kept TIMES, named, and HALF. */
+    function keeper(): StorageLike {
+      const storage = memoryStorage();
+      updatePuzzles(storage, (puzzles) => retitlePuzzle(kept(puzzles), TIMES_KEPT.id, 'Times', 6));
+      updatePuzzles(
+        storage,
+        (puzzles) => savePuzzle(puzzles, { id: 'mbw9a1c4-0d2e', cells: HALF }, 7).list,
+      );
+      return storage;
+    }
+
+    /** An export file built by hand, with `puzzles` as given. */
+    function file(puzzles: unknown): string {
+      return JSON.stringify({
+        app: 'sudoku',
+        version: 1,
+        exportedAt: 0,
+        records: [solved('b', 2)],
+        puzzles,
+      });
+    }
+
+    it('carries Your puzzles, names and all, to the browser that imports them', () => {
+      const source = keeper();
+      const exported = JSON.parse(exportHistory(source, 0)) as { puzzles: unknown };
+      expect(exported.puzzles).toStrictEqual([
+        { id: 'mbw9a1c4-0d2e', cells: HALF, createdAt: 7, updatedAt: 7 },
+        { ...TIMES_KEPT, title: 'Times', updatedAt: 6 },
+      ]);
+
+      const target = memoryStorage();
+      expect(importHistory(target, exportHistory(source, 0))).toEqual({
+        ok: true,
+        added: 0,
+        updated: 0,
+        puzzles: 2,
+      });
+      expect(loadPuzzles(target)).toStrictEqual(loadPuzzles(source));
+    });
+
+    it("merges the file's puzzles even with no game new, counting those it brought", () => {
+      // Here: TIMES unnamed, HALF; there, TIMES named since, HALF as here, and GUARDIAN.
+      const storage = memoryStorage();
+      updatePuzzles(storage, kept);
+      updatePuzzles(
+        storage,
+        (puzzles) => savePuzzle(puzzles, { id: 'mbw9a1c4-0d2e', cells: HALF }, 7).list,
+      );
+      upsertRecord(storage, solved('b', 2));
+      const source = keeper();
+      updatePuzzles(
+        source,
+        (puzzles) => savePuzzle(puzzles, { id: 'mbz0c3d2-g001', cells: GUARDIAN }, 8).list,
+      );
+      upsertRecord(source, solved('b', 2));
+      expect(importHistory(storage, exportHistory(source, 0))).toEqual({
+        ok: true,
+        added: 0,
+        updated: 0,
+        puzzles: 2,
+      });
+      expect(loadPuzzles(storage)).toStrictEqual(loadPuzzles(source));
+    });
+
+    it('counts one for a merge that only takes a puzzle here away, into another with its numbers', () => {
+      // Here: HALF, then TIMES, named since; there, HALF edited into TIMES's
+      // numbers before that, so the TIMES here stands, and stands alone.
+      const storage = memoryStorage();
+      updatePuzzles(
+        storage,
+        (puzzles) => savePuzzle(puzzles, { id: 'mbw9a1c4-0d2e', cells: HALF }, 1).list,
+      );
+      updatePuzzles(storage, (puzzles) => retitlePuzzle(kept(puzzles), TIMES_KEPT.id, 'Times', 9));
+      upsertRecord(storage, solved('b', 2));
+      const edited = { id: 'mbw9a1c4-0d2e', cells: TIMES, createdAt: 1, updatedAt: 7 };
+      expect(importHistory(storage, file([edited]))).toEqual({
+        ok: true,
+        added: 0,
+        updated: 0,
+        puzzles: 1,
+      });
+      expect(loadPuzzles(storage)).toStrictEqual([{ ...TIMES_KEPT, title: 'Times', updatedAt: 9 }]);
+    });
+
+    it.each([
+      ['no puzzles at all', undefined],
+      ['puzzles that are not a list', { [TIMES_KEPT.id]: TIMES_KEPT }],
+      ['nothing but junk among them', [42, { id: 'BAD ID', cells: GUARDIAN, createdAt: 1 }]],
+    ])('imports a file with %s, the puzzles here left alone', (_label, puzzles) => {
+      const storage = keeper();
+      const before = storage.getItem(PUZZLES);
+      expect(importHistory(storage, file(puzzles))).toEqual({
+        ok: true,
+        added: 1,
+        updated: 0,
+        puzzles: 0,
+      });
+      expect(storage.getItem(PUZZLES)).toBe(before);
+      // Nor is an empty list written where there was none.
+      const empty = memoryStorage();
+      importHistory(empty, file(puzzles));
+      expect(empty.getItem(PUZZLES)).toBeNull();
+    });
+
+    it('writes no puzzles for the same file imported again, and counts none', () => {
+      const json = exportHistory(keeper(), 0);
+      const storage = countingStorage();
+      importHistory(storage, json);
+      expect(storage.sets.filter((key) => key === PUZZLES)).toHaveLength(1);
+      expect(importHistory(storage, json)).toEqual({
+        ok: true,
+        added: 0,
+        updated: 0,
+        puzzles: 0,
+      });
+      expect(storage.sets.filter((key) => key === PUZZLES)).toHaveLength(1);
     });
   });
 });
@@ -1350,6 +1585,59 @@ describe('puzzles typed in', () => {
   });
 });
 
+describe("a puzzle's name from its link", () => {
+  const TITLE = 'The Times #1,234';
+  /** A solved attempt at a puzzle whose link gave it a name. */
+  const titled = (id: string, createdAt: number, title: unknown = TITLE): GameRecord =>
+    solved(id, createdAt, 60_000, { source: 'shared', title } as Partial<GameRecord>);
+
+  it('comes through a save, an export and an import as it went in', () => {
+    const phone = memoryStorage();
+    upsertRecord(phone, titled('a', 1));
+    expect(loadHistory(phone)[0]).toEqual(titled('a', 1));
+    const laptop = memoryStorage();
+    importHistory(laptop, exportHistory(phone, 0));
+    expect(loadHistory(laptop)).toEqual([titled('a', 1)]);
+  });
+
+  it('is tidied as a puzzle name is, and left off when nothing is left of it', () => {
+    const storage = memoryStorage();
+    seed(storage, [
+      titled('a', 1, `  The\u202e  Times\n${'#'.repeat(50)}`),
+      titled('b', 2, ''),
+      titled('c', 3, ' \u200b '),
+      titled('d', 4, 42),
+    ]);
+    const byId = new Map(loadHistory(storage).map((record) => [record.id, record]));
+    expect(byId.get('a')?.title).toBe(`The Times ${'#'.repeat(29)}…`);
+    for (const id of ['b', 'c', 'd']) expect(byId.get(id)).not.toHaveProperty('title');
+    // The game itself is kept, as a game from a link.
+    expect(byId.get('d')?.source).toBe('shared');
+  });
+
+  it('survives a tab from before names went in links, which keeps it as a newer field', () => {
+    // What that tab knew of a record: everything but the name.
+    const before = [
+      ...Object.keys(playing('x', 0)),
+      ...['daily', 'startedOn', 'mistakes', 'watched', 'beyond', 'entered'],
+    ];
+    expect(newerFields(titled('a', 1), before)).toEqual({ title: TITLE });
+    // Even at its longest and its worst, escaped quotes and all.
+    const worst = normaliseTitle('"\u0301'.repeat(80));
+    expect(newerFields(titled('a', 1, worst), before)).toEqual({ title: worst });
+  });
+
+  it('is never taken off by a newer copy that lost it', () => {
+    const phone = memoryStorage();
+    upsertRecord(phone, { ...playing('g1', 1, { source: 'shared' }), title: TITLE });
+    // Finished in a tab old enough to drop the fields it did not know.
+    const laptop = memoryStorage();
+    upsertRecord(laptop, solved('g1', 1, 60_000, { source: 'shared' }));
+    importHistory(phone, exportHistory(laptop, 0));
+    expect(loadHistory(phone)[0]).toMatchObject({ id: 'g1', status: 'solved', title: TITLE });
+  });
+});
+
 describe('exportHistory', () => {
   it('writes a versioned envelope with every record and every saved game', () => {
     const storage = memoryStorage();
@@ -1370,6 +1658,7 @@ describe('exportHistory', () => {
       watched: [],
       dailyLedger: {},
       friends: [],
+      puzzles: [],
     });
     // Indented, for anyone who opens the file.
     expect(json).toContain('\n  "records"');
@@ -1403,6 +1692,7 @@ describe('importHistory', () => {
       ok: true,
       added: 2,
       updated: 0,
+      puzzles: 0,
     });
     expect(loadHistory(target)).toEqual(loadHistory(source));
     expect(loadGameBlob(target, 'b')).toEqual({ v: 1, values: PUZZLE });
@@ -1490,7 +1780,7 @@ describe('importHistory', () => {
         { 'newer-here': { there: true }, 'newer-there': { there: true }, same: { there: true } },
       ),
     );
-    expect(result).toEqual({ ok: true, added: 0, updated: 1 });
+    expect(result).toEqual({ ok: true, added: 0, updated: 1, puzzles: 0 });
     const byId = new Map(loadHistory(storage).map((record) => [record.id, record]));
     expect(byId.get('newer-here')!.elapsedMs).toBe(500);
     expect(byId.get('newer-there')!.status).toBe('solved');
@@ -1526,7 +1816,7 @@ describe('importHistory', () => {
       storage,
       file([solved('current', 1, 50, { updatedAt: 999 })], { current: { theirs: true } }),
     );
-    expect(result).toEqual({ ok: true, added: 0, updated: 0 });
+    expect(result).toEqual({ ok: true, added: 0, updated: 0, puzzles: 0 });
     expect(loadHistory(storage)[0].status).toBe('playing');
     expect(loadGameBlob(storage, 'current')).toEqual({ mine: true });
   });
@@ -1537,7 +1827,7 @@ describe('importHistory', () => {
       storage,
       file([playing('good', 1), { id: 'bad' }, 'junk', null, solved('also-good', 2)]),
     );
-    expect(result).toEqual({ ok: true, added: 2, updated: 0 });
+    expect(result).toEqual({ ok: true, added: 2, updated: 0, puzzles: 0 });
     expect(ids(loadHistory(storage))).toEqual(['also-good', 'good']);
   });
 
@@ -1547,7 +1837,7 @@ describe('importHistory', () => {
       storage,
       file([playing('x', 1, { updatedAt: 5 }), playing('x', 1, { updatedAt: 9, elapsedMs: 9 })]),
     );
-    expect(result).toEqual({ ok: true, added: 1, updated: 0 });
+    expect(result).toEqual({ ok: true, added: 1, updated: 0, puzzles: 0 });
     expect(loadHistory(storage)[0].elapsedMs).toBe(9);
   });
 
@@ -1561,6 +1851,7 @@ describe('importHistory', () => {
       ok: true,
       added: 1,
       updated: 0,
+      puzzles: 0,
     });
     expect(hasGameBlob(storage, 'a')).toBe(false);
   });
@@ -1586,6 +1877,7 @@ describe('importHistory', () => {
       ok: true,
       added: 0,
       updated: 0,
+      puzzles: 0,
     });
     expect(storage.getItem(HISTORY)).toBe(before);
   });
@@ -1601,6 +1893,7 @@ describe('importHistory', () => {
       ok: true,
       added: 0,
       updated: 0,
+      puzzles: 0,
     });
     expect(hasSeen(target, [], OTHER_PUZZLE)).toBe(true);
     expect(hasSeen(target, [], PUZZLE)).toBe(true);
@@ -1643,7 +1936,7 @@ describe('importHistory', () => {
     const result = importHistory(storage, file(incoming, { 'old-solve': { v: 1 } }));
     // Over the cap by two: the finished import goes first, then the oldest
     // unfinished game already here.
-    expect(result).toEqual({ ok: true, added: 1, updated: 0 });
+    expect(result).toEqual({ ok: true, added: 1, updated: 0, puzzles: 0 });
     const after = ids(loadHistory(storage));
     expect(after).toHaveLength(MAX_RECORDS);
     expect(after).toContain('fresh');
@@ -1692,6 +1985,7 @@ describe('importHistory', () => {
       ok: true,
       added: 40,
       updated: 0,
+      puzzles: 0,
     });
     expect(local.filter((record) => hasGameBlob(storage, record.id))).toHaveLength(30);
     // What did fit went to the most recently played of the imported games.
@@ -1927,6 +2221,7 @@ describe('fields a newer version added', () => {
       ok: true,
       added: 1,
       updated: 1,
+      puzzles: 0,
     });
     expect(loadHistory(target)).toEqual(loadHistory(source));
     expect(loadHistory(target)[0]).toEqual(newer('b', 2, { updatedAt: 99_999 }));
@@ -2088,7 +2383,7 @@ describe('daily records', () => {
         { ...daily(solved('b', OCT_13 - 365 * 86_400_000)) },
       ],
     });
-    expect(importHistory(storage, file)).toEqual({ ok: true, added: 2, updated: 0 });
+    expect(importHistory(storage, file)).toEqual({ ok: true, added: 2, updated: 0, puzzles: 0 });
     for (const record of loadHistory(storage)) expect(record).not.toHaveProperty('daily');
   });
 
@@ -2769,7 +3064,7 @@ describe('move logs', () => {
           d: '{"moves":[]}',
         }),
       );
-      expect(result).toEqual({ ok: true, added: 4, updated: 0 });
+      expect(result).toEqual({ ok: true, added: 4, updated: 0, puzzles: 0 });
       expect(readMoveLogIds(storage)).toEqual(['a']);
     });
 
@@ -2783,6 +3078,7 @@ describe('move logs', () => {
         ok: true,
         added: 1,
         updated: 0,
+        puzzles: 0,
       });
       expect(hasLog(storage, 'a')).toBe(false);
     });
@@ -2834,7 +3130,7 @@ describe('move logs', () => {
         storage,
         file(incoming, Object.fromEntries(incoming.map(({ id }) => [id, theirs]))),
       );
-      expect(result).toEqual({ ok: true, added: 300, updated: 0 });
+      expect(result).toEqual({ ok: true, added: 300, updated: 0, puzzles: 0 });
       expect(loadHistory(storage)).toHaveLength(900);
       // The oldest logs here went for the records, and only as many as they
       // needed; the space that left over is not the file's to fill.
@@ -2970,7 +3266,12 @@ describe('mistakes', () => {
       const record = solved('x', 1, 60_000, { mistakes: { ...COUNTED, atMs: 60_000 } });
       upsertRecord(from, record);
       const to = memoryStorage();
-      expect(importHistory(to, exportHistory(from, 5))).toEqual({ ok: true, added: 1, updated: 0 });
+      expect(importHistory(to, exportHistory(from, 5))).toEqual({
+        ok: true,
+        added: 1,
+        updated: 0,
+        puzzles: 0,
+      });
       expect(loadHistory(to)).toEqual([record]);
     });
   });

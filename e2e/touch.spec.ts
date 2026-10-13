@@ -14,6 +14,7 @@ import {
   padKey,
   resumeButton,
   seedFriends,
+  seedPuzzles,
   settle,
   solveFromKeyboard,
   startButton,
@@ -668,6 +669,44 @@ test.describe('a 320×568 phone', () => {
     await deployNewerVersion(page);
     await tapStart(page);
     await expectOfferClearOfPlay(page);
+  });
+
+  /*
+   * A puzzle's name at its longest, 40 characters, and a word in it with no
+   * space to break at: it wraps inside the card, at the board's smallest
+   * size here, and the card itself still has nothing to scroll; and so it
+   * does in Share's preview of the message, passing it on.
+   */
+  test("keeps a link's 40-character puzzle name inside its Ready card and Share's preview, with nothing to scroll", async ({
+    page,
+  }) => {
+    const title = 'Supercalifragilisticexpialidocious #1234';
+    expect([...title]).toHaveLength(40);
+    await gotoPuzzle(page, EASY.givens, { title });
+    const card = page.locator('.board-overlay__card');
+    const name = card.locator('.board-overlay__name');
+    await expect(name).toHaveText(title);
+    await settle(page);
+    expect(await overflow(page)).toEqual({ x: 0, y: 0 });
+    expect(
+      await card.evaluate((el) => ({
+        x: el.scrollWidth - el.clientWidth,
+        y: el.scrollHeight - el.clientHeight,
+      })),
+    ).toEqual({ x: 0, y: 0 });
+    const [box, inner] = [(await card.boundingBox())!, (await name.boundingBox())!];
+    expect(inner.x).toBeGreaterThanOrEqual(box.x);
+    expect(inner.x + inner.width).toBeLessThanOrEqual(box.x + box.width);
+    expect(await name.evaluate((el) => el.scrollWidth - el.clientWidth)).toBe(0);
+    await expectOnScreen(page, startButton(page));
+
+    const share = await openFromMenu(page, 'Share');
+    const text = share.locator('.share__text');
+    await expect(text).toHaveText(`Try this Easy Sudoku!\n${title}`);
+    expect((await overflow(page)).x).toBe(0);
+    expect(await text.evaluate((el) => el.scrollWidth - el.clientWidth)).toBe(0);
+    const body = share.locator('.dialog__body');
+    expect(await body.evaluate((el) => el.scrollWidth - el.clientWidth)).toBe(0);
   });
 
   /*
@@ -1548,11 +1587,13 @@ for (const viewport of [
 /*
  * Enter a puzzle at each phone size, upright and on its side: on screen with
  * nothing to scroll either way, for the board takes the height the rest
- * leaves; every button a finger's 44px (the pad's nine keys, Erase, Play and
- * the close button); and every cell at least WCAG's 24px, but on the shortest
- * phone on its side, which leaves the board room for 22px (upright, it has
- * 25px). A tap on a cell, then on the pad, puts the number in that cell and
- * leaves it selected, for a correction to land there too.
+ * leaves; every button a finger's 44px (the pad's nine keys, Erase, Play,
+ * Share…, Save, Paste and the close button), Play, Share…, Save and Paste
+ * side by side with the hint in view under them; and every cell at least
+ * WCAG's 24px, but on the shortest phone on its side, which leaves the board
+ * room for 22px (upright, it has 25px). A tap on a cell, then on the pad,
+ * puts the number in that cell and leaves it selected, for a correction to
+ * land there too.
  */
 for (const viewport of [
   { width: 320, height: 568 },
@@ -1568,7 +1609,8 @@ for (const viewport of [
     }) => {
       await tapStart(page);
       await page.getByRole('banner').getByRole('button', { name: 'New game' }).tap();
-      await page.getByRole('menuitem', { name: 'Enter a puzzle…' }).tap();
+      await page.getByRole('menuitem', { name: 'Your puzzles…' }).tap();
+      await page.getByRole('button', { name: 'Enter a new puzzle' }).tap();
       const dialog = page.getByRole('dialog', { name: 'Enter a puzzle' });
       await expect(dialog).toBeVisible();
       await expectOnScreen(page, dialog);
@@ -1578,13 +1620,23 @@ for (const viewport of [
       expect(await body.evaluate((el) => el.scrollHeight - el.clientHeight)).toBeLessThanOrEqual(1);
 
       const buttons = await dialog.getByRole('button').all();
-      expect(buttons).toHaveLength(12);
+      expect(buttons).toHaveLength(15);
       for (const button of buttons) {
         const size = (await button.boundingBox())!;
         const label = (await button.getAttribute('aria-label')) ?? (await button.innerText());
         expect(size.height, label).toBeGreaterThanOrEqual(44);
         expect(size.width, label).toBeGreaterThanOrEqual(44);
       }
+      // Play, Share…, Save and Paste on one line, the hint under them and on screen.
+      const tops = await Promise.all(
+        ['Play', 'Share…', 'Save', 'Paste'].map(async (name) =>
+          Math.round((await dialog.getByRole('button', { name }).boundingBox())!.y),
+        ),
+      );
+      expect(new Set(tops).size).toBe(1);
+      await expect(dialog.getByText('Check every number against your copy.')).toBeInViewport({
+        ratio: 1,
+      });
       const smallest = await dialog.getByRole('gridcell').evaluateAll((cells) =>
         Math.min(
           ...cells.flatMap((cell) => {
@@ -1600,6 +1652,96 @@ for (const viewport of [
       await dialog.getByRole('button', { name: '5', exact: true }).tap();
       await expect(target).toHaveAccessibleName('5, given');
       await expect(target).toHaveAttribute('aria-selected', 'true');
+    });
+  });
+}
+
+/**
+ * A right-to-left name as long as a puzzle's name is kept (40 characters,
+ * see `MAX_TITLE_LENGTH`), with no space to break it at: wider than a row on
+ * every phone here, upright or on its side.
+ */
+const LONG_RTL_TITLE = 'صض'.repeat(20);
+
+/** Puzzles kept: one ready to play under that name, and one half typed in, unnamed. */
+const LONG_NAMED_PUZZLES = [
+  {
+    id: 'kept-0001',
+    cells: PUZZLES.hard.givens,
+    title: LONG_RTL_TITLE,
+    createdAt: Date.UTC(2026, 9, 2, 9),
+    updatedAt: Date.UTC(2026, 9, 2, 9),
+  },
+  {
+    id: 'kept-0002',
+    cells: PUZZLES.hard.givens.slice(0, 30).padEnd(81, '0'),
+    createdAt: Date.UTC(2026, 9, 1, 9),
+    updatedAt: Date.UTC(2026, 9, 1, 9),
+  },
+];
+
+/*
+ * Your puzzles, from New game, upright and on its side: the longest
+ * right-to-left name a puzzle can have, with nowhere to break, wraps inside
+ * its row rather than scrolling the dialog sideways or being cut off at the
+ * row's edge; Enter a new puzzle, a ready row's Play, Share, Edit, Rename and
+ * Delete, and the field, Save and Cancel a rename opens, are each a finger's
+ * 44px, the field's text 16px so that focusing it does not zoom the page.
+ */
+for (const viewport of [
+  { width: 320, height: 568 },
+  { width: 568, height: 320 },
+  { width: 844, height: 390 },
+]) {
+  test.describe(`a ${viewport.width}×${viewport.height} phone with puzzles kept`, () => {
+    test.use({ viewport });
+
+    test('keeps a long right-to-left name inside its row, and every control a 44px touch target, with nothing to scroll sideways', async ({
+      page,
+    }) => {
+      expect([...LONG_RTL_TITLE]).toHaveLength(40);
+      await seedPuzzles(page, LONG_NAMED_PUZZLES);
+      await tapStart(page);
+      await page.getByRole('banner').getByRole('button', { name: 'New game' }).tap();
+      await page.getByRole('menuitem', { name: 'Your puzzles…' }).tap();
+      const library = page.getByRole('dialog', { name: 'Your puzzles' });
+      await expect(library.getByRole('listitem')).toHaveCount(2);
+      await settle(page);
+      await expectOnScreen(page, library);
+      const body = library.locator('.dialog__body');
+      expect((await overflow(page)).x).toBe(0);
+      expect(await body.evaluate((el) => el.scrollWidth - el.clientWidth)).toBe(0);
+      const name = library.locator('bdi', { hasText: LONG_RTL_TITLE });
+      await expect(name).toHaveCount(1);
+      await expectInsideBody(library, name);
+
+      for (const button of await library.getByRole('button').all()) {
+        await button.scrollIntoViewIfNeeded();
+        const size = (await button.boundingBox())!;
+        const label = (await button.getAttribute('aria-label')) ?? (await button.innerText());
+        expect(size.height, label).toBeGreaterThanOrEqual(44);
+        expect(size.width, label).toBeGreaterThanOrEqual(44);
+      }
+      await expectInsideBody(library, library.getByRole('listitem').getByRole('button'));
+
+      await library.getByRole('button', { name: /^Rename صض/ }).tap();
+      const field = library.getByRole('textbox', { name: 'Name' });
+      await expect(field).toHaveValue(LONG_RTL_TITLE);
+      const edit = library.getByRole('group', { name: /^Rename صض/ });
+      for (const target of [
+        field,
+        edit.getByRole('button', { name: /^Save name/ }),
+        edit.getByRole('button', { name: /^Cancel renaming/ }),
+      ]) {
+        await target.scrollIntoViewIfNeeded();
+        const size = (await target.boundingBox())!;
+        expect(size.height).toBeGreaterThanOrEqual(44);
+        expect(size.width).toBeGreaterThanOrEqual(44);
+      }
+      expect(await field.evaluate((el) => parseFloat(getComputedStyle(el).fontSize))).toBe(16);
+      await expectInsideBody(library, edit);
+      expect((await overflow(page)).x).toBe(0);
+      expect(await body.evaluate((el) => el.scrollWidth - el.clientWidth)).toBe(0);
     });
   });
 }

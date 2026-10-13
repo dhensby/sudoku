@@ -39,12 +39,16 @@ your browser.
   shows in the calendar all the same). A daily on show says so in the header ("Daily · Hard") and
   is marked current in New game; a solved one says what it did for the streak; sharing one names
   it.
-- **Enter a puzzle** — a puzzle from a newspaper or a book, typed in from New game's **Enter a
-  puzzle…** row by row (or tapped in on a phone), each clash dotted as it goes in and one line
-  saying what the numbers make so far — too few, more than one solution, none — until they make a
-  puzzle with exactly one solution, graded as any puzzle is: "One solution: a Hard puzzle." Play
-  puts it behind a Start card, to share as it is or to start when you are ready, and its time counts
-  as a new puzzle's (see [Entering a puzzle](#entering-a-puzzle)).
+- **Enter a puzzle, and keep it** — a puzzle from a newspaper or a book, typed in from New game's
+  **Your puzzles…** › **Enter a new puzzle** row by row (or tapped in on a phone, or pasted in
+  whole), each clash dotted as it goes in and one line saying what the numbers make so far — too
+  few, more than one solution, none — until they make a puzzle with exactly one solution, graded as
+  any puzzle is: "One solution: a Hard puzzle." Play puts it behind a Start card, to share as it is
+  or to start when you are ready, and its time counts as a new puzzle's; Share… sends a friend its
+  link without starting it. Every grid typed in is kept in **Your puzzles**, finished or not — by
+  Save, as Play starts it, as Share… shares it and as the editor closes — to play, share, edit and
+  name again; a name goes with its link, so a friend sees which puzzle it is (see
+  [Entering a puzzle](#entering-a-puzzle)).
 - **Plays like the NYT game** — Normal and Candidate modes (<kbd>Space</kbd> to switch, or hold
   <kbd>Shift</kbd>/<kbd>Alt</kbd> to switch while held), the two-step erase, highlighting of the
   row, column, box and matching numbers, a red dot on every conflict, givens on grey, and clicking
@@ -330,8 +334,10 @@ you play, the next puzzle of the same tier is already being prepared, so "New ga
 
 ## Entering a puzzle
 
-**Enter a puzzle…**, the last item under Random puzzle in New game, opens an empty grid for a
-puzzle from elsewhere — a newspaper's, a book's — to be typed in and then played like any other.
+**Your puzzles…**, the last item under Random puzzle in New game, lists the puzzles you have typed
+in (see [Your puzzles](#your-puzzles), below), and **Enter a new puzzle**, at its top, opens an
+empty grid for a puzzle from elsewhere — a newspaper's, a book's — to be typed in and then played
+like any other.
 The keys are a typist's, for copying a puzzle out row by row: a number fills the selected cell and
 moves on, from the end of a row to the start of the next, stopping at the last cell;
 <kbd>Space</kbd>, <kbd>0</kbd> or a dot leaves a cell blank and moves on past it;
@@ -345,6 +351,20 @@ chord is left to the browser. On a phone, tap a cell, then a number on the pad (
 in where you tapped, moving nothing, so a correction lands in the same cell. Every number typed in
 is set as a given — it will be one — and the selected cell's row, column and box are tinted as
 Settings has the board's.
+
+A puzzle already written out — on a puzzle site, in a file, in a message — can be pasted in whole
+instead, with **Paste**, last in the row of buttons, or <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>V</kbd> on
+the grid. What is read is the grid in the text copied (see `readGrid`): its digits in reading order,
+a 0 or a dot for each blank, and everything else — spaces, line breaks, the bars and dashes a grid
+is drawn with — passed over, so a grid on one line reads as well as one in nine; it must come to
+exactly 81 cells. It takes the place of the grid typed, the selection where it was, and the line
+says what it makes, as for one typed. Text that comes to any other count — words, a link, a grid
+under a numbered heading — puts nothing in, and the line says "No puzzle in what you copied." until
+the grid next changes; a clipboard that cannot be read, refused or missing, says "Couldn't read the
+clipboard." Paste reads the clipboard as it is pressed, so Safari and Firefox first show a Paste
+button of their own to press, and Chrome may ask leave the first time. Nothing asks before a paste
+replaces the grid: the whole grid changes in plain sight, and one of Your puzzles pasted over by
+mistake is kept as pasted once the editor closes, as any change is.
 
 As the numbers go in, the grid dots every clash, whatever the board's setting, and one line says
 what they make so far: the first of these that holds, its words the same for as long as it does,
@@ -362,13 +382,14 @@ so a screen reader speaks only as it changes, never at every number.
 | Exactly one solution                                                                             | "One solution: a Hard puzzle."                                  |
 
 **Play** waits for the last: until then it is marked unavailable — not disabled, so it keeps focus
-and, focused, says why. The puzzle is checked and graded exactly as a link's is, by the same
+and, focused, says why (just after a paste that came to nothing, it says that instead, until the
+grid next changes). The puzzle is checked and graded exactly as a link's is, by the same
 `puzzleFromGivens`, so a friend who opens your link sees the label you saw; and it is named by its
 tier alone — Easy to Expert, or Beyond Expert for one that needs more than every technique the
 grader knows (see [How puzzles are made](#how-puzzles-are-made)). No check can tell a mistyped
 number from the paper's: one wrong number that clashes with nothing can still make a puzzle with
 one solution, just another one (about one time in eighteen, in a trial on minimal puzzles). So a
-line beside Play says "Check every number against your copy."
+line under the buttons says "Check every number against your copy."
 
 Play opens it as the game on screen, behind its Start card — "Your Hard puzzle is ready." — and
 sets the game you were playing aside, as New game does: kept to resume, or dropped if you had only
@@ -377,13 +398,59 @@ time counts as a new puzzle's, towards best and average times, and to share and 
 one exception to the [rule](#racing-friends) that a puzzle you know never sets a best — you have
 seen its givens, typing them, but not the puzzle solved. A puzzle you have seen before here still
 starts as a replay; one you have an unfinished game of carries on with it, and one you have solved
-says so and offers to play it again, as its link would. To send it to a friend, press **Share** in
-the header (in the ☰ menu on a phone) while it waits behind its Start card: that shares the puzzle
-alone, a link with only `?p=`. Once you have solved it, Share sends your time with it, as for any
+says so and offers to play it again, as its link would.
+
+To send it to a friend without playing it, press **Share…**, between Play and Save: unavailable
+until Play is, it keeps the puzzle as Play does and opens Share on the puzzle alone, a link with
+only `?p=` — and its name, if you have given it one (see [Your puzzles](#your-puzzles)) — labelled
+as Play would label it. Closing Share gives the editor back on the grid as kept, the selection where
+it was and focus on Share…; no game of it is started, and the one behind stays paused. **Share** in
+the header (in the ☰ menu on a phone) shares it the same way while it waits behind its Start card,
+once Play has put it there; and once you have solved it, Share sends your time with it, as for any
 puzzle.
 
-What you type is the editor's alone: closing it — Escape, the close button or a tap outside —
-forgets it, and none of it is ever stored.
+### Your puzzles
+
+Every grid you type in is kept in Your puzzles, finished or not: one with too few numbers, a clash
+or more than one solution is kept as readily as a puzzle ready to play, to finish another time.
+**Save**, between Share… and Paste, keeps the grid as it is and stays in the editor, its label reading
+"Saved" — unavailable — for as long as the grid is as kept, and "Saved to Your puzzles." spoken as
+it is pressed; Play keeps it too, as it starts the game, and Share… as it shares it; and closing the
+editor — Escape, the close button or a tap outside — keeps a grid that has changed since it was last
+kept, then goes back to the list, focus on that puzzle's Edit. A grid with no number in is never
+kept, so a new puzzle closed untouched leaves nothing behind, and a puzzle erased to nothing keeps
+the numbers it had. Each grid is kept once: typing in one already in the list, number for number, is
+that puzzle, name and all, and editing one into another's numbers makes the two one, keeping the
+name either had.
+
+Each row gives the puzzle's name, or "Untitled puzzle", when it was first kept, and the line the
+editor would say of its numbers — "One solution: a Hard puzzle.", "A puzzle needs at least 17
+numbers." — worked out afresh once a visit rather than stored, so a puzzle is always labelled as
+its link would be today. Then **Play**, for one ready to play, as the editor's Play does;
+**Share**, for one ready to play too, which shares the puzzle alone as the editor's Share… does,
+focus back on the row's Share as it closes; **Edit**, to open it in the editor again, the selection
+just after its last number, to carry on typing; **Rename**, to give it a name of up to 40
+characters, tidied as a player's name is (empty for none), which its field's hint says is "Sent
+with its link, for friends to see."; and **Delete**, which asks first.
+Editing a puzzle changes it where it is: its games in History are of the numbers they were played
+with, and stay as they were. The list is in the order the puzzles were first kept, the latest
+first, so neither an edit nor a rename moves a row. It keeps up to 1,000 — as many as History keeps
+games — and saving one more past that forgets the one changed longest ago, never the one saved.
+Escape goes from the editor back to the list, and from the list back to the game, which stays
+paused until then; Share, opened from the editor or the list, closes back to where it was opened.
+
+A puzzle's name goes with its link (`&l=`), however it is shared — from the editor, its row, its
+Start card or a game of it in History, solved or not — and its message says it on a line of its own
+under the first: "Try this Hard Sudoku!" over "The Times #1,234". A friend who opens the link sees
+it under "Ready?" on its Start card and on the game's row in their History, and their own link to
+it passes it on (see [Racing friends](#racing-friends)). Your own games of it are drawn under the
+name it has here now, not written into them, so a rename names them all, past ones included, as
+does Share on any of them; and the name you give a puzzle here wins over one a link gave the same
+numbers.
+
+History's **Export** carries the list, names and all, to another browser, whose **Import** adds the
+puzzles it does not have, into whatever room is left of its 1,000, and takes the copy changed later
+of one it has, under the other's name if that copy has none (see [Your data](#your-data)).
 
 ## How the daily puzzles are made
 
@@ -636,17 +703,17 @@ recorded move by move from its start (see
 that kept logs but did not count mistakes is counted from its log once, as a visit starts, if the
 log holds the whole game.
 
-**Shared.** A solved game's link carries its count — only a count as the record keeps it, stamped
-at the solve — inside the assists parameter (see [Racing friends](#racing-friends)), and its
-message says it on the line under the time, before the help: "No mistakes · with 2 hints", "1
-mistake · 1 candidate mistake", "No mistakes". The friend's Ready card says it the same way, under
-a "Dan's solve:" that keeps it from reading as a rule of the race or as their own count, the
-head-to-head sets it beside their own on a row for each kind, and their History keeps it with your
-time. A count that is not known — a game not recorded move by move, or a link from a version before
-mistakes were shared — is never sent or read as 0: the link and message say nothing of it, and the
-head-to-head shows a dash, which a screen reader reads as "not recorded". The "Mistakes" row shows
-whenever either count is known, a clean 0 included; "Candidate mistakes" only once either of you made
-one.
+**Shared.** A solved game's link carries its count — only a count as the record keeps it, stamped at
+the solve — inside the assists parameter (see [Racing friends](#racing-friends)), and its message
+says it on the line under the time (under the puzzle's name, for one with a name), before the help:
+"No mistakes · with 2 hints", "1 mistake · 1 candidate mistake", "No mistakes". The friend's Ready
+card says it the same way, under a "Dan's solve:" that keeps it from reading as a rule of the race
+or as their own count, the head-to-head sets it beside their own on a row for each kind, and their
+History keeps it with your time. A count that is not known — a game not recorded move by move, or a
+link from a version before mistakes were shared — is never sent or read as 0: the link and message
+say nothing of it, and the head-to-head shows a dash, which a screen reader reads as "not recorded".
+The "Mistakes" row shows whenever either count is known, a clean 0 included; "Candidate mistakes"
+only once either of you made one.
 
 ## Help taken
 
@@ -904,6 +971,7 @@ the game — there is no server and nothing is uploaded.
 | `&u=<id>`      | The sharer's player ID: 10 random letters and digits, made once per browser the first time it shares a time. Only with `t=`. Versions before it ignore it.  |
 | `&a=<assists>` | Help the sharer took: `c` auto candidates, `g` guesses checked as entered, `h<N>` hints, `k<N>` checks, `r<N>` reveals; mistakes: `m<N>`, candidate `x<N>`. |
 | `&d=<date>`    | A daily's date (`2026-10-13`): the opener checks it against that day's daily of the tier.                                                                   |
+| `&l=<name>`    | The puzzle's name (at most 40 characters): the sharer's in Your puzzles, else the one their link gave, with or without `t=`. Versions before it ignore it.  |
 | `&s=<solve>`   | The sharer's solve, its move log as stored (base64url), only with `t=`: see [Sharing a solve](#sharing-a-solve). Versions before it ignore it.              |
 
 Opening a link:
@@ -912,9 +980,10 @@ Opening a link:
   the board's place blank and the clock stopped, before any of the below. Save names them (the
   link's name is filled in), Skip goes by their links' names. A link without an ID, or from your own
   browser, never asks.
-- **A puzzle you haven't played** opens behind a "Ready?" card showing the time to beat, and the
-  clock only starts when you press **Start** — so both of you start the same way. Until you do, a
-  reload or a second click on the link brings the same card back.
+- **A puzzle you haven't played** opens behind a "Ready?" card showing the time to beat — and,
+  under "Ready?", the puzzle's name, if the link gives one — and the clock only starts when you
+  press **Start**, so both of you start the same way. Until you do, a reload or a second click on
+  the link brings the same card back.
 - **A puzzle you're part-way through** reopens your game, with the challenge attached.
 - **A puzzle you've already solved** shows how your time compares — your newest time that
   counted, rather than a replay's — and offers to play it again (which carries on an unfinished
@@ -937,7 +1006,21 @@ A version of the game opens a link from a later one all the same: it skips a let
 does not know (`g` came after the others), and reads the rest as written. A version from before
 solves were shared skips `s=` too — it only stays in that version's address bar, which clears
 the parameters it knows and no others; harmless, as nothing there reads it. A version from before
-player IDs skips `u=` the same way, and leaves it in its address bar.
+player IDs skips `u=` the same way, and leaves it in its address bar, and so does one from before
+puzzle names with `l=`: it opens the puzzle without its name, and its own link sends none.
+
+A puzzle's name (`l=`) is free text anyone can write into a link, so it is read as a name typed in
+Your puzzles is tidied — invisible and direction-control characters out, spacing made single, cut at
+40 characters — and drawn in its own direction (`<bdi>`) on the Ready card and in History; in
+Share's preview of the message it has a line of its own, so its direction cannot run into the rest.
+It is drawn nowhere else: not the header, the Solved dialog or the offer to play again. A link
+without a time asks no one who sent it, so its name shows at once; it says no more than the message
+it came with. The game keeps the name its link gave (`title`, see [Your data](#your-data)) whatever
+comes after: a game reopened by a later link keeps the name it has, taking the link's only if it has
+none; a fresh attempt from the offer to play a solved puzzle again takes the link's, or else the
+earlier game's, as History's Play again takes the game's; and Share sends it on — unless you have a
+name of your own for the same numbers in Your puzzles, which wins wherever the puzzle is drawn or
+sent.
 
 The mistakes ride in `a=` rather than a parameter of their own, after the help: `m<N>` is always
 there once the count is known — an unaided, mistake-free solve sends `a=m0` — so a link that says
@@ -1032,21 +1115,26 @@ as times are; trust is on first use.
 Everything is stored in your browser's `localStorage` under `sudoku.*` keys — preferences (with
 this browser's player ID, once you share a time), the history (up to 1,000 games, a daily's with
 the date it is the daily of and the date you started it — the calendar and the streaks are worked
-out from it — and each game's [mistakes](#mistakes), stamped with the time they were counted at),
-what the dailies of games pruned from the history said (a few bytes a day, kept for good, so
-neither a best streak nor the calendar forgets them), the saved state of unfinished games (up to
-50), every game's move log, the puzzles you have seen (up to 2,000, so a puzzle stays seen after
-its game is deleted), the puzzles whose shared solve you watched before solving them
-(`sudoku.watched`, up to 2,000 — see [Sharing a solve](#sharing-a-solve)), the friends whose
-links you have opened (`sudoku.friends`, up to 200 devices — each one's ID, the latest name its
-links gave and when — grouped into friends with the name you gave each; some 41,000 characters
-with every name at its longest — see [Friends](#friends)) and the daily puzzles already dealt (the
-last 112, so they need not be dealt again). A game raced against a link that
+out from it — each game's [mistakes](#mistakes), stamped with the time they were counted at, and the
+name a link gave its puzzle), what the dailies of games pruned from the history said (a few bytes a
+day, kept for good, so neither a best streak nor the calendar forgets them), the saved state of
+unfinished games (up to 50), every game's move log, the puzzles you have seen (up to 2,000, so a
+puzzle stays seen after its game is deleted), the puzzles whose shared solve you watched before
+solving them (`sudoku.watched`, up to 2,000 — see [Sharing a solve](#sharing-a-solve)), the friends
+whose links you have opened (`sudoku.friends`, up to 200 devices — each one's ID, the latest name
+its links gave and when — grouped into friends with the name you gave each; some 41,000 characters
+with every name at its longest — see [Friends](#friends)), the puzzles you have typed in
+(`sudoku.puzzles`, up to 1,000 — each one's numbers, the name you gave it, and when it was first
+kept and last changed; under 300 characters each with the longest name there is, so some 0.3
+million for a full list at worst and about 0.2 million with names like "The Times #5,123" — see
+[Your puzzles](#your-puzzles)) and the daily puzzles already dealt (the last 112, so they need not
+be dealt again). A game raced against a link that
 carried a solve keeps it with the challenge, inside its record, held on reading back to the shape
 and length of a log in a link (at most 4,000 characters; some 200–1,100 in practice). There are no
 accounts and no tracking: the player ID is random, and travels only in links you share with a
-time. Now and then the game fetches its own page again, to see whether a new version has been
-deployed ([New versions](#new-versions)); nothing goes with it that a reload would not send.
+time; a puzzle's name, only in links to it and in History's export. Now and then the game fetches
+its own page again, to see whether a new version has been deployed ([New versions](#new-versions));
+nothing goes with it that a reload would not send.
 
 Every game in the history, finished or not, keeps its **move log** (see
 [The move log](#the-move-log)) under a key of its own, `sudoku.moves.<id>`, listed in
@@ -1062,9 +1150,9 @@ characters a move: about 200 for a solve that only places digits, 300 with auto 
 to 1,100 for one that pencils in every candidate. With a full history of 1,000 games, 50 of them
 unfinished, everything the game stores comes to about 0.9 million characters, 0.4 million of it
 logs, for a mix of those three kinds of solve — 0.75 million if every game only placed digits, and
-1.5 million if every game pencilled in every candidate. That is under a third of the ~5 MB (some
-5.2 million characters) the browser allows the whole of `dhensby.github.io`, which every project
-hosted there shares.
+1.5 million if every game pencilled in every candidate — plus up to 0.3 million for a full Your
+puzzles. That is at most about a third of the ~5 MB (some 5.2 million characters) the browser
+allows the whole of `dhensby.github.io`, which every project hosted there shares.
 
 When that space runs out, the game makes room, cheapest loss first, trying the write again after
 each step: the logs of games no longer in the history, then the oldest finished games' logs, about
@@ -1073,13 +1161,13 @@ more than one such chunk beyond what the write needed is ever lost; then friends
 their challenges (every game's but the one on screen, which keeps the name and time it was racing;
 only the button to watch the solve goes); and only once those are gone too, the saved boards of all but the 10 most recently played unfinished games, and
 finished games beyond the newest 300, with their logs. The game on screen, the logs of unfinished
-games, the preferences and the friends list are never shed. Finished games' logs go first because
-nothing needs them to carry on playing (a game whose log is shed keeps its record and its count of
-mistakes, but can no longer be watched). In a test with a full history and the storage filled to the
-brim, one chunk (130 logs) makes room for the whole of a pencil-every-candidate game played after
-it; with the quota cut by another 300,000 characters, 754 of the 950 finished games' logs go and
-every record and board stays. If a log cannot be written even then, its game's old log is deleted
-rather than left stopping short of the board saved beside it.
+games, the preferences, the friends list and your puzzles are never shed. Finished games' logs go
+first because nothing needs them to carry on playing (a game whose log is shed keeps its record and
+its count of mistakes, but can no longer be watched). In a test with a full history and the storage
+filled to the brim, one chunk (130 logs) makes room for the whole of a pencil-every-candidate game
+played after it; with the quota cut by another 300,000 characters, 754 of the 950 finished games'
+logs go and every record and board stays. If a log cannot be written even then, its game's old log
+is deleted rather than left stopping short of the board saved beside it.
 
 A tab left open on an older version after an update carries on saving, so the game keeps what it
 does not recognise rather than wiping it: small fields a newer version added to a game's record,
@@ -1096,10 +1184,14 @@ was recorded with, and Play again from it begins another Expert game. A game of 
 [entered](#entering-a-puzzle) is stored as one from a link is (`source: 'shared'`, or `'replay'`
 for a puzzle seen before) with an `entered: true` flag beside it, so a tab from before Enter a
 puzzle keeps the game, counts it as a link's game and keeps the flag; its Ready card there says
-"Someone shared a Hard puzzle with you." until it is reloaded. What you type into Enter a puzzle
-is never stored: closing it forgets it. A tab from before the friends list never touches
-`sudoku.friends`, so the names given there survive it too, though it shows each race under its
-link's name until it is reloaded.
+"Someone shared a Hard puzzle with you." until it is reloaded. A game from a link that named its
+puzzle keeps the name as `title` on its record, tidied as one typed in Your puzzles is — at most 40
+characters, and so, even at its worst, well inside those 200 — so a tab from before puzzle names
+keeps it, though it shows no name, and sends none in its links, until it is reloaded. A tab from
+before the friends list never touches `sudoku.friends`, so the names given there survive it too,
+though it shows each race under its link's name until it is reloaded; and a tab from before Your
+puzzles never touches `sudoku.puzzles`, so the puzzles kept survive it untouched, though it has no
+list to show them in.
 
 Some browsers clear a site's storage after a while away (Safari does after seven days without a
 visit, unless the game has been added to the home screen). Use **Export** in History to keep a
@@ -1110,11 +1202,19 @@ watched. The friends list is merged too: a device this browser has never had a l
 the friend the file has it with — one of yours, if the file groups it with a device you know, or
 else a new friend under the file's name — into the room left under the cap. A friend you already
 have is never renamed, merged or split by an import, so importing the same file twice adds
-nothing. Your own player ID is not exported: each browser keeps its own. The file carries every
-game's move log too; an import takes the log of each game it adds or replaces, leaving out (on its
-own) any log that does not read back exactly, and never makes room for one by deleting anything:
-logs go only into space that was free, and if the imported games themselves only fitted once some
-of the logs here were shed, none of the file's logs are taken.
+nothing. Your own player ID is not exported: each browser keeps its own. Your puzzles are merged
+too: one the file has that is here already — the same puzzle, edited on either side since — keeps
+the copy changed later, under the name the other gave it if that copy has none; one new here is
+added, into the room left under the 1,000, the most recently changed first, never forgetting one of
+yours to make room; and the same numbers kept on both sides under two entries become one, as a save
+would make them, keeping a name either had. History's message counts them — "Imported 1 new game,
+updated 0, and 3 of your puzzles." — and importing the same file twice adds nothing. A file from
+before puzzles were exported has none, and imports as it did; a version from before them leaves a
+newer file's puzzles out. The file carries every game's move log too; an import takes the log of
+each game it adds or replaces, leaving out (on its own) any log that does not read back exactly, and
+never makes room for one by deleting anything: logs go only into space that was free, and if the
+imported games themselves only fitted once some of the logs here were shed, none of the file's logs
+are taken.
 
 ## Testing
 
@@ -1200,12 +1300,45 @@ of the logs here were shed, none of the file's logs are taken.
   from Space, 0 or a dot; Backspace on a number and on an empty cell; Delete; the arrows at the
   edges, left and right running on round the rows; a number or a blank held down going in once;
   every Ctrl and Cmd chord let through), the pad filling in place, its line keeping its words while
-  the same thing holds, and Play unavailable, saying why, until there is one solution; through the
-  main hook, Play puts a new puzzle behind Start as the player's own, unseen until its board shows
-  and its time counted as a new puzzle's, setting the game behind aside — dropped if only glimpsed,
-  a puzzle on its way cancelled — and resumes an unfinished attempt or offers a solved puzzle again
-  instead; and its record keeps `entered` only as `true`, through a save, an export, an import and a
-  tab from before it.
+  the same thing holds, and Play and Share… unavailable, saying why, until there is one solution; a
+  grid pasted in read however it is laid out, a dot or a 0 for a blank, and only at exactly 81 cells
+  — never a link — and put in place of the grid typed, the selection kept, from Ctrl or Cmd+V on the
+  grid and from Paste, which reads the clipboard within the press; and a paste with no grid in it,
+  or a clipboard refused or missing, said so on the line, afresh each time, until the grid changes;
+  through the main hook, Play puts a new puzzle behind Start as the player's own, unseen until its
+  board shows and its time counted as a new puzzle's, setting the game behind aside — dropped if
+  only glimpsed, a puzzle on its way cancelled — and resumes an unfinished attempt or offers a
+  solved puzzle again instead; and its record keeps `entered` only as `true`, through a save, an
+  export, an import and a tab from before it. Your puzzles are held to the one rule every save keeps
+  — the entry being edited, else the one with the same numbers, else a new one at the head of the
+  list; its time last changed moving only with its numbers; an entry edited into another's numbers
+  taking its place and keeping a name; nothing written for a save that changes nothing; and past
+  1,000, the one changed longest ago forgotten, never the one saved, and a newer version's longer
+  list cut by one only — and to reading back (junk dropped an entry at a time, no two entries with
+  one id or one grid, the latest first kept first, never capped, a newer version's fields kept), and
+  to History's import (of a puzzle both have, the copy changed later, the one here on a tie, taking
+  the other's name if it has none; new ones only into the room left, the latest changed first, and
+  none past 1,000; one entry of a grid kept on both sides; the same file twice writing nothing;
+  merged though no game is new, and counted in what the import says, one at least for a merge that
+  only takes one away); its names to a newspaper's length, tidied as a player's are and short enough
+  for an older tab to carry; the list to its rows' words, their buttons by readiness, each named
+  with its row, a rename and a delete in place with focus back where it was, as it is on a row's
+  Share back from Share; the editor's Save to what it says when, and its Share… to the puzzle Play
+  would play, the cell selected kept to come back to, focus going back to Share… rather than to the
+  grid as the editor opens again; and, through the main hook, Save staying in the editor; Play,
+  Share… and closing keeping the grid (a blank one never, an entry erased to nothing keeping its
+  numbers); closing going back to the row's Edit, Share… — the puzzle alone, making no player ID —
+  back to the editor on the same grid and cell, focus on Share…, and a row's Share, writing nothing,
+  back on its Share with the list as stored; with the game behind paused throughout. A puzzle's
+  name in a link (`l=`) is held to its place — after the result and before the solve, with a time
+  or without — and to changing no other parameter, so a version from before it reads the rest as
+  ever; to its line in the message, second in every form, a message without one byte for byte as
+  it was; to being read tidied, a hostile one as one typed in would be, and as none when nothing is
+  left; to the game it opens, through a save, an export, an import, a newer copy that lost it and a
+  tab from before it, which keeps it as a newer field; to a game reopened keeping its own, the offer
+  to play again and History's Play again passing theirs on; and to the player's own name for the
+  same numbers winning on the Ready card, in History and in every way of sharing, the editor's
+  Share… taking the name as just kept, never written into a game.
   The version stamp is held to change with any file a build ships, its contents or its name, public
   files included, and with nothing else (`plugins/version.test.ts`); the look for a newer version to
   its timing — as the page opens, as it comes back after ten minutes or more, every ten minutes or
@@ -1217,19 +1350,19 @@ of the logs here were shed, none of the file's logs are taken.
   Coverage thresholds are enforced in CI, with the engine held to 100%.
 - **End-to-end** (`e2e/`, Playwright): full journeys against the built app — playing and solving,
   pausing and reloading, share links between two browsers (a solve with a mistake shared, opened in
-  the other and compared row by row, and a link to a puzzle the techniques cannot finish named
-  Beyond Expert on its card, in the header, in its share text and in History), the history, the
-  technique guide, a hint's Show me walkthrough (and a step hint followed a step at a time, its
-  pages turned with help taken ticking only for pages not seen before), the daily puzzles on a
-  fixed clock (today's Hard from New game to
-  the end and its streak, yesterday's from the calendar kept but not counted, a friend's daily
-  link recognised), mistakes (an obvious slip put right at once, a wrong number where the answer
-  was not obvious, Check guesses marking and counting one at once with "guesses checked as
-  entered" beside the time, and the error counter waiting out a slip's 3 seconds of play),
-  sharing a solve between browsers (one plays first and then watches it for nothing, another
-  watches first and solves it with no time, the sharer's own link, followed in their own browser,
-  racing no one, one who has solved it watches without being asked, and a daily's, watched first,
-  kept out of the streak),
+  the other and compared row by row, a link to a puzzle the techniques cannot finish named Beyond
+  Expert on its card, in the header, in its share text and in History, and a puzzle named in Your
+  puzzles shared from its row, its name on the other browser's Ready card and in its History, and in
+  that browser's own link to it), the history, the technique guide, a hint's Show me walkthrough
+  (and a step hint followed a step at a time, its pages turned with help taken ticking only for
+  pages not seen before), the daily puzzles on a fixed clock (today's Hard from New game to the end
+  and its streak, yesterday's from the calendar kept but not counted, a friend's daily link
+  recognised), mistakes (an obvious slip put right at once, a wrong number where the answer was not
+  obvious, Check guesses marking and counting one at once with "guesses checked as entered" beside
+  the time, and the error counter waiting out a slip's 3 seconds of play), sharing a solve between
+  browsers (one plays first and then watches it for nothing, another watches first and solves it
+  with no time, the sharer's own link, followed in their own browser, racing no one, one who has
+  solved it watches without being asked, and a daily's, watched first, kept out of the streak),
   comparing two solves between browsers (opened from the Solved dialog and from History, the
   cursor moved by keys and by a press, the readout and the board following it, focus back on
   Compare solves, and fitting a 320px phone and a phone on its side, opened at the top and, on its
@@ -1241,8 +1374,17 @@ of the logs here were shed, none of the file's logs are taken.
   race in History following, through a reload — and a name given carried by History's export to
   another browser, naming the race it imports and asking nothing of the sender's next link there),
   a puzzle typed into Enter a puzzle (a Hard played from its Start card as the Hard it is, shared
-  from there as the puzzle alone and opened in another browser on the same board, and a clash and
-  more than one solution named, with Play unavailable),
+  from there as the puzzle alone and opened in another browser on the same board; shared from the
+  editor's Share… as the puzzle alone, kept, back in the editor on the same grid with Share…
+  focused, nothing started — the game behind carrying on as the list closes — and its link opening
+  the same board in another browser; a Hard pasted in on the grid, as Ctrl or Cmd+V would, over what
+  was typed and played as the Hard it is, and from Paste with focus kept on the grid, words and a
+  clipboard refused said so on the line; and a clash and more than one solution named, with Play and
+  Share… unavailable), Your puzzles (a half-typed puzzle saved and listed with its line, then
+  edited, finished and played from the editor; one renamed, kept through a reload; one deleted; one
+  shared from its row, focus back on its Share; a grid kept as the editor closes, back on its row's
+  Edit; two Escapes from the editor back to the game; and the list carried by History's export to
+  another browser, listed there, names and all, and played),
   watching a solve with a mistake played back from the Solved dialog and from History (stepped,
   scrubbed and played at 8× on Playwright's clock, its mistake marked and captioned, focus back on
   Watch as it closes, and fitting a 320px phone and a phone on its side) and the phone layout from
@@ -1259,30 +1401,36 @@ of the logs here were shed, none of the file's logs are taken.
   their sides, a long right-to-left name kept inside Friends' rows, a merged friend's devices and
   the prompt's hint, every control 44px — the friend pickers and a merge's buttons among them — and
   History's foot giving Friends a row of its own at 320px; Enter a puzzle at 320×568, 568×320,
-  667×375 and 844×390 with nothing to scroll, every button 44px and every cell at least 24px — 22px
-  on the shortest phone on its side — and a tapped number landing in the cell tapped; the offer of
-  a new version lying over the switch row alone at 320×568 and on its side, its two buttons 44px
-  and every other control still there to press; and a desktop's header with a daily Medium and
-  help at its widest). Help taken stays on show through a pause, its count the only one the
-  hidden board leaves beside the timer's. A new version (`update.spec.ts`) is deployed to a
-  stand-in for GitHub Pages (`e2e/pages-server.ts`: the app under `/sudoku/`, real 404s, and ten
-  minutes of HTTP caching on everything): a page left open offers it ten minutes on, and Refresh
-  loads it with the game kept, paused; and a page the HTTP cache kept from before the deploy offers
-  it as it opens (on Chromium: Playwright's WebKit keeps no HTTP cache on disk, and the first look
-  displaces the copy it keeps in memory, so it is never handed an old page). An accessibility pass (`a11y.spec.ts`) runs axe-core's WCAG 2.2 A and AA rules over the main states — the board with
-  every kind of mark, the error counter and help taken in both their places, the Ready and Paused
-  cards, the menus (the "…" menu's "Hint (1 used)" among them),
-  every dialog (Show me's, the daily calendar's, a solve played back, the warning before watching
-  a friend's solve, two solves compared, Share with the solve included, History with Friends at
-  its foot, Friends with a merged friend's devices, a name being changed and two friends being
-  merged, _Who sent this?_ with friends to choose from, and Enter a puzzle at each step on the way
-  to a puzzle — empty, a clash, too few numbers, more than one solution and a Hard — upright and on
-  its side on the phones, among them), each guide entry, a step hint's tinted houses and the offer
-  of a new version (a sheet on a phone held upright, a card on its side) — in both themes, and the board
-  (its tint included), the dialogs (Enter a puzzle among them), the menus, the calendar and the
-  offer of a new version in High contrast, both chosen in
-  Settings on a dark device and from a dark system asking for more contrast, measuring its heavier
-  lines and its same-number ring kept off the digits — and allows no violations. Three projects:
+  667×375 and 844×390 with nothing to scroll, every button 44px, Play, Share…, Save and Paste on one
+  line with the hint in view under them, and every cell at least 24px — 22px on the shortest phone
+  on its side — and a tapped number landing in the cell tapped; Your puzzles at 320×568, 568×320 and
+  844×390 with nothing to scroll sideways, a long right-to-left name inside its row, every button
+  44px (a ready row's Share among them) and the rename field's text 16px; a link's 40-character
+  puzzle name kept inside its Ready card and Share's preview at 320px; the offer of a new version
+  lying over the switch row alone at 320×568 and on its side, its two buttons 44px and every other
+  control still there to press; and a desktop's header with a daily Medium and help at its widest).
+  Help taken stays on show through a pause, its count the only one the hidden board leaves beside
+  the timer's. A new version (`update.spec.ts`) is deployed to a stand-in for GitHub Pages
+  (`e2e/pages-server.ts`: the app under `/sudoku/`, real 404s, and ten minutes of HTTP caching on
+  everything): a page left open offers it ten minutes on, and Refresh loads it with the game kept,
+  paused; and a page the HTTP cache kept from before the deploy offers it as it opens (on Chromium:
+  Playwright's WebKit keeps no HTTP cache on disk, and the first look displaces the copy it keeps in
+  memory, so it is never handed an old page). An accessibility pass (`a11y.spec.ts`) runs axe-core's
+  WCAG 2.2 A and AA rules over the main states — the board with every kind of mark, the error
+  counter and help taken in both their places, the Ready and Paused cards (the Ready card with a
+  puzzle's name too), the menus (the "…" menu's "Hint (1 used)" among them), every dialog (Show
+  me's, the daily calendar's, a solve played back, the warning before watching a friend's solve, two
+  solves compared, Share with the solve included, History with Friends at its foot, Friends with a
+  merged friend's devices, a name being changed and two friends being merged, _Who sent this?_ with
+  friends to choose from, Enter a puzzle at each step on the way to a puzzle — empty, a paste with
+  no puzzle in it, a clash, too few numbers, more than one solution, a Hard and a grid saved — and
+  Your puzzles empty, with rows, a name being changed and a delete being confirmed, upright and on
+  their sides on the phones, among them), each guide entry, a step hint's tinted houses and the
+  offer of a new version (a sheet on a phone held upright, a card on its side) — in both themes, and
+  the board (its tint included), the dialogs (Enter a puzzle and Your puzzles among them), the
+  menus, the calendar and the offer of a new version in High contrast, both chosen in Settings on a
+  dark device and from a dark system asking for more contrast, measuring its heavier lines and its
+  same-number ring kept off the digits — and allows no violations. Three projects:
 
   | Project    | Device         | Engine   | Specs                                                                   |
   | ---------- | -------------- | -------- | ----------------------------------------------------------------------- |
@@ -1335,25 +1483,26 @@ serve the old page for a while after a deploy, the page learns of the new one at
 
 ## Controls
 
-| Action                         | Keyboard                                                                                                                   | Mouse / Touch                                            |
-| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| Select a cell                  | <kbd>Tab</kbd> to the board                                                                                                | Click or tap it                                          |
-| Move the selection             | Arrow keys                                                                                                                 | Tap another cell                                         |
-| Enter a number                 | <kbd>1</kbd>–<kbd>9</kbd>                                                                                                  | Number pad                                               |
-| Erase                          | <kbd>Backspace</kbd> / <kbd>Delete</kbd>                                                                                   | Erase button                                             |
-| Switch Normal / Candidate      | <kbd>Space</kbd>                                                                                                           | Mode buttons                                             |
-| Switch while held              | Hold <kbd>Shift</kbd> or <kbd>Alt</kbd>                                                                                    | —                                                        |
-| Toggle one candidate           | —                                                                                                                          | Click its spot in the selected cell                      |
-| Undo                           | <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Z</kbd>                                                                                  | Undo button                                              |
-| Redo                           | <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd>, <kbd>Ctrl</kbd>+<kbd>Y</kbd>                                   | Redo button                                              |
-| Pause or resume                | <kbd>P</kbd>                                                                                                               | The timer                                                |
-| Hint, check, reveal, reset     | —                                                                                                                          | The "…" menu                                             |
-| Show me how to solve a cell    | —                                                                                                                          | Show me, after a hint                                    |
-| New game, or today's puzzles   | —                                                                                                                          | The + button                                             |
-| Daily calendar and streaks     | Arrow keys, Home/End, Page Up/Page Down in the month                                                                       | The calendar in the header, or +                         |
-| Enter a puzzle                 | <kbd>1</kbd>–<kbd>9</kbd> fill and move on, <kbd>Space</kbd> or <kbd>0</kbd> leave a blank, <kbd>Backspace</kbd> goes back | New game › Enter a puzzle…, then tap a cell and a number |
-| History, share, settings, help | —                                                                                                                          | The header (on a phone, the ☰ menu)                     |
-| Friends                        | —                                                                                                                          | Friends, at the foot of History                          |
-| Solving techniques             | —                                                                                                                          | The header, or a hint's question                         |
-| Watch your solve               | <kbd>Space</kbd>, <kbd>←</kbd>/<kbd>→</kbd>, <kbd>Home</kbd>/<kbd>End</kbd>                                                | Watch your solve, or History's Watch                     |
-| Compare solves                 | <kbd>←</kbd>/<kbd>→</kbd>, <kbd>Page Up</kbd>/<kbd>Page Down</kbd>, <kbd>Home</kbd>/<kbd>End</kbd>                         | Tap or drag along the chart                              |
+| Action                         | Keyboard                                                                                                                   | Mouse / Touch                                                               |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| Select a cell                  | <kbd>Tab</kbd> to the board                                                                                                | Click or tap it                                                             |
+| Move the selection             | Arrow keys                                                                                                                 | Tap another cell                                                            |
+| Enter a number                 | <kbd>1</kbd>–<kbd>9</kbd>                                                                                                  | Number pad                                                                  |
+| Erase                          | <kbd>Backspace</kbd> / <kbd>Delete</kbd>                                                                                   | Erase button                                                                |
+| Switch Normal / Candidate      | <kbd>Space</kbd>                                                                                                           | Mode buttons                                                                |
+| Switch while held              | Hold <kbd>Shift</kbd> or <kbd>Alt</kbd>                                                                                    | —                                                                           |
+| Toggle one candidate           | —                                                                                                                          | Click its spot in the selected cell                                         |
+| Undo                           | <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Z</kbd>                                                                                  | Undo button                                                                 |
+| Redo                           | <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd>, <kbd>Ctrl</kbd>+<kbd>Y</kbd>                                   | Redo button                                                                 |
+| Pause or resume                | <kbd>P</kbd>                                                                                                               | The timer                                                                   |
+| Hint, check, reveal, reset     | —                                                                                                                          | The "…" menu                                                                |
+| Show me how to solve a cell    | —                                                                                                                          | Show me, after a hint                                                       |
+| New game, or today's puzzles   | —                                                                                                                          | The + button                                                                |
+| Daily calendar and streaks     | Arrow keys, Home/End, Page Up/Page Down in the month                                                                       | The calendar in the header, or +                                            |
+| Enter a puzzle                 | <kbd>1</kbd>–<kbd>9</kbd> fill and move on, <kbd>Space</kbd> or <kbd>0</kbd> leave a blank, <kbd>Backspace</kbd> goes back | New game › Your puzzles… › Enter a new puzzle, then tap a cell and a number |
+| Paste a puzzle in              | <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>V</kbd> on the grid                                                                      | Paste, in Enter a puzzle                                                    |
+| History, share, settings, help | —                                                                                                                          | The header (on a phone, the ☰ menu)                                        |
+| Friends                        | —                                                                                                                          | Friends, at the foot of History                                             |
+| Solving techniques             | —                                                                                                                          | The header, or a hint's question                                            |
+| Watch your solve               | <kbd>Space</kbd>, <kbd>←</kbd>/<kbd>→</kbd>, <kbd>Home</kbd>/<kbd>End</kbd>                                                | Watch your solve, or History's Watch                                        |
+| Compare solves                 | <kbd>←</kbd>/<kbd>→</kbd>, <kbd>Page Up</kbd>/<kbd>Page Down</kbd>, <kbd>Home</kbd>/<kbd>End</kbd>                         | Tap or drag along the chart                                                 |

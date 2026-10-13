@@ -188,6 +188,13 @@ export interface ShareTarget {
    * and null without a result, or without such a log.
    */
   solve: string | null;
+  /**
+   * The puzzle's name, for the link and its message to carry (see
+   * `buildShareUrl`): the one its link gave (see `GameRecord.title`), or null
+   * for none — and as Share opens, the player's own for it in Your puzzles
+   * in its place, if they have given it one (see `openShare`).
+   */
+  title: string | null;
 }
 
 /**
@@ -201,6 +208,8 @@ export interface ChallengeOffer {
   challenge: Challenge | null;
   /** The date of the daily the puzzle is, if it is one; a fresh attempt is recorded as that daily. */
   daily?: DateKey;
+  /** The puzzle's name, as a link gave it (see `GameRecord.title`); a fresh attempt is recorded with it. */
+  title?: string;
 }
 
 /**
@@ -315,7 +324,7 @@ export function attemptSource(
  * clock running from now) or not yet, and flagged `isEntered` for a puzzle
  * the player typed in (see `GameRecord.entered`). A puzzle beyond the
  * techniques is recorded as an Expert game flagged `beyond`, as the history
- * keeps it.
+ * keeps it; and one a link gave a name, with its `title`.
  */
 export function createRecord(
   puzzle: Puzzle,
@@ -327,6 +336,7 @@ export function createRecord(
   isStarted = true,
   isWatched = false,
   isEntered = false,
+  title?: string,
 ): GameRecord {
   return {
     id: createGameId(now),
@@ -346,6 +356,7 @@ export function createRecord(
     ...(isWatched ? { watched: true as const } : {}),
     ...(puzzle.difficulty === 'beyond' ? { beyond: true as const } : {}),
     ...(isEntered ? { entered: true as const } : {}),
+    ...(title === undefined ? {} : { title }),
   };
 }
 
@@ -382,6 +393,8 @@ export function newSession(
      * waits behind Start as their own, not as one someone shared.
      */
     isEntered?: boolean;
+    /** The puzzle's name, as the link it came from gave it (see `GameRecord.title`). */
+    title?: string;
   },
 ): Session {
   const {
@@ -394,6 +407,7 @@ export function newSession(
     daily,
     isWatched = false,
     isEntered = false,
+    title,
   } = options;
   const game = createGame(puzzle, { autoCandidates });
   const session: Session = {
@@ -407,6 +421,7 @@ export function newSession(
       start === 'running',
       isWatched,
       isEntered,
+      title,
     ),
     game,
     clock: start === 'running' ? startClock(STOPPED_CLOCK, now.clock) : STOPPED_CLOCK,
@@ -821,6 +836,7 @@ export function shareTargetOf(session: Session): ShareTarget {
       isRaceable && moves !== null
         ? sharedSolveOf(record.givens, encodeMoveLog(moves), seconds)
         : null,
+    title: record.title ?? null,
   };
 }
 
@@ -844,7 +860,18 @@ export function shareTargetOfRecord(record: GameRecord, encoded: string | null):
       : null,
     daily: record.daily ?? null,
     solve: isRaceable ? sharedSolveOf(record.givens, encoded, seconds) : null,
+    title: record.title ?? null,
   };
+}
+
+/**
+ * What sharing a puzzle of Your puzzles shares, from the editor or its row,
+ * without a game of it: the puzzle alone, labelled as it was checked there,
+ * which is how its link will be (see `puzzleFromGivens`) — under its name
+ * there, which Share puts on as it opens (see `ShareTarget.title`).
+ */
+export function shareTargetOfPuzzle({ givens, difficulty }: Puzzle): ShareTarget {
+  return { givens, difficulty, result: null, daily: null, solve: null, title: null };
 }
 
 /**
@@ -888,6 +915,12 @@ export function shareTargetOfRecord(record: GameRecord, encoded: string | null):
  * here offers to be played again with no head-to-head against themselves.
  * The history is read the same way: a record raced against the player's own
  * link, from before such a link raced no one, comes without its race.
+ *
+ * A link's puzzle name (`&l=`) names the game it opens, whichever of the
+ * three (see `GameRecord.title`): a new attempt, or a fresh one from the
+ * offer, takes it — the offer the earlier solve's, for a link with none; an
+ * unfinished attempt keeps the name it has, and takes the link's only if it
+ * has none.
  */
 export function planStartup(
   storage: StorageLike,
@@ -956,6 +989,7 @@ export function planStartup(
           },
   };
   const attempts = findAttempts(records, puzzle.givens);
+  const title = link.title ?? undefined;
 
   for (const attempt of attempts) {
     if (attempt.status !== 'playing') continue;
@@ -967,9 +1001,17 @@ export function planStartup(
     // it does not count as one to reopen.
     if (session === null || session.game.status !== 'playing') continue;
     const racing = challenge ?? session.record.challenge;
+    const named = session.record.title ?? title;
     return {
       ...linked,
-      session: { ...session, record: { ...session.record, challenge: racing } },
+      session: {
+        ...session,
+        record: {
+          ...session.record,
+          challenge: racing,
+          ...(named === undefined ? {} : { title: named }),
+        },
+      },
       isNewCurrent: true,
       left: session === restored ? null : restored,
     };
@@ -977,7 +1019,11 @@ export function planStartup(
 
   const previous = previousSolve(attempts);
   if (previous !== undefined) {
-    return { ...linked, offer: { puzzle, previous, challenge } };
+    const named = title ?? previous.title;
+    return {
+      ...linked,
+      offer: { puzzle, previous, challenge, ...(named === undefined ? {} : { title: named }) },
+    };
   }
 
   return {
@@ -989,6 +1035,7 @@ export function planStartup(
       autoCandidates,
       start: 'ready',
       isWatched: hasWatched(storage, puzzle.givens),
+      title,
     }),
     isNewCurrent: true,
     left: restored,

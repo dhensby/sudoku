@@ -135,10 +135,13 @@ function exportFileName(now: number): string {
 
 function importMessage(result: ImportResult): string {
   if (!result.ok) return "That file isn't a Sudoku history export.";
-  if (result.added === 0 && result.updated === 0) {
+  if (result.added === 0 && result.updated === 0 && result.puzzles === 0) {
     return 'Nothing new to import — those games are already here.';
   }
-  return `Imported ${count(result.added, 'new game')}, updated ${result.updated}.`;
+  // Your puzzles only when it brought some: a file of games alone says what
+  // it always has.
+  const puzzles = result.puzzles === 0 ? '' : `, and ${result.puzzles} of your puzzles`;
+  return `Imported ${count(result.added, 'new game')}, updated ${result.updated}${puzzles}.`;
 }
 
 interface Status {
@@ -255,6 +258,12 @@ const HistoryRow = memo(function HistoryRow({
           <span className="history-item__date">{date}</span>
           {isCurrent && <span className="history-item__current">Current</span>}
         </p>
+        {record.title !== undefined && (
+          <p className="history-item__name">
+            {/* A name from a link anyone can write: kept in its own direction. */}
+            <bdi>{record.title}</bdi>
+          </p>
+        )}
         <p className="history-item__status">
           {status === 'playing' && `In progress · ${formatDuration(elapsedMs)}`}
           {status === 'solved' &&
@@ -476,7 +485,8 @@ function AllStats({ stats }: { stats: Record<Level, DifficultyStats> }) {
  * Export and import keep the history safe from a browser that clears site
  * data (Safari does after a week away). Friends, at its foot, lists everyone
  * who has sent a time, to name them; the records it is given are already
- * drawn under those names (see `namedRecord`).
+ * drawn under those names (see `namedRecord`), and under the names their
+ * puzzles have in Your puzzles, if any (see `titledRecord`).
  */
 export function HistoryDialog({
   records,

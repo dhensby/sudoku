@@ -19,7 +19,7 @@ function renderMenu(overrides: Partial<DifficultyMenuProps> = {}) {
     onSelect: vi.fn(),
     onSelectDaily: vi.fn(),
     onOpenCalendar: vi.fn(),
-    onEnterPuzzle: vi.fn(),
+    onOpenPuzzles: vi.fn(),
     onOpen: vi.fn(),
     ...overrides,
   };
@@ -91,7 +91,7 @@ describe('DifficultyMenu', () => {
       within(random)
         .getAllByRole('menuitem')
         .map((tier) => tier.textContent),
-    ).toEqual(['Easy', 'Medium', 'Hard', 'Expert', 'Enter a puzzle…']);
+    ).toEqual(['Easy', 'Medium', 'Hard', 'Expert', 'Your puzzles…']);
     const hard = within(random).getByRole('menuitem', { name: 'Hard (current)' });
     expect(hard.querySelector('.menu__check')).not.toBeNull();
     expect(
@@ -101,15 +101,15 @@ describe('DifficultyMenu', () => {
     expect(props.onSelect).toHaveBeenCalledWith('expert');
   });
 
-  it('offers to enter a puzzle from elsewhere last, after the tiers, never marked current', () => {
+  it('offers your own puzzles from elsewhere last, after the tiers, never marked current', () => {
     const props = renderMenu();
     const items = within(group('Random puzzle')).getAllByRole('menuitem');
-    const enter = items[items.length - 1];
-    expect(enter).toHaveAccessibleName('Enter a puzzle…');
+    const puzzles = items[items.length - 1];
+    expect(puzzles).toHaveAccessibleName('Your puzzles…');
     // No icon: the tiers above have none, so the labels stay in line.
-    expect(enter.querySelector('svg')).toBeNull();
-    fireEvent.click(enter);
-    expect(props.onEnterPuzzle).toHaveBeenCalled();
+    expect(puzzles.querySelector('svg')).toBeNull();
+    fireEvent.click(puzzles);
+    expect(props.onOpenPuzzles).toHaveBeenCalled();
     expect(props.onSelect).not.toHaveBeenCalled();
   });
 
@@ -175,7 +175,7 @@ describe('DifficultyMenu', () => {
     expect(items[0]).toHaveFocus();
     fireEvent.keyDown(items[0], { key: 'End' });
     expect(items[9]).toHaveFocus();
-    expect(items[9]).toHaveAccessibleName('Enter a puzzle…');
+    expect(items[9]).toHaveAccessibleName('Your puzzles…');
     fireEvent.keyDown(items[9], { key: 'ArrowUp' });
     expect(items[8]).toHaveFocus();
     fireEvent.keyDown(items[8], { key: 'Home' });

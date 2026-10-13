@@ -1,6 +1,16 @@
-import { formatDuration, type Assists } from '../../core';
+import { MIN_GIVENS, formatDuration, type Assists, type GivensAssessment } from '../../core';
 import { friendLabel, lastLinkAt, type Friend } from '../../storage/friends';
-import { assistPartText, assistParts, describeAssists, formatDate } from '../format';
+import { describeUnit } from '../announce';
+import {
+  DIFFICULTY_LABEL,
+  NUMBER_WORD,
+  assistPartText,
+  assistParts,
+  capitalise,
+  describeAssists,
+  formatDate,
+  withArticle,
+} from '../format';
 
 /*
  * Small pieces of English the dialogs share. The general vocabulary (tier
@@ -16,6 +26,43 @@ import { assistPartText, assistParts, describeAssists, formatDate } from '../for
  * stray spaces, feels broken. This matches the tidier's own UTF-16 ceiling.
  */
 export const NAME_INPUT_MAX = 64;
+
+/**
+ * How much a puzzle's name field takes while typing, in Your puzzles: as
+ * generous as a person's, for the same reasons, and matching the puzzle
+ * names' own UTF-16 ceiling (see `normaliseTitle`).
+ */
+export const TITLE_INPUT_MAX = 80;
+
+/**
+ * What a grid typed in makes, one thing at a time (see `assessGivens`): the
+ * editor's line above its pad, and each of Your puzzles' rows — the same
+ * words for as long as the same thing is true, so a screen reader speaks
+ * only as it changes, not at every number. Each fits a 320px phone's line. A
+ * puzzle with one solution is named by its tier alone.
+ */
+export function describeGivens(assessment: GivensAssessment): string {
+  switch (assessment.kind) {
+    case 'empty':
+      return 'Type in the numbers from your puzzle.';
+    case 'clash': {
+      const { count, digit, unit } = assessment;
+      return `${capitalise(NUMBER_WORD[count])} ${digit}s in ${describeUnit(unit)}.`;
+    }
+    case 'too-few':
+      return `A puzzle needs at least ${MIN_GIVENS} numbers.`;
+    case 'full':
+      return 'Every cell is filled: nothing to solve.';
+    case 'multiple':
+      return 'More than one solution so far.';
+    case 'none':
+      return 'No solution: a number must be wrong.';
+    case 'too-complex':
+      return 'Too complex to check.';
+    case 'ok':
+      return `One solution: ${withArticle(DIFFICULTY_LABEL[assessment.puzzle.difficulty])} puzzle.`;
+  }
+}
 
 /**
  * A friend as an option in a picker of friends — "Who sent this?"'s, and a
