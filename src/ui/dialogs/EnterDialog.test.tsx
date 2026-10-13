@@ -146,7 +146,7 @@ describe('EnterDialog', () => {
       expect(selected()).toBe(1);
     });
 
-    it('move the selection with the arrows, stopping at the edges', () => {
+    it('move the selection with the arrows, stopping at the first cell and the last', () => {
       renderEditor();
       expect(press('ArrowLeft')).toBe(false);
       press('ArrowUp');
@@ -164,6 +164,24 @@ describe('EnterDialog', () => {
       expect(selected()).toBe(70);
       // Moving types nothing.
       expect(typed()).toBe('0'.repeat(81));
+    });
+
+    it('run on round the rows with left and right, as typing does, but not with up and down', () => {
+      renderEditor();
+      fireEvent.click(cell(8));
+      expect(press('ArrowRight')).toBe(false);
+      expect(selected()).toBe(9);
+      expect(cell(9)).toHaveFocus();
+      press('ArrowLeft');
+      expect(selected()).toBe(8);
+      // Up and down keep to the column, so the top and bottom rows stop them.
+      press('ArrowUp');
+      expect(selected()).toBe(8);
+      fireEvent.click(cell(72));
+      press('ArrowDown');
+      expect(selected()).toBe(72);
+      press('ArrowLeft');
+      expect(selected()).toBe(71);
     });
 
     it('take a number or a blank once however long its key is held, but go on erasing and moving', () => {

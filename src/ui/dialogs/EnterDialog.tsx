@@ -34,14 +34,6 @@ interface Draft {
 
 const BLANK: Draft = { cells: '0'.repeat(81), selected: 0 };
 
-/** A step each way, as the board's arrow keys take it. */
-const STEP: Readonly<Record<Direction, readonly [rows: number, cols: number]>> = {
-  up: [-1, 0],
-  down: [1, 0],
-  left: [0, -1],
-  right: [0, 1],
-};
-
 /** `digit` (0 for none) in the cell at `index`, and the selection on `next`. */
 function put({ cells }: Draft, index: number, digit: number, next = index): Draft {
   return { cells: cells.slice(0, index) + digit + cells.slice(index + 1), selected: next };
@@ -52,13 +44,19 @@ function onward({ selected }: Draft): number {
   return Math.min(selected + 1, 80);
 }
 
-/** The selection a step `direction`, stopping at the edges. */
+/**
+ * The selection a step `direction`. Left and right go in reading order, as
+ * typing does — from the end of a row to the start of the next, and back —
+ * so a row whose last cells are blank is left by the arrow, not by a trip
+ * down and back along the row; they stop at the first cell and the last. Up
+ * and down stop at the edges.
+ */
 function moved(draft: Draft, direction: Direction): Draft {
-  const [rows, cols] = STEP[direction];
-  const row = ROW[draft.selected] + rows;
-  const col = COL[draft.selected] + cols;
-  if (row < 0 || row > 8 || col < 0 || col > 8) return draft;
-  return { ...draft, selected: row * 9 + col };
+  if (direction === 'right') return { ...draft, selected: onward(draft) };
+  if (direction === 'left') return { ...draft, selected: Math.max(draft.selected - 1, 0) };
+  const row = ROW[draft.selected] + (direction === 'down' ? 1 : -1);
+  if (row < 0 || row > 8) return draft;
+  return { ...draft, selected: row * 9 + COL[draft.selected] };
 }
 
 /** A caret's Backspace: the number in the selection, or else the one before it, stepping back. */

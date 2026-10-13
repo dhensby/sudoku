@@ -210,8 +210,9 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
             <li>
               Type it in row by row: a number fills a cell and moves on, <kbd>Space</kbd>,{' '}
               <kbd>0</kbd> or a dot leaves a cell blank, <kbd>Backspace</kbd> takes back the last
-              number, and the arrow keys move. Or tap a cell, then a number on the pad, which goes
-              in where you tapped.
+              number, and the arrow keys move — left and right from the end of a row to the start of
+              the next, as typing does. Or tap a cell, then a number on the pad, which goes in where
+              you tapped.
             </li>
             <li>
               A number twice in a row, column or box is marked at once, and a line by the grid says
