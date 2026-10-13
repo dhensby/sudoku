@@ -22,6 +22,7 @@ import {
   isPossibleTally,
   replayMoves,
   MAX_SHARED_LOG_LENGTH,
+  MIN_GIVENS,
   tallyMistakes,
   type Assists,
   type DateKey,
@@ -179,11 +180,13 @@ export interface Challenge {
 
 /**
  * Where a game's puzzle came from: the generator, a daily puzzle opened as
- * one (from the New game menu or the calendar), a shared link, or a replay of
- * a puzzle already seen — which is what any attempt at a seen puzzle is,
- * whatever brought it back (see `hasSeen`). Only replays are left out of best
- * and average times; and only generated games are dropped as glimpses, so an
- * unplayed daily is kept, to resume, rather than turned into a replay.
+ * one (from the New game menu or the calendar), a shared link — or typed in
+ * by hand, which comes from outside the game as a link's does (see
+ * `entered`) — or a replay of a puzzle already seen, which is what any
+ * attempt at a seen puzzle is, whatever brought it back (see `hasSeen`).
+ * Only replays are left out of best and average times; and only generated
+ * games are dropped as glimpses, so an unplayed daily is kept, to resume,
+ * rather than turned into a replay.
  */
 export type GameSource = 'generated' | 'daily' | 'shared' | 'replay';
 
@@ -266,15 +269,26 @@ export interface GameRecord {
   watched?: true;
   /**
    * Set on a game of a puzzle the grader's techniques cannot finish, which
-   * only a link brings (see `rate`), beside a `difficulty` of Expert: so a
-   * version from before Beyond Expert reads the record as an Expert game,
-   * and keeps the flag as a field it does not know (see `newerFields`). A
-   * property of the givens, so it never goes stale. Absent on games of every
-   * other puzzle, and on those recorded before the label (and so on a game
-   * played again from one of them, which plays as the Expert it says); never
-   * false. See `levelOf`.
+   * only a link or a puzzle typed in brings (see `rate`), beside a
+   * `difficulty` of Expert: so a version from before Beyond Expert reads the
+   * record as an Expert game, and keeps the flag as a field it does not know
+   * (see `newerFields`). A property of the givens, so it never goes stale.
+   * Absent on games of every other puzzle, and on those recorded before the
+   * label (and so on a game played again from one of them, which plays as
+   * the Expert it says); never false. See `levelOf`.
    */
   beyond?: true;
+  /**
+   * Set on an attempt at a puzzle the player typed in by hand (Enter a
+   * puzzle…), beside a `source` of 'shared' — or 'replay', for one seen
+   * before — so that it counts as a puzzle from a link counts, and is never
+   * dropped as a glimpse, in this version and an older one alike, which
+   * keeps the flag as a field it does not know (see `newerFields`). All the
+   * flag changes is what its Start card says: the player's own puzzle, not
+   * one someone shared. Absent on every other game, Play again's included;
+   * never false.
+   */
+  entered?: true;
 }
 
 /** Totals for one tier, or for the puzzles beyond the techniques. */
@@ -341,9 +355,6 @@ const FRIENDS_KEY = 'sudoku.friends';
 /** What a log in a link is made of (see `src/core/moves.ts`): base64url. */
 const SHARED_LOG_PATTERN = /^[A-Za-z0-9_-]+$/;
 
-/** The fewest givens a uniquely solvable Sudoku can have. */
-const MIN_GIVENS = 17;
-
 /** Export file envelope. */
 const EXPORT_APP = 'sudoku';
 const EXPORT_VERSION = 1;
@@ -373,6 +384,7 @@ const RECORD_FIELDS = fieldsOf<GameRecord>({
   mistakes: true,
   watched: true,
   beyond: true,
+  entered: true,
 });
 
 /** The fields of a challenge this version knows. */
@@ -585,9 +597,9 @@ function normaliseChallenge(value: unknown): Challenge | null {
  * and a broken challenge or daily date is dropped on its own — the game is
  * still a game, just not one against a rival or on the calendar. So are
  * broken mistakes, which then read as not known (see `normaliseMistakes`).
- * `watched` is kept only as `true`, and `beyond` only as `true` on an Expert
- * game. Small fields a newer version added are kept as they are (see
- * `newerFields`).
+ * `watched` and `entered` are kept only as `true`, and `beyond` only as
+ * `true` on an Expert game. Small fields a newer version added are kept as
+ * they are (see `newerFields`).
  */
 function normaliseRecord(value: unknown): GameRecord | null {
   if (!isObject(value)) return null;
@@ -633,6 +645,7 @@ function normaliseRecord(value: unknown): GameRecord | null {
     ...(mistakes === null ? {} : { mistakes }),
     ...(value.watched === true ? { watched: true as const } : {}),
     ...(value.beyond === true && difficulty === 'expert' ? { beyond: true as const } : {}),
+    ...(value.entered === true ? { entered: true as const } : {}),
   };
 }
 
@@ -1847,12 +1860,14 @@ export function importHistory(storage: StorageLike, json: string): ImportResult 
       updated.add(incoming.id);
     } else continue;
     // The flags are never taken off: a copy finished somewhere that knew
-    // nothing of the watch is still an attempt made after it, and a puzzle
-    // beyond the techniques stays beyond them, whatever version last saved it.
+    // nothing of the watch is still an attempt made after it, a puzzle
+    // beyond the techniques stays beyond them, and one typed in stays the
+    // player's own, whatever version last saved it.
     byId.set(incoming.id, {
       ...incoming,
       ...(existing?.watched === true ? { watched: true as const } : {}),
       ...(existing?.beyond === true ? { beyond: true as const } : {}),
+      ...(existing?.entered === true ? { entered: true as const } : {}),
     });
   }
   if (added.size + updated.size === 0) return { ok: true, added: 0, updated: 0 };

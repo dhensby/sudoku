@@ -436,7 +436,8 @@ function TierStats({ label, stats }: { label: string; stats: DifficultyStats }) 
 
 /**
  * Every tier at once, one row each: the "All" summary — and a row for the
- * puzzles beyond the techniques once there is one, which only a link brings.
+ * puzzles beyond the techniques once there is one, which only a link or a
+ * puzzle typed in brings.
  */
 function AllStats({ stats }: { stats: Record<Level, DifficultyStats> }) {
   const levels = stats.beyond.played > 0 ? LEVELS : DIFFICULTIES;

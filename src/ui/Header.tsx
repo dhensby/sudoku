@@ -153,6 +153,7 @@ export function Header({
             onSelect={onNewGame}
             onSelectDaily={onOpenDaily}
             onOpenCalendar={() => onOpenDialog('daily')}
+            onEnterPuzzle={() => onOpenDialog('enter')}
             onOpen={onRefreshToday}
           />
           {ACTIONS.map(({ kind, label, Icon }) => (

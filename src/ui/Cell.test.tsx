@@ -126,6 +126,19 @@ describe('Cell', () => {
     expect(cell).toHaveAccessibleName('empty');
   });
 
+  it('marks itself for the dialog it is in to open on, only when told to', () => {
+    const { cell, props, rerender } = renderCell({ isAutofocus: true });
+    expect(cell).toHaveAttribute('data-autofocus', 'true');
+    rerender(
+      <div role="grid">
+        <div role="row">
+          <Cell {...props} isAutofocus={false} />
+        </div>
+      </div>,
+    );
+    expect(cell).not.toHaveAttribute('data-autofocus');
+  });
+
   it('selects when focus reaches it some other way', () => {
     const { props, cell } = renderCell({ highlight: 'none' });
     fireEvent.focus(cell);

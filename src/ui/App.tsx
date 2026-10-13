@@ -22,6 +22,7 @@ import {
   CompletionDialog,
   ConfirmDialog,
   DailyDialog,
+  EnterDialog,
   FriendsDialog,
   HelpDialog,
   HistoryDialog,
@@ -81,7 +82,8 @@ function boardContent(sudoku: Sudoku): BoardContent {
     return {
       kind: 'ready',
       difficulty,
-      isShared: record?.source === 'shared',
+      // Not a puzzle the player typed in themselves (see `GameRecord.entered`).
+      isShared: record?.source === 'shared' && record.entered !== true,
       // Under the name the friend was given here, if any (see `challengerName`).
       challenge: challenge === null ? null : namedChallenge(sudoku.friendIndex, challenge),
       daily,
@@ -402,8 +404,10 @@ export function App({ options }: AppProps = {}) {
                   />
                 ) : (
                   <BoardOverlay
-                    // Keyed by kind: each card is a fresh arrival, and takes focus.
-                    key={content.kind}
+                    // Keyed by kind and game: each card is a fresh arrival, and
+                    // takes focus — another game's Start card too, in place of
+                    // one already showing (a puzzle entered while one waits).
+                    key={`${content.kind}-${sudoku.record?.id}`}
                     {...content}
                     onReleaseFocus={requestBoardFocus}
                     onClaimFocus={withdrawBoardFocus}
@@ -570,6 +574,16 @@ export function App({ options }: AppProps = {}) {
             onReplay={(date, difficulty) => {
               requestBoardFocus();
               actions.replayDaily(date, difficulty);
+            }}
+            onClose={actions.closeDialog}
+          />
+        )}
+        {dialog?.kind === 'enter' && (
+          <EnterDialog
+            settings={settings}
+            onPlay={(puzzle) => {
+              requestBoardFocus();
+              actions.playEntered(puzzle);
             }}
             onClose={actions.closeDialog}
           />

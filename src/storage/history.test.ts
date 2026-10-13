@@ -1293,6 +1293,63 @@ describe('puzzles beyond the techniques', () => {
   });
 });
 
+describe('puzzles typed in', () => {
+  /** A solved attempt at a puzzle the player typed in, as the history holds one. */
+  const entered = (id: string, createdAt: number, elapsedMs = 60_000): GameRecord =>
+    solved(id, createdAt, elapsedMs, { source: 'shared', entered: true });
+
+  it('keeps the flag only as true', () => {
+    const storage = memoryStorage();
+    seed(storage, [
+      entered('a', 1),
+      { ...entered('b', 2), entered: false },
+      { ...entered('c', 3), entered: 'yes' },
+    ]);
+    const byId = new Map(loadHistory(storage).map((record) => [record.id, record]));
+    expect(byId.get('a')?.entered).toBe(true);
+    for (const id of ['b', 'c']) expect(byId.get(id)).not.toHaveProperty('entered');
+    // The game itself is kept, as a game from a link.
+    expect(byId.get('b')?.source).toBe('shared');
+  });
+
+  it('comes through a save, an export and an import as it went in', () => {
+    const phone = memoryStorage();
+    upsertRecord(phone, entered('a', 1));
+    expect(loadHistory(phone)[0]).toEqual(entered('a', 1));
+    const laptop = memoryStorage();
+    importHistory(laptop, exportHistory(phone, 0));
+    expect(loadHistory(laptop)).toEqual([entered('a', 1)]);
+  });
+
+  it('survives a tab from before Enter a puzzle, which keeps it as a newer field', () => {
+    // What that tab knew of a record: everything but the flag.
+    const before = [
+      ...Object.keys(playing('x', 0)),
+      ...['daily', 'startedOn', 'mistakes', 'watched', 'beyond'],
+    ];
+    expect(newerFields(entered('a', 1), before)).toEqual({ entered: true });
+  });
+
+  it('keeps the flag on a record replaced by a newer copy that lost it', () => {
+    const phone = memoryStorage();
+    upsertRecord(phone, playing('g1', 1, { source: 'shared', entered: true }));
+    // Finished in a tab old enough to drop the fields it did not know.
+    const laptop = memoryStorage();
+    upsertRecord(laptop, solved('g1', 1, 60_000, { source: 'shared' }));
+    importHistory(phone, exportHistory(laptop, 0));
+    expect(loadHistory(phone)[0]).toMatchObject({ id: 'g1', status: 'solved', entered: true });
+  });
+
+  it('counts its games towards the bests, as a link’s count', () => {
+    expect(computeStats([entered('a', 1, 100_000)]).easy).toEqual({
+      played: 1,
+      solved: 1,
+      bestMs: 100_000,
+      averageMs: 100_000,
+    });
+  });
+});
+
 describe('exportHistory', () => {
   it('writes a versioned envelope with every record and every saved game', () => {
     const storage = memoryStorage();

@@ -31,8 +31,9 @@ export type BoardOverlayContent =
   | { kind: 'failed'; difficulty: Level; onRetry: () => void }
   /**
    * A game waiting for its Start button: a shared puzzle (`isShared`, with a
-   * time to beat if its link carried one), or one that arrived while the tab
-   * was hidden or was never started before a reload.
+   * time to beat if its link carried one), a puzzle entered by hand, or one
+   * that arrived while the tab was hidden or was never started before a
+   * reload.
    */
   | {
       kind: 'ready';

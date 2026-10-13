@@ -22,7 +22,14 @@ import {
   type UnitKind,
 } from '../core';
 import { describePosition, describeUnit } from './announce';
-import { DIFFICULTY_LABEL, TECHNIQUE_LABEL, capitalise, joinList, withArticle } from './format';
+import {
+  DIFFICULTY_LABEL,
+  NUMBER_WORD,
+  TECHNIQUE_LABEL,
+  capitalise,
+  joinList,
+  withArticle,
+} from './format';
 
 /*
  * The technique guide's words: what each technique the grader knows is
@@ -159,8 +166,6 @@ export function techniqueQuestion(technique: TechniqueId): string {
 }
 
 // ---- Wording ----------------------------------------------------------------
-
-const NUMBER_WORD = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
 
 /** A tier's name, read from the grader so the guide can never disagree with it. */
 function tierOf(technique: TechniqueId): string {

@@ -16,11 +16,12 @@ your browser.
   the same names; Expert goes further, into X-Wings, XY-Wings and chains of candidates,
   needed while much of the grid is still empty rather than as a last snag. Every puzzle is
   generated on the spot, has exactly one solution, and is graded by the hardest technique it
-  needs, so the label never lies. A puzzle from a link is graded the same way, and one that needs
-  more than every technique the grader knows is labelled **Beyond Expert** — a fifth label the
-  game never deals (New game, the dailies and the streaks stay with the four), for puzzles from
-  elsewhere, such as the hardest known. Hint still helps as far as the techniques reach; past
-  them it can only point at the cell with the fewest candidates, with no Show me.
+  needs, so the label never lies. A puzzle from a link, or one you [enter](#entering-a-puzzle), is
+  graded the same way, and one that needs more than every technique the grader knows is labelled
+  **Beyond Expert** — a fifth label the game never deals (New game, the dailies and the streaks stay
+  with the four), for puzzles from elsewhere, such as the hardest known. Hint still helps as far as
+  the techniques reach; past them it can only point at the cell with the fewest candidates, with no
+  Show me.
 - **A daily puzzle of each difficulty** — every day has an Easy, a Medium, a Hard and an Expert of
   its own, the same for everyone, so friends can compare times; a new day's arrive at each
   player's own midnight. New game offers **Today's puzzles**, each marked with how it stands, above
@@ -38,6 +39,12 @@ your browser.
   shows in the calendar all the same). A daily on show says so in the header ("Daily · Hard") and
   is marked current in New game; a solved one says what it did for the streak; sharing one names
   it.
+- **Enter a puzzle** — a puzzle from a newspaper or a book, typed in from New game's **Enter a
+  puzzle…** row by row (or tapped in on a phone), each clash dotted as it goes in and one line
+  saying what the numbers make so far — too few, more than one solution, none — until they make a
+  puzzle with exactly one solution, graded as any puzzle is: "One solution: a Hard puzzle." Play
+  puts it behind a Start card, to share as it is or to start when you are ready, and its time counts
+  as a new puzzle's (see [Entering a puzzle](#entering-a-puzzle)).
 - **Plays like the NYT game** — Normal and Candidate modes (<kbd>Space</kbd> to switch, or hold
   <kbd>Shift</kbd>/<kbd>Alt</kbd> to switch while held), the two-step erase, highlighting of the
   row, column, box and matching numbers, a red dot on every conflict, givens on grey, and clicking
@@ -50,9 +57,10 @@ your browser.
 - **A timer that keeps an honest time** — it runs off a monotonic clock rather than counting
   ticks, so neither a busy tab nor changing the computer's clock can stretch or shrink it. It
   pauses the moment you switch tabs or open a dialog, and a stopped clock **hides the board**
-  completely, so a paused game can't be studied. A puzzle that arrives while the tab is hidden
-  waits behind a **Start** card, as does one you never started. Progress is saved every few
-  seconds while the clock runs, and a reload reopens your game paused, where you left off.
+  completely, so a paused game can't be studied. A puzzle that arrives while the tab is hidden waits
+  behind a **Start** card, as do one you never started and one you [enter](#entering-a-puzzle)
+  yourself. Progress is saved every few seconds while the clock runs, and a reload reopens your game
+  paused, where you left off.
 - **Race your friends** — share a link to any puzzle. Once you have solved it, the link carries
   your time too, with your help and your [mistakes](#mistakes): your friend sees "Dan solved this
   Hard puzzle in 5:23. Can you beat it?" over "Dan's solve: no mistakes · with 2 hints.", starts
@@ -285,15 +293,16 @@ Each new puzzle is generated in a Web Worker, in a fraction of a second:
    21–28 givens, like NYT's Medium and Hard. NYT puzzles are not symmetric, and neither are these.
 2. Solve it the way a person would, always applying the easiest technique that makes progress,
    and grade it by the hardest technique the solve needed. These are the labels the grader
-   (`rate`) gives any puzzle, a link's included; step 3 says how the generator's own differ:
+   (`rate`) gives any puzzle, a link's and one [entered](#entering-a-puzzle) included; step 3 says
+   how the generator's own differ:
 
-   | Label         | Hardest technique needed                                                                              |
-   | ------------- | ----------------------------------------------------------------------------------------------------- |
-   | Easy          | Full houses and hidden singles in a box                                                               |
-   | Medium        | Hidden singles in a row or column, naked singles, pointing pairs or box/line reductions               |
-   | Hard          | Naked or hidden pairs and triples                                                                     |
-   | Expert        | X-Wing, Swordfish, XY-, XYZ- or W-Wing, Skyscraper, 2-String Kite, XY-Chain or alternating chain      |
-   | Beyond Expert | More than all of them: the solve stalls before the grid is full. Never dealt — only a link brings one |
+   | Label         | Hardest technique needed                                                                                                    |
+   | ------------- | --------------------------------------------------------------------------------------------------------------------------- |
+   | Easy          | Full houses and hidden singles in a box                                                                                     |
+   | Medium        | Hidden singles in a row or column, naked singles, pointing pairs or box/line reductions                                     |
+   | Hard          | Naked or hidden pairs and triples                                                                                           |
+   | Expert        | X-Wing, Swordfish, XY-, XYZ- or W-Wing, Skyscraper, 2-String Kite, XY-Chain or alternating chain                            |
+   | Beyond Expert | More than all of them: the solve stalls before the grid is full. Never dealt — only a link or a puzzle you enter brings one |
 
 3. Keep it if it is the tier you asked for; otherwise try again. The generator holds its own
    puzzles to more than their label: an Easy is padded to 38 givens, a Medium must need its
@@ -308,6 +317,61 @@ The tiers were calibrated against hundreds of published NYT puzzles: Easy needs 
 singles, every Medium needs locked candidates, and Hard needs pairs and triples but never a fish
 or a wing. Each tier rarely takes more than a hundred attempts — well under a second — and while
 you play, the next puzzle of the same tier is already being prepared, so "New game" is instant.
+
+## Entering a puzzle
+
+**Enter a puzzle…**, the last item under Random puzzle in New game, opens an empty grid for a
+puzzle from elsewhere — a newspaper's, a book's — to be typed in and then played like any other.
+The keys are a typist's, for copying a puzzle out row by row: a number fills the selected cell and
+moves on, from the end of a row to the start of the next, stopping at the last cell;
+<kbd>Space</kbd>, <kbd>0</kbd> or a dot leaves a cell blank and moves on past it;
+<kbd>Backspace</kbd> erases the cell's number or, on an empty cell, steps back and erases the one
+before, as a text caret does; <kbd>Delete</kbd> erases where it is; and the arrow keys move,
+stopping at the edges. A number is read by its key's place, as on the board, so Shift, Alt, the
+numpad and an AZERTY keyboard all type it, and a number or a blank held down goes in once; every
+Ctrl or Cmd chord is left to the browser. On a phone, tap a cell, then a number on the pad (or
+Erase): it goes in where you tapped, moving nothing, so a correction lands in the same cell. Every
+number typed in is set as a given — it will be one — and the selected cell's row, column and box
+are tinted as Settings has the board's.
+
+As the numbers go in, the grid dots every clash, whatever the board's setting, and one line says
+what they make so far: the first of these that holds, its words the same for as long as it does,
+so a screen reader speaks only as it changes, never at every number.
+
+| The numbers so far                                                                               | The line                                                        |
+| ------------------------------------------------------------------------------------------------ | --------------------------------------------------------------- |
+| None                                                                                             | "Type in the numbers from your puzzle."                         |
+| A number twice in a row, column or box, however few there are: the first such row, column or box | "Two 5s in row 3.", "Three 5s in column 7.", "Two 5s in box 9." |
+| Fewer than 17, the fewest any puzzle with one solution has                                       | "A puzzle needs at least 17 numbers."                           |
+| Every cell filled                                                                                | "Every cell is filled: nothing to solve."                       |
+| More than one solution                                                                           | "More than one solution so far."                                |
+| No solution, though nothing clashes                                                              | "No solution: a number must be wrong."                          |
+| A search deeper than the check allows (see `checkGivens`)                                        | "Too complex to check."                                         |
+| Exactly one solution                                                                             | "One solution: a Hard puzzle."                                  |
+
+**Play** waits for the last: until then it is marked unavailable — not disabled, so it keeps focus
+and, focused, says why. The puzzle is checked and graded exactly as a link's is, by the same
+`puzzleFromGivens`, so a friend who opens your link sees the label you saw; and it is named by its
+tier alone — Easy to Expert, or Beyond Expert for one that needs more than every technique the
+grader knows (see [How puzzles are made](#how-puzzles-are-made)). No check can tell a mistyped
+number from the paper's: one wrong number that clashes with nothing can still make a puzzle with
+one solution, just another one (about one time in eighteen, in a trial on minimal puzzles). So a
+line beside Play says "Check every number against your copy."
+
+Play opens it as the game on screen, behind its Start card — "Your Hard puzzle is ready." — and
+sets the game you were playing aside, as New game does: kept to resume, or dropped if you had only
+glanced at it. Typing a puzzle in is not seeing it: it is seen once Start shows the board, and its
+time counts as a new puzzle's, towards best and average times, and to share and race. That is the
+one exception to the [rule](#racing-friends) that a puzzle you know never sets a best — you have
+seen its givens, typing them, but not the puzzle solved. A puzzle you have seen before here still
+starts as a replay; one you have an unfinished game of carries on with it, and one you have solved
+says so and offers to play it again, as its link would. To send it to a friend, press **Share** in
+the header (in the ☰ menu on a phone) while it waits behind its Start card: that shares the puzzle
+alone, a link with only `?p=`. Once you have solved it, Share sends your time with it, as for any
+puzzle.
+
+What you type is the editor's alone: closing it — Escape, the close button or a tap outside —
+forgets it, and none of it is ever stored.
 
 ## How the daily puzzles are made
 
@@ -822,7 +886,7 @@ the game — there is no server and nothing is uploaded.
 
 | Parameter      | Meaning                                                                                                                                                     |
 | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `?p=<code>`    | The puzzle: its givens packed into ~26–34 URL-safe characters.                                                                                              |
+| `?p=<code>`    | The puzzle: its givens packed into at most 57 URL-safe characters, about 26–34 for the game's own puzzles.                                                  |
 | `&t=<secs>`    | The sharer's time in whole seconds — the time to beat.                                                                                                      |
 | `&n=<name>`    | The sharer's name (optional; past 24 characters it is cut short with an ellipsis); shown until the friend names you (see [Friends](#friends)).              |
 | `&u=<id>`      | The sharer's player ID: 10 random letters and digits, made once per browser the first time it shares a time. Only with `t=`. Versions before it ignore it.  |
@@ -882,7 +946,9 @@ start it on that date. A date that does not match, or has no daily yet, is simpl
 Times are on the honour system: the link says what time you claim, and nothing can verify it. It
 is a game between friends. What the game does do is keep its own records honest — a reset clears
 the board but not the clock, a game with revealed cells never sets a best time, and neither does
-playing a puzzle again once you know it, even after deleting the game you saw it in. A replay's
+playing a puzzle again once you know it, even after deleting the game you saw it in. The one
+exception is a puzzle you [enter](#entering-a-puzzle) yourself: you have seen its givens, typing
+them, but not the puzzle solved, so its first game here counts as a new puzzle's would. A replay's
 time is never offered as one to beat, either: sharing it shares the puzzle alone.
 
 ## Friends
@@ -1013,9 +1079,14 @@ those 200 characters, as most are, is dropped by it.) A Beyond Expert game is st
 one with a `beyond: true` flag beside it, and its saved board as an Expert board, so a tab from
 before the label reads both, keeps the flag and shows the game as an Expert until it is reloaded. A
 game of such a puzzle recorded before the label existed has no flag: it keeps the Expert label it
-was recorded with, and Play again from it begins another Expert game. A tab from before the friends
-list never touches `sudoku.friends`, so the names given there survive it too, though it shows each
-race under its link's name until it is reloaded.
+was recorded with, and Play again from it begins another Expert game. A game of a puzzle you
+[entered](#entering-a-puzzle) is stored as one from a link is (`source: 'shared'`, or `'replay'`
+for a puzzle seen before) with an `entered: true` flag beside it, so a tab from before Enter a
+puzzle keeps the game, counts it as a link's game and keeps the flag; its Ready card there says
+"Someone shared a Hard puzzle with you." until it is reloaded. What you type into Enter a puzzle
+is never stored: closing it forgets it. A tab from before the friends list never touches
+`sudoku.friends`, so the names given there survive it too, though it shows each race under its
+link's name until it is reloaded.
 
 Some browsers clear a site's storage after a while away (Safari does after seven days without a
 visit, unless the game has been added to the home screen). Use **Export** in History to keep a
@@ -1107,7 +1178,21 @@ of the logs here were shed, none of the file's logs are taken.
   its Ready card, in the header, in what Share sends and in History, and a game of one begun from
   History is announced as one, and its solve counted in its own stats, never a new best for beating
   an Expert's time; and the header's breakpoints for the longer label are pinned in the stylesheet's
-  tests. Coverage thresholds are enforced in CI, with the engine held to 100%.
+  tests. A puzzle typed in is held to every line its editor says, in their order — a clash named
+  however few numbers there are, the first row, column or box to have one, with its number and how
+  many; too few; a full grid; more than one solution, none, and too complex on the search's own
+  budget — and graded as its link would be, by the same `puzzleFromGivens`, Beyond Expert
+  included; the editor to every key (a number filling and moving on, on to the next row and no
+  further than the last cell, by its key's place with Shift or Alt held and on the numpad; a blank
+  from Space, 0 or a dot; Backspace on a number and on an empty cell; Delete; the arrows at the
+  edges; a number or a blank held down going in once; every Ctrl and Cmd chord let through), the
+  pad filling in place, its line keeping its words while the same thing holds, and Play unavailable,
+  saying why, until there is one solution; through the main hook, Play puts a new puzzle behind
+  Start as the player's own, unseen until its board shows and its time counted as a new puzzle's,
+  setting the game behind aside — dropped if only glimpsed, a puzzle on its way cancelled — and
+  resumes an unfinished attempt or offers a solved puzzle again instead; and its record keeps
+  `entered` only as `true`, through a save, an export, an import and a tab from before it.
+  Coverage thresholds are enforced in CI, with the engine held to 100%.
 - **End-to-end** (`e2e/`, Playwright): full journeys against the built app — playing and solving,
   pausing and reloading, share links between two browsers (a solve with a mistake shared, opened in
   the other and compared row by row, and a link to a puzzle the techniques cannot finish named
@@ -1133,6 +1218,9 @@ of the logs here were shed, none of the file's logs are taken.
   two devices taken for one friend at the prompt, split off and merged again in Friends — every
   race in History following, through a reload — and a name given carried by History's export to
   another browser, naming the race it imports and asking nothing of the sender's next link there),
+  a puzzle typed into Enter a puzzle (a Hard played from its Start card as the Hard it is, shared
+  from there as the puzzle alone and opened in another browser on the same board, and a clash and
+  more than one solution named, with Play unavailable),
   watching a solve with a mistake played back from the Solved dialog and from History (stepped,
   scrubbed and played at 8× on Playwright's clock, its mistake marked and captioned, focus back on
   Watch as it closes, and fitting a 320px phone and a phone on its side) and the phone layout from
@@ -1147,16 +1235,23 @@ of the logs here were shed, none of the file's logs are taken.
   large as with the setting off; help taken alone above a 375×667 phone's controls, and on a
   320×568 phone beside a hint that keeps to two lines; Friends and _Who sent this?_ upright and on
   their sides, a long right-to-left name kept inside Friends' rows, a merged friend's devices and
-  the prompt's hint, every control 44px — the friend pickers and a merge's buttons among them — and History's foot giving Friends a row of its own at 320px; and a desktop's header with a daily Medium and help at its widest). Help taken stays on show through a pause, its count the only one the
+  the prompt's hint, every control 44px — the friend pickers and a merge's buttons among them — and
+  History's foot giving Friends a row of its own at 320px; Enter a puzzle at 320×568, 568×320,
+  667×375 and 844×390 with nothing to scroll, every button 44px and every cell at least 24px — 22px
+  on the shortest phone on its side — and a tapped number landing in the cell tapped; and a
+  desktop's header with a daily Medium and help at its widest). Help taken stays on show through a
+  pause, its count the only one the
   hidden board leaves beside the timer's. An accessibility pass (`a11y.spec.ts`) runs axe-core's WCAG 2.2 A and AA rules over the main states — the board with
   every kind of mark, the error counter and help taken in both their places, the Ready and Paused
   cards, the menus (the "…" menu's "Hint (1 used)" among them),
   every dialog (Show me's, the daily calendar's, a solve played back, the warning before watching
   a friend's solve, two solves compared, Share with the solve included, History with Friends at
   its foot, Friends with a merged friend's devices, a name being changed and two friends being
-  merged, and _Who sent this?_ with friends to choose from among them), each guide entry and a
-  step hint's tinted houses — in both themes, and the board (its tint included), the dialogs, the
-  menus and the calendar in High contrast, both chosen in
+  merged, _Who sent this?_ with friends to choose from, and Enter a puzzle at each step on the way
+  to a puzzle — empty, a clash, too few numbers, more than one solution and a Hard — upright and on
+  its side on the phones, among them), each guide entry and a step hint's tinted houses — in both
+  themes, and the board (its tint included), the dialogs (Enter a puzzle among them), the menus and
+  the calendar in High contrast, both chosen in
   Settings on a dark device and from a dark system asking for more contrast, measuring its heavier
   lines and its same-number ring kept off the digits — and allows no violations. Three projects:
 
@@ -1187,24 +1282,25 @@ no change is needed — the base is derived from the repository name at build ti
 
 ## Controls
 
-| Action                         | Keyboard                                                                                           | Mouse / Touch                        |
-| ------------------------------ | -------------------------------------------------------------------------------------------------- | ------------------------------------ |
-| Select a cell                  | <kbd>Tab</kbd> to the board                                                                        | Click or tap it                      |
-| Move the selection             | Arrow keys                                                                                         | Tap another cell                     |
-| Enter a number                 | <kbd>1</kbd>–<kbd>9</kbd>                                                                          | Number pad                           |
-| Erase                          | <kbd>Backspace</kbd> / <kbd>Delete</kbd>                                                           | Erase button                         |
-| Switch Normal / Candidate      | <kbd>Space</kbd>                                                                                   | Mode buttons                         |
-| Switch while held              | Hold <kbd>Shift</kbd> or <kbd>Alt</kbd>                                                            | —                                    |
-| Toggle one candidate           | —                                                                                                  | Click its spot in the selected cell  |
-| Undo                           | <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Z</kbd>                                                          | Undo button                          |
-| Redo                           | <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd>, <kbd>Ctrl</kbd>+<kbd>Y</kbd>           | Redo button                          |
-| Pause or resume                | <kbd>P</kbd>                                                                                       | The timer                            |
-| Hint, check, reveal, reset     | —                                                                                                  | The "…" menu                         |
-| Show me how to solve a cell    | —                                                                                                  | Show me, after a hint                |
-| New game, or today's puzzles   | —                                                                                                  | The + button                         |
-| Daily calendar and streaks     | Arrow keys, Home/End, Page Up/Page Down in the month                                               | The calendar in the header, or +     |
-| History, share, settings, help | —                                                                                                  | The header (on a phone, the ☰ menu) |
-| Friends                        | —                                                                                                  | Friends, at the foot of History      |
-| Solving techniques             | —                                                                                                  | The header, or a hint's question     |
-| Watch your solve               | <kbd>Space</kbd>, <kbd>←</kbd>/<kbd>→</kbd>, <kbd>Home</kbd>/<kbd>End</kbd>                        | Watch your solve, or History's Watch |
-| Compare solves                 | <kbd>←</kbd>/<kbd>→</kbd>, <kbd>Page Up</kbd>/<kbd>Page Down</kbd>, <kbd>Home</kbd>/<kbd>End</kbd> | Tap or drag along the chart          |
+| Action                         | Keyboard                                                                                                                   | Mouse / Touch                                            |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| Select a cell                  | <kbd>Tab</kbd> to the board                                                                                                | Click or tap it                                          |
+| Move the selection             | Arrow keys                                                                                                                 | Tap another cell                                         |
+| Enter a number                 | <kbd>1</kbd>–<kbd>9</kbd>                                                                                                  | Number pad                                               |
+| Erase                          | <kbd>Backspace</kbd> / <kbd>Delete</kbd>                                                                                   | Erase button                                             |
+| Switch Normal / Candidate      | <kbd>Space</kbd>                                                                                                           | Mode buttons                                             |
+| Switch while held              | Hold <kbd>Shift</kbd> or <kbd>Alt</kbd>                                                                                    | —                                                        |
+| Toggle one candidate           | —                                                                                                                          | Click its spot in the selected cell                      |
+| Undo                           | <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Z</kbd>                                                                                  | Undo button                                              |
+| Redo                           | <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd>, <kbd>Ctrl</kbd>+<kbd>Y</kbd>                                   | Redo button                                              |
+| Pause or resume                | <kbd>P</kbd>                                                                                                               | The timer                                                |
+| Hint, check, reveal, reset     | —                                                                                                                          | The "…" menu                                             |
+| Show me how to solve a cell    | —                                                                                                                          | Show me, after a hint                                    |
+| New game, or today's puzzles   | —                                                                                                                          | The + button                                             |
+| Daily calendar and streaks     | Arrow keys, Home/End, Page Up/Page Down in the month                                                                       | The calendar in the header, or +                         |
+| Enter a puzzle                 | <kbd>1</kbd>–<kbd>9</kbd> fill and move on, <kbd>Space</kbd> or <kbd>0</kbd> leave a blank, <kbd>Backspace</kbd> goes back | New game › Enter a puzzle…, then tap a cell and a number |
+| History, share, settings, help | —                                                                                                                          | The header (on a phone, the ☰ menu)                     |
+| Friends                        | —                                                                                                                          | Friends, at the foot of History                          |
+| Solving techniques             | —                                                                                                                          | The header, or a hint's question                         |
+| Watch your solve               | <kbd>Space</kbd>, <kbd>←</kbd>/<kbd>→</kbd>, <kbd>Home</kbd>/<kbd>End</kbd>                                                | Watch your solve, or History's Watch                     |
+| Compare solves                 | <kbd>←</kbd>/<kbd>→</kbd>, <kbd>Page Up</kbd>/<kbd>Page Down</kbd>, <kbd>Home</kbd>/<kbd>End</kbd>                         | Tap or drag along the chart                              |

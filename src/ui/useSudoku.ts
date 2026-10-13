@@ -371,11 +371,18 @@ export type DialogState =
    * puzzle again, waits behind it (see `closeDialog`).
    */
   | { kind: 'whoSent'; sharer: LinkSharer; offer: ChallengeOffer | null }
+  /**
+   * Enter a puzzle: one from elsewhere — the paper — typed in to play (see
+   * `playEntered`). What has been typed is the dialog's own, and goes as it
+   * closes.
+   */
+  | { kind: 'enter' }
   | PlaybackView
   | CompareView;
 
-/** The dialogs the header opens. */
-export type HeaderDialog = 'daily' | 'history' | 'settings' | 'techniques' | 'help' | 'share';
+/** The dialogs the header opens — Enter a puzzle from its New game menu. */
+export type HeaderDialog =
+  'daily' | 'history' | 'settings' | 'techniques' | 'help' | 'share' | 'enter';
 
 /** What the History dialog lists, read from storage when it opens. */
 export interface HistoryView {
@@ -453,8 +460,21 @@ export interface SudokuActions {
   closeDialog: () => void;
   /** From the completion dialog: share the time just set. */
   shareResult: () => void;
-  /** From the challenge dialog: a fresh attempt at the linked puzzle (or the unfinished one, if there is one). */
+  /**
+   * From the challenge dialog: a fresh attempt at the puzzle it offers — a
+   * link's, a solved daily's or one entered by hand — or the unfinished one,
+   * if there is one.
+   */
   playAgain: () => void;
+  /**
+   * From Enter a puzzle: play the puzzle typed in, checked and graded as its
+   * link would be (see `assessGivens`) — the unfinished attempt at it if
+   * there is one, resumed; else, if it has been solved, the offer to play it
+   * again; else a new attempt, waiting behind its Start card. Typing it in
+   * is not seeing it: the puzzle is seen once Start shows its board, so the
+   * new attempt's time counts, as a link's does.
+   */
+  playEntered: (puzzle: Puzzle) => void;
   resumeRecord: (id: string) => void;
   /** Play a history entry's puzzle again: the unfinished attempt at it if there is one, else a fresh one. */
   replayRecord: (id: string) => void;
@@ -2225,6 +2245,40 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     playAgain: () => {
       if (dialog?.kind !== 'challenge') return;
       startPuzzle(dialog.offer.puzzle, dialog.offer.challenge, dialog.offer.daily);
+    },
+    playEntered: (puzzle) => {
+      const t = at();
+      const records = loadHistory(storage);
+      // A puzzle has at most one unfinished attempt: that one, reopened and
+      // resumed, as Play again does.
+      if (unfinishedAttempt(records, puzzle.givens, t.wall) !== null) {
+        startPuzzle(puzzle, null);
+        return;
+      }
+      // Solved already: say so, and offer it again, the game behind left as
+      // the editor left it — to resume, if it was playing, as the offer closes.
+      const previous = previousSolve(findAttempts(records, puzzle.givens));
+      if (previous !== undefined) {
+        setDialog({ kind: 'challenge', offer: { puzzle, previous, challenge: null } });
+        return;
+      }
+      // Otherwise it waits behind Start as the player's own, a replay only if
+      // they have seen it, and is not seen until its board shows.
+      setAside(t);
+      adopt(
+        newSession(puzzle, {
+          source: attemptSource(storage, records, puzzle.givens, 'shared'),
+          challenge: null,
+          now: t,
+          autoCandidates: settings.startInAutoCandidate,
+          checkGuesses: settings.checkGuesses,
+          isWatched: hasWatched(storage, puzzle.givens),
+          isEntered: true,
+          start: 'ready',
+        }),
+        t,
+        `Your ${DIFFICULTY_LABEL[puzzle.difficulty]} puzzle is ready.`,
+      );
     },
 
     resumeRecord: (id) => {

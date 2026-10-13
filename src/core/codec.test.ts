@@ -2,7 +2,12 @@ import { checkGivens, decodeGivens, encodeGivens, looksLikeShareCode } from './c
 import { findConflicts, formatGrid, gridValues, isGridString, parseGrid } from './grid';
 import { mulberry32, shuffle, type RandomFn } from './rng';
 import { countSolutions, solve } from './solver';
-import { EMPTY_GRID, WIKIPEDIA_PUZZLE, WIKIPEDIA_SOLUTION } from '../test/grids';
+import {
+  EMPTY_GRID,
+  THREE_DIGITS_TWO_CELLS,
+  WIKIPEDIA_PUZZLE,
+  WIKIPEDIA_SOLUTION,
+} from '../test/grids';
 
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
 
@@ -58,23 +63,8 @@ const EASTER_MONSTER = formatGrid(
 // backtracking only finds out after searching the rest of the grid (6.6 s,
 // from a share link, before checks propagated).
 const NO_ROOM_FOR_A_ONE = 'r0zIeMaUoSBClCQIIEgAg';
-// Here 1, 2 and 3 can only go in r0c0 and r0c1 of the top-left box: three
-// digits, two cells. Singles alone never see that, so the search must branch
-// until it trips over it — deeper than the budget allows.
-const THREE_DIGITS_TWO_CELLS = formatGrid(
-  parseGrid(`
-    ... ... ...
-    ... 12. 3..
-    ... ..3 .12
-    4.1 .9. ...
-    ..2 ... .3.
-    ... ... 6..
-    ..3 .7. ...
-    .97 5.. ...
-    ... ... ...
-  `),
-);
-// The same trap, sprung within a few dozen nodes.
+// The trap of `THREE_DIGITS_TWO_CELLS` (three digits with two cells to go
+// in), sprung within a few dozen nodes.
 const THREE_DIGITS_TWO_CELLS_SHALLOW = formatGrid(
   parseGrid(`
     ... ... 7..
@@ -339,7 +329,10 @@ describe('checkGivens', () => {
   });
 
   it('gives up on a grid built to need a deep search, rather than searching for minutes', () => {
-    expect(checkGivens(THREE_DIGITS_TWO_CELLS)).toEqual({ ok: false, problem: 'too-complex' });
+    expect(checkGivens(formatGrid(parseGrid(THREE_DIGITS_TWO_CELLS)))).toEqual({
+      ok: false,
+      problem: 'too-complex',
+    });
   });
 
   it('searches as far as its budget allows', () => {

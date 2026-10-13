@@ -10,6 +10,7 @@ import {
   dealtTier,
   digitsOf,
   preparePlayback,
+  puzzleFromGivens,
   reduce,
   valuesOf,
   serialiseGame,
@@ -41,6 +42,7 @@ import { loadPreferences, setLastDifficulty } from '../storage/prefs';
 import { memoryStorage, type StorageLike } from '../storage/storage';
 import {
   BEYOND_THE_SET,
+  HARDEST,
   STUCK_ON_AN_XY_CHAIN,
   STUCK_ON_A_HIDDEN_PAIR,
 } from '../test/logic-fixtures';
@@ -421,6 +423,252 @@ describe('useSudoku', () => {
         act(() => result.current.actions.closeDialog());
         expect(result.current.phase).toBe('playing');
         expect(result.current.record?.givens).toBe(other.givens);
+      });
+    });
+  });
+
+  describe('entering a puzzle', () => {
+    /** A puzzle as Enter a puzzle hands it over: checked, and graded as its link would be. */
+    function typedIn(givens: string): Puzzle {
+      const checked = puzzleFromGivens(givens);
+      if (!checked.ok) throw new Error(`Not a puzzle: ${checked.problem}`);
+      return checked.puzzle;
+    }
+
+    const HARD = typedIn(HARDEST.nakedPair.givens);
+
+    /** The first game on screen, with Enter a puzzle open over it. */
+    async function editing(options: SetupOptions = {}) {
+      const view = await started(options);
+      act(() => view.result.current.actions.openDialog('enter'));
+      return view;
+    }
+
+    it('opens over the game, pausing it silently, and resumes it as it closes', async () => {
+      const { result } = await started();
+      const said = result.current.announcement;
+      act(() => result.current.actions.openDialog('enter'));
+      expect(result.current.dialog).toEqual({ kind: 'enter' });
+      expect(result.current.pauseReason).toBe('dialog');
+      expect(result.current.announcement).toBe(said);
+      advance(30_000);
+      act(() => result.current.actions.closeDialog());
+      expect(result.current.phase).toBe('playing');
+      expect(result.current.elapsedMs).toBe(0);
+    });
+
+    it('puts a new puzzle behind its Start card as the player’s own, its clock stopped', async () => {
+      const { result, storage } = await editing();
+      act(() => result.current.actions.playEntered(HARD));
+      expect(result.current.dialog).toBeNull();
+      expect(result.current.phase).toBe('ready');
+      expect(result.current.difficulty).toBe('hard');
+      // From outside the game, as a link's puzzle is, but typed in here.
+      expect(result.current.record).toMatchObject({
+        givens: HARD.givens,
+        source: 'shared',
+        entered: true,
+        challenge: null,
+      });
+      expect(result.current.announcement?.text).toBe('Your Hard puzzle is ready.');
+      expect(loadCurrentId(storage)).toBe(result.current.record?.id);
+      advance(10_000);
+      expect(result.current.elapsedMs).toBe(0);
+      act(() => result.current.actions.resume());
+      expect(result.current.phase).toBe('playing');
+      expect(result.current.announcement?.text).toBe('Started.');
+      advance(2000);
+      expect(result.current.elapsedMs).toBe(2000);
+    });
+
+    it('marks the puzzle seen once Start shows its board, not as it was typed in, and once', async () => {
+      const { result, storage } = await editing();
+      act(() => result.current.actions.playEntered(HARD));
+      expect(hasSeen(storage, [], HARD.givens)).toBe(false);
+      const writes = vi.spyOn(storage, 'setItem');
+      act(() => result.current.actions.resume());
+      expect(hasSeen(storage, [], HARD.givens)).toBe(true);
+      act(() => result.current.actions.pause());
+      act(() => result.current.actions.resume());
+      advance(CLOCK_SAVE_MS);
+      expect(writes.mock.calls.filter(([key]) => key === 'sudoku.seen')).toHaveLength(1);
+    });
+
+    it('discards the game behind if it was only glimpsed, keeping it seen', async () => {
+      const { result, storage } = await editing();
+      const glimpsed = result.current.record!.id;
+      act(() => result.current.actions.playEntered(HARD));
+      expect(loadHistory(storage).map((record) => record.id)).toEqual([result.current.record!.id]);
+      expect(loadGameBlob(storage, glimpsed)).toBeNull();
+      expect(hasSeen(storage, [], PUZZLE.givens)).toBe(true);
+    });
+
+    it('sets the game behind aside, its clock stopped where the editor stopped it', async () => {
+      const { result, storage } = await started();
+      enter(result, FIRST_EMPTY, answerAt(FIRST_EMPTY));
+      const played = result.current.record!.id;
+      advance(2000);
+      act(() => result.current.actions.openDialog('enter'));
+      advance(5000);
+      act(() => result.current.actions.playEntered(HARD));
+      expect(result.current.record?.givens).toBe(HARD.givens);
+      const left = loadHistory(storage).find((record) => record.id === played);
+      expect(left).toMatchObject({ status: 'playing', elapsedMs: 2000 });
+      expect(loadGameBlob(storage, played)).not.toBeNull();
+    });
+
+    it('cancels a puzzle on its way, keeping the game New game left', async () => {
+      let calls = 0;
+      let deliver: (puzzle: Puzzle) => void = () => {};
+      const working = fakeSource();
+      const source: PuzzleSource = {
+        next: (difficulty) =>
+          ++calls === 1
+            ? working.next(difficulty)
+            : new Promise((resolve) => {
+                deliver = resolve;
+              }),
+        prefetch: () => {},
+        dispose: () => {},
+      };
+      const { result, storage } = await started({ source });
+      enter(result, FIRST_EMPTY, answerAt(FIRST_EMPTY));
+      const played = result.current.record!.id;
+      act(() => result.current.actions.newGame('hard'));
+      expect(result.current.phase).toBe('loading');
+      act(() => result.current.actions.openDialog('enter'));
+      act(() => result.current.actions.playEntered(HARD));
+      expect(result.current.phase).toBe('ready');
+      // The puzzle asked for comes too late to be wanted.
+      deliver({ ...nearlySolved([1, 2, 3]), difficulty: 'hard' });
+      await settle();
+      expect(result.current.record?.givens).toBe(HARD.givens);
+      expect(result.current.phase).toBe('ready');
+      expect(loadHistory(storage).map((record) => record.id)).toContain(played);
+    });
+
+    it('discards a puzzle that arrived behind the editor, never seen', async () => {
+      const second = nearlySolved([1, 2, 3]);
+      const { result, storage } = await started({ source: fakeSource(PUZZLE, second) });
+      act(() => result.current.actions.newGame('easy'));
+      act(() => result.current.actions.openDialog('enter'));
+      await settle();
+      expect(result.current.record?.givens).toBe(second.givens);
+      expect(result.current.pauseReason).toBe('dialog');
+      act(() => result.current.actions.playEntered(HARD));
+      expect(result.current.record?.givens).toBe(HARD.givens);
+      expect(loadHistory(storage).some((record) => record.givens === second.givens)).toBe(false);
+      expect(hasSeen(storage, [], second.givens)).toBe(false);
+    });
+
+    it('resumes the unfinished attempt on screen behind the editor, rather than start another', async () => {
+      const { result, storage } = await started();
+      enter(result, FIRST_EMPTY, answerAt(FIRST_EMPTY));
+      const id = result.current.record!.id;
+      act(() => result.current.actions.openDialog('enter'));
+      act(() => result.current.actions.playEntered(typedIn(PUZZLE.givens)));
+      expect(result.current.dialog).toBeNull();
+      expect(result.current.phase).toBe('playing');
+      expect(result.current.record?.id).toBe(id);
+      expect(result.current.game?.cells[FIRST_EMPTY].value).toBe(answerAt(FIRST_EMPTY));
+      expect(result.current.announcement?.text).toBe('Resumed Easy puzzle.');
+      expect(loadHistory(storage)).toHaveLength(1);
+    });
+
+    it('resumes an unfinished attempt from History, setting the game on screen aside', async () => {
+      const first = nearlySolved([30, 31, 32]);
+      const { result, storage } = await started({ source: fakeSource(first, PUZZLE) });
+      enter(result, 30, answerAt(30));
+      const id = result.current.record!.id;
+      act(() => result.current.actions.newGame('easy'));
+      await settle();
+      expect(result.current.record?.givens).toBe(PUZZLE.givens);
+      act(() => result.current.actions.openDialog('enter'));
+      act(() => result.current.actions.playEntered(typedIn(first.givens)));
+      expect(result.current.phase).toBe('playing');
+      expect(result.current.record?.id).toBe(id);
+      expect(result.current.game?.cells[30].value).toBe(answerAt(30));
+      expect(result.current.announcement?.text).toBe('Resumed Easy puzzle.');
+      // The glimpsed game it replaced goes, as for any game that takes its place.
+      expect(loadHistory(storage).map((record) => record.id)).toEqual([id]);
+    });
+
+    describe('for a puzzle already solved', () => {
+      const near = nearlySolved([0, 10, 20]);
+
+      async function solvedThenEntered() {
+        const storage = memoryStorage();
+        upsertRecord(storage, solvedRecord(near, 290_000));
+        const view = await editing({ storage });
+        act(() => view.result.current.actions.playEntered(typedIn(near.givens)));
+        return view;
+      }
+
+      it('offers it again, the game behind still held', async () => {
+        const { result } = await solvedThenEntered();
+        expect(result.current.dialog).toMatchObject({
+          kind: 'challenge',
+          offer: { puzzle: { givens: near.givens }, previous: { id: 'old-0001' }, challenge: null },
+        });
+        expect(result.current.record?.givens).toBe(PUZZLE.givens);
+        expect(result.current.pauseReason).toBe('dialog');
+      });
+
+      it('resumes the game behind when the offer is turned down', async () => {
+        const { result } = await solvedThenEntered();
+        act(() => result.current.actions.closeDialog());
+        expect(result.current.phase).toBe('playing');
+        expect(result.current.record?.givens).toBe(PUZZLE.givens);
+      });
+
+      it('plays it again as a replay', async () => {
+        const { result } = await solvedThenEntered();
+        act(() => result.current.actions.playAgain());
+        expect(result.current.dialog).toBeNull();
+        expect(result.current.phase).toBe('playing');
+        expect(result.current.record).toMatchObject({ givens: near.givens, source: 'replay' });
+      });
+    });
+
+    it('starts a puzzle seen before as a replay, still the player’s own', async () => {
+      const seen = nearlySolved([0, 10, 20]);
+      const { result } = await started({ source: fakeSource(seen, PUZZLE) });
+      // Glimpsed, then left for another: discarded, but seen.
+      act(() => result.current.actions.newGame('easy'));
+      await settle();
+      act(() => result.current.actions.openDialog('enter'));
+      act(() => result.current.actions.playEntered(typedIn(seen.givens)));
+      expect(result.current.phase).toBe('ready');
+      expect(result.current.record).toMatchObject({
+        givens: seen.givens,
+        source: 'replay',
+        entered: true,
+      });
+    });
+
+    it('counts its time as a fresh puzzle’s, to set a best and to share', async () => {
+      const storage = memoryStorage();
+      upsertRecord(storage, solvedRecord(another(PUZZLE), 600_000));
+      const near = typedIn(nearlySolved([0, 10, 20]).givens);
+      const { result } = await editing({ storage });
+      act(() => result.current.actions.playEntered(near));
+      act(() => result.current.actions.resume());
+      advance(5000);
+      for (const index of [0, 10, 20]) enter(result, index, answerAt(index));
+      advance(COMPLETION_DELAY_MS);
+      expect(result.current.dialog).toMatchObject({
+        kind: 'completion',
+        result: {
+          difficulty: 'easy',
+          isReplay: false,
+          isNewBest: true,
+          stats: { played: 2, solved: 2, bestMs: 5000 },
+        },
+      });
+      act(() => result.current.actions.shareResult());
+      expect(result.current.dialog).toMatchObject({
+        kind: 'share',
+        target: { givens: near.givens, difficulty: 'easy', result: { seconds: 5 } },
       });
     });
   });
@@ -4668,6 +4916,23 @@ describe('useSudoku', () => {
         storage.removeItem('sudoku.current');
         const { result } = await started({ storage, source: fakeSource(SHARED) });
         expect(result.current.record?.watched).toBe(true);
+        solveShared(result);
+        expect(result.current.dialog).toMatchObject({ result: { isWatched: true } });
+        expect(computeStats(loadHistory(storage)).easy.bestMs).toBeNull();
+      });
+
+      it('a new attempt typed in', async () => {
+        const storage = memoryStorage();
+        const first = await watched({ storage });
+        first.unmount();
+        // Its record deleted: the puzzle is still watched.
+        storage.removeItem('sudoku.history');
+        storage.removeItem('sudoku.current');
+        const { result } = await started({ storage });
+        act(() => result.current.actions.openDialog('enter'));
+        act(() => result.current.actions.playEntered(SHARED));
+        expect(result.current.record).toMatchObject({ entered: true, watched: true });
+        act(() => result.current.actions.resume());
         solveShared(result);
         expect(result.current.dialog).toMatchObject({ result: { isWatched: true } });
         expect(computeStats(loadHistory(storage)).easy.bestMs).toBeNull();

@@ -131,6 +131,17 @@ describe('Header', () => {
     expect(props.onOpenDialog).toHaveBeenCalledWith('daily');
   });
 
+  it('opens Enter a puzzle from the New game menu, and only from there', () => {
+    const props = renderHeader();
+    fireEvent.click(screen.getByRole('button', { name: 'New game' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Enter a puzzle…' }));
+    expect(props.onOpenDialog).toHaveBeenCalledWith('enter');
+    // Not among the header's own actions, nor the phone's menu of them.
+    expect(screen.queryByRole('button', { name: /Enter a puzzle/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
+    expect(screen.queryByRole('menuitem', { name: /Enter a puzzle/ })).not.toBeInTheDocument();
+  });
+
   it("marks no random tier as current while a past day's daily is on show", () => {
     renderHeader({ difficulty: 'hard', daily: '2026-10-08' });
     fireEvent.click(screen.getByRole('button', { name: 'New game' }));

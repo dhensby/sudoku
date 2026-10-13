@@ -183,9 +183,9 @@ export function grade(values: Values, techniques: readonly TechniqueId[] = TECHN
 /**
  * The label a puzzle is shown with: the tier of the hardest technique it
  * needs; 'beyond' if the set cannot finish it; 'easy' if already complete.
- * Only a puzzle from outside — a link's — is ever labelled 'beyond': the
- * generator labels its own, and deals the rare fallback the set cannot
- * finish as an Expert (see `generatePuzzle`).
+ * Only a puzzle from outside — a link's, or one typed in — is ever labelled
+ * 'beyond': the generator labels its own, and deals the rare fallback the
+ * set cannot finish as an Expert (see `generatePuzzle`).
  */
 export function rate(values: Values): Level {
   return grade(values).difficulty ?? 'beyond';

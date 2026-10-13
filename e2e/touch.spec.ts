@@ -1507,6 +1507,65 @@ for (const viewport of [
 }
 
 /*
+ * Enter a puzzle at each phone size, upright and on its side: on screen with
+ * nothing to scroll either way, for the board takes the height the rest
+ * leaves; every button a finger's 44px (the pad's nine keys, Erase, Play and
+ * the close button); and every cell at least WCAG's 24px, but on the shortest
+ * phone on its side, which leaves the board room for 22px (upright, it has
+ * 25px). A tap on a cell, then on the pad, puts the number in that cell and
+ * leaves it selected, for a correction to land there too.
+ */
+for (const viewport of [
+  { width: 320, height: 568 },
+  { width: 568, height: 320 },
+  { width: 667, height: 375 },
+  { width: 844, height: 390 },
+]) {
+  test.describe(`a ${viewport.width}×${viewport.height} phone entering a puzzle`, () => {
+    test.use({ viewport });
+
+    test('fits Enter a puzzle with nothing to scroll, every button 44px and every cell 24px', async ({
+      page,
+    }) => {
+      await tapStart(page);
+      await page.getByRole('banner').getByRole('button', { name: 'New game' }).tap();
+      await page.getByRole('menuitem', { name: 'Enter a puzzle…' }).tap();
+      const dialog = page.getByRole('dialog', { name: 'Enter a puzzle' });
+      await expect(dialog).toBeVisible();
+      await expectOnScreen(page, dialog);
+      expect((await overflow(page)).x).toBe(0);
+      const body = dialog.locator('.dialog__body');
+      expect(await body.evaluate((el) => el.scrollWidth - el.clientWidth)).toBe(0);
+      expect(await body.evaluate((el) => el.scrollHeight - el.clientHeight)).toBeLessThanOrEqual(1);
+
+      const buttons = await dialog.getByRole('button').all();
+      expect(buttons).toHaveLength(12);
+      for (const button of buttons) {
+        const size = (await button.boundingBox())!;
+        const label = (await button.getAttribute('aria-label')) ?? (await button.innerText());
+        expect(size.height, label).toBeGreaterThanOrEqual(44);
+        expect(size.width, label).toBeGreaterThanOrEqual(44);
+      }
+      const smallest = await dialog.getByRole('gridcell').evaluateAll((cells) =>
+        Math.min(
+          ...cells.flatMap((cell) => {
+            const box = cell.getBoundingClientRect();
+            return [box.width, box.height];
+          }),
+        ),
+      );
+      expect(smallest).toBeGreaterThanOrEqual(viewport.height === 320 ? 22 : 24);
+
+      const target = dialog.getByRole('gridcell').nth(40);
+      await target.tap();
+      await dialog.getByRole('button', { name: '5', exact: true }).tap();
+      await expect(target).toHaveAccessibleName('5, given');
+      await expect(target).toHaveAttribute('aria-selected', 'true');
+    });
+  });
+}
+
+/*
  * The shortest phone on its side, an iPhone SE at 568×320: the game still
  * fits, controls and all. (A two-line hint, under the controls, is the one
  * thing that can need a little scroll at this size.)

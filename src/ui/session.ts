@@ -10,11 +10,10 @@ import {
   encodeMoveLog,
   deserialiseGame,
   elapsedMs,
-  gridValues,
   isRunning,
   moveFor,
   pauseClock,
-  rate,
+  puzzleFromGivens,
   reduce,
   serialiseGame,
   sharedSolveRefusal,
@@ -87,9 +86,9 @@ export interface Moment {
 
 /**
  * Why the clock is stopped while a game is unsolved:
- *   - `ready`: a game waiting for its Start button — a shared puzzle, one
- *     that arrived while the tab was hidden, or one reopened before it was
- *     ever started;
+ *   - `ready`: a game waiting for its Start button — a shared puzzle, a
+ *     puzzle entered by hand, one that arrived while the tab was hidden, or
+ *     one reopened before it was ever started;
  *   - `user`: the pause button or P;
  *   - `hidden`: the tab was hidden;
  *   - `dialog`: a modal dialog is open — the one pause that lifts by itself;
@@ -100,7 +99,8 @@ export type PauseReason = 'ready' | 'user' | 'hidden' | 'dialog' | 'restored';
 /**
  * What the board area shows and what input does:
  *   - `loading`: a puzzle is being generated (spinner, no board);
- *   - `ready`: a shared puzzle before Start (card, no board);
+ *   - `ready`: a shared puzzle, or a puzzle entered by hand, before Start
+ *     (card, no board);
  *   - `playing`: the clock runs and the board takes input;
  *   - `paused`: the clock is stopped and the board is hidden;
  *   - `solved`: the board is on show, frozen.
@@ -156,7 +156,8 @@ export type SessionStart =
   | 'running'
   /**
    * Behind a Start button: a shared puzzle, so both players start from the
-   * same moment, or a puzzle that arrived while the tab was hidden.
+   * same moment; a puzzle entered by hand, to share or start as the player
+   * pleases; or a puzzle that arrived while the tab was hidden.
    */
   | 'ready'
   /** Paused behind a dialog that is still open, resuming (and first seen) when it closes. */
@@ -311,8 +312,10 @@ export function attemptSource(
 /**
  * A fresh record for a game of `puzzle` created at `now` (epoch ms) — an
  * attempt at the daily of date `daily`, if one is given, `isStarted` (its
- * clock running from now) or not yet. A puzzle beyond the techniques is
- * recorded as an Expert game flagged `beyond`, as the history keeps it.
+ * clock running from now) or not yet, and flagged `isEntered` for a puzzle
+ * the player typed in (see `GameRecord.entered`). A puzzle beyond the
+ * techniques is recorded as an Expert game flagged `beyond`, as the history
+ * keeps it.
  */
 export function createRecord(
   puzzle: Puzzle,
@@ -323,6 +326,7 @@ export function createRecord(
   daily?: DateKey,
   isStarted = true,
   isWatched = false,
+  isEntered = false,
 ): GameRecord {
   return {
     id: createGameId(now),
@@ -341,6 +345,7 @@ export function createRecord(
     ...(daily !== undefined && isStarted ? { startedOn: dateKeyOf(now) } : {}),
     ...(isWatched ? { watched: true as const } : {}),
     ...(puzzle.difficulty === 'beyond' ? { beyond: true as const } : {}),
+    ...(isEntered ? { entered: true as const } : {}),
   };
 }
 
@@ -372,6 +377,11 @@ export function newSession(
      * know it from the start.
      */
     isWatched?: boolean;
+    /**
+     * The player typed the puzzle in by hand (see `GameRecord.entered`): it
+     * waits behind Start as their own, not as one someone shared.
+     */
+    isEntered?: boolean;
   },
 ): Session {
   const {
@@ -383,6 +393,7 @@ export function newSession(
     start,
     daily,
     isWatched = false,
+    isEntered = false,
   } = options;
   const game = createGame(puzzle, { autoCandidates });
   const session: Session = {
@@ -395,6 +406,7 @@ export function newSession(
       daily,
       start === 'running',
       isWatched,
+      isEntered,
     ),
     game,
     clock: start === 'running' ? startClock(STOPPED_CLOCK, now.clock) : STOPPED_CLOCK,
@@ -533,7 +545,9 @@ export function hasBoardShown(session: Session): boolean {
  * rather than keeping it, so browsing the tiers neither fills History with
  * games nobody played nor counts them as played. Its puzzle stays seen
  * (`hasBoardShown`), so seeing it again is still a replay. A shared puzzle is
- * always kept: a friend sent it, and its link may carry a time to race.
+ * always kept: a friend sent it, and its link may carry a time to race. So
+ * is a puzzle entered by hand (see `GameRecord.entered`): the player typed
+ * it in to play it.
  *
  * Auto candidates and Check guesses are the assists a glimpse may carry:
  * with "Start new games in auto candidate mode" or "Check guesses when
@@ -907,14 +921,10 @@ export function planStartup(
   const link = readSharedLink(search);
   if (link === null) return plain;
   const opened: Startup = { ...plain, isLinkConsumed: true };
-  const check = link.givens === null ? null : checkGivens(link.givens);
-  if (link.givens === null || check === null || !check.ok) return { ...opened, isBadLink: true };
+  const checked = link.givens === null ? null : puzzleFromGivens(link.givens);
+  if (checked === null || !checked.ok) return { ...opened, isBadLink: true };
 
-  const puzzle: Puzzle = {
-    givens: link.givens,
-    solution: check.solution,
-    difficulty: rate(gridValues(link.givens)),
-  };
+  const { puzzle } = checked;
   // The player's own link, opened here, races no one: their time is no time
   // to beat, and their solve theirs to watch already. It opens as a link
   // without a time would.

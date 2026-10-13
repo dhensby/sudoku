@@ -34,6 +34,20 @@ export function joinList(items: readonly string[]): string {
   return `${items.slice(0, -1).join(', ')} and ${items.at(-1)}`;
 }
 
+/** The numbers up to nine in words, as prose spells them: "no" places, "two" 5s, "nine" cells. */
+export const NUMBER_WORD: readonly string[] = [
+  'no',
+  'one',
+  'two',
+  'three',
+  'four',
+  'five',
+  'six',
+  'seven',
+  'eight',
+  'nine',
+];
+
 /**
  * "an Easy", "a Hard", "an XY-Wing": the article follows the label's sound,
  * so a vowel takes "an" and so does a leading X, which is said "ex".

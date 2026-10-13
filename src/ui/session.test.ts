@@ -181,6 +181,20 @@ describe('newSession', () => {
     expect(record.id).toMatch(/^[a-z0-9]+-[a-z0-9]{4}$/);
   });
 
+  it('flags a puzzle the player typed in, which is kept like any from a link', () => {
+    const options = {
+      source: 'shared',
+      challenge: null,
+      now: at(NOW),
+      autoCandidates: false,
+      start: 'ready',
+    } as const;
+    const typed = newSession(PUZZLE, { ...options, isEntered: true });
+    expect(typed.record).toMatchObject({ source: 'shared', entered: true });
+    expect(isGlimpse(resumeSession(typed, at(NOW), false))).toBe(false);
+    expect(newSession(PUZZLE, options).record).not.toHaveProperty('entered');
+  });
+
   it('starts in auto candidate mode when the setting says, and counts it as help from the start', () => {
     const session = newSession(PUZZLE, {
       source: 'generated',

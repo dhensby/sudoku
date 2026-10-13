@@ -11,8 +11,8 @@ export type Difficulty = 'easy' | 'medium' | 'hard' | 'expert';
  * A puzzle's label: one of the four tiers, or 'beyond' for a puzzle the
  * grader's techniques cannot finish. The game never deals a puzzle labelled
  * 'beyond' — New game, the dailies and the streaks all work in tiers — so one
- * only arrives from outside, by a link; `dealtTier` turns a label back into
- * the tier to deal.
+ * only arrives from outside, by a link or typed in (see `puzzleFromGivens`);
+ * `dealtTier` turns a label back into the tier to deal.
  */
 export type Level = Difficulty | 'beyond';
 

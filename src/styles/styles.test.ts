@@ -941,6 +941,55 @@ describe('Compare solves', () => {
   });
 });
 
+describe('Enter a puzzle', () => {
+  it('draws its board with the game’s own geometry, from a size of its own', () => {
+    const board = rule(DIALOGS, '.enter__board');
+    for (const name of ['--frame', '--thick', '--thin', '--lines', '--board-outer']) {
+      const own = new RegExp(`${name}:\\s*([^;]+);`).exec(rule(LAYOUT, '.app'))![1];
+      expect(board, name).toContain(`${name}: ${own};`);
+    }
+    expect(DIALOGS).toMatch(
+      /@supports \(width: round\(down, 10\.5px, 1px\)\) \{\s*\.enter__board \{\s*--cell: round\(down/,
+    );
+  });
+
+  it('sizes the board by the height the rest leaves, the pad’s keys counted in', () => {
+    // The touch suite holds the measured 228px to every phone it plays on.
+    expect(rule(DIALOGS, '.enter__board')).toMatch(
+      /100dvh - 228px - 2 \* var\(--enter-key\) - var\(--controls-gap\) -/,
+    );
+    expect(rule(DIALOGS, '.enter')).toMatch(/--enter-key:\s*min\(var\(--key-height\), 52px\)/);
+    expect(rule(DIALOGS, '.enter__pad')).toMatch(/grid-auto-rows:\s*var\(--enter-key\)/);
+  });
+
+  it('lays the pad out as a phone’s, two rows of five, Erase the tenth key', () => {
+    expect(rule(DIALOGS, '.enter__pad')).toMatch(
+      /grid-template-areas:\s*'d1 d2 d3 d4 d5'\s*'d6 d7 d8 d9 erase'/,
+    );
+  });
+
+  it('leaves its numbers pressable, though they are set as givens', () => {
+    expect(rule(DIALOGS, '.enter__board .cell--given')).toMatch(/cursor:\s*pointer/);
+  });
+
+  it('marks Play unavailable, still and faded in its own colour, without disabling it', () => {
+    const unavailable = rule(DIALOGS, ".enter__play[aria-disabled='true']:hover");
+    expect(unavailable).toMatch(/background:\s*var\(--accent\)/);
+    expect(unavailable).toMatch(/opacity:\s*0\.5/);
+  });
+
+  it('puts the board beside the rest on a phone on its side', () => {
+    const short = DIALOGS.slice(
+      DIALOGS.indexOf(
+        '@media (max-height: 500px) and (min-width: 500px)',
+        DIALOGS.indexOf('Enter a puzzle'),
+      ),
+    );
+    expect(short).toMatch(/\.enter\s*\{\s*flex-direction:\s*row/);
+    expect(short).toMatch(/--board-size:\s*clamp\(160px, calc\(100dvh - 104px\), 400px\)/);
+  });
+});
+
 describe('the daily calendar', () => {
   it('draws a daily’s marks in ink, the empty one muted', () => {
     expect(rule(DIALOGS, '.daily-mark')).toMatch(/color:\s*var\(--text\)/);

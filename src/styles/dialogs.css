@@ -3525,6 +3525,174 @@
 }
 
 /* ==========================================================================
+   Enter a puzzle
+
+   An empty board to type a puzzle into, then the line saying what its
+   numbers make so far, the pad, and Play beside the hint — one under
+   another, or the board beside the rest on a phone on its side. None of it
+   scrolls: the board takes the height the rest leaves. So there is no
+   footer, whose rule and padding would cost the board most of a row on a
+   phone, and the board is drawn from a size of its own with the game's
+   geometry, as a playback's is.
+   ========================================================================== */
+
+.dialog--enter {
+  max-width: 460px;
+}
+
+.enter {
+  /* The pad's keys: the game's, but no taller than a phone's on a desktop. */
+  --enter-key: min(var(--key-height), 52px);
+
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.enter__board {
+  /* As large as the card allows: by the width inside the body's padding, and
+     by the height the rest leaves — the scrim, the header (its close button
+     a finger's 44px), the body's padding, the status line, Play, the gaps
+     between them (some 228px in all) and the pad's two rows of keys. */
+  --board-size: clamp(
+    200px,
+    min(
+      calc(100vw - 32px),
+      calc(
+        100dvh - 228px - 2 * var(--enter-key) - var(--controls-gap) -
+          env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)
+      )
+    ),
+    400px
+  );
+  --frame: calc(clamp(3px, 3px + (var(--board-size) - 399.98px) * 1000, 4px) + var(--line-boost));
+  --thick: calc(clamp(2px, 2px + (var(--board-size) - 399.98px) * 1000, 3px) + var(--line-boost));
+  --thin: 1px;
+  --lines: calc(2 * var(--frame) + 2 * var(--thick) + 6 * var(--thin));
+  --cell: calc((var(--board-size) - var(--lines)) / 9);
+  --board-outer: calc(9 * var(--cell) + var(--lines));
+
+  /* Sized outright: the board area inside measures its width for its
+     container queries, so it cannot take its width from the board. */
+  align-self: center;
+  width: var(--board-outer);
+}
+
+@supports (width: round(down, 10.5px, 1px)) {
+  .enter__board {
+    --cell: round(down, calc((var(--board-size) - var(--lines)) / 9), 1px);
+  }
+}
+
+/* Every number in it is set as a given, and every one can still be changed. */
+.enter__board .cell--given {
+  cursor: pointer;
+}
+
+.enter__panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* A line kept for it, so the pad never moves as the words change. */
+.enter__status {
+  min-height: 1.45em;
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+/* The game's pad as a phone lays it out, two rows of five, Erase the tenth
+   key — its digits sized from its own keys. */
+.enter__pad {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-areas:
+    'd1 d2 d3 d4 d5'
+    'd6 d7 d8 d9 erase';
+  grid-auto-rows: var(--enter-key);
+  gap: var(--controls-gap);
+}
+
+.enter__pad .numpad__key {
+  font-size: min(1.5rem, calc(var(--enter-key) * 0.56));
+}
+
+/* The hint takes what Play leaves of the row, on two lines if need be:
+   no taller than Play, so it costs the board nothing. */
+.enter__actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.enter__hint {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  text-wrap: balance;
+}
+
+.enter__play {
+  flex: none;
+  min-width: 96px;
+}
+
+/* Unavailable until the numbers make a puzzle, as a disabled button looks
+   (see EnterDialog for why it is not disabled), and as still under the
+   pointer and the press. */
+.enter__play[aria-disabled='true'],
+.enter__play[aria-disabled='true']:hover,
+.enter__play[aria-disabled='true']:active {
+  background: var(--accent);
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* ---- On a phone: the sheet's full width ---- */
+@media (max-width: 499px) {
+  .dialog--enter .dialog__body {
+    padding-right: 16px;
+    padding-left: 16px;
+  }
+}
+
+/* ---- A phone on its side: the board beside the rest ----
+   The board down the left at the height the card leaves (its header and the
+   body's padding take some 104px, as a playback's do), the status line, the
+   pad and Play down the right. */
+@media (max-height: 500px) and (min-width: 500px) {
+  .dialog--enter {
+    max-width: 680px;
+  }
+
+  .dialog--enter .dialog__body {
+    padding: 6px 16px 12px;
+  }
+
+  .enter {
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 16px;
+  }
+
+  .enter__board {
+    --board-size: clamp(160px, calc(100dvh - 104px), 400px);
+
+    flex: none;
+  }
+
+  .enter__panel {
+    flex: 1;
+  }
+}
+
+/* ==========================================================================
    "Show me": a walkthrough
 
    One step at a time, each drawn on the player's own board. Wide enough on

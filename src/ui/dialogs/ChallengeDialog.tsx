@@ -53,14 +53,14 @@ function whenSolved(epochMs: number, now: number): string {
 }
 
 /**
- * Opening a puzzle already solved — from a link, or a solved daily chosen
- * from New game: say so, with the help and mistakes it took (the mistakes
- * when known), compare with the link's time if it carried one, and offer a
- * fresh attempt. Closing keeps whatever game was on screen. A link that
- * carried the friend's solve offers it to watch, and to compare with the
- * earlier solve, under the head-to-head: the puzzle is solved, so it gives
- * nothing away. An earlier solve after
- * watching one has no time, and says so.
+ * Opening a puzzle already solved — from a link, a solved daily chosen from
+ * New game, or a puzzle entered by hand: say so, with the help and mistakes
+ * it took (the mistakes when known), compare with the link's time if it
+ * carried one, and offer a fresh attempt. Closing keeps whatever game was on
+ * screen. A link that carried the friend's solve offers it to watch, and to
+ * compare with the earlier solve, under the head-to-head: the puzzle is
+ * solved, so it gives nothing away. An earlier solve after watching one has
+ * no time, and says so.
  */
 export function ChallengeDialog({
   difficulty,
