@@ -6,6 +6,7 @@ import { meetDevice, renameFriend } from '../storage/friends';
 import {
   exportHistory,
   loadFriends,
+  loadPuzzles,
   saveCurrentId,
   updateFriends,
   upsertRecord,
@@ -793,10 +794,16 @@ describe('App', () => {
   describe('entering a puzzle', () => {
     const HARD = HARDEST.nakedPair.givens;
 
-    /** Open Enter a puzzle from New game. */
-    function openEditor(): HTMLElement {
+    /** Open Your puzzles from New game. */
+    function openLibrary(): HTMLElement {
       fireEvent.click(screen.getByRole('button', { name: 'New game' }));
-      fireEvent.click(screen.getByRole('menuitem', { name: 'Enter a puzzle…' }));
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Your puzzles…' }));
+      return screen.getByRole('dialog', { name: 'Your puzzles' });
+    }
+
+    /** Open Enter a puzzle from New game, through Your puzzles. */
+    function openEditor(): HTMLElement {
+      fireEvent.click(within(openLibrary()).getByRole('button', { name: 'Enter a new puzzle' }));
       return screen.getByRole('dialog', { name: 'Enter a puzzle' });
     }
 
@@ -816,7 +823,9 @@ describe('App', () => {
       // The game behind is hidden, as behind any dialog.
       expect(screen.queryByRole('grid', { name: 'Sudoku board' })).not.toBeInTheDocument();
       typeIn(HARD);
-      expect(within(editor).getByRole('status')).toHaveTextContent('One solution: a Hard puzzle.');
+      expect(editor.querySelector('.enter__status')).toHaveTextContent(
+        'One solution: a Hard puzzle.',
+      );
       fireEvent.click(within(editor).getByRole('button', { name: 'Play' }));
       await settle();
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
@@ -842,7 +851,8 @@ describe('App', () => {
         button.focus();
         // From the keyboard: a click with no count, as Enter gives.
         fireEvent.click(button, { detail: 0 });
-        fireEvent.click(screen.getByRole('menuitem', { name: 'Enter a puzzle…' }), { detail: 0 });
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Your puzzles…' }), { detail: 0 });
+        fireEvent.click(screen.getByRole('button', { name: 'Enter a new puzzle' }), { detail: 0 });
         typeIn(givens);
         fireEvent.click(screen.getByRole('button', { name: 'Play' }), { detail: 0 });
         await settle();
@@ -851,17 +861,91 @@ describe('App', () => {
       }
     });
 
-    it('closes on Escape, the game behind carrying on and what was typed forgotten', async () => {
-      await startApp();
+    it('closes on Escape to Your puzzles, what was typed kept, and on again to the game', async () => {
+      const { storage } = await startApp();
       openEditor();
       typeIn('53');
+      fireEvent.keyDown(document, { key: 'Escape' });
+      const library = screen.getByRole('dialog', { name: 'Your puzzles' });
+      expect(loadPuzzles(storage)).toMatchObject([{ cells: '53'.padEnd(81, '0') }]);
+      // Back on its row, focus on its Edit.
+      const row = within(library).getAllByRole('listitem')[0];
+      expect(row).toHaveTextContent('Untitled puzzle');
+      expect(row).toHaveTextContent('A puzzle needs at least 17 numbers.');
+      expect(
+        within(row).getByRole('button', { name: /^Edit untitled puzzle from Today/ }),
+      ).toHaveFocus();
+      // The game behind is still hidden, and still paused.
+      expect(screen.queryByRole('grid', { name: 'Sudoku board' })).not.toBeInTheDocument();
       fireEvent.keyDown(document, { key: 'Escape' });
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
       expect(screen.getByRole('grid', { name: 'Sudoku board' })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Pause' })).toBeInTheDocument();
       expect(cells()[0]).toHaveAccessibleName(`${PUZZLE.givens[0]}, given`);
+      // A new puzzle starts afresh; the one kept opens again from its row.
       const editor = openEditor();
       expect(within(editor).getAllByRole('gridcell')[0]).toHaveAccessibleName('empty');
+      fireEvent.click(within(editor).getByRole('button', { name: 'Close' }));
+      expect(screen.getByRole('button', { name: 'Enter a new puzzle' })).toHaveFocus();
+      fireEvent.click(screen.getByRole('button', { name: /^Edit untitled puzzle/ }));
+      const again = screen.getByRole('dialog', { name: 'Enter a puzzle' });
+      expect(within(again).getAllByRole('gridcell')[1]).toHaveAccessibleName('3, given');
+      expect(within(again).getAllByRole('gridcell')[2]).toHaveFocus();
+      expect(within(again).getByRole('button', { name: 'Saved' })).toBeInTheDocument();
+    });
+
+    it('saves an unfinished puzzle, names it, finishes it and plays it from its row', async () => {
+      const { storage } = await startApp();
+      const editor = openEditor();
+      typeIn(HARD.slice(0, 40));
+      fireEvent.click(within(editor).getByRole('button', { name: 'Save' }));
+      expect(within(editor).getByRole('button', { name: 'Saved' })).toBeInTheDocument();
+      fireEvent.click(within(editor).getByRole('button', { name: 'Close' }));
+      const library = screen.getByRole('dialog', { name: 'Your puzzles' });
+      fireEvent.click(within(library).getByRole('button', { name: /^Rename untitled puzzle/ }));
+      const field = within(library).getByRole('textbox', { name: 'Name' });
+      fireEvent.change(field, { target: { value: 'The Times #5,123' } });
+      fireEvent.keyDown(field, { key: 'Enter' });
+      expect(loadPuzzles(storage)[0].title).toBe('The Times #5,123');
+      expect(
+        within(library).getByRole('button', { name: /^Rename The Times #5,123, from Today/ }),
+      ).toHaveFocus();
+      // Not ready yet: Edit is the thing to do, and there is no Play.
+      expect(within(library).queryByRole('button', { name: /^Play / })).not.toBeInTheDocument();
+      fireEvent.click(within(library).getByRole('button', { name: /^Edit The Times/ }));
+      // On from the last number typed, where Edit leaves the selection.
+      typeIn(HARD.slice(HARD.slice(0, 40).replace(/0+$/, '').length));
+      fireEvent.click(
+        within(screen.getByRole('dialog', { name: 'Enter a puzzle' })).getByRole('button', {
+          name: 'Close',
+        }),
+      );
+      const row = within(screen.getByRole('dialog', { name: 'Your puzzles' })).getAllByRole(
+        'listitem',
+      )[0];
+      expect(row).toHaveTextContent('One solution: a Hard puzzle.');
+      fireEvent.click(
+        within(row).getByRole('button', { name: /^Play The Times #5,123, from Today/ }),
+      );
+      await settle();
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(card()).toHaveTextContent(/^Your Hard puzzle is ready\.$/);
+      expect(startOnCard()).toHaveFocus();
+      expect(loadPuzzles(storage)).toMatchObject([{ cells: HARD, title: 'The Times #5,123' }]);
+    });
+
+    it('keeps a puzzle as Play starts it, to play again from Your puzzles', async () => {
+      const { storage } = await startApp();
+      openEditor();
+      typeIn(HARD);
+      fireEvent.click(screen.getByRole('button', { name: 'Play' }));
+      await settle();
+      expect(loadPuzzles(storage)).toMatchObject([{ cells: HARD }]);
+      const library = openLibrary();
+      expect(within(library).getAllByRole('listitem')).toHaveLength(1);
+      expect(
+        within(library).getByRole('button', { name: /^Play untitled puzzle/ }),
+      ).toBeInTheDocument();
     });
 
     it('shares a puzzle typed in from its Ready card as the puzzle alone', async () => {

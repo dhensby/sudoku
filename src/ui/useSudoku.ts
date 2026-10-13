@@ -54,6 +54,7 @@ import {
 } from '../storage/friends';
 import {
   computeStats,
+  createGameId,
   deleteRecord,
   exportHistory,
   findAttempts,
@@ -64,6 +65,7 @@ import {
   loadDailyLedger,
   loadFriends,
   loadHistory,
+  loadPuzzles,
   levelOf,
   markSeen,
   markWatched,
@@ -74,6 +76,7 @@ import {
   savedGameIds,
   sweepMoveLogs,
   updateFriends,
+  updatePuzzles,
   upsertRecord,
   type Challenge,
   type DifficultyStats,
@@ -81,6 +84,7 @@ import {
   type ImportResult,
 } from '../storage/history';
 import { loadEncodedMoveLog } from '../storage/moveLogs';
+import { deletePuzzle, retitlePuzzle, savePuzzle, type SavedPuzzle } from '../storage/puzzles';
 import {
   ensurePlayerId,
   hasNewerTheme,
@@ -102,6 +106,7 @@ import { capitalise, DIFFICULTY_LABEL } from './format';
 import { dailyPhrase, statusesOn, streakNote, type StreakNote } from './daily';
 import type { TodayDailies } from './DifficultyMenu';
 import { createPuzzleSource, type PuzzleSource } from './puzzleSource';
+import { BLANK_GRID } from './puzzles';
 import type { GuideId } from './techniqueGuide';
 import {
   advance,
@@ -138,6 +143,7 @@ import { useStableActions } from './useStableActions';
 import type { CompareSource } from './dialogs/CompareDialog';
 import type { HistoryPlace } from './dialogs/HistoryDialog';
 import type { PlaybackSource } from './dialogs/PlaybackDialog';
+import type { PuzzlesPlace } from './dialogs/PuzzlesDialog';
 import type { WhoSentAnswer } from './dialogs/WhoSentDialog';
 import {
   WATCHED_SOLVE_TEXT,
@@ -312,6 +318,31 @@ export interface CompareView {
     | { kind: 'challenge'; offer: ChallengeOffer };
 }
 
+/**
+ * Your puzzles (see `PuzzlesDialog`), from New game. `place`: back from the
+ * editor on an entry kept, so focus goes back to that row's Edit.
+ */
+export interface PuzzlesView {
+  kind: 'puzzles';
+  place?: PuzzlesPlace;
+}
+
+/**
+ * Enter a puzzle (see `EnterDialog`), from Your puzzles: a grid typed in to
+ * play, or kept to play later. `id` is the entry it is saved as in Your
+ * puzzles (see `SavedPuzzle`), null while it is saved as none; `cells` is the
+ * grid it opens with and, while it has an `id`, the grid last saved — what
+ * is typed is the dialog's own until it is saved (see `saveEntry`), played
+ * (`playFromEditor`) or closed (`closeEditor`). `selected` is the cell
+ * selected as it opens.
+ */
+export interface EnterView {
+  kind: 'enter';
+  id: string | null;
+  cells: GridString;
+  selected: number;
+}
+
 /** The dialog on show — one at a time. */
 export type DialogState =
   /**
@@ -371,18 +402,14 @@ export type DialogState =
    * puzzle again, waits behind it (see `closeDialog`).
    */
   | { kind: 'whoSent'; sharer: LinkSharer; offer: ChallengeOffer | null }
-  /**
-   * Enter a puzzle: one from elsewhere — the paper — typed in to play (see
-   * `playEntered`). What has been typed is the dialog's own, and goes as it
-   * closes.
-   */
-  | { kind: 'enter' }
+  | PuzzlesView
+  | EnterView
   | PlaybackView
   | CompareView;
 
-/** The dialogs the header opens — Enter a puzzle from its New game menu. */
+/** The dialogs the header opens — Your puzzles from its New game menu. */
 export type HeaderDialog =
-  'daily' | 'history' | 'settings' | 'techniques' | 'help' | 'share' | 'enter';
+  'daily' | 'history' | 'settings' | 'techniques' | 'help' | 'share' | 'puzzles';
 
 /** What the History dialog lists, read from storage when it opens. */
 export interface HistoryView {
@@ -467,7 +494,7 @@ export interface SudokuActions {
    */
   playAgain: () => void;
   /**
-   * From Enter a puzzle: play the puzzle typed in, checked and graded as its
+   * From Your puzzles: play a puzzle typed in, checked and graded as its
    * link would be (see `assessGivens`) — the unfinished attempt at it if
    * there is one, resumed; else, if it has been solved, the offer to play it
    * again; else a new attempt, waiting behind its Start card. Typing it in
@@ -475,6 +502,32 @@ export interface SudokuActions {
    * new attempt's time counts, as a link's does.
    */
   playEntered: (puzzle: Puzzle) => void;
+  /**
+   * From Your puzzles: Enter a puzzle, on an empty grid (`entry` null), or on
+   * an entry's, the selection just after its last number to type on from.
+   * The game behind stays paused, as for Your puzzles.
+   */
+  openEditor: (entry: SavedPuzzle | null) => void;
+  /**
+   * From Enter a puzzle (`view`, the editor on show): keep the grid as it is
+   * in Your puzzles (see `savePuzzle`) — the entry it was opened on, or the
+   * one with these numbers, or a new one — staying in the editor.
+   */
+  saveEntry: (view: EnterView, cells: GridString) => void;
+  /** From Enter a puzzle: keep the puzzle typed in, as Save does, and play it (see `playEntered`). */
+  playFromEditor: (view: EnterView, puzzle: Puzzle) => void;
+  /**
+   * Enter a puzzle closed, the grid as it was left: kept as Save keeps it if
+   * it has a number in and has changed since it was last saved (an entry
+   * erased to nothing keeps the numbers it had), then back to Your puzzles,
+   * focus on the row's Edit — or on Enter a new puzzle, for a grid never
+   * kept.
+   */
+  closeEditor: (view: EnterView, cells: GridString) => void;
+  /** From Your puzzles: the entry `id` is called `title`, tidied; '' takes the name off (see `retitlePuzzle`). */
+  renameEntry: (id: string, title: string) => void;
+  /** From Your puzzles: the entry `id` goes, its games in History staying. */
+  deleteEntry: (id: string) => void;
   resumeRecord: (id: string) => void;
   /** Play a history entry's puzzle again: the unfinished attempt at it if there is one, else a fresh one. */
   replayRecord: (id: string) => void;
@@ -704,6 +757,12 @@ export interface Sudoku {
    * them (see `namedChallenge`). Its identity changes only with `friends`.
    */
   friendIndex: FriendIndex;
+  /**
+   * The puzzles typed in and kept (see `puzzles.ts`), the latest first saved
+   * first, as last read: at startup, as Your puzzles opens or the editor
+   * goes back to it, and after each change made here.
+   */
+  puzzles: readonly SavedPuzzle[];
   actions: SudokuActions;
 }
 
@@ -1055,6 +1114,9 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
   // applies it to the list as stored, so another tab's names are never lost.
   const [friends, setFriends] = useState<readonly Friend[]>(startup.friends);
   const friendIndex = useMemo(() => indexFriends(friends), [friends]);
+  // Your puzzles as last read; every write goes through `updatePuzzles`, as
+  // the friends' do, so another tab's saves are never lost.
+  const [puzzles, setPuzzles] = useState<readonly SavedPuzzle[]>(() => loadPuzzles(storage));
 
   // The session last written to storage, so the save timer skips a session
   // a handler has already saved. Written only in handlers and timers.
@@ -1290,6 +1352,22 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     ledger: loadDailyLedger(storage),
     today: dateKeyOf(wall),
   });
+
+  /**
+   * Keep `cells` in Your puzzles, as the entry `id` if it is still there (null
+   * for a grid saved as none yet), by the one rule for every save (see
+   * `savePuzzle`), and give back the entry they are kept as.
+   */
+  const keep = (id: string | null, cells: GridString): SavedPuzzle => {
+    const wall = now();
+    const list = updatePuzzles(
+      storage,
+      (stored) => savePuzzle(stored, { id: id ?? createGameId(wall), cells }, wall).list,
+    );
+    setPuzzles(list);
+    // No two entries have the same numbers: these are the ones just kept.
+    return list.find((entry) => entry.cells === cells)!;
+  };
 
   /**
    * Start dealing today's dailies in the background, once for each date: so
@@ -2143,6 +2221,8 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
         setHistory(readHistory(t.wall));
         setFriends(loadFriends(storage));
       }
+      // With whatever another tab has saved since.
+      if (kind === 'puzzles') setPuzzles(loadPuzzles(storage));
       setDialog({ kind });
     },
     openTechniques: (initial, step) => {
@@ -2280,6 +2360,44 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
         `Your ${DIFFICULTY_LABEL[puzzle.difficulty]} puzzle is ready.`,
       );
     },
+
+    openEditor: (entry) =>
+      // Your puzzles paused the game already: the editor keeps it so.
+      setDialog(
+        entry === null
+          ? { kind: 'enter', id: null, cells: BLANK_GRID, selected: 0 }
+          : {
+              kind: 'enter',
+              id: entry.id,
+              cells: entry.cells,
+              // On from the last number, as typing left it.
+              selected: Math.min(entry.cells.replace(/0+$/, '').length, 80),
+            },
+      ),
+    saveEntry: (view, cells) => {
+      const { id } = keep(view.id, cells);
+      setDialog({ ...view, id, cells });
+    },
+    playFromEditor: (view, puzzle) => {
+      keep(view.id, puzzle.givens);
+      actions.playEntered(puzzle);
+    },
+    closeEditor: (view, cells) => {
+      // Saved as it closes, however it closes, as a game is saved as it is
+      // played — but not a grid with nothing in, nor one as it was saved.
+      const isChanged = cells !== BLANK_GRID && cells !== view.cells;
+      const id = isChanged ? keep(view.id, cells).id : view.id;
+      // Back to the list as stored, with whatever another tab has saved since
+      // (a save reads it afresh already), the game behind still paused until
+      // the list closes.
+      if (!isChanged) setPuzzles(loadPuzzles(storage));
+      setDialog(
+        id === null ? { kind: 'puzzles' } : { kind: 'puzzles', place: { id, control: 'edit' } },
+      );
+    },
+    renameEntry: (id, title) =>
+      setPuzzles(updatePuzzles(storage, (list) => retitlePuzzle(list, id, title, now()))),
+    deleteEntry: (id) => setPuzzles(updatePuzzles(storage, (list) => deletePuzzle(list, id))),
 
     resumeRecord: (id) => {
       if (session?.record.id === id) {
@@ -2553,6 +2671,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     canCompareSolves: dialogSolve !== null && dialogOwnSolve() !== null,
     friends,
     friendIndex,
+    puzzles,
     actions,
   };
 }

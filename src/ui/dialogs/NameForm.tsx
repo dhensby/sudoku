@@ -6,7 +6,7 @@ import { focusQuietly } from '../keepFocus';
  * the edit rather than closing the whole dialog (which skips keys claimed
  * with preventDefault), as History's delete does.
  */
-// eslint-disable-next-line react-refresh/only-export-components -- a key handler Friends' merge shares
+// eslint-disable-next-line react-refresh/only-export-components -- a key handler Friends' merge and Your puzzles' delete share
 export function escapeTo(onCancel: () => void) {
   return (event: React.KeyboardEvent) => {
     if (event.key !== 'Escape') return;
@@ -18,11 +18,11 @@ export function escapeTo(onCancel: () => void) {
 export interface NameFormProps {
   /** The name it goes by now, to start from; '' for none. */
   initial: string;
-  /** The field's label: "Their name". */
+  /** The field's label: "Their name", or "Name". */
   label: string;
   /** Under the field, and read with it: what an empty name does. */
   hint: string;
-  /** How much the field takes while typing (see `NAME_INPUT_MAX`). */
+  /** How much the field takes while typing (see `NAME_INPUT_MAX`, `TITLE_INPUT_MAX`). */
   maxLength: number;
   /** How the field tidies what is typed as it loses focus: as the parent does on Save. */
   normalise: (name: string) => string;

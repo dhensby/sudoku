@@ -320,7 +320,7 @@ describe('HelpDialog', () => {
     render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={vi.fn()} />);
     const section = screen.getByRole('heading', { name: 'Your own puzzles' }).closest('section')!;
     expect(section).toHaveTextContent(
-      /Enter a puzzle…, last under Random puzzle in New game, opens an empty grid/,
+      /Your puzzles…, last under Random puzzle in New game, lists the puzzles you've typed in from a newspaper or a book\. Enter a new puzzle opens an empty grid for another\./,
     );
     expect(section).toHaveTextContent(
       /a number fills a cell and moves on, Space, 0 or a dot leaves a cell blank, Backspace takes back the last number/,
@@ -337,18 +337,35 @@ describe('HelpDialog', () => {
     expect(section).toHaveTextContent(
       /its time counts as a new puzzle's, towards your best and average/,
     );
-    expect(section).toHaveTextContent(/Closing the grid forgets what you typed\./);
+    expect(section).not.toHaveTextContent(/forgets/);
     // Under Random puzzle in New game, as the dailies' section says.
     expect(
       screen.getByRole('heading', { name: 'Daily puzzles' }).closest('section'),
     ).toHaveTextContent(
-      /under Random puzzle, with Enter a puzzle… after them for one of your own\./,
+      /under Random puzzle, with Your puzzles… after them for ones of your own\./,
     );
     const row = within(screen.getByRole('table')).getByRole('row', { name: /^Enter a puzzle/ });
     expect(row).toHaveTextContent(
       '1–9 fill and move on, Space or 0 leave a blank, Backspace goes back',
     );
-    expect(row).toHaveTextContent('New game › Enter a puzzle…, then tap a cell and a number');
+    expect(row).toHaveTextContent(
+      'New game › Your puzzles… › Enter a new puzzle, then tap a cell and a number',
+    );
+  });
+
+  it('says every grid typed in is kept, how, and what can be done with it there', () => {
+    render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={vi.fn()} />);
+    const section = screen.getByRole('heading', { name: 'Your own puzzles' }).closest('section')!;
+    expect(section).toHaveTextContent(
+      /Every grid you type in is kept in Your puzzles, finished or not: Save keeps it as it is, and Play and closing the grid keep it too\. Up to 1,000 are kept\./,
+    );
+    expect(section).toHaveTextContent(
+      /Play one that's ready, Edit one to carry on typing or put a number right, Rename one to tell it apart, or Delete it — its games stay in your history\./,
+    );
+    const privacy = screen.getByRole('heading', { name: 'Privacy' }).closest('section')!;
+    expect(privacy).toHaveTextContent(
+      /The puzzles you keep, and the names you give them, stay in this browser: a link to one never carries its name\./,
+    );
   });
 
   it('makes a puzzle you enter the one exception to a puzzle seen before not counting', () => {

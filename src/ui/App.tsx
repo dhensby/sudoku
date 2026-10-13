@@ -36,6 +36,7 @@ import {
   HelpDialog,
   HistoryDialog,
   PlaybackDialog,
+  PuzzlesDialog,
   SettingsDialog,
   ShareDialog,
   SpoilerDialog,
@@ -592,14 +593,33 @@ export function App({ options }: AppProps = {}) {
             onClose={actions.closeDialog}
           />
         )}
-        {dialog?.kind === 'enter' && (
-          <EnterDialog
-            settings={settings}
+        {dialog?.kind === 'puzzles' && (
+          <PuzzlesDialog
+            puzzles={sudoku.puzzles}
+            place={dialog.place}
+            onNew={() => actions.openEditor(null)}
             onPlay={(puzzle) => {
               requestBoardFocus();
               actions.playEntered(puzzle);
             }}
+            onEdit={actions.openEditor}
+            onRename={actions.renameEntry}
+            onDelete={actions.deleteEntry}
             onClose={actions.closeDialog}
+          />
+        )}
+        {dialog?.kind === 'enter' && (
+          <EnterDialog
+            settings={settings}
+            initialCells={dialog.cells}
+            initialSelected={dialog.selected}
+            savedCells={dialog.id === null ? null : dialog.cells}
+            onPlay={(puzzle) => {
+              requestBoardFocus();
+              actions.playFromEditor(dialog, puzzle);
+            }}
+            onSave={(cells) => actions.saveEntry(dialog, cells)}
+            onClose={(cells) => actions.closeEditor(dialog, cells)}
           />
         )}
         {dialog?.kind === 'challenge' && (

@@ -16,4 +16,5 @@ export { PlaybackDialog, type PlaybackDialogProps, type PlaybackSource } from '.
 export { SpoilerDialog, type SpoilerDialogProps } from './SpoilerDialog';
 export { CompareDialog, type CompareDialogProps, type CompareSource } from './CompareDialog';
 export { FriendsDialog, type FriendsDialogProps } from './FriendsDialog';
+export { PuzzlesDialog, type PuzzlesDialogProps, type PuzzlesPlace } from './PuzzlesDialog';
 export { WhoSentDialog, type WhoSentAnswer, type WhoSentDialogProps } from './WhoSentDialog';

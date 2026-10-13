@@ -59,6 +59,7 @@ import {
   storeMoveLogs,
 } from './moveLogs';
 import { mergeFriendLists, normaliseFriends, type Friend } from './friends';
+import { normalisePuzzles, type SavedPuzzle } from './puzzles';
 import {
   EMPTY_LEDGER,
   addToLedger,
@@ -71,7 +72,7 @@ import {
  * The history of every game played, the saved state of unfinished ones, and
  * the puzzles the player has seen.
  *
- * Eight kinds of key here, and the move logs' two (see `moveLogs.ts`):
+ * Nine kinds of key here, and the move logs' two (see `moveLogs.ts`):
  *   sudoku.history      the list of `GameRecord`s, newest first
  *   sudoku.game.<id>    one game's saved state, opaque here (the game module
  *                       validates it on the way back in)
@@ -87,6 +88,8 @@ import {
  *   sudoku.friends      the friends whose links were opened: their devices, by the
  *                       player ID each one's links carry, and the name given each
  *                       friend (see friends.ts)
+ *   sudoku.puzzles      the puzzles typed in and kept, to play, edit and name
+ *                       again (see puzzles.ts)
  *   sudoku.moves.<id>   one game's move log
  *   sudoku.moveLogs     the ids that have a `sudoku.moves.<id>` key
  *
@@ -280,7 +283,7 @@ export interface GameRecord {
   beyond?: true;
   /**
    * Set on an attempt at a puzzle the player typed in by hand (Enter a
-   * puzzle…), beside a `source` of 'shared' — or 'replay', for one seen
+   * puzzle), beside a `source` of 'shared' — or 'replay', for one seen
    * before — so that it counts as a puzzle from a link counts, and is never
    * dropped as a glimpse, in this version and an older one alike, which
    * keeps the flag as a field it does not know (see `newerFields`). All the
@@ -351,6 +354,7 @@ const SEEN_KEY = 'sudoku.seen';
 const LEDGER_KEY = 'sudoku.dailyLedger';
 const WATCHED_KEY = 'sudoku.watched';
 const FRIENDS_KEY = 'sudoku.friends';
+const PUZZLES_KEY = 'sudoku.puzzles';
 
 /** What a log in a link is made of (see `src/core/moves.ts`): base64url. */
 const SHARED_LOG_PATTERN = /^[A-Za-z0-9_-]+$/;
@@ -1737,6 +1741,42 @@ export function updateFriends(
   const friends = loadFriends(storage);
   const changed = change(friends);
   if (changed !== friends) writeItem(storage, FRIENDS_KEY, JSON.stringify(changed), MAKE_ROOM);
+  return changed;
+}
+
+// ---------------------------------------------------------------------------
+// Your puzzles
+// ---------------------------------------------------------------------------
+
+/*
+ * The puzzles typed in and kept: what they are, and every change to them, is
+ * `puzzles.ts`'s business. Here they are only read and written, as the
+ * friends are. A tab from before the library never reads the key, so it
+ * never writes it either.
+ */
+
+/** The puzzles kept, the latest first saved first (see `puzzles.ts`). Junk costs only itself. */
+export function loadPuzzles(storage: StorageLike): SavedPuzzle[] {
+  return normalisePuzzles(readJson(storage, PUZZLES_KEY));
+}
+
+/**
+ * Apply `change` to the list as stored now (another tab may have saved a
+ * puzzle since this one read it), and write the result with MAKE_ROOM unless
+ * it is the same list. Returns the list as changed, whether or not the write
+ * went through.
+ *
+ * Making room never sheds the list itself: each entry is a puzzle the player
+ * typed in, number by number, and at some 300 characters at most, a full
+ * list (see `MAX_SAVED_PUZZLES`) is a third the size of a full history.
+ */
+export function updatePuzzles(
+  storage: StorageLike,
+  change: (puzzles: readonly SavedPuzzle[]) => readonly SavedPuzzle[],
+): readonly SavedPuzzle[] {
+  const puzzles = loadPuzzles(storage);
+  const changed = change(puzzles);
+  if (changed !== puzzles) writeItem(storage, PUZZLES_KEY, JSON.stringify(changed), MAKE_ROOM);
   return changed;
 }
 

@@ -277,18 +277,49 @@ function graphemes(text: string): string[] {
  * tell, it at least never splits a surrogate pair into �).
  */
 export function normaliseName(value: unknown): string {
+  return tidyText(value, MAX_NAME_LENGTH, MAX_NAME_UNITS);
+}
+
+/**
+ * The longest puzzle name kept (see `SavedPuzzle.title`), in characters as a
+ * reader counts them: room for a newspaper's own, "The Guardian Sudoku No.
+ * 6,123 — Hard", which a person's 24 would cut.
+ */
+export const MAX_TITLE_LENGTH = 40;
+
+/** A puzzle name's ceiling in UTF-16 units, as a name's (see `MAX_NAME_UNITS`). */
+const MAX_TITLE_UNITS = 80;
+
+/**
+ * Tidy a puzzle's name, by a name's rules (see `normaliseName`) but to a
+ * puzzle name's length: `MAX_TITLE_LENGTH` characters, `MAX_TITLE_UNITS`
+ * UTF-16 units. Tidying a tidied one gives it back as it was. Even at its
+ * worst — every character a quote stacked with a mark, each escaped in JSON
+ * — it is short enough for a tab on an older version to keep as a field it
+ * does not know (see `newerFields`).
+ */
+export function normaliseTitle(value: unknown): string {
+  return tidyText(value, MAX_TITLE_LENGTH, MAX_TITLE_UNITS);
+}
+
+/**
+ * Free text tidied — a name, a puzzle's name — and cut to at most
+ * `maxLength` characters and `maxUnits` UTF-16 units, the cut ending in "…"
+ * (see `normaliseName`).
+ */
+function tidyText(value: unknown, maxLength: number, maxUnits: number): string {
   if (typeof value !== 'string') return '';
   const tidy = value.replace(UNWANTED_IN_NAME, '').replace(SPACING_IN_NAME, ' ').trim();
   const characters = graphemes(tidy);
-  if (characters.length <= MAX_NAME_LENGTH && tidy.length <= MAX_NAME_UNITS) return tidy;
+  if (characters.length <= maxLength && tidy.length <= maxUnits) return tidy;
   // As many whole characters as leave room for the ellipsis, by either count.
-  let name = '';
-  for (const grapheme of characters.slice(0, MAX_NAME_LENGTH - 1)) {
-    if (name.length + grapheme.length + ELLIPSIS.length > MAX_NAME_UNITS) break;
-    name += grapheme;
+  let text = '';
+  for (const grapheme of characters.slice(0, maxLength - 1)) {
+    if (text.length + grapheme.length + ELLIPSIS.length > maxUnits) break;
+    text += grapheme;
   }
-  name = name.trimEnd();
+  text = text.trimEnd();
   // Nothing left before the cut (a lone character stacked past the ceiling)
-  // is no name at all, rather than a bare "…".
-  return name === '' ? '' : name + ELLIPSIS;
+  // is no text at all, rather than a bare "…".
+  return text === '' ? '' : text + ELLIPSIS;
 }

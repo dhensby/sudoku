@@ -34,7 +34,7 @@ const ignore = () => {};
  * place as they copy a row out.
  *
  * Keys go to `onKeyDown`, on the grid itself, so they only count while a
- * cell has focus: Space and Enter on the pad's keys or Play keep their
+ * cell has focus: Space and Enter on the pad's keys, Play or Save keep their
  * meaning. As on the board, focus follows the selection while the grid has
  * it, and the selected cell is where the dialog's focus lands as it opens.
  */

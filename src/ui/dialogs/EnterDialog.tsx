@@ -1,29 +1,33 @@
 import { useCallback, useId, useMemo, useState } from 'react';
-import {
-  COL,
-  MIN_GIVENS,
-  ROW,
-  assessGivens,
-  type Direction,
-  type GivensAssessment,
-  type GridString,
-  type Puzzle,
-} from '../../core';
-import { describeUnit } from '../announce';
-import { DIFFICULTY_LABEL, NUMBER_WORD, capitalise, withArticle } from '../format';
+import { COL, ROW, assessGivens, type Direction, type GridString, type Puzzle } from '../../core';
 import { GivensGrid, type GivensGridSettings } from '../GivensGrid';
 import { EraseIcon } from '../icons';
 import { keepFocus } from '../keepFocus';
 import { commandForKey, type KeyInput } from '../keyboard';
 import { NumberPad } from '../NumberPad';
+import { BLANK_GRID } from '../puzzles';
 import { Dialog } from './Dialog';
+import { describeGivens } from './text';
 
 export interface EnterDialogProps {
   /** How the grid is tinted around the selection, as the board is. */
   settings: GivensGridSettings;
+  /** The grid it opens with: blank for a new puzzle, or one kept in Your puzzles. Read once. */
+  initialCells: GridString;
+  /** The cell selected as it opens: the first, or the one after the last number of a grid kept. */
+  initialSelected: number;
+  /**
+   * The grid as kept in Your puzzles — the one it opened with, or what Save
+   * last kept — or null while nothing is: Save says Saved for as long as the
+   * grid matches it.
+   */
+  savedCells: GridString | null;
   /** Play the puzzle typed in: checked, with one solution, and labelled (see `assessGivens`). */
   onPlay: (puzzle: Puzzle) => void;
-  onClose: () => void;
+  /** Keep the grid as it is in Your puzzles, staying in the editor. Never called with no number in. */
+  onSave: (cells: GridString) => void;
+  /** Closed, any way — the close button, Escape, the scrim: with the grid as it was left. */
+  onClose: (cells: GridString) => void;
 }
 
 /** What has been typed in so far, and the cell the next number goes in. */
@@ -31,8 +35,6 @@ interface Draft {
   cells: GridString;
   selected: number;
 }
-
-const BLANK: Draft = { cells: '0'.repeat(81), selected: 0 };
 
 /** `digit` (0 for none) in the cell at `index`, and the selection on `next`. */
 function put({ cells }: Draft, index: number, digit: number, next = index): Draft {
@@ -102,35 +104,6 @@ function typed(event: KeyInput, draft: Draft): { next: Draft; repeats: boolean }
   return null;
 }
 
-/**
- * The status line: what the numbers make so far, one thing at a time —
- * the same words for as long as the same thing is true, so a screen reader
- * speaks only as it changes, not at every number. Each fits a 320px phone's
- * line. A puzzle with one solution is named by its tier alone.
- */
-function statusOf(assessment: GivensAssessment): string {
-  switch (assessment.kind) {
-    case 'empty':
-      return 'Type in the numbers from your puzzle.';
-    case 'clash': {
-      const { count, digit, unit } = assessment;
-      return `${capitalise(NUMBER_WORD[count])} ${digit}s in ${describeUnit(unit)}.`;
-    }
-    case 'too-few':
-      return `A puzzle needs at least ${MIN_GIVENS} numbers.`;
-    case 'full':
-      return 'Every cell is filled: nothing to solve.';
-    case 'multiple':
-      return 'More than one solution so far.';
-    case 'none':
-      return 'No solution: a number must be wrong.';
-    case 'too-complex':
-      return 'Too complex to check.';
-    case 'ok':
-      return `One solution: ${withArticle(DIFFICULTY_LABEL[assessment.puzzle.difficulty])} puzzle.`;
-  }
-}
-
 /** How many of each number are in, index 1–9, for the pad's "5, all placed". */
 function countsOf(cells: GridString): number[] {
   const counts = new Array<number>(10).fill(0);
@@ -138,28 +111,53 @@ function countsOf(cells: GridString): number[] {
   return counts;
 }
 
+interface Status {
+  text: string;
+  id: number;
+}
+
 /**
  * Enter a puzzle: one from elsewhere — a newspaper's, a book's — typed into
- * an empty grid, to play as any other. The keyboard copies a puzzle out row
- * by row (see `typed`); a finger taps a cell, then a number on the pad,
- * which goes in where it is, so a correction lands in the same cell. Clashes
- * are dotted as they go in, and the status line says what the numbers make
- * so far (see `assessGivens`): Play waits for one solution. The hint beside
- * Play warns that the checks cannot catch everything — a number mistyped
- * can still make a puzzle, just not the one in the paper.
+ * an empty grid, or one kept in Your puzzles opened again, to play as any
+ * other. The keyboard copies a puzzle out row by row (see `typed`); a finger
+ * taps a cell, then a number on the pad, which goes in where it is, so a
+ * correction lands in the same cell. Clashes are dotted as they go in, and
+ * the status line says what the numbers make so far (see `assessGivens`):
+ * Play waits for one solution. The hint under the buttons warns that the
+ * checks cannot catch everything — a number mistyped can still make a
+ * puzzle, just not the one in the paper.
  *
- * What has been typed is the dialog's alone, and goes as it closes. Play
- * hands the puzzle on as checked and labelled here, which is how its link
- * will be (see `puzzleFromGivens`). No footer: the board needs its height
- * on a phone, so Play sits last in the body, beside the hint.
+ * What is typed is the dialog's own, from the grid it opened with. Save
+ * hands it up to be kept in Your puzzles, finished or not, and says Saved
+ * for as long as the grid is as saved; Play hands the puzzle on as checked
+ * and labelled here, which is how its link will be (see `puzzleFromGivens`),
+ * to be kept as it is played; and closing hands the grid up, to be kept if
+ * it has changed (see `closeEditor`). No footer: the board needs its height
+ * on a phone, so the buttons sit last in the body, the hint on a line under
+ * them.
  */
-export function EnterDialog({ settings, onPlay, onClose }: EnterDialogProps) {
-  const [draft, setDraft] = useState(BLANK);
+export function EnterDialog({
+  settings,
+  initialCells,
+  initialSelected,
+  savedCells,
+  onPlay,
+  onSave,
+  onClose,
+}: EnterDialogProps) {
+  const [draft, setDraft] = useState<Draft>(() => ({
+    cells: initialCells,
+    selected: initialSelected,
+  }));
+  const [status, setStatus] = useState<Status | null>(null);
   const statusId = useId();
   const hintId = useId();
   const { cells, selected } = draft;
   const assessment = useMemo(() => assessGivens(cells), [cells]);
   const counts = useMemo(() => countsOf(cells), [cells]);
+  // Nothing to keep: no number in, or the grid as it was saved.
+  const isSaved = cells === savedCells;
+  const canSave = cells !== BLANK_GRID && !isSaved;
 
   const select = useCallback(
     (index: number) => setDraft((previous) => ({ ...previous, selected: index })),
@@ -175,10 +173,16 @@ export function EnterDialog({ settings, onPlay, onClose }: EnterDialogProps) {
     setDraft(key.next);
   };
 
+  const save = () => {
+    if (!canSave) return;
+    onSave(cells);
+    setStatus((previous) => ({ text: 'Saved to Your puzzles.', id: (previous?.id ?? 0) + 1 }));
+  };
+
   return (
     <Dialog
       title="Enter a puzzle"
-      onClose={onClose}
+      onClose={() => onClose(cells)}
       className="dialog--enter"
       describedBy={`${statusId} ${hintId}`}
     >
@@ -197,7 +201,7 @@ export function EnterDialog({ settings, onPlay, onClose }: EnterDialogProps) {
 
         <div className="enter__panel">
           <p className="enter__status" role="status" id={statusId}>
-            {statusOf(assessment)}
+            {describeGivens(assessment)}
           </p>
           <div className="enter__pad">
             <NumberPad
@@ -216,14 +220,12 @@ export function EnterDialog({ settings, onPlay, onClose }: EnterDialogProps) {
               <span className="control__label">Erase</span>
             </button>
           </div>
+          {/* Equal shares of the row, so it keeps still as Save's word
+              changes. Unavailable rather than disabled when there is nothing
+              to do: a disabled button drops the focus it holds to the page.
+              Focused, Play says why it is unavailable; pressed, either does
+              nothing. */}
           <div className="enter__actions">
-            <p className="enter__hint" id={hintId}>
-              Check every number against your copy.
-            </p>
-            {/* Unavailable rather than disabled until the numbers make a
-                puzzle: a disabled button drops the focus it holds to the
-                page. Focused, it says why it is unavailable; pressed, it
-                does nothing. */}
             <button
               type="button"
               className="button button--primary enter__play"
@@ -235,7 +237,26 @@ export function EnterDialog({ settings, onPlay, onClose }: EnterDialogProps) {
             >
               Play
             </button>
+            {/* Staying in the editor, so a mouse leaves focus on the grid. */}
+            <button
+              type="button"
+              className="button enter__save"
+              aria-disabled={canSave ? undefined : true}
+              onMouseDown={keepFocus}
+              onClick={save}
+            >
+              {isSaved ? 'Saved' : 'Save'}
+            </button>
           </div>
+          <p className="enter__hint" id={hintId}>
+            Check every number against your copy.
+          </p>
+          {/* Mounted from the start, so its first message is a change it
+              announces; keyed, so saving twice is announced twice. Not on
+              show: Save's own word says it. */}
+          <p className="visually-hidden" role="status">
+            {status && <span key={status.id}>{status.text}</span>}
+          </p>
         </div>
       </div>
     </Dialog>

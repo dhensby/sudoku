@@ -5,7 +5,7 @@ import type { Digit, GridString, Puzzle, Unit, UnitKind, Values } from './types'
 
 /*
  * Puzzles from outside the game: a link's, or one the player types in from
- * the paper (Enter a puzzle…). Either way the givens are checked by
+ * the paper (Enter a puzzle). Either way the givens are checked by
  * `checkGivens` and labelled by the grader, the one way (`puzzleFromGivens`),
  * so the player who typed a puzzle in and the friend who opens their link
  * can never see it labelled differently.

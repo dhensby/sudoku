@@ -45,6 +45,7 @@ import {
   loadFriends,
   loadGameBlob,
   loadHistory,
+  loadPuzzles,
   levelOf,
   markSeen,
   saveCurrentId,
@@ -53,10 +54,12 @@ import {
   savedGameIds,
   sweepMoveLogs,
   updateFriends,
+  updatePuzzles,
   upsertRecord,
   type GameRecord,
 } from './history';
 import { meetDevice, mergeFriends, renameFriend, splitDevice, type Friend } from './friends';
+import { retitlePuzzle, savePuzzle, type SavedPuzzle } from './puzzles';
 import {
   loadEncodedMoveLog,
   loadMoveLog,
@@ -1019,6 +1022,105 @@ describe('the friends list', () => {
         },
       ]);
     });
+  });
+});
+
+describe('your puzzles', () => {
+  const PUZZLES = 'sudoku.puzzles';
+  const TIMES = '53007'.padEnd(81, '0');
+  const HALF = '6'.padEnd(81, '0');
+  const kept = (puzzles: readonly SavedPuzzle[]) =>
+    savePuzzle(puzzles, { id: 'mbx3k2f0-q7za', cells: TIMES }, 5).list;
+  const TIMES_KEPT: SavedPuzzle = { id: 'mbx3k2f0-q7za', cells: TIMES, createdAt: 5, updatedAt: 5 };
+
+  it('reads nothing stored as no puzzles', () => {
+    expect(loadPuzzles(memoryStorage())).toEqual([]);
+  });
+
+  it.each([
+    ['not JSON', '['],
+    ['not a list', '{"mbx3k2f0-q7za":{"cells":"0"}}'],
+  ])('reads a stored list that is %s as no puzzles', (_label, raw) => {
+    const storage = memoryStorage();
+    storage.setItem(PUZZLES, raw);
+    expect(loadPuzzles(storage)).toEqual([]);
+  });
+
+  it('skips junk in the stored list one entry at a time', () => {
+    const storage = memoryStorage();
+    storage.setItem(
+      PUZZLES,
+      JSON.stringify([42, { id: 'BAD ID', cells: TIMES, createdAt: 1 }, TIMES_KEPT]),
+    );
+    expect(loadPuzzles(storage)).toStrictEqual([TIMES_KEPT]);
+  });
+
+  it('writes a change, and reads back what it wrote', () => {
+    const storage = memoryStorage();
+    const changed = updatePuzzles(storage, kept);
+    expect(changed).toStrictEqual([TIMES_KEPT]);
+    expect(loadPuzzles(storage)).toStrictEqual(changed);
+  });
+
+  it('writes nothing for a change that changes nothing', () => {
+    const storage = countingStorage();
+    updatePuzzles(storage, kept);
+    expect(storage.sets).toEqual([PUZZLES]);
+    // The same grid saved again, and a rename of nothing: the same list back.
+    updatePuzzles(storage, kept);
+    updatePuzzles(storage, (puzzles) => retitlePuzzle(puzzles, 'gone-0001', 'Gone', 6));
+    expect(storage.sets).toEqual([PUZZLES]);
+  });
+
+  it('applies a change to the list as stored now, keeping what another tab saved since', () => {
+    const storage = memoryStorage();
+    const read = updatePuzzles(storage, kept);
+    // Another tab saves a second puzzle, and names the first.
+    const other = savePuzzle(read, { id: 'mbw9a1c4-0d2e', cells: HALF }, 6).list;
+    storage.setItem(PUZZLES, JSON.stringify(retitlePuzzle(other, TIMES_KEPT.id, 'The Times', 7)));
+    const changed = updatePuzzles(storage, (puzzles) =>
+      retitlePuzzle(puzzles, 'mbw9a1c4-0d2e', 'Half', 8),
+    );
+    expect(changed).toStrictEqual([
+      { id: 'mbw9a1c4-0d2e', cells: HALF, title: 'Half', createdAt: 6, updatedAt: 8 },
+      { ...TIMES_KEPT, title: 'The Times', updatedAt: 7 },
+    ]);
+    expect(loadPuzzles(storage)).toStrictEqual(changed);
+  });
+
+  it('makes room in a full storage, then writes', () => {
+    const storage = quotaStorage();
+    const records: GameRecord[] = [];
+    for (let i = 0; i < 15; i++) {
+      records.push(playing(`p${i}`, i, { updatedAt: 100 + i }));
+      saveGameBlob(storage, `p${i}`, 'x'.repeat(1000));
+    }
+    seed(storage, records);
+    storage.capacity = storage.used() + 20;
+    updatePuzzles(storage, kept);
+    // Saved games of the least recently played went to make room.
+    expect(hasGameBlob(storage, 'p0')).toBe(false);
+    expect(loadPuzzles(storage)).toHaveLength(1);
+  });
+
+  it('is never shed to make room for another write', () => {
+    const storage = quotaStorage();
+    updatePuzzles(storage, kept);
+    storage.capacity = storage.used() + 20;
+    // A game too big to fit whatever is shed: the library stays as it was.
+    upsertRecord(storage, playing('big', 1));
+    saveGameBlob(storage, 'big', 'x'.repeat(10_000));
+    expect(loadPuzzles(storage)).toStrictEqual([TIMES_KEPT]);
+  });
+
+  it('gives up quietly when the storage refuses every write, still giving back the change', () => {
+    const storage = throwingStorage({ set: true });
+    let changed: readonly SavedPuzzle[] = [];
+    expect(() => {
+      changed = updatePuzzles(storage, kept);
+    }).not.toThrow();
+    expect(changed).toStrictEqual([TIMES_KEPT]);
+    expect(loadPuzzles(storage)).toEqual([]);
   });
 });
 

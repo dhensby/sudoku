@@ -8,25 +8,46 @@ const PUZZLE = formatGrid(parseGrid(WIKIPEDIA_PUZZLE));
 const SOLUTION = formatGrid(parseGrid(WIKIPEDIA_SOLUTION));
 const HARD = HARDEST.nakedPair.givens;
 
-function renderEditor() {
+const BLANK = '0'.repeat(81);
+
+interface EditorOptions {
+  initialCells?: GridString;
+  initialSelected?: number;
+  savedCells?: GridString | null;
+}
+
+/** The editor on a new puzzle, or as `options` open it: on a grid kept, say. */
+function renderEditor({
+  initialCells = BLANK,
+  initialSelected = 0,
+  savedCells = null,
+}: EditorOptions = {}) {
   const onPlay = vi.fn();
+  const onSave = vi.fn();
   const onClose = vi.fn();
-  const view = render(
-    <EnterDialog
-      settings={{ highlightRowColumn: true, highlightBox: true }}
-      onPlay={onPlay}
-      onClose={onClose}
-    />,
-  );
-  return { ...view, onPlay, onClose };
+  const props = {
+    settings: { highlightRowColumn: true, highlightBox: true },
+    initialCells,
+    initialSelected,
+    savedCells,
+    onPlay,
+    onSave,
+    onClose,
+  };
+  const view = render(<EnterDialog {...props} />);
+  return { ...view, props, onPlay, onSave, onClose };
 }
 
 const dialog = () => screen.getByRole('dialog', { name: 'Enter a puzzle' });
 const cells = () => within(dialog()).getAllByRole('gridcell');
 const cell = (index: number) => cells()[index];
 const selected = () => cells().findIndex((it) => it.getAttribute('aria-selected') === 'true');
-const status = () => within(dialog()).getByRole('status');
+/** The line saying what the numbers make: the first of the two status regions. */
+const status = () => within(dialog()).getAllByRole('status')[0];
+/** What Save says it did, unseen: the second. */
+const saveStatus = () => within(dialog()).getAllByRole('status')[1];
 const play = () => within(dialog()).getByRole('button', { name: 'Play' });
+const save = () => within(dialog()).getByRole('button', { name: /^Saved?$/ });
 const padKey = (digit: number) =>
   within(dialog()).getByRole('button', { name: new RegExp(`^${digit}(, all placed)?$`) });
 
@@ -62,6 +83,28 @@ describe('EnterDialog', () => {
     );
     // No footer: Play is in the body, under the pad.
     expect(dialog().querySelector('.dialog__footer')).toBeNull();
+  });
+
+  it('opens on a grid kept, the selection just after its last number, typing on from there', () => {
+    const kept = '530070000600195'.padEnd(81, '0');
+    renderEditor({ initialCells: kept, initialSelected: 15, savedCells: kept });
+    expect(typed()).toBe(kept);
+    expect(selected()).toBe(15);
+    expect(cell(15)).toHaveFocus();
+    expect(status()).toHaveTextContent('A puzzle needs at least 17 numbers.');
+    type('98');
+    expect(typed().slice(0, 17)).toBe('53007000060019598');
+  });
+
+  it('hands up the grid as it was left as it closes, whichever way', () => {
+    const { onClose } = renderEditor();
+    type('53');
+    fireEvent.click(within(dialog()).getByRole('button', { name: 'Close' }));
+    expect(onClose).toHaveBeenLastCalledWith('53'.padEnd(81, '0'));
+    type('7');
+    press('Escape');
+    expect(onClose).toHaveBeenLastCalledWith('537'.padEnd(81, '0'));
+    expect(onClose).toHaveBeenCalledTimes(2);
   });
 
   describe('the keys', () => {
@@ -220,14 +263,14 @@ describe('EnterDialog', () => {
       for (const key of ['p', 'Tab', 'Enter']) expect(press(key), key).toBe(true);
       expect(typed()).toBe('0'.repeat(81));
       expect(selected()).toBe(0);
-      // Escape is the dialog's: it closes, and what was typed goes with it.
+      // Escape is the dialog's: it closes, with what was typed.
       press('Escape');
       expect(onClose).toHaveBeenCalledTimes(1);
     });
 
-    it('count only on the grid: Space on Play or a pad key presses it as ever', () => {
+    it('count only on the grid: Space on Play, Save or a pad key presses it as ever', () => {
       renderEditor();
-      for (const target of [play(), padKey(5)]) {
+      for (const target of [play(), save(), padKey(5)]) {
         target.focus();
         expect(press(' ')).toBe(true);
       }
@@ -250,9 +293,13 @@ describe('EnterDialog', () => {
       expect(selected()).toBe(40);
     });
 
-    it('keeps focus on the grid as a mouse presses its keys', () => {
+    it('keeps focus on the grid as a mouse presses its keys, or Save', () => {
       renderEditor();
-      for (const key of [padKey(5), within(dialog()).getByRole('button', { name: 'Erase' })]) {
+      for (const key of [
+        padKey(5),
+        within(dialog()).getByRole('button', { name: 'Erase' }),
+        save(),
+      ]) {
         // Pressed, it takes no focus: the browser's own move is prevented.
         expect(fireEvent.mouseDown(key)).toBe(false);
       }
@@ -360,6 +407,82 @@ describe('EnterDialog', () => {
       expect(play()).toHaveAttribute('aria-disabled', 'true');
       fireEvent.click(play());
       expect(onPlay).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Save', () => {
+    it('is unavailable on an empty grid, and does nothing pressed', () => {
+      const { onSave } = renderEditor();
+      expect(save()).toHaveTextContent(/^Save$/);
+      expect(save()).toHaveAttribute('aria-disabled', 'true');
+      expect(save()).toBeEnabled();
+      fireEvent.click(save());
+      expect(onSave).not.toHaveBeenCalled();
+    });
+
+    it('keeps any grid with a number in, finished or not, saying so unseen', () => {
+      const { onSave } = renderEditor();
+      type('55');
+      expect(status()).toHaveTextContent('Two 5s in row 1.');
+      expect(save()).not.toHaveAttribute('aria-disabled');
+      expect(saveStatus()).toBeEmptyDOMElement();
+      fireEvent.click(save());
+      expect(onSave).toHaveBeenCalledWith('55'.padEnd(81, '0'));
+      expect(saveStatus()).toHaveTextContent(/^Saved to Your puzzles\.$/);
+      // The line about the numbers keeps its words.
+      expect(status()).toHaveTextContent('Two 5s in row 1.');
+    });
+
+    it('says Saved, unavailable, while the grid is as saved, and Save again once it changes', () => {
+      const kept = '55'.padEnd(81, '0');
+      const { onSave, props, rerender } = renderEditor();
+      type('55');
+      fireEvent.click(save());
+      // As the parent has it once kept: saved as typed, the editor staying open.
+      rerender(<EnterDialog {...props} savedCells={kept} />);
+      expect(save()).toHaveTextContent(/^Saved$/);
+      expect(save()).toHaveAttribute('aria-disabled', 'true');
+      expect(typed()).toBe(kept);
+      fireEvent.click(save());
+      expect(onSave).toHaveBeenCalledTimes(1);
+      type('3');
+      expect(save()).toHaveTextContent(/^Save$/);
+      expect(save()).not.toHaveAttribute('aria-disabled');
+      // Back as it was saved, it is saved again.
+      press('Backspace');
+      expect(save()).toHaveTextContent(/^Saved$/);
+    });
+
+    it('opens as Saved on a grid kept, and says so again each time it saves', () => {
+      const kept = '6'.padEnd(81, '0');
+      const { onSave, props, rerender } = renderEditor({
+        initialCells: kept,
+        initialSelected: 1,
+        savedCells: kept,
+      });
+      expect(save()).toHaveTextContent(/^Saved$/);
+      const said: Element[] = [];
+      for (const digit of ['7', '8']) {
+        type(digit);
+        fireEvent.click(save());
+        const now = typed();
+        expect(onSave).toHaveBeenLastCalledWith(now);
+        rerender(<EnterDialog {...props} savedCells={now} />);
+        expect(saveStatus()).toHaveTextContent(/^Saved to Your puzzles\.$/);
+        said.push(saveStatus().firstElementChild!);
+      }
+      // A fresh message each time, though the words are the same, so each is announced.
+      expect(said[1]).not.toBe(said[0]);
+    });
+
+    it('is still unavailable on a grid kept that is erased to nothing', () => {
+      const kept = '6'.padEnd(81, '0');
+      const { onSave } = renderEditor({ initialCells: kept, initialSelected: 0, savedCells: kept });
+      press('Delete');
+      expect(save()).toHaveTextContent(/^Save$/);
+      expect(save()).toHaveAttribute('aria-disabled', 'true');
+      fireEvent.click(save());
+      expect(onSave).not.toHaveBeenCalled();
     });
   });
 });

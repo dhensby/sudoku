@@ -451,6 +451,19 @@ export async function seedFriends(page: Page, friends: readonly unknown[]): Prom
   }, friends);
 }
 
+/**
+ * Put puzzles in Your puzzles before the page loads (see
+ * `src/storage/puzzles.ts`), as a browser that has kept them holds them —
+ * once, so a reload does not put them back over a change made since.
+ */
+export async function seedPuzzles(page: Page, puzzles: readonly unknown[]): Promise<void> {
+  await page.addInitScript((seeded) => {
+    if (localStorage.getItem('e2e.seededPuzzles') !== null) return;
+    localStorage.setItem('sudoku.puzzles', JSON.stringify(seeded));
+    localStorage.setItem('e2e.seededPuzzles', '1');
+  }, puzzles);
+}
+
 /** A solved or unfinished daily attempt, as the history stores one, begun at `createdAt`. */
 export function dailyRecord(
   id: string,
@@ -485,21 +498,37 @@ export async function newGame(page: Page, label: string): Promise<void> {
     .click();
 }
 
-/**
- * Open Enter a puzzle from the header's New game menu, and wait for it. Find
- * everything in it through the dialog returned: the board and the pad behind
- * it stay on the page, so `cells` and `padKey` would find theirs as well.
- */
-export async function openEnterPuzzle(page: Page): Promise<Locator> {
+/** Open Your puzzles from the header's New game menu, and wait for it. */
+export async function openYourPuzzles(page: Page): Promise<Locator> {
   await page.getByRole('button', { name: 'New game' }).click();
   await page
     .getByRole('menu', { name: 'New game' })
-    .getByRole('menuitem', { name: 'Enter a puzzle…' })
+    .getByRole('menuitem', { name: 'Your puzzles…' })
     .click();
+  const dialog = page.getByRole('dialog', { name: 'Your puzzles' });
+  await expect(dialog).toBeVisible();
+  return dialog;
+}
+
+/**
+ * Open Enter a puzzle on an empty grid, from the header's New game menu
+ * through Your puzzles, and wait for it. Find everything in it through the
+ * dialog returned: the board and the pad behind it stay on the page, so
+ * `cells` and `padKey` would find theirs as well.
+ */
+export async function openEnterPuzzle(page: Page): Promise<Locator> {
+  const library = await openYourPuzzles(page);
+  await library.getByRole('button', { name: 'Enter a new puzzle' }).click();
   const dialog = page.getByRole('dialog', { name: 'Enter a puzzle' });
   await expect(dialog).toBeVisible();
   return dialog;
 }
+
+/**
+ * The editor's line saying what its numbers make (see `openEnterPuzzle`): the
+ * first of its two status regions — the other, unseen, says what Save did.
+ */
+export const enterStatus = (editor: Locator): Locator => editor.locator('.enter__status');
 
 /**
  * Type `givens` into Enter a puzzle (see `openEnterPuzzle`) from its first

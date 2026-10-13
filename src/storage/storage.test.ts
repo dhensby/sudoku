@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { MAX_NEWER_FIELD_JSON } from '../core';
 import {
   DIFFICULTIES,
   MAX_NAME_LENGTH,
   MAX_STAGE_ROUNDS,
+  MAX_TITLE_LENGTH,
   browserStorage,
   deleteItem,
   isDifficulty,
@@ -10,6 +12,7 @@ import {
   isPlayerId,
   memoryStorage,
   normaliseName,
+  normaliseTitle,
   readItem,
   readJson,
   writeItem,
@@ -467,4 +470,55 @@ describe('normaliseName', () => {
       expect(normaliseName(value)).toBe('');
     },
   );
+});
+
+describe('normaliseTitle', () => {
+  it.each([
+    ['The Times #5,123', 'The Times #5,123'],
+    ['  The Times\n#5,123 ', 'The Times #5,123'],
+    ['The‮ Times', 'The Times'],
+    ['   ', ''],
+  ])('tidies %j as a name is tidied, to %j', (input, expected) => {
+    expect(normaliseTitle(input)).toBe(expected);
+  });
+
+  it.each(['The Times Sudoku 5,123 (Fiendish)', 'The Guardian Sudoku No. 6,123 — Hard'])(
+    'keeps a newspaper’s own name whole, which a person’s length would cut: %j',
+    (title) => {
+      expect(normaliseName(title)).not.toBe(title);
+      expect(normaliseTitle(title)).toBe(title);
+    },
+  );
+
+  it('cuts a longer one to the longest length, ending in an ellipsis', () => {
+    expect(normaliseTitle('x'.repeat(MAX_TITLE_LENGTH))).toBe('x'.repeat(MAX_TITLE_LENGTH));
+    expect(normaliseTitle('x'.repeat(MAX_TITLE_LENGTH + 1))).toBe(
+      `${'x'.repeat(MAX_TITLE_LENGTH - 1)}…`,
+    );
+    // Whole characters, by either count: 40 emoji are 80 units, 39 and the ellipsis 79.
+    expect(normaliseTitle('😀'.repeat(50))).toBe(`${'😀'.repeat(MAX_TITLE_LENGTH - 1)}…`);
+  });
+
+  it.each([
+    ['a long title', 'The Times Sudoku 5,123 (Fiendish), Saturday’s, the hardest'],
+    ['a title of emoji', '👨‍👩‍👧‍👦'.repeat(50)],
+    ['a title stacked with marks', `Times e${'́'.repeat(100)}`],
+  ])('gives back %s unchanged when tidied a second time', (_label, input) => {
+    const once = normaliseTitle(input);
+    expect(normaliseTitle(once)).toBe(once);
+  });
+
+  it.each([
+    ['quotes', '"'.repeat(300)],
+    ['backslashes', '\\'.repeat(300)],
+    ['quotes stacked with marks', '"́'.repeat(300)],
+    ['families', '👨‍👩‍👧‍👦'.repeat(50)],
+  ])('keeps even a title of %s small enough for an older tab to carry', (_label, input) => {
+    // The worst there is: each quote escaped, each mark a character of its own in JSON.
+    expect(JSON.stringify(normaliseTitle(input)).length).toBeLessThanOrEqual(MAX_NEWER_FIELD_JSON);
+  });
+
+  it.each([[42], [null], [undefined], [['The Times']]])('reads %j as no title', (value) => {
+    expect(normaliseTitle(value)).toBe('');
+  });
 });

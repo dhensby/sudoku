@@ -107,7 +107,7 @@ const CONTROLS: readonly Control[] = [
         <kbd>Backspace</kbd> goes back
       </>
     ),
-    pointer: 'New game › Enter a puzzle…, then tap a cell and a number',
+    pointer: 'New game › Your puzzles… › Enter a new puzzle, then tap a cell and a number',
   },
   {
     action: 'Watch your solve',
@@ -171,7 +171,7 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
               Play today&apos;s from <strong>New game</strong>, under{' '}
               <strong>Today&apos;s puzzles</strong>. One you&apos;ve started carries on where you
               left off. Random puzzles are still there too, under <strong>Random puzzle</strong>,
-              with <strong>Enter a puzzle…</strong> after them for one of your own.
+              with <strong>Your puzzles…</strong> after them for ones of your own.
             </li>
             <li>
               The <strong>Daily puzzles</strong> calendar shows every day since the first, today
@@ -203,9 +203,9 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
           <h3 className="help__heading">Your own puzzles</h3>
           <ul className="help__list">
             <li>
-              <strong>Enter a puzzle…</strong>, last under Random puzzle in{' '}
-              <strong>New game</strong>, opens an empty grid to type in a puzzle from a newspaper or
-              a book.
+              <strong>Your puzzles…</strong>, last under Random puzzle in <strong>New game</strong>,
+              lists the puzzles you&apos;ve typed in from a newspaper or a book.{' '}
+              <strong>Enter a new puzzle</strong> opens an empty grid for another.
             </li>
             <li>
               Type it in row by row: a number fills a cell and moves on, <kbd>Space</kbd>,{' '}
@@ -235,7 +235,15 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
               haven&apos;t finished carries on where you left off; one you&apos;ve solved is offered
               to play again.
             </li>
-            <li>Closing the grid forgets what you typed.</li>
+            <li>
+              Every grid you type in is kept in Your puzzles, finished or not: <strong>Save</strong>{' '}
+              keeps it as it is, and Play and closing the grid keep it too. Up to 1,000 are kept.
+            </li>
+            <li>
+              From the list, <strong>Play</strong> one that&apos;s ready, <strong>Edit</strong> one
+              to carry on typing or put a number right, <strong>Rename</strong> one to tell it
+              apart, or <strong>Delete</strong> it — its games stay in your history.
+            </li>
           </ul>
         </section>
 
@@ -566,6 +574,10 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
             </li>
             <li>
               The names you give friends never leave this browser, except in History&apos;s export.
+            </li>
+            <li>
+              The puzzles you keep, and the names you give them, stay in this browser: a link to one
+              never carries its name.
             </li>
             <li>
               Some browsers clear a site's data after a while away. Export your history from the

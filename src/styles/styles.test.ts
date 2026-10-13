@@ -973,9 +973,9 @@ describe('Enter a puzzle', () => {
   });
 
   it('sizes the board by the height the rest leaves, the pad’s keys counted in', () => {
-    // The touch suite holds the measured 228px to every phone it plays on.
+    // The touch suite holds the measured 234px to every phone it plays on.
     expect(rule(DIALOGS, '.enter__board')).toMatch(
-      /100dvh - 228px - 2 \* var\(--enter-key\) - var\(--controls-gap\) -/,
+      /100dvh - 234px - 2 \* var\(--enter-key\) - var\(--controls-gap\) -/,
     );
     expect(rule(DIALOGS, '.enter')).toMatch(/--enter-key:\s*min\(var\(--key-height\), 52px\)/);
     expect(rule(DIALOGS, '.enter__pad')).toMatch(/grid-auto-rows:\s*var\(--enter-key\)/);
@@ -991,10 +991,19 @@ describe('Enter a puzzle', () => {
     expect(rule(DIALOGS, '.enter__board .cell--given')).toMatch(/cursor:\s*pointer/);
   });
 
-  it('marks Play unavailable, still and faded in its own colour, without disabling it', () => {
-    const unavailable = rule(DIALOGS, ".enter__play[aria-disabled='true']:hover");
-    expect(unavailable).toMatch(/background:\s*var\(--accent\)/);
+  it('marks Play and Save unavailable, still and faded each in its own colour, without disabling them', () => {
+    const unavailable = rule(DIALOGS, ".enter__actions .button[aria-disabled='true']:hover");
+    expect(unavailable).toMatch(/background:\s*var\(--button-bg\)/);
     expect(unavailable).toMatch(/opacity:\s*0\.5/);
+    expect(rule(DIALOGS, ".enter__actions .enter__play[aria-disabled='true']:hover")).toMatch(
+      /background:\s*var\(--accent\)/,
+    );
+  });
+
+  it('shares the row out equally between its buttons, the hint on a line of its own', () => {
+    expect(rule(DIALOGS, '.enter__actions .button')).toMatch(/flex:\s*1 1 0/);
+    expect(rule(DIALOGS, '.enter__hint')).toMatch(/font-size:\s*0\.75rem/);
+    expect(rule(DIALOGS, '.enter__hint')).not.toMatch(/flex/);
   });
 
   it('puts the board beside the rest on a phone on its side', () => {
