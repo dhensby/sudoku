@@ -326,13 +326,15 @@ The keys are a typist's, for copying a puzzle out row by row: a number fills the
 moves on, from the end of a row to the start of the next, stopping at the last cell;
 <kbd>Space</kbd>, <kbd>0</kbd> or a dot leaves a cell blank and moves on past it;
 <kbd>Backspace</kbd> erases the cell's number or, on an empty cell, steps back and erases the one
-before, as a text caret does; <kbd>Delete</kbd> erases where it is; and the arrow keys move,
-stopping at the edges. A number is read by its key's place, as on the board, so Shift, Alt, the
-numpad and an AZERTY keyboard all type it, and a number or a blank held down goes in once; every
-Ctrl or Cmd chord is left to the browser. On a phone, tap a cell, then a number on the pad (or
-Erase): it goes in where you tapped, moving nothing, so a correction lands in the same cell. Every
-number typed in is set as a given — it will be one — and the selected cell's row, column and box
-are tinted as Settings has the board's.
+before, as a text caret does; <kbd>Delete</kbd> erases where it is; and the arrow keys move —
+left and right in reading order, as typing does, from the end of a row to the start of the next
+and back, so a row that ends in blanks is left with an arrow, and up and down stopping at the
+edges. A number is read by its key's place, as on the board, so Shift, Alt, the numpad and an
+AZERTY keyboard all type it, and a number or a blank held down goes in once; every Ctrl or Cmd
+chord is left to the browser. On a phone, tap a cell, then a number on the pad (or Erase): it goes
+in where you tapped, moving nothing, so a correction lands in the same cell. Every number typed in
+is set as a given — it will be one — and the selected cell's row, column and box are tinted as
+Settings has the board's.
 
 As the numbers go in, the grid dots every clash, whatever the board's setting, and one line says
 what they make so far: the first of these that holds, its words the same for as long as it does,
@@ -1185,13 +1187,14 @@ of the logs here were shed, none of the file's logs are taken.
   included; the editor to every key (a number filling and moving on, on to the next row and no
   further than the last cell, by its key's place with Shift or Alt held and on the numpad; a blank
   from Space, 0 or a dot; Backspace on a number and on an empty cell; Delete; the arrows at the
-  edges; a number or a blank held down going in once; every Ctrl and Cmd chord let through), the
-  pad filling in place, its line keeping its words while the same thing holds, and Play unavailable,
-  saying why, until there is one solution; through the main hook, Play puts a new puzzle behind
-  Start as the player's own, unseen until its board shows and its time counted as a new puzzle's,
-  setting the game behind aside — dropped if only glimpsed, a puzzle on its way cancelled — and
-  resumes an unfinished attempt or offers a solved puzzle again instead; and its record keeps
-  `entered` only as `true`, through a save, an export, an import and a tab from before it.
+  edges, left and right running on round the rows; a number or a blank held down going in once;
+  every Ctrl and Cmd chord let through), the pad filling in place, its line keeping its words while
+  the same thing holds, and Play unavailable, saying why, until there is one solution; through the
+  main hook, Play puts a new puzzle behind Start as the player's own, unseen until its board shows
+  and its time counted as a new puzzle's, setting the game behind aside — dropped if only glimpsed,
+  a puzzle on its way cancelled — and resumes an unfinished attempt or offers a solved puzzle again
+  instead; and its record keeps `entered` only as `true`, through a save, an export, an import and a
+  tab from before it.
   Coverage thresholds are enforced in CI, with the engine held to 100%.
 - **End-to-end** (`e2e/`, Playwright): full journeys against the built app — playing and solving,
   pausing and reloading, share links between two browsers (a solve with a mistake shared, opened in
