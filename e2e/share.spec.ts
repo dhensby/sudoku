@@ -8,13 +8,16 @@ import {
   cell,
   cells,
   copiedText,
+  elsewhere,
   emptyCells,
   gotoPuzzle,
   openHeaderDialog,
+  openYourPuzzles,
   puzzleLink,
   readBoard,
   readTimer,
   resumeButton,
+  seedPuzzles,
   solveFromKeyboard,
   startButton,
   startPuzzle,
@@ -482,5 +485,77 @@ test.describe('the share dialog', () => {
     }));
     expect(selection).toEqual({ start: 0, end: selection.length, length: selection.length });
     await expect(box).toHaveValue(/^Try this Hard Sudoku!\nhttp/);
+  });
+});
+
+test.describe("a puzzle's name", () => {
+  const TITLE = 'The Times #1,234';
+
+  /** Copy what the Share dialog on show sends, and read it back: the message's lines and the link. */
+  async function copyShared(page: Page): Promise<{ lines: string[]; link: URL }> {
+    const share = page.getByRole('dialog', { name: 'Share this puzzle' });
+    await share.getByRole('button', { name: 'Copy', exact: true }).click();
+    await expect(share.getByRole('status')).toHaveText('Copied to clipboard');
+    const copied = await copiedText(page);
+    const lines = copied.at(-1)!.split('\n');
+    await share.getByRole('button', { name: 'Close' }).click();
+    return { lines: lines.slice(0, -1), link: new URL(lines.at(-1)!) };
+  }
+
+  test("goes with its link, to the friend's Ready card and History, and on in their own link", async ({
+    page,
+    browser,
+  }) => {
+    const hard = PUZZLES.hard;
+    const at = Date.UTC(2026, 9, 1, 9);
+    await stubClipboard(page);
+    await seedPuzzles(page, [
+      { id: 'kept-0001', cells: hard.givens, title: TITLE, createdAt: at, updatedAt: at },
+    ]);
+    await page.goto('/');
+    await waitForPlaying(page);
+    const library = await openYourPuzzles(page);
+    await library.getByRole('button', { name: new RegExp(`^Share ${TITLE}, from `) }).click();
+    const sent = await copyShared(page);
+    expect(sent.lines).toEqual(['Try this Hard Sudoku!', TITLE]);
+    expect(Object.fromEntries(sent.link.searchParams)).toEqual({
+      p: encodeGivens(hard.givens),
+      l: TITLE,
+    });
+
+    await elsewhere(browser, async (other) => {
+      await stubClipboard(other);
+      await other.goto(sent.link.href);
+      const area = boardArea(other);
+      await expect(area.getByRole('heading', { name: 'Ready?' })).toBeVisible();
+      await expect(area.locator('.board-overlay__name bdi')).toHaveText(TITLE);
+      // The rest of the card as ever, and nothing asked: a bare link names no one.
+      await expect(area).toContainText('Someone shared a Hard puzzle with you.');
+      await expectLinkConsumed(other);
+      await expect(startButton(other)).toBeFocused();
+
+      // Shared on from its Start card, the name goes too.
+      await openHeaderDialog(other, 'Share');
+      const passed = await copyShared(other);
+      expect(passed.lines).toEqual(['Try this Hard Sudoku!', TITLE]);
+      expect(Object.fromEntries(passed.link.searchParams)).toEqual(
+        Object.fromEntries(sent.link.searchParams),
+      );
+
+      await startButton(other).click();
+      await waitForPlaying(other);
+      expect(await readBoard(other)).toBe(hard.givens);
+      await openHeaderDialog(other, 'History');
+      const history = other.getByRole('dialog', { name: 'History' });
+      await expect(history.locator('.history-item__name bdi')).toHaveText(TITLE);
+
+      // Kept through a reload, as the game is.
+      await other.reload();
+      await expect(resumeButton(other)).toBeVisible();
+      await openHeaderDialog(other, 'History');
+      await expect(
+        other.getByRole('dialog', { name: 'History' }).locator('.history-item__name'),
+      ).toHaveText(TITLE);
+    });
   });
 });

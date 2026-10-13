@@ -185,6 +185,49 @@ describe('BoardOverlay', () => {
     );
   });
 
+  it("names the puzzle on a line of its own under Ready?, kept in its link's direction", () => {
+    render(
+      <BoardOverlay
+        kind="ready"
+        difficulty="hard"
+        isShared
+        challenge={{ name: 'Dan', seconds: 323, assists: NONE_HELP }}
+        title="جريدة الأهرام ١٢٣"
+        onStart={vi.fn()}
+      />,
+    );
+    const name = screen.getByText('جريدة الأهرام ١٢٣');
+    expect(name.tagName).toBe('BDI');
+    expect(name.parentElement).toHaveClass('board-overlay__name');
+    // Straight under the heading, the rest of the card as it was.
+    expect(screen.getByRole('heading', { name: 'Ready?' }).nextElementSibling).toBe(
+      name.parentElement,
+    );
+    expect(screen.getByRole('button', { name: 'Start' })).toHaveAccessibleDescription(
+      'Ready? جريدة الأهرام ١٢٣ Dan solved this Hard puzzle in 5:23. Can you beat it? The timer starts when you do.',
+    );
+  });
+
+  it('names nothing for a puzzle without a name', () => {
+    for (const title of [null, undefined]) {
+      const { container, unmount } = render(
+        <BoardOverlay
+          kind="ready"
+          difficulty="easy"
+          isShared
+          challenge={null}
+          title={title}
+          onStart={vi.fn()}
+        />,
+      );
+      expect(container.querySelector('.board-overlay__name')).toBeNull();
+      expect(screen.getByRole('button', { name: 'Start' })).toHaveAccessibleDescription(
+        'Ready? Someone shared an Easy puzzle with you. The timer starts when you do.',
+      );
+      unmount();
+    }
+  });
+
   it('shows the time on the Paused card, unless the timer is hidden', () => {
     const onResume = vi.fn();
     const { rerender } = render(

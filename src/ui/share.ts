@@ -43,6 +43,12 @@ export { MAX_NAME_LENGTH } from '../storage/storage';
  * link gives — or none. Only with a time, as the name is: a bare puzzle has
  * no time to name anyone by. A version from before it skips it, and leaves it
  * in its address bar, as with `s`.
+ *
+ * A puzzle named in Your puzzles goes with its name (`&l=`, its label — `n`
+ * being the sharer's), with a time or without, so a friend's Start card and
+ * History can say which puzzle it is, and their own link passes it on. The
+ * message says it too, on a line of its own under the first. A version from
+ * before it skips it, and leaves it in its address bar, as with `s`.
  */
 
 /** A result to put in a link: the time to beat, the help it came with and its mistakes. */
@@ -197,13 +203,16 @@ function sharedSeconds(seconds: number): number {
 /**
  * The link that opens `givens` — with the date of the daily it is, if it is
  * one, and the sharer's result, when there is one: its time, the sharer's
- * name and player ID, its help and mistakes, and its solve, in that order.
+ * name and player ID, its help and mistakes, then the puzzle's name (`title`,
+ * tidied already: see `GameRecord.title`), with a result or without, and the
+ * result's solve, in that order.
  */
 export function buildShareUrl(
   base: string,
   givens: GridString,
   result?: ShareResult,
   daily?: DateKey | null,
+  title?: string | null,
 ): string {
   const url = new URL(base);
   url.search = '';
@@ -221,9 +230,10 @@ export function buildShareUrl(
     // Mistakes after the help, in the same parameter (see `encodeMistakes`).
     const assists = encodeAssists(result.assists) + encodeMistakes(result.mistakes);
     if (assists !== '') url.searchParams.set('a', assists);
-    // Last, as the longest by far: a chat preview cut short keeps the rest.
-    if (result.log !== undefined && result.log !== null) url.searchParams.set('s', result.log);
   }
+  if (title !== undefined && title !== null) url.searchParams.set('l', title);
+  // Last, as the longest by far: a chat preview cut short keeps the rest.
+  if (result?.log !== undefined && result.log !== null) url.searchParams.set('s', result.log);
   return url.href;
 }
 
@@ -241,28 +251,39 @@ export function buildShareUrl(
  * "1 mistake", "With auto candidates" — the mistakes only when the count is
  * known, and nothing at all for an unaided solve whose count is not. A link
  * carrying the solve says so at the end (see `SOLVE_LINE`).
+ *
+ * A puzzle with a name says it second, on a line of its own, whatever the
+ * rest — "Try this Hard Sudoku!" over "The Times #1,234" — so the first line,
+ * which a group chat's dailies line up by, stays as it was.
  */
 export function buildShareText({
   difficulty,
   result,
   daily = null,
+  title = null,
 }: {
   difficulty: Level;
   result?: Pick<ShareResult, 'seconds' | 'assists' | 'mistakes' | 'log'>;
   /** The date of the daily the puzzle is, if it is one. */
   daily?: DateKey | null;
+  /** The puzzle's name, if it has one, as the link carries it (see `buildShareUrl`). */
+  title?: string | null;
 }): string {
   const label = DIFFICULTY_LABEL[difficulty];
   const name =
     daily === null ? `Sudoku · ${label}` : `Sudoku Daily · ${formatDayWithYear(daily)} · ${label}`;
+  const lines: string[] = [];
   if (result === undefined) {
-    return daily === null ? `Try this ${label} Sudoku!` : `${name}\nCan you solve it?`;
+    if (daily === null) lines.push(`Try this ${label} Sudoku!`);
+    else lines.push(name, 'Can you solve it?');
+  } else {
+    lines.push(`${name} · ${formatDuration(sharedSeconds(result.seconds) * 1000)}`);
+    const how = describeResult(result.assists, result.mistakes ?? null);
+    if (how !== null) lines.push(how);
+    lines.push('Can you beat my time?');
+    if (result.log !== undefined && result.log !== null) lines.push(SOLVE_LINE);
   }
-  const lines = [`${name} · ${formatDuration(sharedSeconds(result.seconds) * 1000)}`];
-  const how = describeResult(result.assists, result.mistakes ?? null);
-  if (how !== null) lines.push(how);
-  lines.push('Can you beat my time?');
-  if (result.log !== undefined && result.log !== null) lines.push(SOLVE_LINE);
+  if (title !== null) lines.splice(1, 0, title);
   return lines.join('\n');
 }
 

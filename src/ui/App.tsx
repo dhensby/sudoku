@@ -17,6 +17,7 @@ import {
   type GameState,
 } from '../core';
 import { challengerName, namedChallenge, namedRecord } from '../storage/friends';
+import { titledRecord } from '../storage/puzzles';
 import type { Challenge } from '../storage/history';
 import { getNewerVersion, reload, subscribeNewerVersion } from '../update/check';
 import { Board } from './Board';
@@ -97,6 +98,8 @@ function boardContent(sudoku: Sudoku): BoardContent {
       isShared: record?.source === 'shared' && record.entered !== true,
       // Under the name the friend was given here, if any (see `challengerName`).
       challenge: challenge === null ? null : namedChallenge(sudoku.friendIndex, challenge),
+      // Its name: the player's own for it in Your puzzles, else its link's (see `Sudoku.title`).
+      title: sudoku.title,
       daily,
       onStart: actions.resume,
       solve,
@@ -144,12 +147,16 @@ export function App({ options }: AppProps = {}) {
    */
   const named = (challenge: Challenge | null): Challenge | null =>
     challenge === null ? null : namedChallenge(sudoku.friendIndex, challenge);
-  // History's rows are memoised: a record is copied only when its name
-  // changes, so a rename draws again only the rows it renames. Its actions
-  // find the stored records by id, so no copy is ever written back.
+  // History's rows are memoised: a record is copied only when a name in it
+  // changes — its challenger's, or its puzzle's (see `titledRecord`) — so a
+  // rename draws again only the rows it renames. Its actions find the stored
+  // records by id, so no copy is ever written back.
   const historyRecords = useMemo(
-    () => sudoku.history.records.map((record) => namedRecord(sudoku.friendIndex, record)),
-    [sudoku.history.records, sudoku.friendIndex],
+    () =>
+      sudoku.history.records.map((record) =>
+        titledRecord(sudoku.puzzleIndex, namedRecord(sudoku.friendIndex, record)),
+      ),
+    [sudoku.history.records, sudoku.friendIndex, sudoku.puzzleIndex],
   );
 
   useEffect(() => trackInputModality(), []);
@@ -490,6 +497,7 @@ export function App({ options }: AppProps = {}) {
             difficulty={dialog.target.difficulty}
             result={dialog.target.result}
             daily={dialog.target.daily}
+            title={dialog.target.title}
             solve={dialog.target.solve}
             playerId={sudoku.playerId}
             playerName={sudoku.playerName}

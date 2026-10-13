@@ -68,7 +68,7 @@ import {
   storeMoveLog,
   storeMoveLogs,
 } from './moveLogs';
-import { memoryStorage, type StorageLike } from './storage';
+import { memoryStorage, normaliseTitle, type StorageLike } from './storage';
 import { computeStreak, dailyStatuses } from './streaks';
 import { quotaStorage, throwingStorage } from '../test/misc-storage';
 import {
@@ -1582,6 +1582,59 @@ describe('puzzles typed in', () => {
       bestMs: 100_000,
       averageMs: 100_000,
     });
+  });
+});
+
+describe("a puzzle's name from its link", () => {
+  const TITLE = 'The Times #1,234';
+  /** A solved attempt at a puzzle whose link gave it a name. */
+  const titled = (id: string, createdAt: number, title: unknown = TITLE): GameRecord =>
+    solved(id, createdAt, 60_000, { source: 'shared', title } as Partial<GameRecord>);
+
+  it('comes through a save, an export and an import as it went in', () => {
+    const phone = memoryStorage();
+    upsertRecord(phone, titled('a', 1));
+    expect(loadHistory(phone)[0]).toEqual(titled('a', 1));
+    const laptop = memoryStorage();
+    importHistory(laptop, exportHistory(phone, 0));
+    expect(loadHistory(laptop)).toEqual([titled('a', 1)]);
+  });
+
+  it('is tidied as a puzzle name is, and left off when nothing is left of it', () => {
+    const storage = memoryStorage();
+    seed(storage, [
+      titled('a', 1, `  The\u202e  Times\n${'#'.repeat(50)}`),
+      titled('b', 2, ''),
+      titled('c', 3, ' \u200b '),
+      titled('d', 4, 42),
+    ]);
+    const byId = new Map(loadHistory(storage).map((record) => [record.id, record]));
+    expect(byId.get('a')?.title).toBe(`The Times ${'#'.repeat(29)}…`);
+    for (const id of ['b', 'c', 'd']) expect(byId.get(id)).not.toHaveProperty('title');
+    // The game itself is kept, as a game from a link.
+    expect(byId.get('d')?.source).toBe('shared');
+  });
+
+  it('survives a tab from before names went in links, which keeps it as a newer field', () => {
+    // What that tab knew of a record: everything but the name.
+    const before = [
+      ...Object.keys(playing('x', 0)),
+      ...['daily', 'startedOn', 'mistakes', 'watched', 'beyond', 'entered'],
+    ];
+    expect(newerFields(titled('a', 1), before)).toEqual({ title: TITLE });
+    // Even at its longest and its worst, escaped quotes and all.
+    const worst = normaliseTitle('"\u0301'.repeat(80));
+    expect(newerFields(titled('a', 1, worst), before)).toEqual({ title: worst });
+  });
+
+  it('is never taken off by a newer copy that lost it', () => {
+    const phone = memoryStorage();
+    upsertRecord(phone, { ...playing('g1', 1, { source: 'shared' }), title: TITLE });
+    // Finished in a tab old enough to drop the fields it did not know.
+    const laptop = memoryStorage();
+    upsertRecord(laptop, solved('g1', 1, 60_000, { source: 'shared' }));
+    importHistory(phone, exportHistory(laptop, 0));
+    expect(loadHistory(phone)[0]).toMatchObject({ id: 'g1', status: 'solved', title: TITLE });
   });
 });
 

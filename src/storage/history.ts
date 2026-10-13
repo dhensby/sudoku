@@ -42,6 +42,7 @@ import {
   isObject,
   isPlayerId,
   normaliseName,
+  normaliseTitle,
   readItem,
   readJson,
   writeItem,
@@ -292,6 +293,18 @@ export interface GameRecord {
    * never false.
    */
   entered?: true;
+  /**
+   * The puzzle's name, as a link to it gave it (`l=`, see `buildShareUrl`):
+   * its sender's for it in Your puzzles, or the one their own link gave,
+   * tidied as one is there (see `normaliseTitle`) — from the link the game
+   * came from, or the first to name it after (see `planStartup`). Never
+   * rewritten once set, and never ''; absent on a game no link named. A puzzle the player typed in is named
+   * by Your puzzles instead, as it is now, looked up wherever a game of it is
+   * drawn or shared (see `titledRecord`) — a name there wins over this one
+   * for the same numbers. Short enough for a version from before it to keep
+   * as a field it does not know (see `newerFields`).
+   */
+  title?: string;
 }
 
 /** Totals for one tier, or for the puzzles beyond the techniques. */
@@ -394,6 +407,7 @@ const RECORD_FIELDS = fieldsOf<GameRecord>({
   watched: true,
   beyond: true,
   entered: true,
+  title: true,
 });
 
 /** The fields of a challenge this version knows. */
@@ -607,8 +621,9 @@ function normaliseChallenge(value: unknown): Challenge | null {
  * still a game, just not one against a rival or on the calendar. So are
  * broken mistakes, which then read as not known (see `normaliseMistakes`).
  * `watched` and `entered` are kept only as `true`, and `beyond` only as
- * `true` on an Expert game. Small fields a newer version added are kept as
- * they are (see `newerFields`).
+ * `true` on an Expert game. A name is tidied (see `normaliseTitle`), and left
+ * off if nothing is left of it. Small fields a newer version added are kept
+ * as they are (see `newerFields`).
  */
 function normaliseRecord(value: unknown): GameRecord | null {
   if (!isObject(value)) return null;
@@ -630,6 +645,7 @@ function normaliseRecord(value: unknown): GameRecord | null {
   }
   const isDaily = isDailyDate(value.daily, createdAt);
   const mistakes = normaliseMistakes(value.mistakes);
+  const title = normaliseTitle(value.title);
   return {
     ...newerFields(value, RECORD_FIELDS),
     id,
@@ -655,6 +671,7 @@ function normaliseRecord(value: unknown): GameRecord | null {
     ...(value.watched === true ? { watched: true as const } : {}),
     ...(value.beyond === true && difficulty === 'expert' ? { beyond: true as const } : {}),
     ...(value.entered === true ? { entered: true as const } : {}),
+    ...(title === '' ? {} : { title }),
   };
 }
 
@@ -1926,12 +1943,14 @@ export function importHistory(storage: StorageLike, json: string): ImportResult 
     // The flags are never taken off: a copy finished somewhere that knew
     // nothing of the watch is still an attempt made after it, a puzzle
     // beyond the techniques stays beyond them, and one typed in stays the
-    // player's own, whatever version last saved it.
+    // player's own, whatever version last saved it. Nor is the name its link
+    // gave, which is never rewritten.
     byId.set(incoming.id, {
       ...incoming,
       ...(existing?.watched === true ? { watched: true as const } : {}),
       ...(existing?.beyond === true ? { beyond: true as const } : {}),
       ...(existing?.entered === true ? { entered: true as const } : {}),
+      ...(existing?.title === undefined ? {} : { title: existing.title }),
     });
   }
   if (added.size + updated.size === 0) return { ok: true, added: 0, updated: 0, puzzles };

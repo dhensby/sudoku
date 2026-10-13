@@ -119,6 +119,19 @@ describe('HistoryDialog', () => {
       expect(within(row).getByText('Dan').tagName).toBe('BDI');
     });
 
+    it("names a game's puzzle, when it has a name, on a line of its own under its heading", () => {
+      const [, won] = RECORDS;
+      renderHistory({ records: [{ ...won, title: 'The Times #1,234' }, RECORDS[2]] });
+      const name = within(rows()[0]).getByText('The Times #1,234');
+      // A name from a link is a stranger's free text: kept in its own direction.
+      expect(name.tagName).toBe('BDI');
+      expect(name.parentElement).toHaveClass('history-item__name');
+      expect(rows()[0].querySelector('.history-item__heading')?.nextElementSibling).toBe(
+        name.parentElement,
+      );
+      expect(rows()[1].querySelector('.history-item__name')).toBeNull();
+    });
+
     it('shows guesses checked as entered as a chip of its own, after auto candidates', () => {
       const [record] = RECORDS;
       renderHistory({

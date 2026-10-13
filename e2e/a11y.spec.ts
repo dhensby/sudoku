@@ -42,17 +42,17 @@ import {
 /**
  * Accessibility, checked by machine: axe-core runs its WCAG 2.2 A and AA
  * rules over the states a player meets — the board in play with every kind
- * of mark on it, the Ready and Paused cards, the "…" menu, every dialog (each
- * step of Show me, the Show me of a missing candidate, Friends with a name
- * being changed and with two friends being merged, "Who sent this?" with
- * friends to choose from, Enter a puzzle at each step on the way to a
- * puzzle — empty, a clash dotted, too few numbers, more than one solution,
- * and a Hard with one, saved — and Your puzzles, empty, with puzzles kept, a
- * name being changed and a delete being confirmed, among them), each entry
- * of the technique guide, a step hint with its houses tinted on the board,
- * and the offer of a new version at the foot of the page — in the light
- * theme and the dark (and the main ones, the tint, Enter a puzzle and Your
- * puzzles among them, in High contrast), and each must come back with no
+ * of mark on it, the Ready and Paused cards (a Ready card with a puzzle's name
+ * among them), the "…" menu, every dialog (each step of Show me, the Show me of
+ * a missing candidate, Friends with a name being changed and with two friends
+ * being merged, "Who sent this?" with friends to choose from, Enter a puzzle at
+ * each step on the way to a puzzle — empty, a clash dotted, too few numbers,
+ * more than one solution, and a Hard with one, saved — and Your puzzles, empty,
+ * with puzzles kept, a name being changed and a delete being confirmed, among
+ * them), each entry of the technique guide, a step hint with its houses tinted
+ * on the board, and the offer of a new version at the foot of the page — in
+ * the light theme and the dark (and the main ones, the tint, Enter a puzzle and
+ * Your puzzles among them, in High contrast), and each must come back with no
  * violations at all, with no rule switched off.
  * Contrast is the rule that a palette change is likeliest to break:
  * contrast.test.ts holds the tokens to their targets pair by pair, and this
@@ -641,6 +641,10 @@ for (const scheme of ['light', 'dark'] as const) {
       await expect(startButton(page)).toBeVisible();
       await expectAccessible(page, 'the Ready card');
 
+      await gotoPuzzle(page, PUZZLES.expert.givens, { title: 'The Times #1,234' });
+      await expect(boardArea(page).locator('.board-overlay__name')).toHaveText('The Times #1,234');
+      await expectAccessible(page, "the Ready card with a puzzle's name");
+
       await gotoPuzzle(page, PUZZLES.hard.givens, {
         challenge: { seconds: 323, name: 'Dan', assists: 'ch2m1' },
       });
@@ -1195,8 +1199,11 @@ test.describe('on a phone', () => {
       page,
     }) => {
       await page.emulateMedia({ colorScheme: scheme });
-      await gotoPuzzle(page, PUZZLES.medium.givens);
+      await gotoPuzzle(page, PUZZLES.expert.givens, { title: 'The Times #1,234' });
       await expectScheme(page, scheme);
+      await expect(boardArea(page).locator('.board-overlay__name')).toHaveText('The Times #1,234');
+      await expectAccessible(page, "the Ready card with a puzzle's name");
+      await gotoPuzzle(page, PUZZLES.medium.givens);
       await expectAccessible(page, 'the Ready card');
 
       await playWithEveryMark(page);

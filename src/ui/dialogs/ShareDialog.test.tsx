@@ -90,6 +90,17 @@ describe('ShareDialog', () => {
       renderShare({ result: null, playerId: 'k3x9q7za2m' });
       expect(shownUrl()).toBe(buildShareUrl(shareBaseUrl(), GIVENS));
     });
+
+    it("sends the puzzle's name in the link, and says it under the message's first line", () => {
+      renderShare({ result: null, title: 'The Times #1,234' });
+      expect(document.querySelector('.share__text')?.textContent).toBe(
+        'Try this Hard Sudoku!\nThe Times #1,234',
+      );
+      expect(shownUrl()).toBe(
+        buildShareUrl(shareBaseUrl(), GIVENS, undefined, null, 'The Times #1,234'),
+      );
+      expect(new URL(shownUrl()!).searchParams.get('l')).toBe('The Times #1,234');
+    });
   });
 
   describe('a solved time', () => {
@@ -99,6 +110,21 @@ describe('ShareDialog', () => {
       expect(document.querySelector('.share__text')?.textContent).toBe(RESULT_TEXT);
       expect(shownUrl()).toBe(linkFor('Dan'));
       expect(new URL(shownUrl()!).searchParams.get('a')).toBe('h2');
+    });
+
+    it("sends the puzzle's name with the time, the name of the sharer beside it", () => {
+      renderShare({ title: 'The Times #1,234', playerId: 'k3x9q7za2m' });
+      expect(document.querySelector('.share__text')?.textContent).toBe(
+        'Sudoku · Hard · 5:23\nThe Times #1,234\nWith 2 hints\nCan you beat my time?',
+      );
+      expect([...new URL(shownUrl()!).searchParams]).toEqual([
+        ['p', expect.any(String)],
+        ['t', '323'],
+        ['n', 'Dan'],
+        ['u', 'k3x9q7za2m'],
+        ['a', 'h2'],
+        ['l', 'The Times #1,234'],
+      ]);
     });
 
     it('puts known mistakes in the message and the link, a clean solve as "m0"', () => {

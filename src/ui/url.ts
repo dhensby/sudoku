@@ -1,10 +1,10 @@
 import { decodeGivens, isDateKey, type DateKey, type GridString } from '../core';
 import type { Challenge } from '../storage/history';
-import { isPlayerId, normaliseName } from '../storage/storage';
+import { isPlayerId, normaliseName, normaliseTitle } from '../storage/storage';
 import { decodeAssists, decodeMistakes } from './share';
 
 /** The parameters a share link may carry. */
-const SHARE_PARAMS = ['p', 'd', 't', 'n', 'u', 'a', 's'] as const;
+const SHARE_PARAMS = ['p', 'd', 't', 'n', 'u', 'a', 'l', 's'] as const;
 
 /** What a share link asked for. */
 export interface SharedLink {
@@ -27,6 +27,13 @@ export interface SharedLink {
    * before it is offered to watch; null otherwise.
    */
   solve: string | null;
+  /**
+   * The puzzle's name, as the link gives it (`&l=`): its sender's for it in
+   * Your puzzles, or the one their own link gave. Tidied as one is there (see
+   * `normaliseTitle`); null when the link gives none, or nothing is left of
+   * it.
+   */
+  title: string | null;
 }
 
 /**
@@ -41,6 +48,9 @@ export interface SharedLink {
  * exception: a link that does not say them — every link from before they
  * were shared — or says them in a way no game could have counted leaves the
  * challenge's mistakes unset, not known, never none (see `decodeMistakes`).
+ *
+ * A puzzle's name (`&l=`) comes back with or without a result, tidied as a
+ * name is: free text anyone can write, for drawing in its own direction.
  *
  * A solve (`&s=`) only comes back with a result to go with it, as it is
  * checked against the result's time. So does the sharer's player ID (`&u=`),
@@ -80,8 +90,16 @@ export function readSharedLink(search: string): SharedLink | null {
   const daily = isDateKey(date) ? date : null;
 
   const solve = challenge === null ? null : params.get('s');
+  const title = normaliseTitle(params.get('l'));
 
-  return { code, givens: decodeGivens(code), challenge, daily, solve: solve === '' ? null : solve };
+  return {
+    code,
+    givens: decodeGivens(code),
+    challenge,
+    daily,
+    solve: solve === '' ? null : solve,
+    title: title === '' ? null : title,
+  };
 }
 
 /**

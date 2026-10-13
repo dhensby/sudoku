@@ -84,7 +84,13 @@ import {
   type ImportResult,
 } from '../storage/history';
 import { loadEncodedMoveLog } from '../storage/moveLogs';
-import { deletePuzzle, retitlePuzzle, savePuzzle, type SavedPuzzle } from '../storage/puzzles';
+import {
+  deletePuzzle,
+  indexPuzzles,
+  retitlePuzzle,
+  savePuzzle,
+  type SavedPuzzle,
+} from '../storage/puzzles';
 import {
   ensurePlayerId,
   hasNewerTheme,
@@ -718,6 +724,12 @@ export interface Sudoku {
   difficulty: Level;
   /** The date of the daily on show (or being dealt), if it is one. */
   daily: DateKey | null;
+  /**
+   * The name of the puzzle on screen, for its Start card: the player's own
+   * for it in Your puzzles, if they have given it one, else the one its link
+   * gave (see `GameRecord.title`); null for neither, or no game.
+   */
+  title: string | null;
   /** Today's dailies, as New game offers them. */
   today: TodayDailies;
   /** Generation failed with no game to fall back to. */
@@ -789,9 +801,16 @@ export interface Sudoku {
    * The puzzles typed in and kept, here or in a browser whose History was
    * imported here (see `puzzles.ts`), the latest first saved first, as last
    * read: at startup, as Your puzzles opens or the editor goes back to it,
-   * after an import, and after each change made here.
+   * as History opens (for its rows' names, see `titledRecord`), after an
+   * import, and after each change made here.
    */
   puzzles: readonly SavedPuzzle[];
+  /**
+   * `puzzles` by their numbers, for drawing every game of one under the name
+   * given it there (see `titledRecord`). Its identity changes only with
+   * `puzzles`.
+   */
+  puzzleIndex: ReadonlyMap<GridString, SavedPuzzle>;
   actions: SudokuActions;
 }
 
@@ -1146,6 +1165,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
   // Your puzzles as last read; every write goes through `updatePuzzles`, as
   // the friends' do, so another tab's saves are never lost.
   const [puzzles, setPuzzles] = useState<readonly SavedPuzzle[]>(() => loadPuzzles(storage));
+  const puzzleIndex = useMemo(() => indexPuzzles(puzzles), [puzzles]);
 
   // The session last written to storage, so the save timer skips a session
   // a handler has already saved. Written only in handlers and timers.
@@ -1284,10 +1304,19 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
    * made now if there is none yet (see `ensurePlayerId`): the two updates
    * land together, so the dialog's first link already carries it. A bare
    * puzzle names no one, and makes none.
+   *
+   * Every way of sharing passes through here, so here the puzzle takes the
+   * name the player gave it in Your puzzles, if they have, in place of the
+   * one its link gave: `title`, which a caller that has just kept the puzzle
+   * passes, as the list in hand is a save behind.
    */
-  const openShare = (target: ShareTarget, returnTo: ShareView['returnTo']): void => {
+  const openShare = (
+    target: ShareTarget,
+    returnTo: ShareView['returnTo'],
+    title = puzzleIndex.get(target.givens)?.title ?? target.title,
+  ): void => {
     if (target.result !== null && prefs.playerId === undefined) setPrefs(ensurePlayerId(storage));
-    setDialog({ kind: 'share', target, returnTo });
+    setDialog({ kind: 'share', target: { ...target, title }, returnTo });
   };
 
   /**
@@ -1520,14 +1549,26 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
    * second begun beside it: with two, one could be studied while the other
    * sat at 0:00, then finished from memory. Otherwise a fresh attempt starts,
    * recorded as a replay. Either way it races `challenge`, if there is one,
-   * and is recorded as the daily of date `daily`, if it is one.
+   * and is recorded as the daily of date `daily`, if it is one — and under
+   * the name a link gave the puzzle, `title`, unless the unfinished attempt
+   * has one already (see `GameRecord.title`).
    */
-  const startPuzzle = (puzzle: Puzzle, challenge: Challenge | null, daily?: DateKey): void => {
+  const startPuzzle = (
+    puzzle: Puzzle,
+    challenge: Challenge | null,
+    daily?: DateKey,
+    title?: string,
+  ): void => {
     const t = at();
     const playing = (attempt: Session): Session => {
+      const named = attempt.record.title ?? title;
       const racing = {
         ...attempt,
-        record: { ...attempt.record, challenge: challenge ?? attempt.record.challenge },
+        record: {
+          ...attempt.record,
+          challenge: challenge ?? attempt.record.challenge,
+          ...(named === undefined ? {} : { title: named }),
+        },
       };
       return daily === undefined ? racing : asDaily(racing, daily, dealtTier(puzzle.difficulty));
     };
@@ -1552,6 +1593,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       isWatched: hasWatched(storage, puzzle.givens),
       start: 'running',
       daily,
+      title,
     });
     adopt(next, t, `Playing this ${DIFFICULTY_LABEL[puzzle.difficulty]} puzzle again.`);
   };
@@ -2250,8 +2292,9 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
         setHistory(readHistory(t.wall));
         setFriends(loadFriends(storage));
       }
-      // With whatever another tab has saved since.
-      if (kind === 'puzzles') setPuzzles(loadPuzzles(storage));
+      // With whatever another tab has saved since — and History's games by
+      // the names their puzzles have there now (see `titledRecord`).
+      if (kind === 'puzzles' || kind === 'history') setPuzzles(loadPuzzles(storage));
       setDialog({ kind });
     },
     openTechniques: (initial, step) => {
@@ -2358,7 +2401,8 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     },
     playAgain: () => {
       if (dialog?.kind !== 'challenge') return;
-      startPuzzle(dialog.offer.puzzle, dialog.offer.challenge, dialog.offer.daily);
+      const { offer } = dialog;
+      startPuzzle(offer.puzzle, offer.challenge, offer.daily, offer.title);
     },
     playEntered: (puzzle) => {
       const t = at();
@@ -2370,10 +2414,19 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
         return;
       }
       // Solved already: say so, and offer it again, the game behind left as
-      // the editor left it — to resume, if it was playing, as the offer closes.
+      // the editor left it — to resume, if it was playing, as the offer closes
+      // — under the name a link gave the earlier game, as a link's offer is.
       const previous = previousSolve(findAttempts(records, puzzle.givens));
       if (previous !== undefined) {
-        setDialog({ kind: 'challenge', offer: { puzzle, previous, challenge: null } });
+        setDialog({
+          kind: 'challenge',
+          offer: {
+            puzzle,
+            previous,
+            challenge: null,
+            ...(previous.title === undefined ? {} : { title: previous.title }),
+          },
+        });
         return;
       }
       // Otherwise it waits behind Start as the player's own, a replay only if
@@ -2417,16 +2470,14 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       actions.playEntered(puzzle);
     },
     shareFromEditor: (view, puzzle, selected) => {
-      const { id } = keep(view.id, puzzle.givens);
+      const { id, title } = keep(view.id, puzzle.givens);
       // The game behind stays paused, Share taking the editor's place and
       // giving it back as it closes.
-      openShare(shareTargetOfPuzzle(puzzle), {
-        kind: 'enter',
-        id,
-        cells: puzzle.givens,
-        selected,
-        isBackFromShare: true,
-      });
+      openShare(
+        shareTargetOfPuzzle(puzzle),
+        { kind: 'enter', id, cells: puzzle.givens, selected, isBackFromShare: true },
+        title ?? null,
+      );
     },
     closeEditor: (view, cells) => {
       // Saved as it closes, however it closes, as a game is saved as it is
@@ -2472,7 +2523,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
         showNotice('resumeFailed');
         return;
       }
-      startPuzzle(puzzle, record.challenge);
+      startPuzzle(puzzle, record.challenge, undefined, record.title);
     },
     shareRecord: (id) => {
       const record = history.records.find((entry) => entry.id === id);
@@ -2698,6 +2749,10 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       vacancy ??
       prefs.lastDifficulty,
     daily: generating === null ? (session?.record.daily ?? null) : (generating.daily ?? null),
+    title:
+      session === null
+        ? null
+        : (puzzleIndex.get(session.record.givens)?.title ?? session.record.title ?? null),
     today,
     isLoadFailed,
     elapsedMs: elapsed,
@@ -2721,6 +2776,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     friends,
     friendIndex,
     puzzles,
+    puzzleIndex,
     actions,
   };
 }

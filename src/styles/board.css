@@ -539,7 +539,9 @@
 }
 
 /* Never larger than the frame it sits in: on the smallest boards a long
-   challenge scrolls inside the card rather than spilling over the edge. */
+   challenge scrolls inside the card rather than spilling over the edge, as
+   does any challenge with a puzzle's name, or a name at its widest, on a
+   phone on its side (an iPhone SE's, 568×320). */
 .board-overlay__card {
   display: flex;
   flex-direction: column;
@@ -574,6 +576,16 @@
   color: var(--text);
   font-size: 1rem;
   line-height: 1.4;
+}
+
+/* A puzzle's name, under "Ready?": up to 40 characters from a link, so one
+   with no spaces to break at wraps rather than pushing the card wider. */
+.board-overlay__name {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
 }
 
 .board-overlay__note {
@@ -631,7 +643,8 @@
     font-size: 1.375rem;
   }
 
-  .board-overlay__text {
+  .board-overlay__text,
+  .board-overlay__name {
     font-size: 0.9375rem;
   }
 
@@ -658,6 +671,10 @@
   .board-overlay__text {
     font-size: 0.875rem;
     line-height: 1.35;
+  }
+
+  .board-overlay__name {
+    font-size: 0.875rem;
   }
 
   .board-overlay__note {

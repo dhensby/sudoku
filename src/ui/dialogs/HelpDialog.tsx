@@ -521,6 +521,11 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
               friend&apos;s game can tell your times from anyone else&apos;s.
             </li>
             <li>
+              A puzzle you&apos;ve named in Your puzzles sends its name with its link, solved or
+              not: your friend sees it on the Start card and in their history, and it goes on with
+              their link.
+            </li>
+            <li>
               <strong>Friends</strong>, at the foot of History, lists everyone who has sent you a
               time. Give someone a name there and it&apos;s the one you&apos;ll see on all their
               times, past ones too, whatever their links call them; until you do, each time shows
@@ -594,8 +599,8 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
               The names you give friends never leave this browser, except in History&apos;s export.
             </li>
             <li>
-              The names you give your puzzles, and the list itself, never leave this browser, except
-              in History&apos;s export: a link to one carries its numbers, never its name.
+              The list of your puzzles never leaves this browser, except in History&apos;s export. A
+              puzzle&apos;s name goes with its link when you share it.
             </li>
             <li>
               Some browsers clear a site's data after a while away. Export your history from the

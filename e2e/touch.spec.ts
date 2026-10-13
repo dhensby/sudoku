@@ -672,6 +672,44 @@ test.describe('a 320×568 phone', () => {
   });
 
   /*
+   * A puzzle's name at its longest, 40 characters, and a word in it with no
+   * space to break at: it wraps inside the card, at the board's smallest
+   * size here, and the card itself still has nothing to scroll; and so it
+   * does in Share's preview of the message, passing it on.
+   */
+  test("keeps a link's 40-character puzzle name inside its Ready card and Share's preview, with nothing to scroll", async ({
+    page,
+  }) => {
+    const title = 'Supercalifragilisticexpialidocious #1234';
+    expect([...title]).toHaveLength(40);
+    await gotoPuzzle(page, EASY.givens, { title });
+    const card = page.locator('.board-overlay__card');
+    const name = card.locator('.board-overlay__name');
+    await expect(name).toHaveText(title);
+    await settle(page);
+    expect(await overflow(page)).toEqual({ x: 0, y: 0 });
+    expect(
+      await card.evaluate((el) => ({
+        x: el.scrollWidth - el.clientWidth,
+        y: el.scrollHeight - el.clientHeight,
+      })),
+    ).toEqual({ x: 0, y: 0 });
+    const [box, inner] = [(await card.boundingBox())!, (await name.boundingBox())!];
+    expect(inner.x).toBeGreaterThanOrEqual(box.x);
+    expect(inner.x + inner.width).toBeLessThanOrEqual(box.x + box.width);
+    expect(await name.evaluate((el) => el.scrollWidth - el.clientWidth)).toBe(0);
+    await expectOnScreen(page, startButton(page));
+
+    const share = await openFromMenu(page, 'Share');
+    const text = share.locator('.share__text');
+    await expect(text).toHaveText(`Try this Easy Sudoku!\n${title}`);
+    expect((await overflow(page)).x).toBe(0);
+    expect(await text.evaluate((el) => el.scrollWidth - el.clientWidth)).toBe(0);
+    const body = share.locator('.dialog__body');
+    expect(await body.evaluate((el) => el.scrollWidth - el.clientWidth)).toBe(0);
+  });
+
+  /*
    * Short of height, the board still gives help taken its line once help is
    * taken, as on any phone held upright, and the game still fits; the "…"
    * menu's Hint counts the hints too.

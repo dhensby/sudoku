@@ -1,4 +1,5 @@
 import { fieldsOf, isGridString, newerFields, type GridString } from '../core';
+import type { GameRecord } from './history';
 import { GAME_ID_PATTERN, isObject, normaliseTitle } from './storage';
 
 /*
@@ -18,7 +19,10 @@ import { GAME_ID_PATTERN, isObject, normaliseTitle } from './storage';
  * `assessmentOf`), so no stored label can go stale under a later grader. No
  * two entries have the same numbers: saving a grid already kept updates that
  * entry (see `savePuzzle`), so a puzzle is one row however it was typed in.
- * Its name is the one the player gave it, if any.
+ * Its name is the one the player gave it, if any, and goes with its link
+ * when it is shared (see `GameRecord.title`) — looked up here by its numbers
+ * as it goes, and wherever a game of it is drawn (see `titledRecord`), so a
+ * rename names its games, past ones too, and is never written into them.
  *
  * Pure: the I/O lives in `history.ts` (`loadPuzzles`, `updatePuzzles`),
  * beside the friends', and so does History's export, which carries the list
@@ -122,6 +126,21 @@ export function indexPuzzles(
   puzzles: readonly SavedPuzzle[],
 ): ReadonlyMap<GridString, SavedPuzzle> {
   return new Map(puzzles.map((entry) => [entry.cells, entry]));
+}
+
+/**
+ * A record as History draws it: under the name the player gave its puzzle
+ * in Your puzzles, if they have, else the one its link gave (see
+ * `GameRecord.title`). The same record unless that name is another, so only
+ * the rows of a puzzle just renamed draw again. A copy for drawing only,
+ * never to be written back.
+ */
+export function titledRecord(
+  index: ReadonlyMap<GridString, SavedPuzzle>,
+  record: GameRecord,
+): GameRecord {
+  const title = index.get(record.givens)?.title ?? record.title;
+  return title === record.title ? record : { ...record, title };
 }
 
 // ---------------------------------------------------------------------------

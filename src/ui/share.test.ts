@@ -290,6 +290,60 @@ describe('buildShareUrl', () => {
     expect(withId.href).toBe(without.href);
   });
 
+  it("carries a puzzle's name after the result and before the solve, with a time or without", () => {
+    const title = 'The Times #1,234';
+    const bare = new URL(buildShareUrl(BASE, GIVENS, undefined, null, title));
+    expect([...bare.searchParams.keys()]).toEqual(['p', 'l']);
+    expect(bare.searchParams.get('l')).toBe(title);
+    const daily = new URL(buildShareUrl(BASE, GIVENS, undefined, '2026-10-13', title));
+    expect([...daily.searchParams.keys()]).toEqual(['p', 'd', 'l']);
+    const result = {
+      seconds: 90,
+      name: 'Dan',
+      assists: { ...NONE, hints: 2 },
+      mistakes: { values: 0, candidates: 0 },
+      playerId: 'k3x9q7za2m',
+    };
+    const timed = new URL(buildShareUrl(BASE, GIVENS, result, '2026-10-13', title));
+    expect([...timed.searchParams.keys()]).toEqual(['p', 'd', 't', 'n', 'u', 'a', 'l']);
+    // The solve stays last, as the longest by far.
+    const solved = new URL(
+      buildShareUrl(BASE, GIVENS, { ...result, log: 'BBAxy-_z' }, '2026-10-13', title),
+    );
+    expect([...solved.searchParams.keys()]).toEqual(['p', 'd', 't', 'n', 'u', 'a', 'l', 's']);
+  });
+
+  it("carries no puzzle's name without one to carry", () => {
+    for (const title of [null, undefined]) {
+      expect(
+        new URL(buildShareUrl(BASE, GIVENS, undefined, null, title)).searchParams.has('l'),
+      ).toBe(false);
+    }
+  });
+
+  it("changes no other parameter for the puzzle's name it carries", () => {
+    const result = {
+      seconds: 90,
+      name: 'Dan',
+      assists: { ...NONE, hints: 2 },
+      mistakes: { values: 1, candidates: 0 },
+      log: 'BBAxy-_z',
+      playerId: 'k3x9q7za2m',
+    };
+    for (const shared of [undefined, result]) {
+      const without = new URL(buildShareUrl(BASE, GIVENS, shared, '2026-10-13'));
+      const titled = new URL(
+        buildShareUrl(BASE, GIVENS, shared, '2026-10-13', 'Le Monde · n° 12 — très difficile'),
+      );
+      for (const key of ['p', 'd', 't', 'n', 'u', 'a', 's']) {
+        expect(titled.searchParams.get(key)).toBe(without.searchParams.get(key));
+      }
+      // A version from before it reads the rest as ever, and skips the name.
+      titled.searchParams.delete('l');
+      expect(titled.href).toBe(without.href);
+    }
+  });
+
   it('replaces whatever query and hash the base had', () => {
     const url = buildShareUrl(`${BASE}?p=old&x=1#frag`, GIVENS);
     expect(url).not.toMatch(/old|x=1|#frag/);
@@ -392,6 +446,49 @@ describe('buildShareText', () => {
     const link = new URL(buildShareUrl(BASE, GIVENS, { ...result, name: '' }));
     expect(link.searchParams.get('t')).toBe('1');
     expect(buildShareText({ difficulty: 'easy', result })).toMatch(/^Sudoku · Easy · 0:01\n/);
+  });
+
+  it("says a puzzle's name second, on a line of its own, solved or not", () => {
+    const title = 'The Times #1,234';
+    expect(buildShareText({ difficulty: 'hard', title })).toBe(
+      'Try this Hard Sudoku!\nThe Times #1,234',
+    );
+    expect(buildShareText({ difficulty: 'hard', daily: '2026-10-13', title })).toBe(
+      'Sudoku Daily · 13 Oct 2026 · Hard\nThe Times #1,234\nCan you solve it?',
+    );
+    expect(
+      buildShareText({
+        difficulty: 'easy',
+        result: {
+          seconds: 323,
+          assists: { ...NONE, hints: 2 },
+          mistakes: { values: 0, candidates: 0 },
+          log: 'BBA',
+        },
+        title,
+      }),
+    ).toBe(
+      `Sudoku · Easy · 5:23\nThe Times #1,234\nNo mistakes · with 2 hints\nCan you beat my time?\n${SOLVE_LINE}`,
+    );
+    expect(
+      buildShareText({
+        difficulty: 'hard',
+        daily: '2026-10-13',
+        result: { seconds: 323, assists: NONE },
+        title,
+      }),
+    ).toBe('Sudoku Daily · 13 Oct 2026 · Hard · 5:23\nThe Times #1,234\nCan you beat my time?');
+  });
+
+  it('leaves a message without a name as it ever was', () => {
+    const forms = [
+      { difficulty: 'hard' as const },
+      { difficulty: 'hard' as const, daily: '2026-10-13' as const },
+      { difficulty: 'easy' as const, result: { seconds: 323, assists: NONE, log: 'BBA' } },
+    ];
+    for (const form of forms) {
+      expect(buildShareText({ ...form, title: null })).toBe(buildShareText(form));
+    }
   });
 
   it('joins message and link for the clipboard', () => {

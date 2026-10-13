@@ -861,8 +861,11 @@
 .share__text {
   margin: 6px 0 0;
   font-weight: 600;
-  /* The message is several lines (time, assists, invitation). */
+  /* The message is several lines (time, assists, invitation), and its
+     puzzle's name, from a link anyone can write, may have no space to break
+     at: it wraps rather than pushing the sheet wider. */
   white-space: pre-line;
+  overflow-wrap: anywhere;
 }
 
 .share__url {
@@ -1040,6 +1043,15 @@
 .history-item__status {
   margin: 2px 0 0;
   font-size: 0.9375rem;
+}
+
+/* The puzzle's name, from its link or Your puzzles, under the heading: one
+   with no spaces to break at wraps rather than pushing the row wider than the
+   sheet, where the row's `content-visibility` would cut it off. */
+.history-item__name {
+  margin: 2px 0 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 .history-item__chips {

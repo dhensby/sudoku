@@ -9,8 +9,10 @@ import {
   normalisePuzzles,
   retitlePuzzle,
   savePuzzle,
+  titledRecord,
   type SavedPuzzle,
 } from './puzzles';
+import type { GameRecord } from './history';
 
 /** A grid with `digits` typed in from the first cell, the rest blank. */
 const grid = (digits: string): GridString => digits.padEnd(81, '0');
@@ -145,6 +147,45 @@ describe('indexPuzzles', () => {
     expect(index.get(TIMES)).toBe(PUZZLES[0]);
     expect(index.get(HALF)).toBe(PUZZLES[1]);
     expect(index.get(GUARDIAN)).toBeUndefined();
+  });
+});
+
+describe('titledRecord', () => {
+  /** A game of `givens`, its link's name `title` if given. */
+  const game = (givens: GridString, title?: string): GameRecord => ({
+    id: 'mbx3k2f0-g4me',
+    givens,
+    difficulty: 'hard',
+    source: 'shared',
+    createdAt: 1,
+    updatedAt: 1,
+    completedAt: null,
+    status: 'playing',
+    elapsedMs: 0,
+    assists: { autoCandidates: false, hints: 0, checks: 0, reveals: 0 },
+    challenge: null,
+    ...(title === undefined ? {} : { title }),
+  });
+  const index = indexPuzzles(PUZZLES);
+
+  it('draws a game under the name its puzzle has in Your puzzles, over its link’s', () => {
+    expect(titledRecord(index, game(TIMES))).toEqual(game(TIMES, 'The Times #5,123'));
+    expect(titledRecord(index, game(TIMES, 'Puzzle 7'))).toEqual(game(TIMES, 'The Times #5,123'));
+  });
+
+  it('keeps the link’s name for a puzzle unnamed there, or not there at all', () => {
+    const unnamed = game(HALF, 'Puzzle 7');
+    expect(titledRecord(index, unnamed)).toBe(unnamed);
+    const elsewhere = game(GUARDIAN, 'Puzzle 7');
+    expect(titledRecord(index, elsewhere)).toBe(elsewhere);
+  });
+
+  it('is the very record when the name it draws is its own, or there is none', () => {
+    const same = game(TIMES, 'The Times #5,123');
+    expect(titledRecord(index, same)).toBe(same);
+    const none = game(GUARDIAN);
+    expect(titledRecord(index, none)).toBe(none);
+    expect(titledRecord(index, none)).not.toHaveProperty('title');
   });
 });
 

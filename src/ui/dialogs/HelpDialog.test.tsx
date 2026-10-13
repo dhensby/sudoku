@@ -378,11 +378,19 @@ describe('HelpDialog', () => {
     );
   });
 
-  it("says the puzzles' names, and the list, leave this browser only in History's export", () => {
+  it("says the list of puzzles leaves this browser only in History's export, and a name with its link", () => {
     render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={vi.fn()} />);
     const section = screen.getByRole('heading', { name: 'Privacy' }).closest('section')!;
-    expect(within(section).getByText(/^The names you give your puzzles/)).toHaveTextContent(
-      "The names you give your puzzles, and the list itself, never leave this browser, except in History's export: a link to one carries its numbers, never its name.",
+    expect(within(section).getByText(/^The list of your puzzles/)).toHaveTextContent(
+      "The list of your puzzles never leaves this browser, except in History's export. A puzzle's name goes with its link when you share it.",
+    );
+  });
+
+  it("says a puzzle's name goes with its link, and where the friend sees it", () => {
+    render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={vi.fn()} />);
+    const section = screen.getByRole('heading', { name: 'Racing friends' }).closest('section')!;
+    expect(within(section).getByText(/^A puzzle you've named/)).toHaveTextContent(
+      "A puzzle you've named in Your puzzles sends its name with its link, solved or not: your friend sees it on the Start card and in their history, and it goes on with their link.",
     );
   });
 

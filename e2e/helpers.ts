@@ -88,8 +88,11 @@ export interface LinkChallenge {
   assists?: string;
 }
 
-/** The path and query of a share link to `givens`, as the app's Share dialog builds it. */
-export function puzzleLink(givens: GridString, challenge?: LinkChallenge): string {
+/**
+ * The path and query of a share link to `givens`, as the app's Share dialog
+ * builds it — with the puzzle's name its sender gave it (`l=`), if `title` is.
+ */
+export function puzzleLink(givens: GridString, challenge?: LinkChallenge, title?: string): string {
   const params = new URLSearchParams({ p: encodeGivens(givens) });
   if (challenge !== undefined) {
     params.set('t', String(challenge.seconds));
@@ -97,6 +100,7 @@ export function puzzleLink(givens: GridString, challenge?: LinkChallenge): strin
     if (challenge.playerId !== undefined) params.set('u', challenge.playerId);
     if (challenge.assists !== undefined) params.set('a', challenge.assists);
   }
+  if (title !== undefined) params.set('l', title);
   return `/?${params.toString()}`;
 }
 
@@ -160,9 +164,9 @@ export const whoSentDialog = (page: Page): Locator =>
 export async function gotoPuzzle(
   page: Page,
   givens: GridString,
-  options: { challenge?: LinkChallenge } = {},
+  options: { challenge?: LinkChallenge; title?: string } = {},
 ): Promise<void> {
-  await page.goto(puzzleLink(givens, options.challenge));
+  await page.goto(puzzleLink(givens, options.challenge, options.title));
   await expect(
     boardArea(page).getByRole('heading').or(grid(page)).or(whoSentDialog(page)).first(),
   ).toBeVisible();

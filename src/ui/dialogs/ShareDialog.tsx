@@ -26,6 +26,12 @@ export interface ShareDialogProps {
   /** The date of the daily the puzzle is, if it was played as one: the message names it, and the link says so. */
   daily?: DateKey | null;
   /**
+   * The puzzle's name, if it has one (see `ShareTarget.title`): the link
+   * carries it, and the message says it under its first line. Null (or left
+   * out) for none.
+   */
+  title?: string | null;
+  /**
    * The solve that goes with the result, as its encoded move log, which the
    * player may include for a friend to watch — only one the friend's game
    * will play back at this time (see `ShareTarget.solve`) — or null (or left
@@ -92,6 +98,7 @@ export function ShareDialog({
   difficulty,
   result,
   daily = null,
+  title = null,
   solve = null,
   playerId = null,
   playerName,
@@ -121,11 +128,13 @@ export function ShareDialog({
     givens,
     result === null ? undefined : { ...result, name: normaliseName(name), playerId, log },
     daily,
+    title,
   );
   const text = buildShareText({
     difficulty,
     result: result === null ? undefined : { ...result, log },
     daily,
+    title,
   });
   const message = messageWithLink(text, url);
   const payload: ShareData = { title: 'Sudoku', text, url };

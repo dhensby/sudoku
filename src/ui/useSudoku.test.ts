@@ -876,7 +876,14 @@ describe('useSudoku', () => {
       };
       expect(result.current.dialog).toEqual({
         kind: 'share',
-        target: { givens: HARD, difficulty: 'hard', result: null, daily: null, solve: null },
+        target: {
+          givens: HARD,
+          difficulty: 'hard',
+          result: null,
+          daily: null,
+          solve: null,
+          title: null,
+        },
         returnTo: back,
       });
       // A bare puzzle names no one, and makes no player ID.
@@ -902,7 +909,14 @@ describe('useSudoku', () => {
       act(() => result.current.actions.shareEntry('kept-0000', typedIn(HARD)));
       expect(result.current.dialog).toEqual({
         kind: 'share',
-        target: { givens: HARD, difficulty: 'hard', result: null, daily: null, solve: null },
+        target: {
+          givens: HARD,
+          difficulty: 'hard',
+          result: null,
+          daily: null,
+          solve: null,
+          title: null,
+        },
         returnTo: { kind: 'puzzles', place: { id: 'kept-0000', control: 'share' } },
       });
       expect(writes.mock.calls).toEqual([]);
@@ -949,6 +963,130 @@ describe('useSudoku', () => {
         'The Times',
         null,
       ]);
+    });
+
+    describe("a puzzle's name", () => {
+      const TITLE = 'The Times #1,234';
+
+      /** Keep `cells` in `storage` under `title`, as Your puzzles would. */
+      function named(storage: StorageLike, cells: string, title: string, id = 'kept-0000'): void {
+        updatePuzzles(storage, (list) =>
+          retitlePuzzle(savePuzzle(list, { id, cells }, 1).list, id, title, 2),
+        );
+      }
+
+      it('names the game a link opens by the name it gave, behind its Start card', async () => {
+        const { result } = await started({ search: linkFor(PUZZLE.givens, { l: TITLE }) });
+        expect(result.current.phase).toBe('ready');
+        expect(result.current.title).toBe(TITLE);
+        expect(result.current.record?.title).toBe(TITLE);
+      });
+
+      it("names it by the player's own name for it in Your puzzles instead, never stored", async () => {
+        const storage = memoryStorage();
+        named(storage, PUZZLE.givens, 'Mine');
+        const { result } = await started({ storage, search: linkFor(PUZZLE.givens, { l: TITLE }) });
+        expect(result.current.title).toBe('Mine');
+        expect(result.current.record?.title).toBe(TITLE);
+        expect(loadHistory(storage)[0].title).toBe(TITLE);
+      });
+
+      it('names a puzzle typed in by its name in Your puzzles, and nothing else by none', async () => {
+        const { result } = await library([HARD]);
+        expect(result.current.title).toBeNull();
+        act(() => result.current.actions.renameEntry('kept-0000', TITLE));
+        act(() => result.current.actions.playEntered(typedIn(HARD)));
+        expect(result.current.phase).toBe('ready');
+        expect(result.current.title).toBe(TITLE);
+        // Its record is the player's own, with no name of a link's.
+        expect(result.current.record).not.toHaveProperty('title');
+      });
+
+      it('shares a game under its link’s name, or the one the player gave its puzzle', async () => {
+        const storage = memoryStorage();
+        const { result } = await started({ storage, search: linkFor(PUZZLE.givens, { l: TITLE }) });
+        act(() => result.current.actions.openDialog('share'));
+        expect(result.current.dialog).toMatchObject({ kind: 'share', target: { title: TITLE } });
+        act(() => result.current.actions.closeDialog());
+        named(storage, PUZZLE.givens, 'Mine');
+        act(() => result.current.actions.openDialog('history'));
+        const { id } = result.current.record!;
+        act(() => result.current.actions.shareRecord(id));
+        expect(result.current.dialog).toMatchObject({ kind: 'share', target: { title: 'Mine' } });
+        act(() => result.current.actions.closeDialog());
+        act(() => result.current.actions.closeDialog());
+        act(() => result.current.actions.openDialog('share'));
+        expect(result.current.dialog).toMatchObject({ kind: 'share', target: { title: 'Mine' } });
+      });
+
+      it('shares a puzzle of Your puzzles under its name, from its row or the editor', async () => {
+        const storage = memoryStorage();
+        named(storage, HARD, TITLE);
+        const { result } = await started({ storage });
+        act(() => result.current.actions.openDialog('puzzles'));
+        act(() => result.current.actions.shareEntry('kept-0000', typedIn(HARD)));
+        expect(result.current.dialog).toMatchObject({ kind: 'share', target: { title: TITLE } });
+        act(() => result.current.actions.closeDialog());
+        act(() => result.current.actions.openEditor(result.current.puzzles[0]));
+        // Renamed in another tab while the editor was open: the name it keeps
+        // as Share… keeps it goes, not the one the list last read.
+        named(storage, HARD, 'The Sunday Times');
+        act(() => result.current.actions.shareFromEditor(editor(result), typedIn(HARD), 3));
+        expect(result.current.dialog).toMatchObject({
+          kind: 'share',
+          target: { title: 'The Sunday Times' },
+        });
+      });
+
+      it('plays a solved puzzle again from its link under the name the link gave', async () => {
+        const storage = memoryStorage();
+        upsertRecord(storage, solvedRecord(PUZZLE, 290_000));
+        const { result } = await started({
+          storage,
+          search: linkFor(PUZZLE.givens, { t: '323', n: 'Dan', l: TITLE }),
+        });
+        expect(result.current.dialog).toMatchObject({ kind: 'challenge', offer: { title: TITLE } });
+        act(() => result.current.actions.playAgain());
+        expect(result.current.record).toMatchObject({ source: 'replay', title: TITLE });
+      });
+
+      it('plays a game from History again under the name its link gave', async () => {
+        const storage = memoryStorage();
+        const earlier = another(PUZZLE);
+        upsertRecord(storage, { ...solvedRecord(earlier, 290_000), title: TITLE });
+        const { result } = await started({ storage });
+        act(() => result.current.actions.openDialog('history'));
+        act(() => result.current.actions.replayRecord('old-0001'));
+        expect(result.current.record).toMatchObject({
+          givens: earlier.givens,
+          source: 'replay',
+          title: TITLE,
+        });
+      });
+
+      it('offers a solved puzzle typed in again under the name its link gave', async () => {
+        const storage = memoryStorage();
+        const earlier = another(PUZZLE);
+        upsertRecord(storage, { ...solvedRecord(earlier, 290_000), title: TITLE });
+        const { result } = await started({ storage });
+        act(() => result.current.actions.openDialog('puzzles'));
+        act(() => result.current.actions.playEntered(earlier));
+        expect(result.current.dialog).toMatchObject({ kind: 'challenge', offer: { title: TITLE } });
+        act(() => result.current.actions.playAgain());
+        expect(result.current.record).toMatchObject({
+          givens: earlier.givens,
+          source: 'replay',
+          title: TITLE,
+        });
+      });
+
+      it('reads the names afresh as History opens, for its rows', async () => {
+        const storage = memoryStorage();
+        const { result } = await started({ storage });
+        named(storage, PUZZLE.givens, TITLE);
+        act(() => result.current.actions.openDialog('history'));
+        expect(result.current.puzzleIndex.get(PUZZLE.givens)?.title).toBe(TITLE);
+      });
     });
   });
 
@@ -1081,6 +1219,7 @@ describe('useSudoku', () => {
           result: null,
           daily: null,
           solve: null,
+          title: null,
         },
         returnTo: null,
       });

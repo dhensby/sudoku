@@ -40,6 +40,11 @@ export type BoardOverlayContent =
       difficulty: Level;
       isShared: boolean;
       challenge: Challenge | null;
+      /**
+       * The puzzle's name, if it has one — the player's own for it, else its
+       * link's (see `Sudoku.title`): a line of its own under "Ready?".
+       */
+      title?: string | null;
       daily?: OverlayDaily | null;
       onStart: () => void;
       /** The friend's solve the link carried, to watch instead of racing it. */
@@ -195,6 +200,7 @@ export function BoardOverlay(props: BoardOverlayProps) {
   const claimRef = useRef(props.onClaimFocus);
   const ids = useId();
   const titleId = `${ids}-title`;
+  const nameId = `${ids}-name`;
   const textId = `${ids}-text`;
   const noteId = `${ids}-note`;
   const timerNoteId = `${ids}-timer`;
@@ -259,6 +265,12 @@ export function BoardOverlay(props: BoardOverlayProps) {
           <h2 className="board-overlay__title" id={titleId}>
             Ready?
           </h2>
+          {props.title !== undefined && props.title !== null && (
+            <p className="board-overlay__name" id={nameId}>
+              {/* A name from a link anyone can write, kept in its own direction. */}
+              <bdi>{props.title}</bdi>
+            </p>
+          )}
           {props.challenge !== null ? (
             <ChallengeText
               difficulty={props.difficulty}
@@ -301,6 +313,7 @@ export function BoardOverlay(props: BoardOverlayProps) {
               className="button button--primary board-overlay__button"
               aria-describedby={[
                 titleId,
+                props.title !== undefined && props.title !== null ? nameId : null,
                 textId,
                 props.challenge !== null && challengeNote(props.challenge) !== null ? noteId : null,
                 props.isWatched === true ? watchedNoteId : timerNoteId,

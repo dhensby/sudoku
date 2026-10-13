@@ -9,8 +9,10 @@ import {
   loadPuzzles,
   saveCurrentId,
   updateFriends,
+  updatePuzzles,
   upsertRecord,
 } from '../storage/history';
+import { retitlePuzzle, savePuzzle } from '../storage/puzzles';
 import { loadPreferences } from '../storage/prefs';
 import { memoryStorage, type StorageLike } from '../storage/storage';
 import { watchForUpdates } from '../update/check';
@@ -789,6 +791,39 @@ describe('App', () => {
     expect(document.querySelector('.board-overlay__text')).toHaveTextContent(
       /^Your Easy puzzle is ready\.$/,
     );
+  });
+
+  it("names a puzzle its link named, on its Ready card and in History — by the player's own name once they give it one", async () => {
+    const near = nearlySolved([0, 1, 2]);
+    const storage = memoryStorage();
+    renderApp({ storage, search: linkFor(near.givens, { l: 'The Times #1,234' }) });
+    expect(screen.getByRole('heading', { name: 'Ready?' })).toBeInTheDocument();
+    expect(document.querySelector('.board-overlay__name')).toHaveTextContent(/^The Times #1,234$/);
+    // The rest of the card as ever.
+    expect(document.querySelector('.board-overlay__text')).toHaveTextContent(
+      /^Someone shared an Easy puzzle with you\.$/,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'History' }));
+    let history = screen.getByRole('dialog', { name: 'History' });
+    expect(history.querySelector('.history-item__name')).toHaveTextContent(/^The Times #1,234$/);
+    fireEvent.click(within(history).getByRole('button', { name: 'Close' }));
+
+    // Kept in Your puzzles under a name of the player's own, in another tab.
+    updatePuzzles(storage, (list) =>
+      retitlePuzzle(
+        savePuzzle(list, { id: 'mbx3k2f0-mine', cells: near.givens }, 1).list,
+        'mbx3k2f0-mine',
+        'Mine',
+        2,
+      ),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'History' }));
+    history = screen.getByRole('dialog', { name: 'History' });
+    expect(history.querySelector('.history-item__name')).toHaveTextContent(/^Mine$/);
+    fireEvent.click(within(history).getByRole('button', { name: 'Close' }));
+    expect(document.querySelector('.board-overlay__name')).toHaveTextContent(/^Mine$/);
+    // Drawn so, never written so: the game keeps the name its link gave.
+    expect(JSON.parse(storage.getItem('sudoku.history')!)[0].title).toBe('The Times #1,234');
   });
 
   describe('entering a puzzle', () => {

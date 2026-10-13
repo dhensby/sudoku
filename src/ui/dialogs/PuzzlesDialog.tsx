@@ -124,7 +124,7 @@ function PuzzleRow({
         <NameForm
           initial={title ?? ''}
           label="Name"
-          hint="Leave it empty for none."
+          hint="Sent with its link, for friends to see. Leave it empty for none."
           maxLength={TITLE_INPUT_MAX}
           normalise={normaliseTitle}
           context={context}

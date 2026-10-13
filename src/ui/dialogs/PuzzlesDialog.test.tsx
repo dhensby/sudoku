@@ -237,7 +237,9 @@ describe('PuzzlesDialog', () => {
       expect(field()).toHaveFocus();
       const input = field() as HTMLInputElement;
       expect([input.selectionStart, input.selectionEnd]).toEqual([0, 14]);
-      expect(field()).toHaveAccessibleDescription('Leave it empty for none.');
+      expect(field()).toHaveAccessibleDescription(
+        'Sent with its link, for friends to see. Leave it empty for none.',
+      );
       expect(field()).toHaveAttribute('maxLength', '80');
       expect(within(row('clash-001')).queryByRole('button', { name: /^Edit/ })).toBeNull();
     });
