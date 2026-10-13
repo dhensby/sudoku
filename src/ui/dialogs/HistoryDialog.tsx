@@ -135,10 +135,13 @@ function exportFileName(now: number): string {
 
 function importMessage(result: ImportResult): string {
   if (!result.ok) return "That file isn't a Sudoku history export.";
-  if (result.added === 0 && result.updated === 0) {
+  if (result.added === 0 && result.updated === 0 && result.puzzles === 0) {
     return 'Nothing new to import — those games are already here.';
   }
-  return `Imported ${count(result.added, 'new game')}, updated ${result.updated}.`;
+  // Your puzzles only when it brought some: a file of games alone says what
+  // it always has.
+  const puzzles = result.puzzles === 0 ? '' : `, and ${result.puzzles} of your puzzles`;
+  return `Imported ${count(result.added, 'new game')}, updated ${result.updated}${puzzles}.`;
 }
 
 interface Status {

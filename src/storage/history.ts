@@ -59,7 +59,7 @@ import {
   storeMoveLogs,
 } from './moveLogs';
 import { mergeFriendLists, normaliseFriends, type Friend } from './friends';
-import { normalisePuzzles, type SavedPuzzle } from './puzzles';
+import { mergePuzzleLists, normalisePuzzles, type SavedPuzzle } from './puzzles';
 import {
   EMPTY_LEDGER,
   addToLedger,
@@ -305,8 +305,13 @@ export interface DifficultyStats {
   averageMs: number | null;
 }
 
-/** What an import did, or that the file was not a Sudoku history at all. */
-export type ImportResult = { ok: true; added: number; updated: number } | { ok: false };
+/**
+ * What an import did — the games it added and updated, and the entries of
+ * Your puzzles it added or changed (see `mergePuzzleLists`) — or that the
+ * file was not a Sudoku history at all.
+ */
+export type ImportResult =
+  { ok: true; added: number; updated: number; puzzles: number } | { ok: false };
 
 /** The most records kept. Beyond it the oldest finished games go first. */
 export const MAX_RECORDS = 1000;
@@ -1791,11 +1796,13 @@ export function updatePuzzles(
  * before logs were kept has none, and still imports); the puzzles seen, so one
  * played and deleted here is no fresh puzzle there either; the puzzles whose
  * shared solve was watched, so none of them sets a time there; the daily
- * ledger, so streaks travel whole; and the friends list, so the names given
- * friends here name their races there. Not this browser's own player ID,
- * which is in the preferences, not the file: two browsers with one ID could
- * never be told apart. Safari deletes the storage of a site not visited for
- * seven days, so this file is the only backup there is.
+ * ledger, so streaks travel whole; the friends list, so the names given
+ * friends here name their races there; and Your puzzles, so the puzzles typed
+ * in here, and the names given them, can be played and edited there. Not
+ * this browser's own player ID, which is in the preferences, not the file:
+ * two browsers with one ID could never be told apart. Safari deletes the
+ * storage of a site not visited for seven days, so this file is the only
+ * backup there is.
  */
 export function exportHistory(storage: StorageLike, now: number): string {
   const records = loadHistory(storage);
@@ -1819,6 +1826,7 @@ export function exportHistory(storage: StorageLike, now: number): string {
   const watched = readWatched(storage);
   const dailyLedger = encodeLedger(loadDailyLedger(storage));
   const friends = loadFriends(storage);
+  const puzzles = loadPuzzles(storage);
   return JSON.stringify(
     {
       app: EXPORT_APP,
@@ -1831,6 +1839,7 @@ export function exportHistory(storage: StorageLike, now: number): string {
       watched,
       dailyLedger,
       friends,
+      puzzles,
     },
     null,
     2,
@@ -1864,7 +1873,11 @@ export function exportHistory(storage: StorageLike, now: number): string {
  * own, as the flag is never taken off. Its friends' devices new here are
  * added to the friends list too (see `mergeFriendLists`), never renaming,
  * merging or splitting a friend here; a file from before the list was
- * exported has none, which costs only the names given there.
+ * exported has none, which costs only the names given there. And its puzzles
+ * are merged into Your puzzles (see `mergePuzzleLists`): one both have, the
+ * copy changed later; one new here, into the room left under the cap; a file
+ * from before they were exported has none. The friends and the puzzles are
+ * merged whether or not the file brings a game.
  */
 export function importHistory(storage: StorageLike, json: string): ImportResult {
   let data: unknown;
@@ -1887,6 +1900,17 @@ export function importHistory(storage: StorageLike, json: string): ImportResult 
   mergeLedger(storage, data.dailyLedger);
   mergeWatched(storage, data.watched);
   updateFriends(storage, (local) => mergeFriendLists(local, normaliseFriends(data.friends)));
+  // Counted as they merge: each entry the file adds, or changes — a newer
+  // copy, or a name for one that had none — and one at least for a merge
+  // that only takes an entry here away, folded into another with its
+  // numbers, so History never says nothing is new after a write.
+  let puzzles = 0;
+  updatePuzzles(storage, (local) => {
+    const merged = mergePuzzleLists(local, normalisePuzzles(data.puzzles));
+    const kept = new Set(local);
+    puzzles = merged === local ? 0 : Math.max(1, merged.filter((entry) => !kept.has(entry)).length);
+    return merged;
+  });
 
   const current = loadCurrentId(storage);
   const records = loadHistory(storage);
@@ -1910,7 +1934,7 @@ export function importHistory(storage: StorageLike, json: string): ImportResult 
       ...(existing?.entered === true ? { entered: true as const } : {}),
     });
   }
-  if (added.size + updated.size === 0) return { ok: true, added: 0, updated: 0 };
+  if (added.size + updated.size === 0) return { ok: true, added: 0, updated: 0, puzzles };
 
   // A flagged record from the file makes its puzzle a watched one here, for
   // the attempts still to come, though the file had no list to say so.
@@ -1955,5 +1979,5 @@ export function importHistory(storage: StorageLike, json: string): ImportResult 
     );
 
   const addedCount = imported.filter((record) => added.has(record.id)).length;
-  return { ok: true, added: addedCount, updated: imported.length - addedCount };
+  return { ok: true, added: addedCount, updated: imported.length - addedCount, puzzles };
 }

@@ -758,9 +758,10 @@ export interface Sudoku {
    */
   friendIndex: FriendIndex;
   /**
-   * The puzzles typed in and kept (see `puzzles.ts`), the latest first saved
-   * first, as last read: at startup, as Your puzzles opens or the editor
-   * goes back to it, and after each change made here.
+   * The puzzles typed in and kept, here or in a browser whose History was
+   * imported here (see `puzzles.ts`), the latest first saved first, as last
+   * read: at startup, as Your puzzles opens or the editor goes back to it,
+   * after an import, and after each change made here.
    */
   puzzles: readonly SavedPuzzle[];
   actions: SudokuActions;
@@ -2599,6 +2600,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
         setHistory(readHistory(now()));
         // Its friends name its races, and may give History a Friends to open.
         setFriends(loadFriends(storage));
+        setPuzzles(loadPuzzles(storage));
       }
       return result;
     },

@@ -4,6 +4,7 @@ import {
   MAX_SAVED_PUZZLES,
   deletePuzzle,
   indexPuzzles,
+  mergePuzzleLists,
   normalisePuzzle,
   normalisePuzzles,
   retitlePuzzle,
@@ -301,5 +302,120 @@ describe('deletePuzzle', () => {
 
   it('gives back the same list for an entry not in it', () => {
     expect(deletePuzzle(PUZZLES, 'gone-0001')).toBe(PUZZLES);
+  });
+});
+
+describe('mergePuzzleLists', () => {
+  /** Another browser's own puzzle, unnamed, kept at `at`. */
+  const theirs = (id: string, cells: GridString, at: number): SavedPuzzle => ({
+    id,
+    cells,
+    createdAt: at,
+    updatedAt: at,
+  });
+
+  it("adds the file's puzzles new here, the list still the latest first saved first", () => {
+    const guardian = theirs('mbz0c3d2-g001', GUARDIAN, 1_791_700_000_000);
+    const list = mergePuzzleLists(PUZZLES, [guardian]);
+    expect(list).toStrictEqual([PUZZLES[0], guardian, PUZZLES[1]]);
+    expect(roundTrip(list)).toStrictEqual(list);
+    expect(mergePuzzleLists([], PUZZLES)).toStrictEqual(PUZZLES);
+  });
+
+  it('gives back the same list for a file that changes nothing', () => {
+    // This browser's own export, an empty one, and the same file twice.
+    expect(mergePuzzleLists(PUZZLES, roundTrip(PUZZLES))).toBe(PUZZLES);
+    expect(mergePuzzleLists(PUZZLES, [])).toBe(PUZZLES);
+    const file = [theirs('mbz0c3d2-g001', GUARDIAN, 1), { ...PUZZLES[1], title: 'Half' }];
+    const once = mergePuzzleLists(PUZZLES, file);
+    expect(mergePuzzleLists(once, file)).toBe(once);
+  });
+
+  it('takes the copy of a puzzle changed later, the one here on a tie', () => {
+    const edited = { ...PUZZLES[1], cells: GUARDIAN, updatedAt: PUZZLES[1].updatedAt + 1 };
+    expect(mergePuzzleLists(PUZZLES, [edited])).toStrictEqual([PUZZLES[0], edited]);
+    // Changed here since, or at the same time: the one here stands.
+    const older = { ...PUZZLES[0], cells: GUARDIAN, updatedAt: PUZZLES[0].updatedAt - 1 };
+    const tied = { ...PUZZLES[1], cells: GUARDIAN };
+    expect(mergePuzzleLists(PUZZLES, [older])).toBe(PUZZLES);
+    expect(mergePuzzleLists(PUZZLES, [tied])).toBe(PUZZLES);
+  });
+
+  it('names the copy kept with the other’s name if it has none of its own', () => {
+    // Named there, and edited here since; and named here, edited there since.
+    const edited = { ...PUZZLES[1], cells: grid('61'), updatedAt: PUZZLES[1].updatedAt + 2 };
+    const named = { ...PUZZLES[1], title: 'Half', updatedAt: PUZZLES[1].updatedAt + 1 };
+    const unnamed = { ...PUZZLES[0], cells: GUARDIAN, updatedAt: PUZZLES[0].updatedAt + 1 };
+    const { title: _title, ...untitled } = unnamed;
+    expect(mergePuzzleLists([PUZZLES[0], edited], [named, untitled])).toStrictEqual([
+      { ...untitled, title: 'The Times #5,123' },
+      { ...edited, title: 'Half' },
+    ]);
+    // A name of its own stands.
+    const renamed = { ...PUZZLES[0], title: 'Renamed', updatedAt: PUZZLES[0].updatedAt + 1 };
+    expect(mergePuzzleLists(PUZZLES, [renamed])[0].title).toBe('Renamed');
+  });
+
+  it('keeps one entry of a grid both lists have under two ids: the one changed later, named', () => {
+    // Typed in on both sides: the one here was changed later, the file's has a name.
+    const twin = { ...theirs('mbz0c3d2-g001', HALF, 1), title: 'Half' };
+    expect(mergePuzzleLists(PUZZLES, [twin])).toStrictEqual([
+      PUZZLES[0],
+      { ...PUZZLES[1], title: 'Half' },
+    ]);
+    // The file's changed later: it stands in place of the one here, taking its name.
+    const later = theirs('mbz0c3d2-g002', TIMES, PUZZLES[0].updatedAt + 1);
+    expect(mergePuzzleLists(PUZZLES, [later])).toStrictEqual([
+      { ...later, title: 'The Times #5,123' },
+      PUZZLES[1],
+    ]);
+    // At the same time: the one here stands.
+    const tied = theirs('mbz0c3d2-g003', HALF, PUZZLES[1].updatedAt);
+    expect(mergePuzzleLists(PUZZLES, [tied])).toBe(PUZZLES);
+  });
+
+  it('keeps one entry of a grid a puzzle was edited into there, as a save would', () => {
+    // The unnamed one edited there into the named one's numbers, later.
+    const edited = { ...PUZZLES[1], cells: TIMES, updatedAt: PUZZLES[0].updatedAt + 1 };
+    expect(mergePuzzleLists(PUZZLES, [edited])).toStrictEqual([
+      { ...edited, title: 'The Times #5,123' },
+    ]);
+  });
+
+  it('keeps the fields a newer version added to the copy kept', () => {
+    const newer = { ...PUZZLES[1], level: 'hard', updatedAt: PUZZLES[1].updatedAt + 1 };
+    expect(mergePuzzleLists(PUZZLES, [newer])[1]).toMatchObject({ level: 'hard' });
+    const kept = [{ ...PUZZLES[1], level: 'hard' }];
+    expect(mergePuzzleLists(kept, [{ ...PUZZLES[1], title: 'Half' }])[0]).toMatchObject({
+      level: 'hard',
+      title: 'Half',
+    });
+  });
+
+  describe('MAX_SAVED_PUZZLES', () => {
+    const file = [
+      theirs('mbz0c3d2-g001', TIMES, 5),
+      theirs('mbz0c3d2-g002', HALF, 9),
+      theirs('mbz0c3d2-g003', GUARDIAN, 9),
+    ];
+
+    it('adds into the room left, the most recently changed first, a tie in the file’s order', () => {
+      const list = mergePuzzleLists(shelf(MAX_SAVED_PUZZLES - 1), file);
+      expect(list).toHaveLength(MAX_SAVED_PUZZLES);
+      expect(list.filter((entry) => entry.id.startsWith('mbz0c3d2'))).toStrictEqual([file[1]]);
+    });
+
+    it('forgets none here to make room, adding none to a list at the cap or over it', () => {
+      for (const count of [MAX_SAVED_PUZZLES, MAX_SAVED_PUZZLES + 5]) {
+        const full = shelf(count);
+        expect(mergePuzzleLists(full, file)).toBe(full);
+      }
+    });
+
+    it('still takes a later copy of a puzzle here at the cap', () => {
+      const full = shelf(MAX_SAVED_PUZZLES);
+      const edited = { ...full[0], cells: GUARDIAN, updatedAt: full[0].updatedAt + 1 };
+      expect(mergePuzzleLists(full, [edited])).toStrictEqual([edited, ...full.slice(1)]);
+    });
   });
 });

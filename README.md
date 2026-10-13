@@ -412,6 +412,10 @@ keeps up to 1,000 — as many as History keeps games — and saving one more pas
 changed longest ago, never the one saved. Escape goes from the editor back to the list, and from
 the list back to the game, which stays paused until then.
 
+History's **Export** carries the list, names and all, to another browser, whose **Import** adds the
+puzzles it does not have, into whatever room is left of its 1,000, and takes the copy changed later
+of one it has, under the other's name if that copy has none (see [Your data](#your-data)).
+
 ## How the daily puzzles are made
 
 Each day has a daily puzzle of each difficulty, the same for everyone: the Hard of 13 October
@@ -1141,11 +1145,19 @@ watched. The friends list is merged too: a device this browser has never had a l
 the friend the file has it with — one of yours, if the file groups it with a device you know, or
 else a new friend under the file's name — into the room left under the cap. A friend you already
 have is never renamed, merged or split by an import, so importing the same file twice adds
-nothing. Your own player ID is not exported: each browser keeps its own. The file carries every
-game's move log too; an import takes the log of each game it adds or replaces, leaving out (on its
-own) any log that does not read back exactly, and never makes room for one by deleting anything:
-logs go only into space that was free, and if the imported games themselves only fitted once some
-of the logs here were shed, none of the file's logs are taken.
+nothing. Your own player ID is not exported: each browser keeps its own. Your puzzles are merged
+too: one the file has that is here already — the same puzzle, edited on either side since — keeps
+the copy changed later, under the name the other gave it if that copy has none; one new here is
+added, into the room left under the 1,000, the most recently changed first, never forgetting one of
+yours to make room; and the same numbers kept on both sides under two entries become one, as a save
+would make them, keeping a name either had. History's message counts them — "Imported 1 new game,
+updated 0, and 3 of your puzzles." — and importing the same file twice adds nothing. A file from
+before puzzles were exported has none, and imports as it did; a version from before them leaves a
+newer file's puzzles out. The file carries every game's move log too; an import takes the log of
+each game it adds or replaces, leaving out (on its own) any log that does not read back exactly, and
+never makes room for one by deleting anything: logs go only into space that was free, and if the
+imported games themselves only fitted once some of the logs here were shed, none of the file's logs
+are taken.
 
 ## Testing
 
@@ -1242,13 +1254,17 @@ of the logs here were shed, none of the file's logs are taken.
   keeping a name; nothing written for a save that changes nothing; and past 1,000, the one changed
   longest ago forgotten, never the one saved, and a newer version's longer list cut by one only —
   and to reading back (junk dropped an entry at a time, no two entries with one id or one grid, the
-  latest first kept first, never capped, a newer version's fields kept); its names to a newspaper's
-  length, tidied as a player's are and short enough for an older tab to carry; the list to its rows'
-  words, their buttons by readiness, each named with its row, a rename and a delete in place with
-  focus back where it was; the editor's Save to what it says when; and, through the main hook, Save
-  staying in the editor, Play and closing keeping the grid (a blank one never, an entry erased to
-  nothing keeping its numbers) and going back to the row's Edit, with the game behind paused
-  throughout.
+  latest first kept first, never capped, a newer version's fields kept), and to History's import (of
+  a puzzle both have, the copy changed later, the one here on a tie, taking the other's name if it
+  has none; new ones only into the room left, the latest changed first, and none past 1,000; one
+  entry of a grid kept on both sides; the same file twice writing nothing; merged though no game is
+  new, and counted in what the import says, one at least for a merge that only takes one away); its
+  names to a newspaper's length, tidied as a player's are and short enough for an older tab to
+  carry; the list to its rows' words, their buttons by readiness, each named with its row, a rename
+  and a delete in place with focus back where it was; the editor's Save to what it says when; and,
+  through the main hook, Save staying in the editor, Play and closing keeping the grid (a blank one
+  never, an entry erased to nothing keeping its numbers) and going back to the row's Edit, with the
+  game behind paused throughout.
   The version stamp is held to change with any file a build ships, its contents or its name, public
   files included, and with nothing else (`plugins/version.test.ts`); the look for a newer version to
   its timing — as the page opens, as it comes back after ten minutes or more, every ten minutes or
@@ -1287,8 +1303,9 @@ of the logs here were shed, none of the file's logs are taken.
   from there as the puzzle alone and opened in another browser on the same board, and a clash and
   more than one solution named, with Play unavailable), Your puzzles (a half-typed puzzle saved and
   listed with its line, then edited, finished and played from the editor; one renamed, kept through
-  a reload; one deleted; a grid kept as the editor closes, back on its row's Edit; and two Escapes
-  from the editor back to the game),
+  a reload; one deleted; a grid kept as the editor closes, back on its row's Edit; two Escapes from
+  the editor back to the game; and the list carried by History's export to another browser, listed
+  there, names and all, and played),
   watching a solve with a mistake played back from the Solved dialog and from History (stepped,
   scrubbed and played at 8× on Playwright's clock, its mistake marked and captioned, focus back on
   Watch as it closes, and fitting a 320px phone and a phone on its side) and the phone layout from

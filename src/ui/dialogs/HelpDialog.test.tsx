@@ -362,9 +362,13 @@ describe('HelpDialog', () => {
     expect(section).toHaveTextContent(
       /Play one that's ready, Edit one to carry on typing or put a number right, Rename one to tell it apart, or Delete it — its games stay in your history\./,
     );
-    const privacy = screen.getByRole('heading', { name: 'Privacy' }).closest('section')!;
-    expect(privacy).toHaveTextContent(
-      /The puzzles you keep, and the names you give them, stay in this browser: a link to one never carries its name\./,
+  });
+
+  it("says the puzzles' names, and the list, leave this browser only in History's export", () => {
+    render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={vi.fn()} />);
+    const section = screen.getByRole('heading', { name: 'Privacy' }).closest('section')!;
+    expect(within(section).getByText(/^The names you give your puzzles/)).toHaveTextContent(
+      "The names you give your puzzles, and the list itself, never leave this browser, except in History's export: a link to one carries its numbers, never its name.",
     );
   });
 

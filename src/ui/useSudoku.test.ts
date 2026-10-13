@@ -867,6 +867,30 @@ describe('useSudoku', () => {
       expect(result.current.phase).toBe('ready');
       expect(writes.mock.calls.filter(([key]) => key === 'sudoku.puzzles')).toEqual([]);
     });
+
+    it('reads the puzzles afresh after an import, with those it brought', async () => {
+      const { result, storage } = await library([HALF]);
+      // Another browser, which kept HARD and named it.
+      const other = memoryStorage();
+      updatePuzzles(other, (list) =>
+        retitlePuzzle(
+          savePuzzle(list, { id: 'other-0001', cells: HARD }, 9).list,
+          'other-0001',
+          'The Times',
+          10,
+        ),
+      );
+      act(() => result.current.actions.closeDialog());
+      act(() => result.current.actions.openDialog('history'));
+      act(() => {
+        result.current.actions.importHistory(exportHistory(other, NOW));
+      });
+      expect(result.current.puzzles).toStrictEqual(loadPuzzles(storage));
+      expect(result.current.puzzles.map((entry) => entry.title ?? null)).toEqual([
+        'The Times',
+        null,
+      ]);
+    });
   });
 
   describe('the clock', () => {
@@ -3548,7 +3572,7 @@ describe('useSudoku', () => {
       act(() => {
         outcome = result.current.actions.importHistory(exportHistory(other, NOW));
       });
-      expect(outcome).toEqual({ ok: true, added: 1, updated: 0 });
+      expect(outcome).toEqual({ ok: true, added: 1, updated: 0, puzzles: 0 });
       expect(result.current.history.records).toHaveLength(3);
       expect(loadHistory(storage)).toHaveLength(3);
       expect(result.current.actions.importHistory('not json')).toEqual({ ok: false });

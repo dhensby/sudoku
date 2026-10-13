@@ -21,16 +21,18 @@ import { GAME_ID_PATTERN, isObject, normaliseTitle } from './storage';
  * Its name is the one the player gave it, if any.
  *
  * Pure: the I/O lives in `history.ts` (`loadPuzzles`, `updatePuzzles`),
- * beside the friends'. Every operation here returns the list it was given
- * when nothing changes, which is how `updatePuzzles` knows to write
- * nothing; and every entry it changes is spread rather than rebuilt, so the
- * small fields a newer version added (see `newerFields`) survive a save, a
- * rename or a delete of another.
+ * beside the friends', and so does History's export, which carries the list
+ * to another browser (see `mergePuzzleLists`). Every operation here returns
+ * the list it was given when nothing changes, which is how `updatePuzzles`
+ * knows to write nothing; and every entry it changes is spread rather than
+ * rebuilt, so the small fields a newer version added (see `newerFields`)
+ * survive a save, a rename, a delete of another or an import.
  */
 
 /**
  * The most puzzles kept, as many as games (see `MAX_RECORDS`). Past it,
- * saving a new one forgets the one changed longest ago (see `withRoom`).
+ * saving a new one forgets the one changed longest ago (see `withRoom`), and
+ * an import adds none (see `mergePuzzleLists`).
  */
 export const MAX_SAVED_PUZZLES = 1000;
 
@@ -218,4 +220,69 @@ export function retitlePuzzle(
 export function deletePuzzle(puzzles: readonly SavedPuzzle[], id: string): readonly SavedPuzzle[] {
   const left = puzzles.filter((entry) => entry.id !== id);
   return left.length === puzzles.length ? puzzles : left;
+}
+
+/**
+ * Of two copies of one puzzle, the one changed later (`ours` on a tie), under
+ * the other's name if it has none of its own. The very copy kept, unless it
+ * takes a name.
+ */
+function later(ours: SavedPuzzle, theirs: SavedPuzzle): SavedPuzzle {
+  const [kept, other] = theirs.updatedAt > ours.updatedAt ? [theirs, ours] : [ours, theirs];
+  if (kept.title !== undefined || other.title === undefined) return kept;
+  return { ...kept, title: other.title };
+}
+
+/**
+ * The puzzles a file exported from History brings (see `importHistory`),
+ * merged into these:
+ *
+ *   - an entry both lists have, by id — the one puzzle, edited on one side
+ *     or both since — is the copy changed later (the one here on a tie),
+ *     under the other's name if it has none of its own;
+ *   - the file's entries new here are added, into the room left under
+ *     MAX_SAVED_PUZZLES, the most recently changed first (a tie in the
+ *     file's order): none here is forgotten to make room for them. One
+ *     that proves to be a puzzle here by its numbers takes its place in
+ *     that room all the same, so a list a few short of the cap may take a
+ *     few fewer than it could;
+ *   - and then, as every save leaves it (see `savePuzzle`), no two entries
+ *     have the same numbers — the same puzzle typed in on both sides, or
+ *     edited into another's: the one changed later stands (the one here on a
+ *     tie), taking the other's name if it has none.
+ *
+ * So a puzzle named on either side stays named — by the copy kept's name, if
+ * both have one — and a name taken off on one side comes back from the other,
+ * which still has it. The list is newest first saved first, as ever, and the
+ * same list comes back when the file changes nothing: importing the same file
+ * twice, or this browser's own export.
+ */
+export function mergePuzzleLists(
+  local: readonly SavedPuzzle[],
+  incoming: readonly SavedPuzzle[],
+): readonly SavedPuzzle[] {
+  const copies = new Map(incoming.map((entry) => [entry.id, entry]));
+  const known = new Set(local.map((entry) => entry.id));
+  // None when a newer version's longer list is over the cap already.
+  const room = Math.max(0, MAX_SAVED_PUZZLES - local.length);
+  const merged = [
+    ...local.map((entry) => {
+      const copy = copies.get(entry.id);
+      return copy === undefined ? entry : later(entry, copy);
+    }),
+    ...incoming
+      .filter((entry) => !known.has(entry.id))
+      // Stable, so a tie goes to the entry earlier in the file.
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .slice(0, room),
+  ];
+  const byCells = new Map<GridString, SavedPuzzle>();
+  // Stable, so a tie goes to the entry here, which comes first.
+  for (const entry of [...merged].sort((a, b) => b.updatedAt - a.updatedAt)) {
+    const kept = byCells.get(entry.cells);
+    byCells.set(entry.cells, kept === undefined ? entry : later(kept, entry));
+  }
+  const list = [...byCells.values()].sort((a, b) => b.createdAt - a.createdAt);
+  const isSame = list.length === local.length && list.every((entry, i) => entry === local[i]);
+  return isSame ? local : list;
 }

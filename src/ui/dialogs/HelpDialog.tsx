@@ -576,8 +576,8 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
               The names you give friends never leave this browser, except in History&apos;s export.
             </li>
             <li>
-              The puzzles you keep, and the names you give them, stay in this browser: a link to one
-              never carries its name.
+              The names you give your puzzles, and the list itself, never leave this browser, except
+              in History&apos;s export: a link to one carries its numbers, never its name.
             </li>
             <li>
               Some browsers clear a site's data after a while away. Export your history from the

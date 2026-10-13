@@ -4,6 +4,7 @@ import {
   PUZZLES,
   boardArea,
   copiedText,
+  elsewhere,
   enterGivens,
   enterStatus,
   openEnterPuzzle,
@@ -23,8 +24,9 @@ import {
  * puzzles, checked as it goes in, then played and shared like any other — a
  * Hard typed in plays as the Hard it is, and its link opens it elsewhere as a
  * friend's would — and kept in Your puzzles, finished or not, to edit, name,
- * play or delete there. Everything in the editor is found through its
- * dialog: the board and the pad behind it stay on the page.
+ * play or delete there, and to carry to another browser in History's
+ * export. Everything in the editor is found through its dialog: the board
+ * and the pad behind it stay on the page.
  *
  * Runs on Chromium (desktop layout).
  */
@@ -252,5 +254,47 @@ test.describe('kept already', () => {
     library = await openYourPuzzles(page);
     await expect(library.getByRole('listitem')).toHaveCount(1);
     await expect(library.getByRole('listitem')).toContainText('One solution: a Hard puzzle.');
+  });
+
+  test("carries the puzzles in History's export to another browser, whose import lists them, names and all", async ({
+    page,
+    browser,
+  }, testInfo) => {
+    await seedPuzzles(page, kept);
+    await openGame(page);
+    await openHeaderDialog(page, 'History');
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.getByRole('dialog', { name: 'History' }).getByRole('button', { name: 'Export' }).click(),
+    ]);
+    const file = testInfo.outputPath(download.suggestedFilename());
+    await download.saveAs(file);
+
+    await elsewhere(browser, async (other) => {
+      await openGame(other);
+      await openHeaderDialog(other, 'History');
+      const history = other.getByRole('dialog', { name: 'History' });
+      const [chooser] = await Promise.all([
+        other.waitForEvent('filechooser'),
+        history.getByRole('button', { name: 'Import' }).click(),
+      ]);
+      await chooser.setFiles(file);
+      await expect(history.getByRole('status')).toHaveText(
+        'Imported 1 new game, updated 0, and 2 of your puzzles.',
+      );
+      await history.getByRole('button', { name: 'Close' }).click();
+
+      const library = await openYourPuzzles(other);
+      await expect(library.getByRole('listitem')).toHaveText([
+        /^Untitled puzzle.*One solution: a Hard puzzle\./,
+        /^Mistyped.*Two 5s in row 1\./,
+      ]);
+      // Played there as here, a puzzle of the player's own.
+      await library.getByRole('button', { name: /^Play untitled puzzle/ }).click();
+      await expect(boardArea(other)).toContainText('Your Hard puzzle is ready.');
+      await startButton(other).click();
+      await waitForPlaying(other);
+      expect(await readBoard(other)).toBe(HARD.givens);
+    });
   });
 });
