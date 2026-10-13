@@ -1,5 +1,6 @@
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
+import { version } from './plugins/version.ts';
 
 // The Pages deploy sets VITE_BASE (e.g. "/sudoku/"). Locally and for
 // preview/e2e we serve from the root.
@@ -7,7 +8,9 @@ const base = process.env.VITE_BASE ?? '/';
 
 export default defineConfig({
   base,
-  plugins: [react()],
+  // `version` stamps each build's page with what it ships (plugins/version.ts);
+  // it runs only in builds, never on the dev server or under Vitest.
+  plugins: [react(), version()],
   // Puzzle generation runs in a module worker so the board never stutters
   // while a Hard grid is being dug out.
   worker: {
@@ -22,7 +25,7 @@ export default defineConfig({
     // whole App through Show me took 3.8–4s there. The engine's big sweeps set
     // their own, longer limits.
     testTimeout: 15_000,
-    include: ['src/**/*.test.{ts,tsx}'],
+    include: ['src/**/*.test.{ts,tsx}', 'plugins/**/*.test.ts'],
     exclude: ['e2e/**', 'node_modules/**'],
     coverage: {
       provider: 'v8',

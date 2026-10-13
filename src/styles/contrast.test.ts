@@ -269,6 +269,14 @@ const PAIRS: Pair[] = [
   ['help taken’s counts on the page', 'text', 'bg', TEXT],
   ['help taken as it ticks', 'accent', 'bg', TEXT],
 
+  // The offer of a new version: a raised card, or a sheet, at the foot of the
+  // page — its words in ink, Refresh the primary button (above), and Dismiss
+  // the hint bar's, muted until it is hovered or pressed.
+  ['the offer of a new version, its words', 'text', 'surface-raised', TEXT],
+  ['the offer’s Dismiss', 'text-muted', 'surface-raised', NON_TEXT],
+  ['the offer’s Dismiss, hovered', 'text', 'key-bg', NON_TEXT],
+  ['the offer’s Dismiss, pressed', 'text', 'key-bg-active', NON_TEXT],
+
   // ---- Edges of controls, and focus rings ----
   ['key rule against the page', 'key-border', 'bg', NON_TEXT],
   ['key rule against a panel', 'key-border', 'surface', NON_TEXT],

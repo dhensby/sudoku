@@ -42,10 +42,12 @@ export default defineConfig({
     {
       // Safari is where most phones play, and WebKit is the only engine that
       // reproduces iOS pointer behaviour and its share/clipboard quirks. The
-      // accessibility spec has a phone pass of its own, for the phone layout.
+      // accessibility spec has a phone pass of its own, for the phone layout;
+      // and a game left open on a home screen is where a new version has to
+      // find its way in (update.spec.ts).
       name: 'iphone',
       use: { ...devices['iPhone 15'] },
-      testMatch: /(touch|a11y)\.spec\.ts/,
+      testMatch: /(touch|a11y|update)\.spec\.ts/,
       // One WebKit keeps a CI runner's CPUs busy on its own: with two at once,
       // each test took twice as long, so they finished no sooner, only closer
       // to their timeouts. Held to one, it runs beside the Chromium projects.

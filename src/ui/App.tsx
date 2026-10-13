@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useEffectEvent, useId, useMemo, useRef } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useId,
+  useMemo,
+  useRef,
+  useSyncExternalStore,
+} from 'react';
 import {
   dealtTier,
   digitCounts,
@@ -10,6 +18,7 @@ import {
 } from '../core';
 import { challengerName, namedChallenge, namedRecord } from '../storage/friends';
 import type { Challenge } from '../storage/history';
+import { getNewerVersion, reload, subscribeNewerVersion } from '../update/check';
 import { Board } from './Board';
 import { BoardOverlay, type BoardOverlayContent } from './BoardOverlay';
 import { Controls } from './Controls';
@@ -40,6 +49,7 @@ import { HintBar } from './HintBar';
 import { FocusHomeContext, focusQuietly, guardFocus, trackInputModality } from './keepFocus';
 import { commandForKey, isModeModifierKey, isRepeatable } from './keyboard';
 import { useTheme } from './theme';
+import { UpdateToast } from './UpdateToast';
 import { useSudoku, type Sudoku, type UseSudokuOptions } from './useSudoku';
 
 export interface AppProps {
@@ -108,9 +118,9 @@ function boardContent(sudoku: Sudoku): BoardContent {
 
 /**
  * The whole game: the header, the board (or the card in its place), the hint
- * bar, the controls, the status region and the dialogs, wired to the
- * `useSudoku` hook — plus the keyboard, which NYT-style listens on the whole
- * document rather than on whatever has focus.
+ * bar, the controls, the status region, the offer of a newer version and the
+ * dialogs, wired to the `useSudoku` hook — plus the keyboard, which NYT-style
+ * listens on the whole document rather than on whatever has focus.
  *
  * And focus, which the game moves about: wherever a control it was on goes
  * (disabled, or gone from the page), it lands on the game's focus home —
@@ -122,6 +132,8 @@ export function App({ options }: AppProps = {}) {
   const { phase, game, settings, dialog, actions } = sudoku;
   useTheme(settings.theme);
   const hintTextId = useId();
+  // A newer version deployed since the page loaded (see src/update/check.ts).
+  const newerVersion = useSyncExternalStore(subscribeNewerVersion, getNewerVersion);
 
   /*
    * Every challenger is drawn under the name the friend was given here, if
@@ -453,6 +465,8 @@ export function App({ options }: AppProps = {}) {
             />
           </div>
         </main>
+
+        <UpdateToast version={newerVersion} isCovered={dialog !== null} onRefresh={reload} />
 
         {dialog?.kind === 'completion' && (
           <CompletionDialog

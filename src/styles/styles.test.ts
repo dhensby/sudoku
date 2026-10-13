@@ -343,6 +343,7 @@ describe('the controls', () => {
     [CONTROLS, '.icon-button:active:not(:disabled)'],
     [CONTROLS, ".mode-toggle__option[aria-pressed='false']:active:not(:disabled)"],
     [LAYOUT, '.hint-bar__dismiss:active'],
+    [LAYOUT, '.update-toast__dismiss:active'],
   ])('rings %#: %s in forced colours, rather than filling it with Highlight', (css, selector) => {
     // The fill would sit under ButtonText, under 2.5:1 in either scheme.
     const forced = css.slice(css.indexOf('@media (forced-colors: active)'));
@@ -388,6 +389,24 @@ describe('the layout', () => {
     expect(blocks[0]).toMatch(/margin-top:\s*auto/);
     expect(blocks.slice(1).every((body) => /margin-top:\s*0/.test(body))).toBe(true);
     expect(blocks.length).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe('the offer of a new version', () => {
+  it('sets its words in ink on a raised card, a pair the contrast guard holds', () => {
+    const toast = rule(LAYOUT, '.update-toast');
+    expect(toast).toMatch(/background:\s*var\(--surface-raised\)/);
+    expect(toast).toMatch(/color:\s*var\(--text\)/);
+  });
+
+  it('floats over the board and the controls, under the menus and the dialogs', () => {
+    const z = (css: string, selector: string) =>
+      Number(/z-index:\s*(\d+)/.exec(rule(css, selector))![1]);
+    const toast = z(LAYOUT, '.update-toast');
+    expect(rule(LAYOUT, '.update-toast')).toMatch(/position:\s*fixed/);
+    expect(toast).toBeGreaterThan(z(BOARD, '.cell:focus-visible'));
+    expect(toast).toBeLessThan(z(CONTROLS, '.menu__popup'));
+    expect(toast).toBeLessThan(z(DIALOGS, '.dialog-overlay'));
   });
 });
 

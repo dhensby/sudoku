@@ -18,6 +18,7 @@ import {
   type Puzzle,
 } from '../src/core';
 import { STUCK_ON_AN_XY_CHAIN, STUCK_ON_A_HIDDEN_PAIR } from '../src/test/logic-fixtures';
+import { versionIn, versionTag } from '../src/update/stamp';
 
 /*
  * Shared fixtures and steps for the end-to-end suite.
@@ -319,6 +320,34 @@ export async function solveFromKeyboard(
     ch === puzzle.solution[index] ? [] : [{ index, digit: Number(puzzle.solution[index]) }],
   );
   await typeDigits(page, needed.slice(0, Math.max(0, needed.length - (options.leave ?? 0))));
+}
+
+/** The offer of a newer version of the game (see UpdateToast). */
+export const updateOffer = (page: Page): Locator =>
+  page.getByText('A new version of Sudoku is ready.', { exact: true });
+
+/**
+ * Have the page find a newer version deployed than its own, from its next
+ * look — as it next opens: its fetch of the app's own page is answered with
+ * the page as served, stamped as another version. A navigation still gets
+ * the page as it is. (The real thing, a second build deployed, is
+ * update.spec.ts's.)
+ */
+export async function deployNewerVersion(page: Page): Promise<void> {
+  await page.route(
+    (url) => url.pathname === '/',
+    async (route) => {
+      if (route.request().resourceType() !== 'fetch') return route.fallback();
+      const response = await route.fetch();
+      const html = await response.text();
+      const version = versionIn(html);
+      if (version === null) throw new Error('the page has no version stamp to change');
+      await route.fulfill({
+        response,
+        body: html.replace(versionTag(version), versionTag('next')),
+      });
+    },
+  );
 }
 
 /**

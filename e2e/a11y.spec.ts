@@ -10,6 +10,7 @@ import {
   cellLabels,
   chooseMore,
   dailyRecord,
+  deployNewerVersion,
   emptyCells,
   enterGivens,
   getStuck,
@@ -31,6 +32,7 @@ import {
   startPuzzle,
   timer,
   typeDigits,
+  updateOffer,
   waitForPlaying,
 } from './helpers';
 
@@ -42,8 +44,9 @@ import {
  * being changed and with two friends being merged, "Who sent this?" with
  * friends to choose from, and Enter a puzzle at each step on the way to a
  * puzzle — empty, a clash dotted, too few numbers, more than one solution,
- * and a Hard with one — among them), each entry of the technique guide, and
- * a step hint with its houses tinted on the board — in the light theme and
+ * and a Hard with one — among them), each entry of the technique guide, a
+ * step hint with its houses tinted on the board, and the offer of a new
+ * version at the foot of the page — in the light theme and
  * the dark (and the main ones, the tint and Enter a puzzle among them, in
  * High contrast), and each must come back with no violations at all, with
  * no rule switched off.
@@ -465,6 +468,14 @@ for (const scheme of ['light', 'dark'] as const) {
         'Checked as entered',
       );
       await expectAccessible(page, 'the board with the error counter beside the timer');
+    });
+
+    test('the offer of a new version, under the controls', async ({ page }) => {
+      await deployNewerVersion(page);
+      await startPuzzle(page, EASY);
+      await expect(updateOffer(page)).toBeVisible();
+      await expectScheme(page, scheme);
+      await expectAccessible(page, 'the offer of a new version');
     });
 
     test('help taken beside the timer, as it ticks, and the hints used on Hint', async ({
@@ -915,6 +926,16 @@ for (const { way, isChosen, media } of HIGH_CONTRAST_WAYS) {
       });
       await expectHighContrast(page, isChosen);
     });
+
+    test('the offer of a new version, under the controls', async ({ page }) => {
+      await page.emulateMedia(media);
+      await deployNewerVersion(page);
+      await startPuzzle(page, EASY);
+      if (isChosen) await chooseHighContrast(page);
+      await expectHighContrast(page, isChosen);
+      await expect(updateOffer(page)).toBeVisible();
+      await expectAccessible(page, 'the offer of a new version');
+    });
   });
 }
 
@@ -1145,6 +1166,22 @@ test.describe('on a phone', () => {
       await expectScheme(page, scheme);
       await page.setViewportSize({ width: upright.height, height: upright.width });
       await scanEnterPuzzle(page, editor, ', on its side');
+    });
+  }
+
+  for (const scheme of ['light', 'dark'] as const) {
+    test(`the offer of a new version as a sheet, and on its side, in the ${scheme} theme`, async ({
+      page,
+    }) => {
+      await page.emulateMedia({ colorScheme: scheme });
+      await deployNewerVersion(page);
+      await startPuzzle(page, EASY);
+      await expect(updateOffer(page)).toBeVisible();
+      await expectScheme(page, scheme);
+      await expectAccessible(page, 'the offer of a new version, upright');
+      const upright = page.viewportSize()!;
+      await page.setViewportSize({ width: upright.height, height: upright.width });
+      await expectAccessible(page, 'the offer of a new version, on its side');
     });
   }
 });

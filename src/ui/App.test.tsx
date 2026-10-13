@@ -12,9 +12,12 @@ import {
 } from '../storage/history';
 import { loadPreferences } from '../storage/prefs';
 import { memoryStorage, type StorageLike } from '../storage/storage';
+import { watchForUpdates } from '../update/check';
+import { versionTag } from '../update/stamp';
 import { App } from './App';
 import type { PuzzleSource } from './puzzleSource';
 import { newSession, saveSession } from './session';
+import { UPDATE_TEXT } from './UpdateToast';
 import { BEYOND_THE_SET, HARDEST, STUCK_ON_A_HIDDEN_PAIR } from '../test/logic-fixtures';
 import {
   FIRST_EMPTY,
@@ -511,7 +514,7 @@ describe('App', () => {
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(cells()[FIRST_EMPTY]).toHaveAccessibleName('empty, candidates 2 4');
-    expect(screen.getByRole('status')).toHaveTextContent('Candidate 4 added.');
+    expect(liveRegion()).toHaveTextContent('Candidate 4 added.');
     // Its cell's candidates changed: the hint has gone with it.
     expect(document.querySelector('.hint-bar')).toBeEmptyDOMElement();
   });
@@ -2120,6 +2123,65 @@ describe('App', () => {
       press('p', {}, help);
       expect(screen.getByRole('grid')).toBeInTheDocument();
       expect(help).toHaveFocus();
+    });
+  });
+
+  describe('a newer version', () => {
+    let stopWatching = () => {};
+    // Inside act: what it forgets, the App still on the page hears.
+    afterEach(() => act(() => stopWatching()));
+
+    /** Have the page find a newer version deployed than its own; returns how it reloads. */
+    async function deployNewer(): Promise<() => void> {
+      const reload = vi.fn();
+      await act(async () => {
+        stopWatching = watchForUpdates({
+          current: 'old',
+          url: 'http://localhost:3000/',
+          fetch: async () => new Response(`<head>${versionTag('new')}</head>`),
+          reload,
+        });
+      });
+      return reload;
+    }
+
+    it('is offered at the foot of the game, which plays on from the keyboard, and Refresh loads it', async () => {
+      await startApp();
+      cells()[FIRST_EMPTY].focus();
+      const reload = await deployNewer();
+      expect(screen.getByText(UPDATE_TEXT)).toBeVisible();
+      // Offered, not pressed on the player: focus stays on the board.
+      expect(cells()[FIRST_EMPTY]).toHaveFocus();
+      press(String(answerAt(FIRST_EMPTY)));
+      expect(cells()[FIRST_EMPTY]).toHaveAccessibleName(String(answerAt(FIRST_EMPTY)));
+
+      clickWithMouse(screen.getByRole('button', { name: 'Refresh' }));
+      expect(reload).toHaveBeenCalledOnce();
+    });
+
+    it('waits for a dialog to close', async () => {
+      await startApp();
+      fireEvent.click(screen.getByRole('button', { name: 'Help' }));
+      await deployNewer();
+      expect(screen.queryByText(UPDATE_TEXT)).not.toBeInTheDocument();
+
+      fireEvent.click(
+        within(screen.getByRole('dialog', { name: 'Help' })).getByRole('button', {
+          name: 'Close',
+        }),
+      );
+      expect(screen.getByText(UPDATE_TEXT)).toBeVisible();
+    });
+
+    it('sends focus home when it is dismissed from the keyboard', async () => {
+      await startApp();
+      await deployNewer();
+      const dismiss = screen.getByRole('button', { name: 'Dismiss' });
+      dismiss.focus();
+      fireEvent.click(dismiss);
+      expect(screen.queryByText(UPDATE_TEXT)).not.toBeInTheDocument();
+      await nextFrame();
+      expect(selectedCell()).toHaveFocus();
     });
   });
 
