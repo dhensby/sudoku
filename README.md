@@ -862,12 +862,13 @@ by a newer version, which says so under the board: "This solve needs a newer ver
 to watch." A solve that checks out is kept with the challenge (`Challenge.log`).
 
 - **Watching before solving.** The Ready card offers **Watch Dan's solve** (the name you gave the
-  friend, if you have, else their link's; "Watch your friend's solve" for a link with no name) beside Start, and the Paused card beside Resume, for an attempt
-  reopened from the link. For a puzzle the player has not solved, it asks first, focus on the
-  safe choice: "Watch Dan's solve? — This shows every number Dan placed. You haven't solved this
-  puzzle yet: if you watch now, you won't be able to record a time for it, now or later." with
-  **Play it first** (which starts or resumes the game) and **Watch anyway**. Escape leaves it
-  as it was.
+  friend, if you have, else their link's; "Watch your friend's solve" for a link with no name) with
+  Start — under it where the card is too narrow for both, as on a phone — and the Paused card with
+  Resume, for an attempt reopened from the link. For a puzzle the player has not solved, it asks
+  first, focus on the safe choice: "Watch Dan's solve? — This shows every number Dan placed. You
+  haven't solved this puzzle yet: if you watch now, you won't be able to record a time for it, now
+  or later." with **Play it first** (which starts or resumes the game) and **Watch anyway**. Escape
+  leaves it as it was.
 - **The spoiler rule.** Watching anyway remembers the puzzle as watched (`sudoku.watched`, its
   share code, up to 2,000 like the puzzles seen, outliving its records) and flags every
   unfinished attempt at it (`GameRecord.watched`) — the game on screen and any in History — and
