@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useEffectEvent, useId, useMemo, useRef } from 'react';
 import {
+  dealtTier,
   digitCounts,
   isEditable,
   rememberedHint,
@@ -460,7 +461,7 @@ export function App({ options }: AppProps = {}) {
             isBackFromFriend={dialog.isBackFromFriend}
             onCompare={sudoku.canCompareSolves ? actions.compareSolves : undefined}
             isBackFromCompare={dialog.isBackFromCompare}
-            onNewGame={() => handleNewGame(dialog.result.difficulty)}
+            onNewGame={() => handleNewGame(dealtTier(dialog.result.difficulty))}
             onClose={actions.closeDialog}
           />
         )}

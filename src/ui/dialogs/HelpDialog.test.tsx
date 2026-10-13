@@ -302,6 +302,19 @@ describe('HelpDialog', () => {
     expect(shown).toHaveTextContent(/“Hint \(2 used\)”\. Turning it off only hides the count\./);
   });
 
+  it('says what Beyond Expert is, where it comes from, and what Hint can do there', () => {
+    render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={vi.fn()} />);
+    const section = screen.getByRole('heading', { name: 'Difficulty' }).parentElement!;
+    expect(section).toHaveTextContent(
+      /Beyond Expert is a puzzle that needs more than every technique the game knows\. The game never makes one, so you'll only meet one in a link\./,
+    );
+    expect(section).toHaveTextContent(
+      /Hint can only point at the cell with the fewest candidates, and there's no Show me\./,
+    );
+    // An Expert needed early is the game's own rule, not every puzzle's.
+    expect(section).toHaveTextContent(/in a puzzle the game makes, needed while much of the grid/);
+  });
+
   it('leads from Difficulty to the guide to the solving techniques', () => {
     const onBrowseTechniques = vi.fn();
     render(<HelpDialog onBrowseTechniques={onBrowseTechniques} onClose={vi.fn()} />);

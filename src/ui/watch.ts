@@ -3,8 +3,8 @@ import {
   isPlayable,
   toSeconds,
   type DateKey,
-  type Difficulty,
   type GridString,
+  type Level,
 } from '../core';
 import type { Challenge } from '../storage/history';
 import { dailyName } from './daily';
@@ -76,7 +76,8 @@ export function isWatchable(givens: string, encoded: string | null): boolean {
 /** A solved game, as its playback is headed: a history record, or the game just solved. */
 export interface SolvedGame {
   givens: string;
-  difficulty: Difficulty;
+  /** Its puzzle's label: for a record, as `levelOf` reads it, not the tier it is stored as. */
+  difficulty: Level;
   /** The daily it was, if it was one. */
   daily?: DateKey | null;
   /** Its time. */
@@ -91,7 +92,8 @@ export interface SolvedGame {
 /** A friend's solve to watch, from the link their challenge came in (see `Challenge.log`). */
 export interface FriendSolve {
   givens: GridString;
-  difficulty: Difficulty;
+  /** The puzzle's label, as `SolvedGame`'s. */
+  difficulty: Level;
   /** The daily the puzzle is, if it is one. */
   daily: DateKey | null;
   /** Their challenge: the name, and the time the solve agrees with. */
@@ -101,7 +103,7 @@ export interface FriendSolve {
 }
 
 /** A puzzle as a playback's heading names it: its tier, or the daily it is ("Daily · 13 Oct · Hard"). */
-function puzzleNameOf(difficulty: Difficulty, daily: DateKey | null | undefined, today: DateKey) {
+function puzzleNameOf(difficulty: Level, daily: DateKey | null | undefined, today: DateKey) {
   return daily === undefined || daily === null
     ? DIFFICULTY_LABEL[difficulty]
     : dailyName(daily, difficulty, today);

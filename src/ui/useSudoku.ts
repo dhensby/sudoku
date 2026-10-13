@@ -3,6 +3,7 @@ import {
   STOPPED_CLOCK,
   checkedBoardOf,
   dateKeyOf,
+  dealtTier,
   elapsedMs,
   encodeMoveLog,
   explainCell,
@@ -29,6 +30,7 @@ import {
   type GridString,
   type Hint,
   type InputMode,
+  type Level,
   type MistakeTally,
   type Puzzle,
   type SolveStep,
@@ -63,6 +65,7 @@ import {
   loadDailyLedger,
   loadFriends,
   loadHistory,
+  levelOf,
   markSeen,
   markWatched,
   recordedMistakes,
@@ -203,7 +206,7 @@ export interface DailyResult {
 
 /** What the completion dialog shows, fixed at the moment of the solve. */
 export interface CompletionResult {
-  difficulty: Difficulty;
+  difficulty: Level;
   elapsedMs: number;
   assists: GameState['assists'];
   isNewBest: boolean;
@@ -214,7 +217,7 @@ export interface CompletionResult {
    * `GameRecord.watched`): recorded without a time.
    */
   isWatched: boolean;
-  /** The tier's stats, this game included. */
+  /** The stats of the puzzle's label (see `levelOf`), this game included. */
   stats: DifficultyStats;
   challenge: Challenge | null;
   /** The daily the game was, if it was one. */
@@ -610,8 +613,8 @@ export interface Sudoku {
    * with, not a charge.
    */
   hasBoardShown: boolean;
-  /** The tier on show: the one being generated, else the game's. */
-  difficulty: Difficulty;
+  /** The tier on show: the one being generated, else the game's label (see `levelOf`). */
+  difficulty: Level;
   /** The date of the daily on show (or being dealt), if it is one. */
   daily: DateKey | null;
   /** Today's dailies, as New game offers them. */
@@ -890,7 +893,7 @@ function seenPagesOf(game: GameState, walkthrough: Walkthrough): readonly boolea
  */
 function friendSolveOf(game: {
   givens: GridString;
-  difficulty: Difficulty;
+  difficulty: Level;
   daily?: DateKey | null;
   challenge: Challenge | null;
 }): FriendSolve | null {
@@ -1066,7 +1069,9 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     session !== null && solvedEncoded !== null && isWatchable(session.record.givens, solvedEncoded);
   // The friend's solve the game on screen's link carried, for its cards.
   const cardSolve =
-    session === null || session.game.status === 'solved' ? null : friendSolveOf(session.record);
+    session === null || session.game.status === 'solved'
+      ? null
+      : friendSolveOf({ ...session.record, difficulty: levelOf(session.record) });
   // And the one the Solved dialog's, or the offer's, head-to-head offers.
   const dialogSolve = dialogFriendSolve(dialog, session);
   // The route to the cell the last step hint was about, for its tint while
@@ -1218,7 +1223,11 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       const encoded = watchedLogOf(previous.id);
       if (previous.status !== 'solved' || encoded === null) return null;
       if (!isWatchable(previous.givens, encoded)) return null;
-      return { game: previous, encoded, today: dateKeyOf(now()) };
+      return {
+        game: { ...previous, difficulty: levelOf(previous) },
+        encoded,
+        today: dateKeyOf(now()),
+      };
     }
     return null;
   };
@@ -1371,7 +1380,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
 
   /** What resuming a game says: "Started" for one that never was. */
   const resumeMessage = (resumed: Session): string => {
-    const label = DIFFICULTY_LABEL[resumed.record.difficulty];
+    const label = DIFFICULTY_LABEL[levelOf(resumed.record)];
     return resumed.pause === 'ready' ? `Started ${label} puzzle.` : `Resumed ${label} puzzle.`;
   };
 
@@ -1393,7 +1402,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
         ...attempt,
         record: { ...attempt.record, challenge: challenge ?? attempt.record.challenge },
       };
-      return daily === undefined ? racing : asDaily(racing, daily, puzzle.difficulty);
+      return daily === undefined ? racing : asDaily(racing, daily, dealtTier(puzzle.difficulty));
     };
     const records = loadHistory(storage);
     const unfinished = unfinishedAttempt(records, puzzle.givens, t.wall);
@@ -1429,7 +1438,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
   const putDaily = (puzzle: Puzzle, date: DateKey, start: SessionStart): void => {
     const t = at();
     const records = loadHistory(storage);
-    const tier = puzzle.difficulty;
+    const tier = dealtTier(puzzle.difficulty);
     const unfinished = unfinishedAttempt(records, puzzle.givens, t.wall);
     if (unfinished !== null) {
       if (unfinished !== session) setAside(t);
@@ -1492,7 +1501,8 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     // The best to beat is the one before this game. Compared in whole
     // seconds, the unit times are shown in: a "new best" equal to the old
     // one on screen would look like a mistake.
-    const before = computeStats(loadHistory(storage))[record.difficulty].bestMs;
+    const level = levelOf(record);
+    const before = computeStats(loadHistory(storage))[level].bestMs;
     const today = dateKeyOf(t.wall);
     const stopped: Session = {
       ...solved,
@@ -1522,13 +1532,13 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       toSeconds(ms) < toSeconds(before);
     const solvedRecord = recordOf(next, t);
     setCompletionDue({
-      difficulty: record.difficulty,
+      difficulty: level,
       elapsedMs: ms,
       assists: board.assists,
       isNewBest,
       isReplay,
       isWatched,
-      stats: computeStats(records)[record.difficulty],
+      stats: computeStats(records)[level],
       challenge: record.challenge,
       daily:
         record.daily === undefined
@@ -2262,7 +2272,11 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       // and writes nothing.
       setDialog({
         kind: 'playback',
-        source: ownSolveSource(record, encoded, dateKeyOf(now())),
+        source: ownSolveSource(
+          { ...record, difficulty: levelOf(record) },
+          encoded,
+          dateKeyOf(now()),
+        ),
         returnTo: { kind: 'history', place },
       });
     },
@@ -2316,7 +2330,9 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     watchRecordChallenge: (id, place) => {
       const record = history.records.find((entry) => entry.id === id);
       const solve =
-        record === undefined || record.status !== 'solved' ? null : friendSolveOf(record);
+        record === undefined || record.status !== 'solved'
+          ? null
+          : friendSolveOf({ ...record, difficulty: levelOf(record) });
       if (solve === null) return;
       // Solved, so free; the game behind stays paused, for History.
       showFriendSolve(solve, { kind: 'history', place });
@@ -2351,14 +2367,14 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       if (record === undefined || !actions.canCompareRecord(record)) return;
       // Both play back, as just asked.
       const encoded = watchedLogOf(id)!;
-      const solve = friendSolveOf(record)!;
+      const solve = friendSolveOf({ ...record, difficulty: levelOf(record) })!;
       // The game behind stays paused, for History, and nothing is written.
       // Theirs goes under the name given them, if any, as from the Solved
       // dialog: the stored record carries only the name its link gave.
       setDialog({
         kind: 'compare',
         source: compareSource(
-          record,
+          { ...record, difficulty: levelOf(record) },
           encoded,
           { ...solve, challenge: namedChallenge(friendIndex, solve.challenge) },
           dateKeyOf(now()),
@@ -2459,7 +2475,10 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     record: session?.record ?? null,
     hasBoardShown: session !== null && hasBoardShown(session),
     difficulty:
-      generating?.difficulty ?? session?.record.difficulty ?? vacancy ?? prefs.lastDifficulty,
+      generating?.difficulty ??
+      (session === null ? null : levelOf(session.record)) ??
+      vacancy ??
+      prefs.lastDifficulty,
     daily: generating === null ? (session?.record.daily ?? null) : (generating.daily ?? null),
     today,
     isLoadFailed,

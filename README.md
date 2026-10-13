@@ -16,7 +16,11 @@ your browser.
   the same names; Expert goes further, into X-Wings, XY-Wings and chains of candidates,
   needed while much of the grid is still empty rather than as a last snag. Every puzzle is
   generated on the spot, has exactly one solution, and is graded by the hardest technique it
-  needs, so the label never lies.
+  needs, so the label never lies. A puzzle from a link is graded the same way, and one that needs
+  more than every technique the grader knows is labelled **Beyond Expert** — a fifth label the
+  game never deals (New game, the dailies and the streaks stay with the four), for puzzles from
+  elsewhere, such as the hardest known. Hint still helps as far as the techniques reach; past
+  them it can only point at the cell with the fewest candidates, with no Show me.
 - **A daily puzzle of each difficulty** — every day has an Easy, a Medium, a Hard and an Expert of
   its own, the same for everyone, so friends can compare times; a new day's arrive at each
   player's own midnight. New game offers **Today's puzzles**, each marked with how it stands, above
@@ -70,7 +74,9 @@ your browser.
   taken — is dropped when you move on to another, so browsing the levels doesn't clutter the list
   or count as played. A game raced against a friend's link shows their time — under the name you gave them,
   if you have — and the help and mistakes it came with under it. Per-difficulty stats show games played and solved, and best and average
-  times. Export your history to a file and import it on another browser.
+  times — Beyond Expert games in a row of their own once you have played one, never among the
+  Experts; they list under All, each named for what it is, with no tab of their own. Export your
+  history to a file and import it on another browser.
 - **Help when you want it** — Hint points at a cell you can fill next and names the technique
   ("Hidden single: there's only one place for a number in this box"), without ever giving the
   number away. Where the cell takes several steps, it names **the next step** and how far there is
@@ -278,19 +284,25 @@ Each new puzzle is generated in a Web Worker, in a fraction of a second:
    keeps exactly one solution. That leaves a _minimal_ puzzle — every given is needed — with
    21–28 givens, like NYT's Medium and Hard. NYT puzzles are not symmetric, and neither are these.
 2. Solve it the way a person would, always applying the easiest technique that makes progress,
-   and grade it by the hardest technique the solve needed:
+   and grade it by the hardest technique the solve needed. These are the labels the grader
+   (`rate`) gives any puzzle, a link's included; step 3 says how the generator's own differ:
 
-   | Tier   | Hardest technique needed                                                                         |
-   | ------ | ------------------------------------------------------------------------------------------------ |
-   | Easy   | Full houses and hidden singles in a box (padded to 38 givens)                                    |
-   | Medium | Pointing pairs or box/line reductions                                                            |
-   | Hard   | Naked or hidden pairs and triples                                                                |
-   | Expert | X-Wing, Swordfish, XY-, XYZ- or W-Wing, Skyscraper, 2-String Kite, XY-Chain or alternating chain |
+   | Label         | Hardest technique needed                                                                              |
+   | ------------- | ----------------------------------------------------------------------------------------------------- |
+   | Easy          | Full houses and hidden singles in a box                                                               |
+   | Medium        | Hidden singles in a row or column, naked singles, pointing pairs or box/line reductions               |
+   | Hard          | Naked or hidden pairs and triples                                                                     |
+   | Expert        | X-Wing, Swordfish, XY-, XYZ- or W-Wing, Skyscraper, 2-String Kite, XY-Chain or alternating chain      |
+   | Beyond Expert | More than all of them: the solve stalls before the grid is full. Never dealt — only a link brings one |
 
-3. Keep it if it is the tier you asked for; otherwise try again. Expert has one more rule: its
-   fish, wing or chain must be needed while at least 40 cells are still empty. Left to chance,
-   most puzzles that need one only need it near the end, where it is quick to spot or to guess
-   past — and they play like a Hard.
+3. Keep it if it is the tier you asked for; otherwise try again. The generator holds its own
+   puzzles to more than their label: an Easy is padded to 38 givens, a Medium must need its
+   pointing pair or box/line reduction (one that needs only singles plays like an Easy with a
+   snag), and an Expert's fish, wing or chain must be needed while at least 40 cells are still
+   empty. Left to chance, most puzzles that need one only need it near the end, where it is
+   quick to spot or to guess past — and they play like a Hard. A puzzle the techniques cannot
+   finish is never dealt as Beyond Expert: in the rare case the attempts run out with it the
+   closest to the tier asked for, it is dealt as an Expert, the hardest tier the game deals.
 
 The tiers were calibrated against hundreds of published NYT puzzles: Easy needs only box hidden
 singles, every Medium needs locked candidates, and Hard needs pairs and triples but never a fish
@@ -841,8 +853,10 @@ Opening a link:
   brings in: History lists it as a game of your own. A race from a link older than IDs carries
   none, so it cannot be told from a friend's, and stays; Delete in History removes the game.
 
-The difficulty is always re-graded from the puzzle itself rather than taken from the link, and
-the parameters are cleared from the address bar once read, so reloading never drags you back.
+The difficulty is always re-graded from the puzzle itself rather than taken from the link — so
+a puzzle the techniques cannot finish reads Beyond Expert wherever it is opened, and a game of it
+is raced, timed and shared like any other — and the parameters are cleared from the address bar
+once read, so reloading never drags you back.
 A version of the game opens a link from a later one all the same: it skips a letter of `a=` it
 does not know (`g` came after the others), and reads the rest as written. A version from before
 solves were shared skips `s=` too — it only stays in that version's address bar, which clears
@@ -995,9 +1009,13 @@ written back untouched, and a theme it does not know is applied as System, with 
 chosen in Settings, but kept until you pick one. (So a record's `watched` flag survives such a
 tab, as do a challenge's player ID and the preferences' — though that tab, knowing nothing of the
 flag, would show and count the solve's time until it is reloaded; a challenge's solve longer than
-those 200 characters, as most are, is dropped by it.) A tab from before the friends list never
-touches `sudoku.friends`, so the names given there survive it too, though it shows each race
-under its link's name until it is reloaded.
+those 200 characters, as most are, is dropped by it.) A Beyond Expert game is stored as an Expert
+one with a `beyond: true` flag beside it, and its saved board as an Expert board, so a tab from
+before the label reads both, keeps the flag and shows the game as an Expert until it is reloaded. A
+game of such a puzzle recorded before the label existed has no flag: it keeps the Expert label it
+was recorded with, and Play again from it begins another Expert game. A tab from before the friends
+list never touches `sudoku.friends`, so the names given there survive it too, though it shows each
+race under its link's name until it is reloaded.
 
 Some browsers clear a site's storage after a while away (Safari does after seven days without a
 visit, unless the game has been added to the home screen). Use **Export** in History to keep a
@@ -1079,12 +1097,24 @@ of the logs here were shed, none of the file's logs are taken.
   one and a newer version's (which alone is said) — and the spoiler rule to every way back to a
   watched puzzle: a reload mid-game, Play again, a new attempt from the generator, a game resumed
   from History, a daily, an import, and the record pruned past 1,000 while the puzzle stays watched.
-  Coverage thresholds are enforced in CI, with the engine held to 100%.
+  A puzzle beyond the techniques is held to its label wherever one shows: `rate` calls it Beyond
+  Expert (where the generator, should it ever fall back on one, still deals an Expert) and
+  `dealtTier` turns the label back into Expert for whatever is dealt next; its record keeps the
+  `beyond` flag only as `true` on an Expert game, through a save, an export and an import — kept
+  when a newer copy has lost it — and through a tab from before the label, which keeps it as a newer
+  field, while its saved board says Expert; its stats have a row of their own, never among the
+  Experts', and History's Expert tab leaves it out; a link to one opens labelled Beyond Expert on
+  its Ready card, in the header, in what Share sends and in History, and a game of one begun from
+  History is announced as one, and its solve counted in its own stats, never a new best for beating
+  an Expert's time; and the header's breakpoints for the longer label are pinned in the stylesheet's
+  tests. Coverage thresholds are enforced in CI, with the engine held to 100%.
 - **End-to-end** (`e2e/`, Playwright): full journeys against the built app — playing and solving,
   pausing and reloading, share links between two browsers (a solve with a mistake shared, opened in
-  the other and compared row by row), the history, the technique guide, a
-  hint's Show me walkthrough (and a step hint followed a step at a time, its pages turned with
-  help taken ticking only for pages not seen before), the daily puzzles on a fixed clock (today's Hard from New game to
+  the other and compared row by row, and a link to a puzzle the techniques cannot finish named
+  Beyond Expert on its card, in the header, in its share text and in History), the history, the
+  technique guide, a hint's Show me walkthrough (and a step hint followed a step at a time, its
+  pages turned with help taken ticking only for pages not seen before), the daily puzzles on a
+  fixed clock (today's Hard from New game to
   the end and its streak, yesterday's from the calendar kept but not counted, a friend's daily
   link recognised), mistakes (an obvious slip put right at once, a wrong number where the answer
   was not obvious, Check guesses marking and counting one at once with "guesses checked as
@@ -1109,10 +1139,11 @@ of the logs here were shed, none of the file's logs are taken.
   320px wide up and on its side (the calendar's
   days measured at 44px at 320px, the head-to-head's every row, hour-long times on one line and a
   long right-to-left name kept inside its card, New game and the calendar whole on a phone on its
-  side, and the error counter's line with help taken beside it, upright and on its side, a large
-  phone's header folding its buttons to fit both at 1:23:45 — a daily Medium's wordmark and tier
-  never clipped, measured to the sub-pixel — and help taken giving way to its counts and then its
-  total, never cut, beside a counter with a candidate mistake; with neither shown, the board as
+  side, a Beyond Expert puzzle's header whole at 1:23:45, its label shortened to "Exp+" at 320px and
+  in full at 375px, and the error counter's line with help taken beside it, upright and on its side,
+  a large phone's header folding its buttons to fit both at 1:23:45 — a daily Medium's wordmark and
+  tier never clipped, measured to the sub-pixel — and help taken giving way to its counts and then
+  its total, never cut, beside a counter with a candidate mistake; with neither shown, the board as
   large as with the setting off; help taken alone above a 375×667 phone's controls, and on a
   320×568 phone beside a hint that keeps to two lines; Friends and _Who sent this?_ upright and on
   their sides, a long right-to-left name kept inside Friends' rows, a merged friend's devices and

@@ -123,6 +123,13 @@ describe('DifficultyMenu', () => {
     expect(easy.querySelector('.menu__check')).not.toBeNull();
   });
 
+  it('marks nothing as current for a puzzle beyond the techniques, which no tier deals', () => {
+    renderMenu({ current: 'beyond' });
+    expect(within(group('Random puzzle')).getByRole('menuitem', { name: 'Expert' })).toBeVisible();
+    expect(screen.queryByRole('menuitem', { name: /\(current\)/ })).not.toBeInTheDocument();
+    expect(document.querySelector('.menu__check')).toBeNull();
+  });
+
   it("marks nothing as current while a past day's daily is on show", () => {
     renderMenu({ dailyOnShow: '2026-10-08' });
     expect(screen.queryByRole('menuitem', { name: /\(current\)/ })).not.toBeInTheDocument();

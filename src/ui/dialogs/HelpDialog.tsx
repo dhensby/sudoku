@@ -382,9 +382,18 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
             </li>
             <li>
               <strong>Expert</strong> goes further, into techniques such as X-Wing, XY-Wing and
-              Skyscraper, needed while much of the grid is still empty.
+              Skyscraper — in a puzzle the game makes, needed while much of the grid is still empty.
             </li>
-            <li>Every puzzle is graded by the hardest step it needs, so the label never lies.</li>
+            <li>
+              <strong>Beyond Expert</strong> is a puzzle that needs more than every technique the
+              game knows. The game never makes one, so you&apos;ll only meet one in a link. Once the
+              techniques run out, Hint can only point at the cell with the fewest candidates, and
+              there&apos;s no Show me.
+            </li>
+            <li>
+              Every puzzle is graded by the hardest step it needs, a link&apos;s included, so the
+              label never lies.
+            </li>
             <li>
               A hint names the technique for the next step. Not sure what that is? The question
               after it — <strong>What&apos;s a hidden single?</strong> — opens the guide to the

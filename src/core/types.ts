@@ -8,6 +8,15 @@ export type Digit = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
 export type Difficulty = 'easy' | 'medium' | 'hard' | 'expert';
 
 /**
+ * A puzzle's label: one of the four tiers, or 'beyond' for a puzzle the
+ * grader's techniques cannot finish. The game never deals a puzzle labelled
+ * 'beyond' — New game, the dailies and the streaks all work in tiers — so one
+ * only arrives from outside, by a link; `dealtTier` turns a label back into
+ * the tier to deal.
+ */
+export type Level = Difficulty | 'beyond';
+
+/**
  * A whole grid as an 81-character string in row-major order: '1'–'9' for a
  * digit and '0' for an empty cell. This is the form puzzles are stored, keyed
  * and compared in — strings are immutable, cheap to compare and survive JSON.
@@ -20,11 +29,11 @@ export type GridString = string;
  */
 export type Values = ArrayLike<number>;
 
-/** A playable puzzle: its givens, its unique solution and the tier it was graded at. */
+/** A playable puzzle: its givens, its unique solution and the label it was graded at. */
 export interface Puzzle {
   givens: GridString;
   solution: GridString;
-  difficulty: Difficulty;
+  difficulty: Level;
 }
 
 /**

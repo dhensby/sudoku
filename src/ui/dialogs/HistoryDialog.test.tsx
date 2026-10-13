@@ -385,6 +385,59 @@ describe('HistoryDialog', () => {
           .map((cell) => cell.textContent),
       ).toEqual(['1', '0', '—', '—']);
       expect(rows()).toHaveLength(5);
+      // No row for puzzles beyond the techniques until there is one.
+      expect(within(table).getAllByRole('row')).toHaveLength(5);
+      expect(within(table).queryByRole('row', { name: /^Beyond Expert/ })).toBeNull();
+    });
+
+    describe('a puzzle beyond the techniques', () => {
+      const BEYOND = record('beyond', {
+        difficulty: 'expert',
+        beyond: true,
+        createdAt: at(12, 14, 25),
+        status: 'solved',
+        completedAt: at(12, 14, 29),
+        elapsedMs: 241_000,
+      });
+
+      it('names it for what it is, under All, with a stats row of its own', () => {
+        renderHistory({ records: [BEYOND, ...RECORDS] });
+        expect(rows()).toHaveLength(6);
+        expect(rows()[0].querySelector('.history-item__difficulty')).toHaveTextContent(
+          /^Beyond Expert$/,
+        );
+        const table = screen.getByRole('table', { name: 'Stats by level' });
+        const beyond = within(table).getByRole('row', { name: /^Beyond Expert/ });
+        expect(
+          within(beyond)
+            .getAllByRole('cell')
+            .map((cell) => cell.textContent),
+        ).toEqual(['1', '1', '4:01', '4:01']);
+        // Not among the Experts, whose one game is still unfinished.
+        const expert = within(table).getByRole('row', { name: /^Expert/ });
+        expect(
+          within(expert)
+            .getAllByRole('cell')
+            .map((cell) => cell.textContent),
+        ).toEqual(['1', '0', '—', '—']);
+      });
+
+      it('has no tab of its own, and stays off the Expert tab', () => {
+        renderHistory({ records: [BEYOND, ...RECORDS] });
+        expect(screen.getAllByRole('tab').map((element) => element.textContent)).toEqual([
+          'All',
+          'Easy',
+          'Medium',
+          'Hard',
+          'Expert',
+        ]);
+        fireEvent.click(tab('Expert'));
+        expect(
+          rows().map((row) => row.querySelector('.history-item__difficulty')?.textContent),
+        ).toEqual(['Expert']);
+        const stats = screen.getByRole('region', { name: 'Expert stats' });
+        expect(within(stats).getByText('Played').nextElementSibling).toHaveTextContent('1');
+      });
     });
 
     it('narrows the list and the stats to one tier', () => {

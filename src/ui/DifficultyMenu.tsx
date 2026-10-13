@@ -1,4 +1,4 @@
-import { DAILY_EPOCH, type DateKey, type Difficulty } from '../core';
+import { DAILY_EPOCH, type DateKey, type Difficulty, type Level } from '../core';
 import { DIFFICULTIES } from '../storage/storage';
 import type { DailyStatus } from '../storage/streaks';
 import { DailyMark } from './DailyMark';
@@ -15,8 +15,11 @@ export interface TodayDailies {
 }
 
 export interface DifficultyMenuProps {
-  /** The tier on show, marked in the list of random puzzles — or, for a daily, in today's. */
-  current: Difficulty;
+  /**
+   * The tier on show, marked in the list of random puzzles — or, for a daily,
+   * in today's. A puzzle beyond the techniques has no tier here to mark.
+   */
+  current: Level;
   /**
    * The date of the daily on show, if the game is one: no random tier stands
    * for it, but today's own daily of the tier is marked when it is today's.

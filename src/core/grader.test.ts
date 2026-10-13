@@ -2,6 +2,7 @@ import {
   TECHNIQUE_ORDER,
   TECHNIQUE_SCORE,
   TECHNIQUE_TIER,
+  dealtTier,
   grade,
   harderTechnique,
   rate,
@@ -10,7 +11,7 @@ import {
 } from './grader';
 import { countFilled, formatGrid, parseGrid } from './grid';
 import { TECHNIQUES, cloneBoard, createBoard } from './techniques';
-import type { Difficulty, TechniqueId } from './types';
+import type { Difficulty, Level, TechniqueId } from './types';
 import { EMPTY_GRID, WIKIPEDIA_PUZZLE, WIKIPEDIA_SOLUTION } from '../test/grids';
 import {
   ALL_FIXTURES,
@@ -241,8 +242,20 @@ describe('rate', () => {
     },
   );
 
-  it('rates a puzzle beyond the technique set expert, never lower', () => {
-    expect(rate(solvedPuzzle(BEYOND_THE_SET).givens)).toBe('expert');
+  it("rates a puzzle beyond the technique set 'beyond'", () => {
+    expect(rate(solvedPuzzle(BEYOND_THE_SET).givens)).toBe('beyond');
+  });
+});
+
+describe('dealtTier', () => {
+  it.each<[Level, Difficulty]>([
+    ['easy', 'easy'],
+    ['medium', 'medium'],
+    ['hard', 'hard'],
+    ['expert', 'expert'],
+    ['beyond', 'expert'],
+  ])('deals %s as %s', (level, tier) => {
+    expect(dealtTier(level)).toBe(tier);
   });
 });
 

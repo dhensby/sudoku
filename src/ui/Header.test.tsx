@@ -67,6 +67,15 @@ describe('Header', () => {
     expect(screen.getByText('Expert')).not.toHaveAttribute('aria-hidden');
   });
 
+  it('names a puzzle beyond the techniques in full, and makes room for the longer name', () => {
+    renderHeader({ difficulty: 'beyond' });
+    expect(document.querySelector('.header__difficulty')).toHaveTextContent(
+      /^Difficulty: Beyond ExpertExp\+$/,
+    );
+    expect(screen.getByText('Exp+')).toHaveAttribute('aria-hidden', 'true');
+    expect(document.querySelector('header')?.className).toBe('header header--beyond');
+  });
+
   it.each([
     ['Daily puzzles', 'daily'],
     ['History', 'history'],

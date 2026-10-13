@@ -1,14 +1,14 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { encodeGivens, type Puzzle } from '../core';
+import { dealtTier, encodeGivens, type Puzzle } from '../core';
 import { meetDevice, renameFriend } from '../storage/friends';
 import { exportHistory, loadFriends, updateFriends, upsertRecord } from '../storage/history';
 import { loadPreferences } from '../storage/prefs';
 import { memoryStorage, type StorageLike } from '../storage/storage';
 import { App } from './App';
 import type { PuzzleSource } from './puzzleSource';
-import { STUCK_ON_A_HIDDEN_PAIR } from '../test/logic-fixtures';
+import { BEYOND_THE_SET, STUCK_ON_A_HIDDEN_PAIR } from '../test/logic-fixtures';
 import {
   FIRST_EMPTY,
   PUZZLE,
@@ -759,13 +759,37 @@ describe('App', () => {
     expect(cells()[0]).toHaveFocus();
   });
 
+  it('names a linked puzzle beyond the techniques Beyond Expert, on its card, the header and Share', async () => {
+    const { storage } = renderApp({ search: linkFor(BEYOND_THE_SET.givens) });
+    expect(screen.getByRole('heading', { name: 'Ready?' })).toBeInTheDocument();
+    expect(document.querySelector('.board-overlay__text')).toHaveTextContent(
+      'Someone shared a Beyond Expert puzzle with you.',
+    );
+    const banner = screen.getByRole('banner');
+    expect(banner).toHaveTextContent('Difficulty: Beyond Expert');
+    expect(banner).toHaveClass('header--beyond');
+    fireEvent.click(within(banner).getByRole('button', { name: 'Share' }));
+    const share = screen.getByRole('dialog', { name: 'Share this puzzle' });
+    expect(share.querySelector('.share__text')).toHaveTextContent(
+      /^Try this Beyond Expert Sudoku!$/,
+    );
+    fireEvent.click(within(share).getByRole('button', { name: 'Close' }));
+    // History names it so too, though it keeps it as an Expert game an older version can read.
+    fireEvent.click(within(banner).getByRole('button', { name: 'History' }));
+    const history = screen.getByRole('dialog', { name: 'History' });
+    expect(history.querySelector('.history-item__difficulty')).toHaveTextContent('Beyond Expert');
+    expect(JSON.parse(storage.getItem('sudoku.history')!)).toMatchObject([
+      { difficulty: 'expert', beyond: true },
+    ]);
+  });
+
   it('offers a fresh attempt at a linked puzzle already solved', async () => {
     const storage = memoryStorage();
     const puzzle: Puzzle = PUZZLE;
     upsertRecord(storage, {
       id: 'old-0001',
       givens: puzzle.givens,
-      difficulty: puzzle.difficulty,
+      difficulty: dealtTier(puzzle.difficulty),
       source: 'generated',
       createdAt: Date.now() - 86_400_000,
       updatedAt: Date.now() - 86_400_000,
@@ -892,7 +916,7 @@ describe('App', () => {
     upsertRecord(storage, {
       id: 'old-0001',
       givens: PUZZLE.givens,
-      difficulty: PUZZLE.difficulty,
+      difficulty: dealtTier(PUZZLE.difficulty),
       source: 'shared',
       createdAt: Date.now() - 86_400_000,
       updatedAt: Date.now() - 86_400_000,
@@ -1012,7 +1036,7 @@ describe('App', () => {
       upsertRecord(storage, {
         id: 'mbx3k2f0-done',
         givens: puzzle.givens,
-        difficulty: puzzle.difficulty,
+        difficulty: dealtTier(puzzle.difficulty),
         source: 'generated',
         createdAt: 1,
         updatedAt: 2,
@@ -1158,7 +1182,7 @@ describe('App', () => {
       upsertRecord(storage, {
         id: 'mbx3k2f0-done',
         givens: puzzle.givens,
-        difficulty: puzzle.difficulty,
+        difficulty: dealtTier(puzzle.difficulty),
         source: 'generated',
         createdAt: 1,
         updatedAt: 2,
@@ -1316,7 +1340,7 @@ describe('App', () => {
       upsertRecord(other, {
         id: 'mbx3k2f0-race',
         givens: puzzle.givens,
-        difficulty: puzzle.difficulty,
+        difficulty: dealtTier(puzzle.difficulty),
         source: 'shared',
         createdAt: 1,
         updatedAt: 2,
@@ -1373,7 +1397,7 @@ describe('App', () => {
         upsertRecord(storage, {
           id: 'mbx3k2f0-done',
           givens: puzzle.givens,
-          difficulty: puzzle.difficulty,
+          difficulty: dealtTier(puzzle.difficulty),
           source: 'generated',
           createdAt: Date.now() - 86_400_000,
           updatedAt: Date.now() - 86_400_000,
@@ -1694,7 +1718,7 @@ describe('App', () => {
     upsertRecord(storage, {
       id: 'old-0001',
       givens: PUZZLE.givens,
-      difficulty: PUZZLE.difficulty,
+      difficulty: dealtTier(PUZZLE.difficulty),
       source: 'generated',
       createdAt: Date.now() - 86_400_000,
       updatedAt: Date.now() - 86_400_000,
@@ -1814,7 +1838,7 @@ describe('App', () => {
       upsertRecord(storage, {
         id: 'old-0001',
         givens: PUZZLE.givens,
-        difficulty: PUZZLE.difficulty,
+        difficulty: dealtTier(PUZZLE.difficulty),
         source: 'generated',
         createdAt: Date.now() - 86_400_000,
         updatedAt: Date.now() - 86_400_000,

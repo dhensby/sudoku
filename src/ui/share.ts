@@ -4,8 +4,8 @@ import {
   isPossibleTally,
   type Assists,
   type DateKey,
-  type Difficulty,
   type GridString,
+  type Level,
   type MistakeTally,
 } from '../core';
 import { normaliseName } from '../storage/storage';
@@ -247,7 +247,7 @@ export function buildShareText({
   result,
   daily = null,
 }: {
-  difficulty: Difficulty;
+  difficulty: Level;
   result?: Pick<ShareResult, 'seconds' | 'assists' | 'mistakes' | 'log'>;
   /** The date of the daily the puzzle is, if it is one. */
   daily?: DateKey | null;

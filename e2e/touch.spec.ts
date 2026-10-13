@@ -20,6 +20,7 @@ import {
   typeDigits,
   waitForPlaying,
 } from './helpers';
+import { BEYOND_THE_SET } from '../src/test/logic-fixtures';
 
 /**
  * Phones: the game played by touch, and the layout's promise that the whole
@@ -1003,8 +1004,9 @@ for (const viewport of [
 }
 
 /*
- * A game past the hour, at the widest a header gets: Medium, the longest
- * tier name, and h:mm:ss on the clock. Something in the header gives way
+ * A game past the hour, at the widest a random game's header gets: Medium,
+ * the longest tier name, and h:mm:ss on the clock (a puzzle beyond the
+ * techniques, longer again, is below). Something in the header gives way
  * (the wordmark goes first), never the page: nothing scrolls sideways and
  * the Menu button stays whole, paused and playing.
  */
@@ -1030,6 +1032,51 @@ for (const viewport of [
         }
         expect((await overflow(page)).x, state).toBe(0);
         await expect(banner).toContainText('Difficulty: Medium');
+        for (const control of [
+          banner.getByRole('button', { name: /^(Pause|Resume)$/ }),
+          banner.getByRole('button', { name: 'New game' }),
+          banner.getByRole('button', { name: 'Menu' }),
+        ]) {
+          await expectOnScreen(page, control);
+        }
+      }
+    });
+  });
+}
+
+/*
+ * A puzzle beyond the techniques, from a link, past the hour: "Beyond
+ * Expert" is the widest label the header shows, wider than "Medium", and the
+ * header makes room for it as it does for a daily's "Daily ·" — the wordmark
+ * first, then, on the narrowest phone, the label shortens to "Exp+". Whole
+ * either way, paused and playing, with nothing scrolling sideways.
+ */
+for (const { viewport, shown } of [
+  { viewport: { width: 320, height: 568 }, shown: 'Exp+' },
+  { viewport: { width: 375, height: 667 }, shown: 'Beyond Expert' },
+]) {
+  test.describe(`a ${viewport.width}px-wide phone with a Beyond Expert puzzle at 1:23:45`, () => {
+    test.use({ viewport });
+
+    test(`shows "${shown}" in a header cut nowhere short`, async ({ page }) => {
+      await tapStart(page, BEYOND_THE_SET.givens);
+      await seedElapsed(page, (1 * 3600 + 23 * 60 + 45) * 1000);
+      const banner = page.getByRole('banner');
+      await expect(banner).toContainText('Difficulty: Beyond Expert');
+      await expect(banner.locator('.header__tier-short')).toBeVisible({
+        visible: shown === 'Exp+',
+      });
+      // The wordmark makes way first, at both widths: still the page's heading, but not on show.
+      const wordmark = (await banner.getByRole('heading', { name: 'Sudoku' }).boundingBox())!;
+      expect(wordmark.width, 'the wordmark on show').toBeLessThanOrEqual(1);
+      for (const state of ['paused', 'playing']) {
+        if (state === 'playing') {
+          await resumeButton(page).tap();
+          await waitForPlaying(page);
+        }
+        await expect(banner.locator('.timer__time')).toHaveText(/^1:23:4\d$/);
+        await expectHeaderWhole(page);
+        expect((await overflow(page)).x, state).toBe(0);
         for (const control of [
           banner.getByRole('button', { name: /^(Pause|Resume)$/ }),
           banner.getByRole('button', { name: 'New game' }),

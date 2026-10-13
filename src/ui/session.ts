@@ -6,6 +6,7 @@ import {
   createGame,
   createMoveLog,
   dateKeyOf,
+  dealtTier,
   encodeMoveLog,
   deserialiseGame,
   elapsedMs,
@@ -28,6 +29,7 @@ import {
   type GameAction,
   type GameState,
   type GridString,
+  type Level,
   type MistakeTally,
   type MoveLog,
   type Puzzle,
@@ -43,6 +45,7 @@ import {
   loadFriends,
   loadGameBlob,
   loadHistory,
+  levelOf,
   recordedMistakes,
   saveGameBlob,
   saveGameMoves,
@@ -168,7 +171,7 @@ export type SessionStart =
  */
 export interface ShareTarget {
   givens: GridString;
-  difficulty: Difficulty;
+  difficulty: Level;
   /**
    * The time to beat, with its help and its mistakes — the mistakes only as
    * the solved record has them (`recordedMistakes`), and null when it has
@@ -203,7 +206,9 @@ export interface ChallengeOffer {
  * A link's claim that its puzzle is a date's daily (`&d=`), still to be
  * checked against that date's dailies (which is asynchronous: a daily may
  * have to be dealt first). `tier` is the tier the puzzle grades as, the
- * daily most worth checking first.
+ * daily most worth checking first — Expert for one beyond the techniques,
+ * which a daily can be in the rare case the generator ran out of attempts
+ * and fell back on one (see `generatePuzzle`).
  */
 export interface DailyHint {
   date: DateKey;
@@ -293,7 +298,8 @@ export function attemptSource(
 /**
  * A fresh record for a game of `puzzle` created at `now` (epoch ms) — an
  * attempt at the daily of date `daily`, if one is given, `isStarted` (its
- * clock running from now) or not yet.
+ * clock running from now) or not yet. A puzzle beyond the techniques is
+ * recorded as an Expert game flagged `beyond`, as the history keeps it.
  */
 export function createRecord(
   puzzle: Puzzle,
@@ -308,7 +314,7 @@ export function createRecord(
   return {
     id: createGameId(now),
     givens: puzzle.givens,
-    difficulty: puzzle.difficulty,
+    difficulty: dealtTier(puzzle.difficulty),
     source,
     createdAt: now,
     updatedAt: now,
@@ -321,6 +327,7 @@ export function createRecord(
     ...(daily === undefined ? {} : { daily }),
     ...(daily !== undefined && isStarted ? { startedOn: dateKeyOf(now) } : {}),
     ...(isWatched ? { watched: true as const } : {}),
+    ...(puzzle.difficulty === 'beyond' ? { beyond: true as const } : {}),
   };
 }
 
@@ -653,13 +660,15 @@ function isUnstarted(elapsed: number, game: GameState): boolean {
 
 /**
  * A record for a saved game whose record has gone missing (pruned, or lost
- * to a failed write). Its time is lost with it, but the board is not.
+ * to a failed write). Its time is lost with it, but the board is not — nor
+ * its tier, though a puzzle beyond the techniques comes back as Expert: the
+ * saved game holds the tier dealt (see `serialiseGame`).
  */
 function orphanRecord(id: string, game: GameState, now: number): GameRecord {
   return {
     id,
     givens: game.puzzle.givens,
-    difficulty: game.puzzle.difficulty,
+    difficulty: dealtTier(game.puzzle.difficulty),
     source: 'generated',
     createdAt: now,
     updatedAt: now,
@@ -689,6 +698,10 @@ function orphanRecord(id: string, game: GameState, now: number): GameRecord {
  * is written before the record, and a crash or a refused write between the
  * two must not lose the player time they played — nor give them time to
  * think for free.
+ *
+ * The record says what the puzzle is labelled (see `levelOf`), so the game
+ * comes back with that label, not the tier its saved board holds (see
+ * `serialiseGame`).
  */
 export function restoreSession(
   storage: StorageLike,
@@ -719,7 +732,7 @@ export function restoreSession(
       assists: { ...game.assists },
       completedAt: isSolved ? (record.completedAt ?? now) : null,
     },
-    game,
+    game: { ...game, puzzle: { ...game.puzzle, difficulty: levelOf(record) } },
     clock: { bankedMs, runningSince: null },
     moves,
     pause,
@@ -733,7 +746,7 @@ export function restoreSession(
 export function puzzleOf(record: GameRecord): Puzzle | null {
   const check = checkGivens(record.givens);
   if (!check.ok) return null;
-  return { givens: record.givens, solution: check.solution, difficulty: record.difficulty };
+  return { givens: record.givens, solution: check.solution, difficulty: levelOf(record) };
 }
 
 /**
@@ -766,7 +779,7 @@ export function shareTargetOf(session: Session): ShareTarget {
   const seconds = toSeconds(clock.bankedMs);
   return {
     givens: record.givens,
-    difficulty: record.difficulty,
+    difficulty: levelOf(record),
     result: isRaceable
       ? {
           seconds,
@@ -794,7 +807,7 @@ export function shareTargetOfRecord(record: GameRecord, encoded: string | null):
   const seconds = toSeconds(record.elapsedMs);
   return {
     givens: record.givens,
-    difficulty: record.difficulty,
+    difficulty: levelOf(record),
     result: isRaceable
       ? {
           seconds,
@@ -907,7 +920,7 @@ export function planStartup(
     dailyHint:
       link.daily === null
         ? null
-        : { date: link.daily, givens: puzzle.givens, tier: puzzle.difficulty },
+        : { date: link.daily, givens: puzzle.givens, tier: dealtTier(puzzle.difficulty) },
     isSolveTooNew: refusal === 'newer',
     sharer:
       linkChallenge?.playerId === undefined

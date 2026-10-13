@@ -1,5 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useRef } from 'react';
-import { formatDuration, type DateKey, type Difficulty } from '../core';
+import { formatDuration, type DateKey, type Level } from '../core';
 import type { Challenge } from '../storage/history';
 import { dailyName, dailyPhrase } from './daily';
 import { DIFFICULTY_LABEL, capitalise, describeResult, withArticle } from './format';
@@ -26,9 +26,9 @@ export interface CardSolve {
 /** What the board's place holds while the board itself is not shown. */
 export type BoardOverlayContent =
   /** A puzzle is being generated (or a daily dealt). */
-  | { kind: 'loading'; difficulty: Difficulty; daily?: OverlayDaily | null }
+  | { kind: 'loading'; difficulty: Level; daily?: OverlayDaily | null }
   /** Generation failed with nothing to show instead. */
-  | { kind: 'failed'; difficulty: Difficulty; onRetry: () => void }
+  | { kind: 'failed'; difficulty: Level; onRetry: () => void }
   /**
    * A game waiting for its Start button: a shared puzzle (`isShared`, with a
    * time to beat if its link carried one), or one that arrived while the tab
@@ -36,7 +36,7 @@ export type BoardOverlayContent =
    */
   | {
       kind: 'ready';
-      difficulty: Difficulty;
+      difficulty: Level;
       isShared: boolean;
       challenge: Challenge | null;
       daily?: OverlayDaily | null;
@@ -52,7 +52,7 @@ export type BoardOverlayContent =
   /** A paused game. */
   | {
       kind: 'paused';
-      difficulty: Difficulty;
+      difficulty: Level;
       elapsedMs: number;
       showTimer: boolean;
       daily?: OverlayDaily | null;
@@ -82,7 +82,7 @@ export type BoardOverlayProps = BoardOverlayContent & {
  * The puzzle, mid-sentence: "this Hard puzzle", or the daily it is — "today's
  * Hard puzzle", "the Hard daily for 12 Oct".
  */
-function puzzlePhrase(difficulty: Difficulty, daily: OverlayDaily | null | undefined): string {
+function puzzlePhrase(difficulty: Level, daily: OverlayDaily | null | undefined): string {
   if (daily === null || daily === undefined) return `this ${DIFFICULTY_LABEL[difficulty]} puzzle`;
   return dailyPhrase(daily.date, difficulty, daily.today);
 }
@@ -120,7 +120,7 @@ function ChallengeText({
   textId,
   noteId,
 }: {
-  difficulty: Difficulty;
+  difficulty: Level;
   challenge: Challenge;
   daily: OverlayDaily | null | undefined;
   isWatched: boolean;

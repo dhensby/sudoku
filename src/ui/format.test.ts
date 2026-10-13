@@ -19,7 +19,13 @@ const NONE = { autoCandidates: false, hints: 0, checks: 0, reveals: 0 };
 
 describe('labels', () => {
   it('names every tier and technique', () => {
-    expect(Object.values(DIFFICULTY_LABEL)).toEqual(['Easy', 'Medium', 'Hard', 'Expert']);
+    expect(Object.values(DIFFICULTY_LABEL)).toEqual([
+      'Easy',
+      'Medium',
+      'Hard',
+      'Expert',
+      'Beyond Expert',
+    ]);
     expect(TECHNIQUE_LABEL.xyWing).toBe('XY-Wing');
     expect(TECHNIQUE_LABEL.hiddenSingleBox).toBe(TECHNIQUE_LABEL.hiddenSingleLine);
   });

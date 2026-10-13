@@ -14,8 +14,8 @@ import {
   seedFromString,
   valuesOf,
   type CellState,
-  type Difficulty,
   type GameState,
+  type Level,
   type MoveLog,
   type Puzzle,
   type ReplayStep,
@@ -68,7 +68,7 @@ export interface GoldenGame {
   name: string;
   givens: string;
   solution: string;
-  difficulty: Difficulty;
+  difficulty: Level;
   /** The encoded log. */
   log: string;
   /** The game the log replays to (see `pinnedState`). */

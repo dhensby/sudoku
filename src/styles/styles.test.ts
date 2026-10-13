@@ -511,6 +511,30 @@ describe('the tally: help taken and the error counter', () => {
     );
   });
 
+  it('makes room for "Beyond Expert" the same way, 3.44em wider than "Medium"', () => {
+    // The wordmark first: on a phone, beside the tally on its side, and on a desktop.
+    for (const query of [
+      /@container header \(max-width: calc\(165px \+ 15\.6em\)\) \{\s*\.header--beyond \.header__title \{[^}]*clip-path: inset\(50%\);/,
+      /@container header \(max-width: calc\(173px \+ 27\.1em\)\) \{\s*\.header--tally\.header--beyond \.header__title \{[^}]*clip-path: inset\(50%\);/,
+      /@container header \(max-width: calc\(420px \+ 17em\)\) \{\s*\.header--beyond \.header__title \{[^}]*clip-path: inset\(50%\);/,
+      /@container header \(max-width: calc\(432px \+ 29\.5em\)\) \{\s*\.header--tally\.header--beyond \.header__title \{[^}]*clip-path: inset\(50%\);/,
+    ]) {
+      expect(LAYOUT).toMatch(query);
+    }
+    // Then, below the width the row needs for it without the wordmark, "Exp+".
+    for (const query of [
+      /@container header \(max-width: calc\(159px \+ 11\.2em\)\) \{\s*\.header--beyond \.header__tier \{[^}]*clip-path: inset\(50%\);[^}]*\}\s*\.header--beyond \.header__tier-short \{\s*display: inline;/,
+      /@container header \(max-width: calc\(167px \+ 22\.7em\)\) \{\s*\.header--tally\.header--beyond \.header__tier \{[^}]*clip-path: inset\(50%\);[^}]*\}\s*\.header--tally\.header--beyond \.header__tier-short \{\s*display: inline;/,
+      /@container header \(min-width: calc\(419px \+ 18\.7em\)\) and \(max-width: calc\(419px \+ 23\.6em\)\) \{\s*\.header--tally\.header--beyond \.header__tier \{[^}]*clip-path: inset\(50%\);[^}]*\}\s*\.header--tally\.header--beyond \.header__tier-short \{\s*display: inline;/,
+    ]) {
+      expect(LAYOUT).toMatch(query);
+    }
+    // And "Exp+", 0.31em wider than "Med", folds the seven buttons that much sooner.
+    expect(LAYOUT).toMatch(
+      /@container header \(max-width: calc\(419px \+ 18\.7em\)\) \{\s*\.header--tally\.header--beyond \.header__actions \.header__wide \{\s*display: none;\s*\}\s*\.header--tally\.header--beyond \.header__actions \.header__narrow \{\s*display: inline-flex;/,
+    );
+  });
+
   it('makes the row of seven buttons give way for it too, folding them into the Menu last', () => {
     // Inside the desktop's block, where the seven buttons show.
     const fold = LAYOUT.indexOf('@container header (max-width: calc(419px + 18.4em))');
@@ -523,7 +547,7 @@ describe('the tally: help taken and the error counter', () => {
       /@container header \(min-width: calc\(419px \+ 18\.4em\)\) and \(max-width: calc\(419px \+ 23\.4em\)\) \{\s*\.header--tally\.header--daily \.header__daily \{\s*display: none;/,
     );
     expect(block).toMatch(
-      /@container header \(min-width: calc\(419px \+ 18\.4em\)\) and \(max-width: calc\(419px \+ 20\.1em\)\) \{\s*\.header--tally \.header__tier \{[^}]*clip-path: inset\(50%\);[^}]*\}\s*\.header--tally \.header__tier-short \{\s*display: inline;/,
+      /@container header \(min-width: calc\(419px \+ 18\.4em\)\) and \(max-width: calc\(419px \+ 20\.1em\)\) \{\s*\.header--tally:not\(\.header--beyond\) \.header__tier \{[^}]*clip-path: inset\(50%\);[^}]*\}\s*\.header--tally:not\(\.header--beyond\) \.header__tier-short \{\s*display: inline;/,
     );
     // Then the five less-used actions fold into the Menu, as on a phone.
     expect(block).toMatch(

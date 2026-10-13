@@ -6,7 +6,7 @@ import {
   type SolveStep,
   type SolverBoard,
 } from './techniques';
-import type { Difficulty, TechniqueId, Values } from './types';
+import type { Difficulty, Level, TechniqueId, Values } from './types';
 
 export type { Elimination, PatternCell, SolveStep } from './techniques';
 
@@ -181,11 +181,25 @@ export function grade(values: Values, techniques: readonly TechniqueId[] = TECHN
 }
 
 /**
- * The tier a puzzle belongs to for labelling: tier of hardest technique;
- * 'expert' if the set cannot solve it; 'easy' if already complete.
+ * The label a puzzle is shown with: the tier of the hardest technique it
+ * needs; 'beyond' if the set cannot finish it; 'easy' if already complete.
+ * Only a puzzle from outside — a link's — is ever labelled 'beyond': the
+ * generator labels its own, and deals the rare fallback the set cannot
+ * finish as an Expert (see `generatePuzzle`).
  */
-export function rate(values: Values): Difficulty {
-  return grade(values).difficulty ?? 'expert';
+export function rate(values: Values): Level {
+  return grade(values).difficulty ?? 'beyond';
+}
+
+/**
+ * The tier to deal for a puzzle labelled `level`: the tier itself, and Expert
+ * for a puzzle beyond the techniques, which is the nearest thing the game
+ * deals. For wherever a puzzle's label decides what comes next — a New game
+ * after it, or a daily it might be — and how a record or a saved game holds
+ * it, which keep to the four tiers so that an older version can read them.
+ */
+export function dealtTier(level: Level): Difficulty {
+  return level === 'beyond' ? 'expert' : level;
 }
 
 /** A technique caught at work: the board just before one of its steps, and the step. */

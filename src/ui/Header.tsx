@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import type { DateKey, Difficulty } from '../core';
+import type { DateKey, Difficulty, Level } from '../core';
 import { DifficultyMenu, type TodayDailies } from './DifficultyMenu';
 import { DIFFICULTY_LABEL, formatLongDay } from './format';
 import {
@@ -18,7 +18,7 @@ import { Timer } from './Timer';
 import type { HeaderDialog } from './useSudoku';
 
 export interface HeaderProps {
-  difficulty: Difficulty;
+  difficulty: Level;
   /** The date of the daily on show (or on its way), if the game is one. */
   daily?: DateKey | null;
   elapsedMs: number;
@@ -62,15 +62,17 @@ const ACTIONS: readonly { kind: HeaderDialog; label: string; Icon: typeof HelpIc
 ];
 
 /**
- * The tier in three or four letters, for a header with no room for the
- * whole word (a narrow phone with a large default font size). Shown in its
- * place by the stylesheet; assistive technology always hears the full name.
+ * The tier in three or four characters, for a header with no room for the
+ * whole word (a narrow phone with a large default font size) — "Exp+" for a
+ * puzzle beyond Expert. Shown in its place by the stylesheet; assistive
+ * technology always hears the full name.
  */
-const SHORT_LABEL: Readonly<Record<Difficulty, string>> = {
+const SHORT_LABEL: Readonly<Record<Level, string>> = {
   easy: 'Easy',
   medium: 'Med',
   hard: 'Hard',
   expert: 'Exp',
+  beyond: 'Exp+',
 };
 
 /**
@@ -103,7 +105,12 @@ export function Header({
   tally,
   isTallyShown = false,
 }: HeaderProps) {
-  const className = ['header', daily !== null && 'header--daily', isTallyShown && 'header--tally']
+  const className = [
+    'header',
+    daily !== null && 'header--daily',
+    difficulty === 'beyond' && 'header--beyond',
+    isTallyShown && 'header--tally',
+  ]
     .filter(Boolean)
     .join(' ');
   return (

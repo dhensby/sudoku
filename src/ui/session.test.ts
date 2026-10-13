@@ -34,6 +34,7 @@ import {
   type GameRecord,
 } from '../storage/history';
 import { loadEncodedMoveLog, loadMoveLog } from '../storage/moveLogs';
+import { BEYOND_THE_SET } from '../test/logic-fixtures';
 import { LOG_IN_A_LATER_FORMAT, logFromAnotherBuild } from '../test/movePlayers';
 import { memoryStorage, type StorageLike } from '../storage/storage';
 import {
@@ -1592,6 +1593,53 @@ describe('planStartup', () => {
     // A guard against the plan drifting from what createGame makes.
     const plan = planStartup(memoryStorage(), linkFor(PUZZLE.givens), at(NOW), false);
     expect(plan.session?.game.cells).toEqual(createGame(PUZZLE).cells);
+  });
+});
+
+describe('a puzzle beyond the techniques', () => {
+  const BEYOND: Puzzle = { ...BEYOND_THE_SET, difficulty: 'beyond' };
+
+  it('is recorded as an Expert game flagged beyond, as an older version can read it', () => {
+    expect(createRecord(BEYOND, 'shared', NOW, null, NO_HELP)).toMatchObject({
+      difficulty: 'expert',
+      beyond: true,
+    });
+    const expert = createRecord({ ...BEYOND, difficulty: 'expert' }, 'shared', NOW, null, NO_HELP);
+    expect(expert.difficulty).toBe('expert');
+    expect(expert).not.toHaveProperty('beyond');
+  });
+
+  it('opens from a link labelled beyond, and is saved so', () => {
+    const storage = memoryStorage();
+    const plan = planStartup(storage, linkFor(BEYOND.givens), at(NOW), false);
+    expect(plan.session?.game.puzzle.difficulty).toBe('beyond');
+    expect(plan.session?.record).toMatchObject({ difficulty: 'expert', beyond: true });
+    saveAsCurrent(storage, plan.session!);
+    expect(loadHistory(storage)[0]).toMatchObject({ difficulty: 'expert', beyond: true });
+    // The board is saved with the tier any version reads; the record says the rest.
+    expect(loadGameBlob(storage, plan.session!.record.id)).toMatchObject({
+      puzzle: { difficulty: 'expert' },
+    });
+    const restored = planStartup(storage, '', at(NOW + 1000), false).session!;
+    expect(restored.record.id).toBe(plan.session!.record.id);
+    expect(restored.game.puzzle.difficulty).toBe('beyond');
+  });
+
+  it('checks a link’s daily date against the Expert daily', () => {
+    const plan = planStartup(
+      memoryStorage(),
+      `${linkFor(BEYOND.givens)}&d=2026-10-12`,
+      at(NOW),
+      false,
+    );
+    expect(plan.dailyHint).toEqual({ date: '2026-10-12', givens: BEYOND.givens, tier: 'expert' });
+  });
+
+  it('is played again, and shared, by its label', () => {
+    const session = running(BEYOND);
+    expect(puzzleOf(session.record)).toEqual(BEYOND);
+    expect(shareTargetOf(session).difficulty).toBe('beyond');
+    expect(shareTargetOfRecord(session.record, null).difficulty).toBe('beyond');
   });
 });
 

@@ -1,4 +1,4 @@
-import { addDays, daysBetween, type DateKey, type Difficulty } from '../core';
+import { addDays, daysBetween, type DateKey, type Difficulty, type Level } from '../core';
 import { findDailyAttempts, type GameRecord } from '../storage/history';
 import { DIFFICULTIES } from '../storage/storage';
 import {
@@ -66,7 +66,7 @@ const STATUS_ORDER: readonly DailyStatus[] = [
 ];
 
 /** A daily's name, as the completion dialog and History give it: "Daily · 13 Oct · Hard". */
-export function dailyName(date: DateKey, tier: Difficulty, today: DateKey): string {
+export function dailyName(date: DateKey, tier: Level, today: DateKey): string {
   return `Daily · ${formatDay(date, today)} · ${DIFFICULTY_LABEL[tier]}`;
 }
 
@@ -74,7 +74,7 @@ export function dailyName(date: DateKey, tier: Difficulty, today: DateKey): stri
  * A daily, mid-sentence: "today's Hard puzzle" on its own day, else "the
  * Hard daily for 12 Oct". Lower case, to sit after "Generating" or "solved".
  */
-export function dailyPhrase(date: DateKey, tier: Difficulty, today: DateKey): string {
+export function dailyPhrase(date: DateKey, tier: Level, today: DateKey): string {
   const label = DIFFICULTY_LABEL[tier];
   return date === today
     ? `today's ${label} puzzle`

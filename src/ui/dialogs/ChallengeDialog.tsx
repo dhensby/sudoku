@@ -1,5 +1,5 @@
 import { useId, useState } from 'react';
-import { dateKeyOf, formatDuration, toSeconds, type DateKey, type Difficulty } from '../../core';
+import { dateKeyOf, formatDuration, toSeconds, type DateKey, type Level } from '../../core';
 import {
   hasRecordedTime,
   recordedMistakes,
@@ -12,7 +12,7 @@ import { Dialog } from './Dialog';
 import { assistsSentence } from './text';
 
 export interface ChallengeDialogProps {
-  difficulty: Difficulty;
+  difficulty: Level;
   /**
    * The player's earlier solve of the linked puzzle: the newest that counted
    * towards their records, or a replay's only when there is no other (see

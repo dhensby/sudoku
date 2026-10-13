@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   computeCandidates,
   dateKeyOf,
+  dealtTier,
   digitsOf,
   preparePlayback,
   reduce,
@@ -38,7 +39,11 @@ import {
 import { loadEncodedMoveLog, loadMoveLog, readMoveLogIds, storeMoveLog } from '../storage/moveLogs';
 import { loadPreferences, setLastDifficulty } from '../storage/prefs';
 import { memoryStorage, type StorageLike } from '../storage/storage';
-import { STUCK_ON_AN_XY_CHAIN, STUCK_ON_A_HIDDEN_PAIR } from '../test/logic-fixtures';
+import {
+  BEYOND_THE_SET,
+  STUCK_ON_AN_XY_CHAIN,
+  STUCK_ON_A_HIDDEN_PAIR,
+} from '../test/logic-fixtures';
 import { captionAt } from './playbackText';
 import type { PuzzleSource } from './puzzleSource';
 import {
@@ -131,7 +136,7 @@ function solvedRecord(puzzle: Puzzle, elapsedMs: number, id = 'old-0001'): GameR
   return {
     id,
     givens: puzzle.givens,
-    difficulty: puzzle.difficulty,
+    difficulty: dealtTier(puzzle.difficulty),
     source: 'generated',
     createdAt: NOW - 86_400_000,
     updatedAt: NOW - 86_400_000,
@@ -2253,6 +2258,35 @@ describe('useSudoku', () => {
       expect(result.current.phase).toBe('solved');
       advance(COMPLETION_DELAY_MS);
       expect(result.current.dialog).toMatchObject({ result: { isNewBest: false } });
+    });
+
+    it('labels a solve of a puzzle beyond the techniques Beyond Expert, apart from the Experts', async () => {
+      const storage = memoryStorage();
+      // A slower Expert: were the solve counted among the Experts, it would be a new best.
+      upsertRecord(storage, solvedRecord({ ...PUZZLE, difficulty: 'expert' }, 600_000));
+      const linked = setup({ storage, search: linkFor(BEYOND_THE_SET.givens) });
+      const shared = linked.result.current.record!.id;
+      linked.unmount();
+      // Begun from History, which says what it begins.
+      const { result } = setup({ storage });
+      act(() => result.current.actions.openDialog('history'));
+      act(() => result.current.actions.replayRecord(shared));
+      expect(result.current.difficulty).toBe('beyond');
+      expect(result.current.announcement?.text).toBe('Started Beyond Expert puzzle.');
+      advance(5000);
+      [...BEYOND_THE_SET.givens].forEach((given, index) => {
+        if (given === '0') enter(result, index, Number(BEYOND_THE_SET.solution[index]));
+      });
+      expect(result.current.phase).toBe('solved');
+      advance(COMPLETION_DELAY_MS);
+      expect(result.current.dialog).toMatchObject({
+        kind: 'completion',
+        result: {
+          difficulty: 'beyond',
+          isNewBest: false,
+          stats: { played: 1, solved: 1, bestMs: 5000 },
+        },
+      });
     });
 
     it('does not open the completion dialog over another', async () => {

@@ -11,7 +11,7 @@ import {
   type LoggedMove,
   type MoveLog,
 } from './moves';
-import type { Difficulty, Digit, Puzzle, Values } from './types';
+import type { Digit, Level, Puzzle, Values } from './types';
 import { showMeRoute, stepId, type StepNumber } from './walkthrough';
 
 /*
@@ -301,7 +301,7 @@ function ticksOf(frames: readonly PlaybackFrame[]): PlaybackTick[] {
  */
 export function preparePlayback(
   givens: string,
-  difficulty: Difficulty,
+  difficulty: Level,
   encoded: unknown,
 ): PreparedPlayback {
   const check = checkGivens(givens);

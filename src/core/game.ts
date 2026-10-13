@@ -10,7 +10,7 @@ import {
   gridValues,
   isGridString,
 } from './grid';
-import { TECHNIQUE_ORDER } from './grader';
+import { TECHNIQUE_ORDER, dealtTier } from './grader';
 import { fieldsOf, newerFields } from './newerFields';
 import type { SolverBoard } from './techniques';
 import type {
@@ -1243,8 +1243,13 @@ export interface SerialisedCellHints {
 export interface SerialisedGame {
   /** Format version; anything else is rejected on load. */
   v: 1;
-  /** The puzzle being played: givens, solution and tier. */
-  puzzle: Puzzle;
+  /**
+   * The puzzle being played: givens, solution and tier. The tier is the one
+   * dealt (see `dealtTier`) — Expert for a puzzle beyond the techniques — so
+   * that a version from before Beyond Expert can still read the game; the
+   * game's record says which it is.
+   */
+  puzzle: Puzzle & { difficulty: Difficulty };
   /** The placed digits, givens included. */
   values: GridString;
   /** Each cell's manual notes mask. */
@@ -1337,7 +1342,7 @@ export function serialiseGame(state: GameState): SerialisedGame {
   const { givens, solution, difficulty } = state.puzzle;
   return {
     v: 1,
-    puzzle: { givens, solution, difficulty },
+    puzzle: { givens, solution, difficulty: dealtTier(difficulty) },
     values: formatGrid(valuesOf(state)),
     notes: state.cells.map((cell) => cell.notes),
     autoRemoved: state.cells.map((cell) => cell.autoRemoved),
