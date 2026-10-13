@@ -218,16 +218,17 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
               A number twice in a row, column or box is marked at once, and a line by the grid says
               what the numbers make so far — too few for a puzzle, more than one solution, or none —
               until they make a puzzle with exactly one solution, and how hard it is: “One solution:
-              a Hard puzzle.” Only then can you play it.
+              a Hard puzzle.” Only then can you play or share it.
             </li>
             <li>
               Check every number against your copy: one wrong number can still make a puzzle, just
               not the one in the paper.
             </li>
             <li>
-              <strong>Play</strong> puts it behind <strong>Start</strong>, so you can share it
-              before you start: Share sends the puzzle alone. Once you&apos;ve solved it, Share
-              sends your time with it, as for any puzzle.
+              <strong>Share…</strong> sends a friend the puzzle alone, without starting it.{' '}
+              <strong>Play</strong> puts it behind <strong>Start</strong>, so you can share it from
+              there too before you start. Once you&apos;ve solved it, Share sends your time with it,
+              as for any puzzle.
             </li>
             <li>
               Typing it in isn&apos;t seeing it: its time counts as a new puzzle&apos;s, towards
@@ -237,12 +238,14 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
             </li>
             <li>
               Every grid you type in is kept in Your puzzles, finished or not: <strong>Save</strong>{' '}
-              keeps it as it is, and Play and closing the grid keep it too. Up to 1,000 are kept.
+              keeps it as it is, and Play, Share… and closing the grid keep it too. Up to 1,000 are
+              kept.
             </li>
             <li>
-              From the list, <strong>Play</strong> one that&apos;s ready, <strong>Edit</strong> one
-              to carry on typing or put a number right, <strong>Rename</strong> one to tell it
-              apart, or <strong>Delete</strong> it — its games stay in your history.
+              From the list, <strong>Play</strong> or <strong>Share</strong> one that&apos;s ready,{' '}
+              <strong>Edit</strong> one to carry on typing or put a number right,{' '}
+              <strong>Rename</strong> one to tell it apart, or <strong>Delete</strong> it — its
+              games stay in your history.
             </li>
           </ul>
         </section>

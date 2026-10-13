@@ -1550,11 +1550,11 @@ for (const viewport of [
  * Enter a puzzle at each phone size, upright and on its side: on screen with
  * nothing to scroll either way, for the board takes the height the rest
  * leaves; every button a finger's 44px (the pad's nine keys, Erase, Play,
- * Save and the close button), Play and Save side by side with the hint in
- * view under them; and every cell at least WCAG's 24px, but on the shortest
- * phone on its side, which leaves the board room for 22px (upright, it has
- * 25px). A tap on a cell, then on the pad, puts the number in that cell and
- * leaves it selected, for a correction to land there too.
+ * Share…, Save and the close button), Play, Share… and Save side by side
+ * with the hint in view under them; and every cell at least WCAG's 24px, but
+ * on the shortest phone on its side, which leaves the board room for 22px
+ * (upright, it has 25px). A tap on a cell, then on the pad, puts the number
+ * in that cell and leaves it selected, for a correction to land there too.
  */
 for (const viewport of [
   { width: 320, height: 568 },
@@ -1581,16 +1581,16 @@ for (const viewport of [
       expect(await body.evaluate((el) => el.scrollHeight - el.clientHeight)).toBeLessThanOrEqual(1);
 
       const buttons = await dialog.getByRole('button').all();
-      expect(buttons).toHaveLength(13);
+      expect(buttons).toHaveLength(14);
       for (const button of buttons) {
         const size = (await button.boundingBox())!;
         const label = (await button.getAttribute('aria-label')) ?? (await button.innerText());
         expect(size.height, label).toBeGreaterThanOrEqual(44);
         expect(size.width, label).toBeGreaterThanOrEqual(44);
       }
-      // Play and Save on one line, the hint under them and on screen.
+      // Play, Share… and Save on one line, the hint under them and on screen.
       const tops = await Promise.all(
-        ['Play', 'Save'].map(async (name) =>
+        ['Play', 'Share…', 'Save'].map(async (name) =>
           Math.round((await dialog.getByRole('button', { name }).boundingBox())!.y),
         ),
       );
@@ -1645,7 +1645,7 @@ const LONG_NAMED_PUZZLES = [
  * Your puzzles, from New game, upright and on its side: the longest
  * right-to-left name a puzzle can have, with nowhere to break, wraps inside
  * its row rather than scrolling the dialog sideways or being cut off at the
- * row's edge; Enter a new puzzle, a ready row's Play, Edit, Rename and
+ * row's edge; Enter a new puzzle, a ready row's Play, Share, Edit, Rename and
  * Delete, and the field, Save and Cancel a rename opens, are each a finger's
  * 44px, the field's text 16px so that focusing it does not zoom the page.
  */

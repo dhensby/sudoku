@@ -58,6 +58,7 @@ import {
   resumeSession,
   saveSession,
   shareTargetOf,
+  shareTargetOfPuzzle,
   shareTargetOfRecord,
   type Moment,
   type Session,
@@ -1343,6 +1344,17 @@ describe('share targets', () => {
       givens: record.givens,
       difficulty: record.difficulty,
       result: null,
+      solve: null,
+    });
+  });
+
+  it('shares a puzzle of Your puzzles alone, by the label it was checked with', () => {
+    const beyond: Puzzle = { ...BEYOND_THE_SET, difficulty: 'beyond' };
+    expect(shareTargetOfPuzzle(beyond)).toEqual({
+      givens: beyond.givens,
+      difficulty: 'beyond',
+      result: null,
+      daily: null,
       solve: null,
     });
   });

@@ -149,7 +149,8 @@ function withRoom(puzzles: readonly SavedPuzzle[]): readonly SavedPuzzle[] {
 
 /**
  * Keep `cells` in the library, at `now` — the one rule for Save, for the
- * save as Play starts a game of it, and for the save as the editor closes:
+ * save as Play starts a game of it or Share… shares it, and for the save as
+ * the editor closes:
  *
  *   - the entry `id` is updated, if it is still there — the one being
  *     edited; else the entry with these numbers, if there is one; else a

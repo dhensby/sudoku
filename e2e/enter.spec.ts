@@ -23,8 +23,9 @@ import {
  * Enter a puzzle: a puzzle from the paper typed in from New game's Your
  * puzzles, checked as it goes in, then played and shared like any other — a
  * Hard typed in plays as the Hard it is, and its link opens it elsewhere as a
- * friend's would — and kept in Your puzzles, finished or not, to edit, name,
- * play or delete there, and to carry to another browser in History's
+ * friend's would, shared from its Start card or from the editor without a
+ * game of it — and kept in Your puzzles, finished or not, to edit, name,
+ * play, share or delete there, and to carry to another browser in History's
  * export. Everything in the editor is found through its dialog: the board
  * and the pad behind it stay on the page.
  *
@@ -96,10 +97,66 @@ test('shares it from its Start card as the puzzle alone, which opens the same el
   }
 });
 
-test('names a clash, and more than one solution, and keeps Play unavailable', async ({ page }) => {
+test('shares it from the editor as the puzzle alone, starting nothing, and its link opens the same board elsewhere', async ({
+  page,
+  browser,
+}) => {
+  await stubClipboard(page);
+  await openGame(page);
+  const editor = await openEnterPuzzle(page);
+  const shareButton = editor.getByRole('button', { name: 'Share…' });
+  await expect(shareButton).toHaveAttribute('aria-disabled', 'true');
+  await enterGivens(editor, HARD.givens);
+  await expect(shareButton).not.toHaveAttribute('aria-disabled');
+  await shareButton.click();
+
+  const share = page.getByRole('dialog', { name: 'Share this puzzle' });
+  await share.getByRole('button', { name: 'Copy', exact: true }).click();
+  await expect(share.getByRole('status')).toHaveText('Copied to clipboard');
+  const [message] = await copiedText(page);
+  expect(message.split('\n')[0]).toBe('Try this Hard Sudoku!');
+  const link = new URL(message.split('\n').at(-1)!);
+  expect([...link.searchParams.keys()]).toEqual(['p']);
+  expect(link.searchParams.get('p')).toBe(encodeGivens(HARD.givens));
+  await page.keyboard.press('Escape');
+
+  // Back in the editor on the same grid, kept as it was shared, focus on Share….
+  const again = page.getByRole('dialog', { name: 'Enter a puzzle' });
+  await expect(again.getByRole('button', { name: 'Share…' })).toBeFocused();
+  await expect(again.getByRole('button', { name: 'Saved' })).toBeVisible();
+  const typed = await again
+    .getByRole('gridcell')
+    .evaluateAll((cells) =>
+      cells
+        .map((cell) => /^(\d), given/.exec(cell.getAttribute('aria-label')!)?.[1] ?? '0')
+        .join(''),
+    );
+  expect(typed).toBe(HARD.givens);
+  // Nothing was started: Escape twice, and the game behind carries on.
+  await page.keyboard.press('Escape');
+  const library = page.getByRole('dialog', { name: 'Your puzzles' });
+  await expect(library.getByRole('listitem')).toHaveText([/One solution: a Hard puzzle\./]);
+  await page.keyboard.press('Escape');
+  await expect(library).toBeHidden();
+  await waitForPlaying(page);
+  expect(await readBoard(page)).not.toBe(HARD.givens);
+
+  await elsewhere(browser, async (other) => {
+    await other.goto(link.href);
+    await expect(boardArea(other)).toContainText('Someone shared a Hard puzzle with you.');
+    await startButton(other).click();
+    await waitForPlaying(other);
+    expect(await readBoard(other)).toBe(HARD.givens);
+  });
+});
+
+test('names a clash, and more than one solution, and keeps Play and Share… unavailable', async ({
+  page,
+}) => {
   await openGame(page);
   const editor = await openEnterPuzzle(page);
   const play = editor.getByRole('button', { name: 'Play' });
+  const share = editor.getByRole('button', { name: 'Share…' });
   await expect(play).toHaveAttribute('aria-disabled', 'true');
 
   // Two 5s in row 1, dotted both.
@@ -113,6 +170,11 @@ test('names a clash, and more than one solution, and keeps Play unavailable', as
   await enterGivens(editor, '0'.repeat(18) + solution.slice(18));
   await expect(enterStatus(editor)).toHaveText('More than one solution so far.');
   await expect(play).toHaveAttribute('aria-disabled', 'true');
+  await expect(share).toHaveAttribute('aria-disabled', 'true');
+  await share.focus();
+  await expect(share).toHaveAccessibleDescription('More than one solution so far.');
+  await page.keyboard.press('Enter');
+  await expect(share).toBeFocused();
   // Focused, it says why; pressed, it does nothing.
   await play.focus();
   await expect(play).toHaveAccessibleDescription('More than one solution so far.');
@@ -231,6 +293,33 @@ test.describe('kept already', () => {
     await expect(resumeButton(page)).toBeVisible();
     library = await openYourPuzzles(page);
     await expect(library.locator('bdi')).toHaveText(['The Times #5,123', 'Mistyped']);
+  });
+
+  test('shares a puzzle from its row as the puzzle alone, focus back on its Share', async ({
+    page,
+  }) => {
+    await stubClipboard(page);
+    await seedPuzzles(page, kept);
+    await openGame(page);
+    const library = await openYourPuzzles(page);
+    // Only a puzzle ready to play has one.
+    await expect(library.getByRole('button', { name: /^Share Mistyped/ })).toHaveCount(0);
+    const rowShare = library.getByRole('button', { name: /^Share untitled puzzle/ });
+    await rowShare.click();
+    const share = page.getByRole('dialog', { name: 'Share this puzzle' });
+    await share.getByRole('button', { name: 'Copy', exact: true }).click();
+    await expect(share.getByRole('status')).toHaveText('Copied to clipboard');
+    const [message] = await copiedText(page);
+    expect(message.split('\n')[0]).toBe('Try this Hard Sudoku!');
+    const link = new URL(message.split('\n').at(-1)!);
+    expect([...link.searchParams.keys()]).toEqual(['p']);
+    expect(link.searchParams.get('p')).toBe(encodeGivens(HARD.givens));
+    await share.getByRole('button', { name: 'Close' }).click();
+    await expect(rowShare).toBeFocused();
+    // Nothing was started: the game behind carries on as the list closes.
+    await page.keyboard.press('Escape');
+    await expect(library).toBeHidden();
+    await waitForPlaying(page);
   });
 
   test('deletes a puzzle, asking first, and it stays deleted', async ({ page }) => {

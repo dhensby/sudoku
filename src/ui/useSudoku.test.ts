@@ -860,6 +860,65 @@ describe('useSudoku', () => {
       expect(result.current.pauseReason).toBe('dialog');
     });
 
+    it('keeps the puzzle as Share… shares it alone, then gives the editor back on it, the game still paused', async () => {
+      const { result, storage } = await library();
+      act(() => result.current.actions.openEditor(null));
+      const writes = vi.spyOn(storage, 'setItem');
+      act(() => result.current.actions.shareFromEditor(editor(result), typedIn(HARD), 30));
+      const [entry] = loadPuzzles(storage);
+      expect(entry.cells).toBe(HARD);
+      const back = {
+        kind: 'enter',
+        id: entry.id,
+        cells: HARD,
+        selected: 30,
+        isBackFromShare: true,
+      };
+      expect(result.current.dialog).toEqual({
+        kind: 'share',
+        target: { givens: HARD, difficulty: 'hard', result: null, daily: null, solve: null },
+        returnTo: back,
+      });
+      // A bare puzzle names no one, and makes no player ID.
+      expect(writes.mock.calls.filter(([key]) => key === 'sudoku.prefs')).toEqual([]);
+      expect(result.current.playerId).toBeNull();
+      expect(result.current.pauseReason).toBe('dialog');
+      act(() => result.current.actions.closeDialog());
+      expect(result.current.dialog).toEqual(back);
+      expect(result.current.pauseReason).toBe('dialog');
+      // Kept as it was shared: closing the editor now writes nothing more.
+      writes.mockClear();
+      act(() => result.current.actions.closeEditor(editor(result), HARD));
+      expect(writes.mock.calls.filter(([key]) => key === 'sudoku.puzzles')).toEqual([]);
+      expect(result.current.dialog).toEqual({
+        kind: 'puzzles',
+        place: { id: entry.id, control: 'edit' },
+      });
+    });
+
+    it('shares a row’s puzzle alone, keeping nothing, back on its Share with the list as stored', async () => {
+      const { result, storage } = await library([HARD]);
+      const writes = vi.spyOn(storage, 'setItem');
+      act(() => result.current.actions.shareEntry('kept-0000', typedIn(HARD)));
+      expect(result.current.dialog).toEqual({
+        kind: 'share',
+        target: { givens: HARD, difficulty: 'hard', result: null, daily: null, solve: null },
+        returnTo: { kind: 'puzzles', place: { id: 'kept-0000', control: 'share' } },
+      });
+      expect(writes.mock.calls).toEqual([]);
+      // Named in another tab while Share was open.
+      updatePuzzles(storage, (list) => retitlePuzzle(list, 'kept-0000', 'The Times', 9));
+      act(() => result.current.actions.closeDialog());
+      expect(result.current.dialog).toEqual({
+        kind: 'puzzles',
+        place: { id: 'kept-0000', control: 'share' },
+      });
+      expect(result.current.puzzles[0].title).toBe('The Times');
+      expect(result.current.pauseReason).toBe('dialog');
+      act(() => result.current.actions.closeDialog());
+      expect(result.current.phase).toBe('playing');
+    });
+
     it('plays a row’s puzzle as the editor does, keeping nothing more', async () => {
       const { result, storage } = await library([HARD]);
       const writes = vi.spyOn(storage, 'setItem');
@@ -2838,7 +2897,7 @@ describe('useSudoku', () => {
       expect(result.current.dialog).toMatchObject({
         kind: 'share',
         target: { result: null },
-        returnTo: 'history',
+        returnTo: { kind: 'history' },
       });
       expect(result.current.playerId).toBeNull();
       expect(loadPreferences(storage)).not.toHaveProperty('playerId');
@@ -2853,7 +2912,7 @@ describe('useSudoku', () => {
       expect(result.current.dialog).toMatchObject({
         kind: 'share',
         target: { result: { seconds: 290 } },
-        returnTo: 'history',
+        returnTo: { kind: 'history' },
       });
       expect(result.current.playerId).toMatch(/^[0-9a-z]{10}$/);
       expect(loadPreferences(storage).playerId).toBe(result.current.playerId);
@@ -3497,7 +3556,7 @@ describe('useSudoku', () => {
       expect(result.current.dialog).toMatchObject({
         kind: 'share',
         target: { givens: PUZZLE.givens, result: null },
-        returnTo: 'history',
+        returnTo: { kind: 'history' },
       });
       act(() => result.current.actions.closeDialog());
       expect(result.current.dialog).toEqual({ kind: 'history' });

@@ -45,6 +45,7 @@ function renderPuzzles(overrides: Partial<PuzzlesDialogProps> = {}) {
     puzzles: PUZZLES,
     onNew: vi.fn(),
     onPlay: vi.fn(),
+    onShare: vi.fn(),
     onEdit: vi.fn(),
     onRename: vi.fn(),
     onDelete: vi.fn(),
@@ -70,6 +71,7 @@ function renderLive() {
         puzzles={puzzles}
         onNew={vi.fn()}
         onPlay={vi.fn()}
+        onShare={vi.fn()}
         onEdit={vi.fn()}
         onClose={vi.fn()}
         onRename={(id, title) => {
@@ -143,7 +145,7 @@ describe('PuzzlesDialog', () => {
     expect(row('half-0001').querySelector('bdi')).toBeNull();
   });
 
-  it('offers Play first for a puzzle ready to play, and Edit first for one that is not', () => {
+  it('offers Play first, and Share, for a puzzle ready to play, and Edit first for one that is not', () => {
     renderPuzzles();
     const names = (id: string) =>
       within(row(id))
@@ -151,6 +153,7 @@ describe('PuzzlesDialog', () => {
         .map((button) => [button.textContent, button.classList.contains('button--primary')]);
     expect(names('ready-0001')).toEqual([
       ['Play', true],
+      ['Share', false],
       ['Edit', false],
       ['Rename', false],
       ['Delete', false],
@@ -170,6 +173,7 @@ describe('PuzzlesDialog', () => {
         .map((button) => button.getAttribute('aria-label')),
     ).toEqual([
       'Play סודוקו, from Today 09:12',
+      'Share סודוקו, from Today 09:12',
       'Edit סודוקו, from Today 09:12',
       'Rename סודוקו, from Today 09:12',
       'Delete סודוקו, from Today 09:12',
@@ -182,11 +186,16 @@ describe('PuzzlesDialog', () => {
     ]);
   });
 
-  it('plays a row’s puzzle as it is graded, and opens a row in the editor', () => {
+  it('plays and shares a row’s puzzle as it is graded, and opens a row in the editor', () => {
     const { props } = renderPuzzles();
     fireEvent.click(within(row('ready-0001')).getByRole('button', { name: /^Play/ }));
     const checked = puzzleFromGivens(HARD);
     expect(props.onPlay).toHaveBeenCalledExactlyOnceWith(checked.ok && checked.puzzle);
+    fireEvent.click(within(row('ready-0001')).getByRole('button', { name: /^Share/ }));
+    expect(props.onShare).toHaveBeenCalledExactlyOnceWith(
+      'ready-0001',
+      checked.ok && checked.puzzle,
+    );
     fireEvent.click(within(row('half-0001')).getByRole('button', { name: /^Edit/ }));
     expect(props.onEdit).toHaveBeenCalledExactlyOnceWith(PUZZLES[1]);
   });
@@ -195,6 +204,12 @@ describe('PuzzlesDialog', () => {
     renderPuzzles({ place: { id: 'clash-001', control: 'edit' } });
     expect(within(row('clash-001')).getByRole('button', { name: /^Edit/ })).toHaveFocus();
     expect(newPuzzle()).not.toHaveAttribute('data-autofocus');
+  });
+
+  it('opens on the Share of the row shared, back from Share', () => {
+    renderPuzzles({ place: { id: 'ready-0001', control: 'share' } });
+    expect(within(row('ready-0001')).getByRole('button', { name: /^Share/ })).toHaveFocus();
+    expect(dialog().querySelectorAll('[data-autofocus]')).toHaveLength(1);
   });
 
   it('closes from its close button and on Escape', () => {

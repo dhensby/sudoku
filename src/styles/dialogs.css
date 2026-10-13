@@ -3548,12 +3548,12 @@
    Enter a puzzle
 
    A board to type a puzzle into, then the line saying what its numbers
-   make so far, the pad, Play and Save, and the hint under them — one under
-   another, or the board beside the rest on a phone on its side. None of it
-   scrolls: the board takes the height the rest leaves. So there is no
-   footer, whose rule and padding would cost the board most of a row on a
-   phone, and the board is drawn from a size of its own with the game's
-   geometry, as a playback's is.
+   make so far, the pad, Play, Share… and Save, and the hint under them —
+   one under another, or the board beside the rest on a phone on its side.
+   None of it scrolls: the board takes the height the rest leaves. So there
+   is no footer, whose rule and padding would cost the board most of a row
+   on a phone, and the board is drawn from a size of its own with the
+   game's geometry, as a playback's is.
    ========================================================================== */
 
 .dialog--enter {
@@ -3641,8 +3641,9 @@
   font-size: min(1.5rem, calc(var(--enter-key) * 0.56));
 }
 
-/* Play and Save in equal shares of the row, whatever their words, so the
-   row keeps still as Save's changes, and every word fits a 320px phone's. */
+/* Play, Share… and Save in equal shares of the row, whatever their words,
+   so the row keeps still as Save's changes, and every word fits a 320px
+   phone's. */
 .enter__actions {
   display: flex;
   gap: 6px;
@@ -3663,10 +3664,10 @@
   line-height: 1.3;
 }
 
-/* Unavailable while there is nothing to do — Play until the numbers make a
-   puzzle, Save while the grid is empty or as saved — as a disabled button
-   looks (see EnterDialog for why they are not disabled), and as still under
-   the pointer and the press, each in its own colour. */
+/* Unavailable while there is nothing to do — Play and Share… until the
+   numbers make a puzzle, Save while the grid is empty or as saved — as a
+   disabled button looks (see EnterDialog for why they are not disabled),
+   and as still under the pointer and the press, each in its own colour. */
 .enter__actions .button[aria-disabled='true'],
 .enter__actions .button[aria-disabled='true']:hover,
 .enter__actions .button[aria-disabled='true']:active {

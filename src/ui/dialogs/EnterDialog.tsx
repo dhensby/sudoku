@@ -14,7 +14,11 @@ export interface EnterDialogProps {
   settings: GivensGridSettings;
   /** The grid it opens with: blank for a new puzzle, or one kept in Your puzzles. Read once. */
   initialCells: GridString;
-  /** The cell selected as it opens: the first, or the one after the last number of a grid kept. */
+  /**
+   * The cell selected as it opens: the first, or the one after the last
+   * number of a grid kept, or, back from Share, the one selected as Share…
+   * was pressed.
+   */
   initialSelected: number;
   /**
    * The grid as kept in Your puzzles — the one it opened with, or what Save
@@ -24,10 +28,18 @@ export interface EnterDialogProps {
   savedCells: GridString | null;
   /** Play the puzzle typed in: checked, with one solution, and labelled (see `assessGivens`). */
   onPlay: (puzzle: Puzzle) => void;
+  /**
+   * Share the puzzle typed in alone, checked and labelled as Play has it,
+   * without a game of it: `selected` is the cell selected, for the editor to
+   * open on again as Share closes.
+   */
+  onShare: (puzzle: Puzzle, selected: number) => void;
   /** Keep the grid as it is in Your puzzles, staying in the editor. Never called with no number in. */
   onSave: (cells: GridString) => void;
   /** Closed, any way — the close button, Escape, the scrim: with the grid as it was left. */
   onClose: (cells: GridString) => void;
+  /** Back from sharing the puzzle: focus goes back to Share…, not to the selected cell. */
+  isBackFromShare?: boolean;
 }
 
 /** What has been typed in so far, and the cell the next number goes in. */
@@ -123,18 +135,19 @@ interface Status {
  * taps a cell, then a number on the pad, which goes in where it is, so a
  * correction lands in the same cell. Clashes are dotted as they go in, and
  * the status line says what the numbers make so far (see `assessGivens`):
- * Play waits for one solution. The hint under the buttons warns that the
- * checks cannot catch everything — a number mistyped can still make a
- * puzzle, just not the one in the paper.
+ * Play and Share… wait for one solution. The hint under the buttons warns
+ * that the checks cannot catch everything — a number mistyped can still
+ * make a puzzle, just not the one in the paper.
  *
  * What is typed is the dialog's own, from the grid it opened with. Save
  * hands it up to be kept in Your puzzles, finished or not, and says Saved
  * for as long as the grid is as saved; Play hands the puzzle on as checked
  * and labelled here, which is how its link will be (see `puzzleFromGivens`),
- * to be kept as it is played; and closing hands the grid up, to be kept if
- * it has changed (see `closeEditor`). No footer: the board needs its height
- * on a phone, so the buttons sit last in the body, the hint on a line under
- * them.
+ * to be kept as it is played; Share… hands it on the same way, to be kept
+ * and shared without a game of it, the editor opening again as Share closes;
+ * and closing hands the grid up, to be kept if it has changed (see
+ * `closeEditor`). No footer: the board needs its height on a phone, so the
+ * buttons sit last in the body, the hint on a line under them.
  */
 export function EnterDialog({
   settings,
@@ -142,8 +155,10 @@ export function EnterDialog({
   initialSelected,
   savedCells,
   onPlay,
+  onShare,
   onSave,
   onClose,
+  isBackFromShare,
 }: EnterDialogProps) {
   const [draft, setDraft] = useState<Draft>(() => ({
     cells: initialCells,
@@ -195,6 +210,7 @@ export function EnterDialog({
               settings={settings}
               onSelect={select}
               onKeyDown={handleKey}
+              isAutofocus={!isBackFromShare}
             />
           </div>
         </div>
@@ -223,8 +239,8 @@ export function EnterDialog({
           {/* Equal shares of the row, so it keeps still as Save's word
               changes. Unavailable rather than disabled when there is nothing
               to do: a disabled button drops the focus it holds to the page.
-              Focused, Play says why it is unavailable; pressed, either does
-              nothing. */}
+              Focused, Play and Share… say why they are unavailable; pressed,
+              any of them does nothing. */}
           <div className="enter__actions">
             <button
               type="button"
@@ -236,6 +252,18 @@ export function EnterDialog({
               }}
             >
               Play
+            </button>
+            <button
+              type="button"
+              className="button enter__share"
+              aria-disabled={assessment.kind === 'ok' ? undefined : true}
+              aria-describedby={statusId}
+              data-autofocus={isBackFromShare || undefined}
+              onClick={() => {
+                if (assessment.kind === 'ok') onShare(assessment.puzzle, selected);
+              }}
+            >
+              Share…
             </button>
             {/* Staying in the editor, so a mouse leaves focus on the grid. */}
             <button

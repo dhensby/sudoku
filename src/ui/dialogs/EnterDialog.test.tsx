@@ -14,6 +14,7 @@ interface EditorOptions {
   initialCells?: GridString;
   initialSelected?: number;
   savedCells?: GridString | null;
+  isBackFromShare?: boolean;
 }
 
 /** The editor on a new puzzle, or as `options` open it: on a grid kept, say. */
@@ -21,8 +22,10 @@ function renderEditor({
   initialCells = BLANK,
   initialSelected = 0,
   savedCells = null,
+  isBackFromShare,
 }: EditorOptions = {}) {
   const onPlay = vi.fn();
+  const onShare = vi.fn();
   const onSave = vi.fn();
   const onClose = vi.fn();
   const props = {
@@ -31,11 +34,13 @@ function renderEditor({
     initialSelected,
     savedCells,
     onPlay,
+    onShare,
     onSave,
     onClose,
+    isBackFromShare,
   };
   const view = render(<EnterDialog {...props} />);
-  return { ...view, props, onPlay, onSave, onClose };
+  return { ...view, props, onPlay, onShare, onSave, onClose };
 }
 
 const dialog = () => screen.getByRole('dialog', { name: 'Enter a puzzle' });
@@ -47,6 +52,7 @@ const status = () => within(dialog()).getAllByRole('status')[0];
 /** What Save says it did, unseen: the second. */
 const saveStatus = () => within(dialog()).getAllByRole('status')[1];
 const play = () => within(dialog()).getByRole('button', { name: 'Play' });
+const share = () => within(dialog()).getByRole('button', { name: 'Share…' });
 const save = () => within(dialog()).getByRole('button', { name: /^Saved?$/ });
 const padKey = (digit: number) =>
   within(dialog()).getByRole('button', { name: new RegExp(`^${digit}(, all placed)?$`) });
@@ -268,9 +274,9 @@ describe('EnterDialog', () => {
       expect(onClose).toHaveBeenCalledTimes(1);
     });
 
-    it('count only on the grid: Space on Play, Save or a pad key presses it as ever', () => {
+    it('count only on the grid: Space on Play, Share…, Save or a pad key presses it as ever', () => {
       renderEditor();
-      for (const target of [play(), save(), padKey(5)]) {
+      for (const target of [play(), share(), save(), padKey(5)]) {
         target.focus();
         expect(press(' ')).toBe(true);
       }
@@ -407,6 +413,56 @@ describe('EnterDialog', () => {
       expect(play()).toHaveAttribute('aria-disabled', 'true');
       fireEvent.click(play());
       expect(onPlay).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Share…', () => {
+    it('is unavailable until the numbers make a puzzle, saying why, and does nothing pressed', () => {
+      const { onShare } = renderEditor();
+      expect(share()).toHaveAttribute('aria-disabled', 'true');
+      expect(share()).toBeEnabled();
+      type('123');
+      expect(share()).toHaveAccessibleDescription('A puzzle needs at least 17 numbers.');
+      fireEvent.click(share());
+      expect(onShare).not.toHaveBeenCalled();
+    });
+
+    it('shares the puzzle typed in as Play would play it, with the cell selected to come back to', () => {
+      const { onShare, onPlay, onSave } = renderEditor();
+      type(HARD);
+      fireEvent.click(cell(30));
+      expect(share()).not.toHaveAttribute('aria-disabled');
+      expect(share()).toHaveAccessibleDescription('One solution: a Hard puzzle.');
+      fireEvent.click(share());
+      const checked = puzzleFromGivens(HARD);
+      expect(checked.ok).toBe(true);
+      expect(onShare).toHaveBeenCalledExactlyOnceWith(checked.ok && checked.puzzle, 30);
+      // Kept by the parent as it shares: Save is not pressed for it, nor Play.
+      expect(onSave).not.toHaveBeenCalled();
+      expect(onPlay).not.toHaveBeenCalled();
+    });
+
+    it('sits between Play and Save, the row shared out equally', () => {
+      renderEditor();
+      const row = dialog().querySelector('.enter__actions')!;
+      expect(
+        within(row as HTMLElement)
+          .getAllByRole('button')
+          .map((it) => it.textContent),
+      ).toEqual(['Play', 'Share…', 'Save']);
+    });
+
+    it('takes focus back as the editor opens again from Share, the selection where it was', () => {
+      renderEditor({
+        initialCells: HARD,
+        initialSelected: 30,
+        savedCells: HARD,
+        isBackFromShare: true,
+      });
+      expect(share()).toHaveFocus();
+      expect(selected()).toBe(30);
+      expect(cells().filter((it) => it.hasAttribute('data-autofocus'))).toEqual([]);
+      expect(save()).toHaveTextContent(/^Saved$/);
     });
   });
 

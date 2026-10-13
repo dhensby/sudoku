@@ -848,6 +848,15 @@ export function shareTargetOfRecord(record: GameRecord, encoded: string | null):
 }
 
 /**
+ * What sharing a puzzle of Your puzzles shares, from the editor or its row,
+ * without a game of it: the puzzle alone, labelled as it was checked there,
+ * which is how its link will be (see `puzzleFromGivens`).
+ */
+export function shareTargetOfPuzzle({ givens, difficulty }: Puzzle): ShareTarget {
+  return { givens, difficulty, result: null, daily: null, solve: null };
+}
+
+/**
  * Work out what a visit opens, without writing anything (the hook makes the
  * writes once mounted, so a render React throws away leaves no trace).
  *

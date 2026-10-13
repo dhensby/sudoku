@@ -8,26 +8,29 @@ import { Dialog } from './Dialog';
 import { NameForm, escapeTo } from './NameForm';
 import { TITLE_INPUT_MAX, describeGivens } from './text';
 
-/** Where focus goes back to as the list comes back from the editor (see `PuzzlesDialogProps.place`). */
+/** Where focus goes back to, back from the editor or Share (see `PuzzlesDialogProps.place`). */
 export interface PuzzlesPlace {
-  /** The entry the editor was open on. */
+  /** The entry the editor was open on, or that was shared. */
   readonly id: string;
-  /** Which of its buttons: the Edit that opened it. */
-  readonly control: 'edit';
+  /** Which of its buttons: the Edit or the Share that opened it. */
+  readonly control: 'edit' | 'share';
 }
 
 export interface PuzzlesDialogProps {
   /** Every puzzle kept (see `puzzles.ts`), the latest first saved first, as stored. */
   puzzles: readonly SavedPuzzle[];
   /**
-   * Back from the editor on an entry kept: focus goes to that row's Edit,
-   * wherever it is in the list. With none, to Enter a new puzzle.
+   * Back from the editor on an entry kept, or from sharing one: focus goes to
+   * that row's Edit, or its Share, wherever it is in the list. With none, to
+   * Enter a new puzzle.
    */
   place?: PuzzlesPlace;
   /** Open the editor on an empty grid. */
   onNew: () => void;
   /** Play a row's puzzle, as it is drawn: checked, with one solution, and labelled. */
   onPlay: (puzzle: Puzzle) => void;
+  /** Share the entry `id`'s puzzle alone, as it is drawn, without a game of it. */
+  onShare: (id: string, puzzle: Puzzle) => void;
   /** Open the editor on a row's grid. */
   onEdit: (entry: SavedPuzzle) => void;
   /** Call the entry `id` by `title`: the field's raw text, which the parent tidies; '' takes the name off. */
@@ -67,11 +70,12 @@ function contextOf(entry: SavedPuzzle, now: number): string {
 interface PuzzleRowProps {
   entry: SavedPuzzle;
   now: number;
-  /** Back from the editor on this row: its Edit takes focus as the list opens. */
-  isPlace: boolean;
+  /** Back from the editor or Share on this row: the button that takes focus as the list opens. */
+  place: PuzzlesPlace['control'] | null;
   /** What the row has open in place of its buttons, if anything. */
   editing: Editing['kind'] | null;
   onPlay: (puzzle: Puzzle) => void;
+  onShare: (id: string, puzzle: Puzzle) => void;
   onEdit: (entry: SavedPuzzle) => void;
   onOpen: (editing: Editing) => void;
   onSaveName: (id: string, title: string) => void;
@@ -82,16 +86,17 @@ interface PuzzleRowProps {
 
 /**
  * One puzzle kept: its name, when it was first saved and what its numbers
- * make, in the editor's own words; then Play, for one ready to play, Edit,
- * Rename and Delete — the next thing to do first, and marked so: Play, or
- * Edit for a grid that is not a puzzle yet.
+ * make, in the editor's own words; then Play and Share, for one ready to
+ * play, Edit, Rename and Delete — the next thing to do first, and marked so:
+ * Play, or Edit for a grid that is not a puzzle yet.
  */
 function PuzzleRow({
   entry,
   now,
-  isPlace,
+  place,
   editing,
   onPlay,
+  onShare,
   onEdit,
   onOpen,
   onSaveName,
@@ -157,14 +162,25 @@ function PuzzleRow({
       {editing === null && (
         <div className="history-item__actions">
           {assessment.kind === 'ok' && (
-            <button
-              type="button"
-              className="button button--primary button--small"
-              aria-label={`Play ${context}`}
-              onClick={() => onPlay(assessment.puzzle)}
-            >
-              Play
-            </button>
+            <>
+              <button
+                type="button"
+                className="button button--primary button--small"
+                aria-label={`Play ${context}`}
+                onClick={() => onPlay(assessment.puzzle)}
+              >
+                Play
+              </button>
+              <button
+                type="button"
+                className="button button--small"
+                aria-label={`Share ${context}`}
+                data-autofocus={place === 'share' || undefined}
+                onClick={() => onShare(id, assessment.puzzle)}
+              >
+                Share
+              </button>
+            </>
           )}
           <button
             type="button"
@@ -174,7 +190,7 @@ function PuzzleRow({
                 : 'button button--primary button--small'
             }
             aria-label={`Edit ${context}`}
-            data-autofocus={isPlace || undefined}
+            data-autofocus={place === 'edit' || undefined}
             onClick={() => onEdit(entry)}
           >
             Edit
@@ -204,9 +220,10 @@ function PuzzleRow({
 /**
  * Your puzzles: every grid typed in and kept, finished or not, the latest
  * first saved first, under Enter a new puzzle. Each opens again in the
- * editor (Edit), plays if it is a puzzle (Play), and takes a name (Rename)
- * — or goes (Delete). Opened from New game, and back to it from the editor
- * as that closes, focus on the row's Edit.
+ * editor (Edit), plays and shares if it is a puzzle (Play, Share), and takes
+ * a name (Rename) — or goes (Delete). Opened from New game, and back to it
+ * from the editor as that closes, focus on the row's Edit, and from Share,
+ * on the row's Share.
  *
  * A row's name opens for editing in place of its buttons, as does a delete's
  * confirmation, one row at a time, as Friends' and History's rows do; Cancel
@@ -220,6 +237,7 @@ export function PuzzlesDialog({
   place,
   onNew,
   onPlay,
+  onShare,
   onEdit,
   onRename,
   onDelete,
@@ -295,9 +313,10 @@ export function PuzzlesDialog({
               key={entry.id}
               entry={entry}
               now={now}
-              isPlace={entry.id === place?.id}
+              place={entry.id === place?.id ? place.control : null}
               editing={editing?.id === entry.id ? editing.kind : null}
               onPlay={onPlay}
+              onShare={onShare}
               onEdit={onEdit}
               onOpen={open}
               onSaveName={rename}

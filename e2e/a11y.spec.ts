@@ -358,9 +358,9 @@ async function friendsList(page: Page, before?: () => Promise<void>): Promise<vo
 /**
  * Enter a puzzle at each step on the way to a puzzle, its line saying so,
  * typed over an emptied grid: empty; two 5s in a row, both dotted; too few
- * numbers; more than one solution; and a Hard with one — Play unavailable
- * until then, and faded, as Save is on the empty grid. `where` names the
- * layout in a failure.
+ * numbers; more than one solution; and a Hard with one — Play and Share…
+ * unavailable until then, and faded, as Save is on the empty grid. `where`
+ * names the layout in a failure.
  */
 async function scanEnterPuzzle(page: Page, editor: Locator, where = ''): Promise<void> {
   const status = enterStatus(editor);
@@ -388,7 +388,9 @@ async function scanEnterPuzzle(page: Page, editor: Locator, where = ''): Promise
 
   await enterGivens(editor, hard);
   await expect(status).toHaveText('One solution: a Hard puzzle.');
-  await expect(editor.getByRole('button', { name: 'Play' })).not.toHaveAttribute('aria-disabled');
+  for (const name of ['Play', 'Share…']) {
+    await expect(editor.getByRole('button', { name })).not.toHaveAttribute('aria-disabled');
+  }
   await expectAccessible(page, `Enter a puzzle with a Hard typed in${where}`);
 }
 

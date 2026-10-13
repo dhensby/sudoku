@@ -964,6 +964,53 @@ describe('App', () => {
       fireEvent.click(within(share).getByRole('button', { name: 'Close' }));
       expect(card()).toHaveTextContent(/^Your Hard puzzle is ready\.$/);
     });
+
+    it('shares a puzzle from the editor without a game of it, keeping it, and gives the editor back', async () => {
+      const { storage } = await startApp();
+      const editor = openEditor();
+      typeIn(HARD);
+      fireEvent.click(within(editor).getAllByRole('gridcell')[30]);
+      fireEvent.click(within(editor).getByRole('button', { name: 'Share…' }));
+      const share = screen.getByRole('dialog', { name: 'Share this puzzle' });
+      expect(share.querySelector('.share__text')).toHaveTextContent(/^Try this Hard Sudoku!$/);
+      const url = new URL(share.querySelector('.share__url')!.textContent!);
+      expect([...url.searchParams.keys()]).toEqual(['p']);
+      expect(url.searchParams.get('p')).toBe(encodeGivens(HARD));
+      expect(loadPuzzles(storage)).toMatchObject([{ cells: HARD }]);
+
+      // Back in the editor on the same grid, as kept, focus on Share….
+      fireEvent.keyDown(document, { key: 'Escape' });
+      const again = screen.getByRole('dialog', { name: 'Enter a puzzle' });
+      expect(within(again).getByRole('button', { name: 'Share…' })).toHaveFocus();
+      expect(within(again).getAllByRole('gridcell')[30]).toHaveAttribute('aria-selected', 'true');
+      expect(within(again).getAllByRole('gridcell')[0]).toHaveAccessibleName(`${HARD[0]}, given`);
+      expect(within(again).getByRole('button', { name: 'Saved' })).toBeInTheDocument();
+      // No game of it was started: the one behind is still paused, and comes back.
+      fireEvent.keyDown(document, { key: 'Escape' });
+      const library = screen.getByRole('dialog', { name: 'Your puzzles' });
+      expect(within(library).getAllByRole('listitem')).toHaveLength(1);
+      fireEvent.keyDown(document, { key: 'Escape' });
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Pause' })).toBeInTheDocument();
+      expect(cells()[0]).toHaveAccessibleName(`${PUZZLE.givens[0]}, given`);
+    });
+
+    it('shares a puzzle from its row, focus back on the row’s Share', async () => {
+      await startApp();
+      openEditor();
+      typeIn(HARD);
+      fireEvent.keyDown(document, { key: 'Escape' });
+      const library = screen.getByRole('dialog', { name: 'Your puzzles' });
+      fireEvent.click(within(library).getByRole('button', { name: /^Share untitled puzzle/ }));
+      const share = screen.getByRole('dialog', { name: 'Share this puzzle' });
+      expect(share.querySelector('.share__text')).toHaveTextContent(/^Try this Hard Sudoku!$/);
+      fireEvent.click(within(share).getByRole('button', { name: 'Close' }));
+      expect(
+        within(screen.getByRole('dialog', { name: 'Your puzzles' })).getByRole('button', {
+          name: /^Share untitled puzzle from Today/,
+        }),
+      ).toHaveFocus();
+    });
   });
 
   it('names a linked puzzle beyond the techniques Beyond Expert, on its card, the header and Share', async () => {

@@ -991,7 +991,7 @@ describe('Enter a puzzle', () => {
     expect(rule(DIALOGS, '.enter__board .cell--given')).toMatch(/cursor:\s*pointer/);
   });
 
-  it('marks Play and Save unavailable, still and faded each in its own colour, without disabling them', () => {
+  it('marks Play, Share… and Save unavailable, still and faded each in its own colour, without disabling them', () => {
     const unavailable = rule(DIALOGS, ".enter__actions .button[aria-disabled='true']:hover");
     expect(unavailable).toMatch(/background:\s*var\(--button-bg\)/);
     expect(unavailable).toMatch(/opacity:\s*0\.5/);

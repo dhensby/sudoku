@@ -126,6 +126,7 @@ import {
   resumeSession,
   saveSession,
   shareTargetOf,
+  shareTargetOfPuzzle,
   shareTargetOfRecord,
   tagDaily,
   type ChallengeOffer,
@@ -320,7 +321,8 @@ export interface CompareView {
 
 /**
  * Your puzzles (see `PuzzlesDialog`), from New game. `place`: back from the
- * editor on an entry kept, so focus goes back to that row's Edit.
+ * editor on an entry kept, or from sharing one, so focus goes back to that
+ * row's Edit, or its Share.
  */
 export interface PuzzlesView {
   kind: 'puzzles';
@@ -333,14 +335,29 @@ export interface PuzzlesView {
  * puzzles (see `SavedPuzzle`), null while it is saved as none; `cells` is the
  * grid it opens with and, while it has an `id`, the grid last saved — what
  * is typed is the dialog's own until it is saved (see `saveEntry`), played
- * (`playFromEditor`) or closed (`closeEditor`). `selected` is the cell
- * selected as it opens.
+ * (`playFromEditor`), shared (`shareFromEditor`) or closed (`closeEditor`).
+ * `selected` is the cell selected as it opens; `isBackFromShare`, back from
+ * sharing the puzzle, so focus goes back to Share… rather than to that cell.
  */
 export interface EnterView {
   kind: 'enter';
   id: string | null;
   cells: GridString;
   selected: number;
+  isBackFromShare?: boolean;
+}
+
+/**
+ * Share (see `ShareDialog`): the game on screen, or a History row's, or a
+ * puzzle of Your puzzles' without a game of it. `returnTo` is the dialog it
+ * was opened from — History, Your puzzles on the row's Share, or the editor
+ * on its Share… — which takes its place again as it closes; null for none,
+ * back to the game.
+ */
+export interface ShareView {
+  kind: 'share';
+  target: ShareTarget;
+  returnTo: { kind: 'history' } | PuzzlesView | EnterView | null;
 }
 
 /** The dialog on show — one at a time. */
@@ -357,8 +374,7 @@ export type DialogState =
       isBackFromFriend?: boolean;
       isBackFromCompare?: boolean;
     }
-  /** `returnTo` reopens History when the share was started from it. */
-  | { kind: 'share'; target: ShareTarget; returnTo: 'history' | null }
+  | ShareView
   /**
    * `place`: back from watching a game, the list as it was (see
    * `HistoryPlace`); `isBackFromFriends`, from Friends, so focus goes back to
@@ -517,6 +533,12 @@ export interface SudokuActions {
   /** From Enter a puzzle: keep the puzzle typed in, as Save does, and play it (see `playEntered`). */
   playFromEditor: (view: EnterView, puzzle: Puzzle) => void;
   /**
+   * From Enter a puzzle: keep the puzzle typed in, as Save does, and share it
+   * alone, without a game of it — back to the editor as Share closes, focus
+   * on Share…, on the grid as kept and the cell `selected` as it was.
+   */
+  shareFromEditor: (view: EnterView, puzzle: Puzzle, selected: number) => void;
+  /**
    * Enter a puzzle closed, the grid as it was left: kept as Save keeps it if
    * it has a number in and has changed since it was last saved (an entry
    * erased to nothing keeps the numbers it had), then back to Your puzzles,
@@ -528,6 +550,12 @@ export interface SudokuActions {
   renameEntry: (id: string, title: string) => void;
   /** From Your puzzles: the entry `id` goes, its games in History staying. */
   deleteEntry: (id: string) => void;
+  /**
+   * From Your puzzles: share the entry `id`'s puzzle alone, as its row draws
+   * it, without a game of it — back to the list as Share closes, focus on
+   * the row's Share.
+   */
+  shareEntry: (id: string, puzzle: Puzzle) => void;
   resumeRecord: (id: string) => void;
   /** Play a history entry's puzzle again: the unfinished attempt at it if there is one, else a fresh one. */
   replayRecord: (id: string) => void;
@@ -1257,7 +1285,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
    * land together, so the dialog's first link already carries it. A bare
    * puzzle names no one, and makes none.
    */
-  const openShare = (target: ShareTarget, returnTo: 'history' | null): void => {
+  const openShare = (target: ShareTarget, returnTo: ShareView['returnTo']): void => {
     if (target.result !== null && prefs.playerId === undefined) setPrefs(ensurePlayerId(storage));
     setDialog({ kind: 'share', target, returnTo });
   };
@@ -2256,9 +2284,14 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
         setDialog(dialog.returnTo);
         return;
       }
-      if (dialog?.kind === 'share' && dialog.returnTo === 'history') {
-        setHistory(readHistory(now()));
-        setDialog({ kind: 'history' });
+      // Back to where the share was started, the game still paused: History
+      // and Your puzzles with their lists as stored now, the editor on the
+      // grid Share… kept.
+      if (dialog?.kind === 'share' && dialog.returnTo !== null) {
+        const { returnTo } = dialog;
+        if (returnTo.kind === 'history') setHistory(readHistory(now()));
+        if (returnTo.kind === 'puzzles') setPuzzles(loadPuzzles(storage));
+        setDialog(returnTo);
         return;
       }
       if (dialog?.kind === 'compare') {
@@ -2383,6 +2416,18 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       keep(view.id, puzzle.givens);
       actions.playEntered(puzzle);
     },
+    shareFromEditor: (view, puzzle, selected) => {
+      const { id } = keep(view.id, puzzle.givens);
+      // The game behind stays paused, Share taking the editor's place and
+      // giving it back as it closes.
+      openShare(shareTargetOfPuzzle(puzzle), {
+        kind: 'enter',
+        id,
+        cells: puzzle.givens,
+        selected,
+        isBackFromShare: true,
+      });
+    },
     closeEditor: (view, cells) => {
       // Saved as it closes, however it closes, as a game is saved as it is
       // played — but not a grid with nothing in, nor one as it was saved.
@@ -2399,6 +2444,8 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     renameEntry: (id, title) =>
       setPuzzles(updatePuzzles(storage, (list) => retitlePuzzle(list, id, title, now()))),
     deleteEntry: (id) => setPuzzles(updatePuzzles(storage, (list) => deletePuzzle(list, id))),
+    shareEntry: (id, puzzle) =>
+      openShare(shareTargetOfPuzzle(puzzle), { kind: 'puzzles', place: { id, control: 'share' } }),
 
     resumeRecord: (id) => {
       if (session?.record.id === id) {
@@ -2430,7 +2477,7 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
     shareRecord: (id) => {
       const record = history.records.find((entry) => entry.id === id);
       if (record === undefined) return;
-      openShare(shareTargetOfRecord(record, watchedLogOf(id)), 'history');
+      openShare(shareTargetOfRecord(record, watchedLogOf(id)), { kind: 'history' });
     },
     canWatchRecord: (record) =>
       record.status === 'solved' && isWatchable(record.givens, watchedLogOf(record.id)),

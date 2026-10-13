@@ -60,6 +60,14 @@ describe('GivensGrid', () => {
     expect(cells[40]).toHaveClass('cell--selected');
   });
 
+  it('leaves the dialog’s first focus to another control when told to, the selection kept', () => {
+    renderGrid({ isAutofocus: false });
+    const cells = within(grid()).getAllByRole('gridcell');
+    expect(cells.filter((cell) => cell.hasAttribute('data-autofocus'))).toEqual([]);
+    expect(cells.filter((cell) => cell.tabIndex === 0)).toEqual([cells[40]]);
+    expect(cells[40]).toHaveAttribute('aria-selected', 'true');
+  });
+
   it('tints the selection’s row, column and box as the settings tint the board’s', () => {
     const { rerender, props } = renderGrid();
     expect(cellAt(36)).toHaveClass('cell--peer'); // same row

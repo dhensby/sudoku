@@ -328,11 +328,11 @@ describe('HelpDialog', () => {
     // A touch correction lands where it was tapped.
     expect(section).toHaveTextContent(/a number on the pad, which goes in where you tapped/);
     expect(section).toHaveTextContent(
-      /“One solution: a Hard puzzle\.” Only then can you play it\./,
+      /“One solution: a Hard puzzle\.” Only then can you play or share it\./,
     );
     expect(section).toHaveTextContent(/Check every number against your copy/);
     expect(section).toHaveTextContent(
-      /so you can share it before you start: Share sends the puzzle alone/,
+      /Share… sends a friend the puzzle alone, without starting it\. Play puts it behind Start, so you can share it from there too before you start\./,
     );
     expect(section).toHaveTextContent(
       /its time counts as a new puzzle's, towards your best and average/,
@@ -357,10 +357,10 @@ describe('HelpDialog', () => {
     render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={vi.fn()} />);
     const section = screen.getByRole('heading', { name: 'Your own puzzles' }).closest('section')!;
     expect(section).toHaveTextContent(
-      /Every grid you type in is kept in Your puzzles, finished or not: Save keeps it as it is, and Play and closing the grid keep it too\. Up to 1,000 are kept\./,
+      /Every grid you type in is kept in Your puzzles, finished or not: Save keeps it as it is, and Play, Share… and closing the grid keep it too\. Up to 1,000 are kept\./,
     );
     expect(section).toHaveTextContent(
-      /Play one that's ready, Edit one to carry on typing or put a number right, Rename one to tell it apart, or Delete it — its games stay in your history\./,
+      /Play or Share one that's ready, Edit one to carry on typing or put a number right, Rename one to tell it apart, or Delete it — its games stay in your history\./,
     );
   });
 

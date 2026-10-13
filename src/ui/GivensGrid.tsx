@@ -16,6 +16,12 @@ export interface GivensGridProps {
   onSelect: (index: number) => void;
   /** A key pressed on the grid (on a cell of it, usually): the editor's to act on. */
   onKeyDown: (event: React.KeyboardEvent) => void;
+  /**
+   * Whether the selected cell is where the dialog's focus lands as it opens:
+   * it is, unless the dialog marks another control (back from Share, its
+   * Share…). True if left out.
+   */
+  isAutofocus?: boolean;
 }
 
 const LINES = [0, 1, 2, 3, 4, 5, 6, 7, 8];
@@ -34,11 +40,19 @@ const ignore = () => {};
  * place as they copy a row out.
  *
  * Keys go to `onKeyDown`, on the grid itself, so they only count while a
- * cell has focus: Space and Enter on the pad's keys, Play or Save keep their
- * meaning. As on the board, focus follows the selection while the grid has
- * it, and the selected cell is where the dialog's focus lands as it opens.
+ * cell has focus: Space and Enter on the pad's keys, Play, Share… or Save
+ * keep their meaning. As on the board, focus follows the selection while the
+ * grid has it, and the selected cell is where the dialog's focus lands as it
+ * opens (see `isAutofocus`).
  */
-export function GivensGrid({ cells, selected, settings, onSelect, onKeyDown }: GivensGridProps) {
+export function GivensGrid({
+  cells,
+  selected,
+  settings,
+  onSelect,
+  onKeyDown,
+  isAutofocus = true,
+}: GivensGridProps) {
   const gridRef = useRef<HTMLDivElement>(null);
   const cellRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const values = useMemo(() => gridValues(cells), [cells]);
@@ -94,7 +108,7 @@ export function GivensGrid({ cells, selected, settings, onSelect, onKeyDown }: G
                 onSelect={onSelect}
                 onToggleCandidate={ignore}
                 registerRef={registerRef}
-                isAutofocus={index === selected}
+                isAutofocus={isAutofocus && index === selected}
               />
             );
           })}

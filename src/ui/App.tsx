@@ -602,6 +602,7 @@ export function App({ options }: AppProps = {}) {
               requestBoardFocus();
               actions.playEntered(puzzle);
             }}
+            onShare={actions.shareEntry}
             onEdit={actions.openEditor}
             onRename={actions.renameEntry}
             onDelete={actions.deleteEntry}
@@ -618,8 +619,10 @@ export function App({ options }: AppProps = {}) {
               requestBoardFocus();
               actions.playFromEditor(dialog, puzzle);
             }}
+            onShare={(puzzle, selected) => actions.shareFromEditor(dialog, puzzle, selected)}
             onSave={(cells) => actions.saveEntry(dialog, cells)}
             onClose={(cells) => actions.closeEditor(dialog, cells)}
+            isBackFromShare={dialog.isBackFromShare}
           />
         )}
         {dialog?.kind === 'challenge' && (
