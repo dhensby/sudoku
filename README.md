@@ -40,14 +40,14 @@ your browser.
   is marked current in New game; a solved one says what it did for the streak; sharing one names
   it.
 - **Enter a puzzle, and keep it** — a puzzle from a newspaper or a book, typed in from New game's
-  **Your puzzles…** › **Enter a new puzzle** row by row (or tapped in on a phone), each clash dotted
-  as it goes in and one line saying what the numbers make so far — too few, more than one solution,
-  none — until they make a puzzle with exactly one solution, graded as any puzzle is: "One
-  solution: a Hard puzzle." Play puts it behind a Start card, to share as it is or to start when you
-  are ready, and its time counts as a new puzzle's; Share… sends a friend its link without starting
-  it. Every grid typed in is kept in **Your puzzles**, finished or not — by Save, as Play starts it,
-  as Share… shares it and as the editor closes — to play, share, edit and name again (see
-  [Entering a puzzle](#entering-a-puzzle)).
+  **Your puzzles…** › **Enter a new puzzle** row by row (or tapped in on a phone, or pasted in
+  whole), each clash dotted as it goes in and one line saying what the numbers make so far — too
+  few, more than one solution, none — until they make a puzzle with exactly one solution, graded as
+  any puzzle is: "One solution: a Hard puzzle." Play puts it behind a Start card, to share as it is
+  or to start when you are ready, and its time counts as a new puzzle's; Share… sends a friend its
+  link without starting it. Every grid typed in is kept in **Your puzzles**, finished or not — by
+  Save, as Play starts it, as Share… shares it and as the editor closes — to play, share, edit and
+  name again (see [Entering a puzzle](#entering-a-puzzle)).
 - **Plays like the NYT game** — Normal and Candidate modes (<kbd>Space</kbd> to switch, or hold
   <kbd>Shift</kbd>/<kbd>Alt</kbd> to switch while held), the two-step erase, highlighting of the
   row, column, box and matching numbers, a red dot on every conflict, givens on grey, and clicking
@@ -351,6 +351,20 @@ in where you tapped, moving nothing, so a correction lands in the same cell. Eve
 is set as a given — it will be one — and the selected cell's row, column and box are tinted as
 Settings has the board's.
 
+A puzzle already written out — on a puzzle site, in a file, in a message — can be pasted in whole
+instead, with **Paste**, last in the row of buttons, or <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>V</kbd> on
+the grid. What is read is the grid in the text copied (see `readGrid`): its digits in reading order,
+a 0 or a dot for each blank, and everything else — spaces, line breaks, the bars and dashes a grid
+is drawn with — passed over, so a grid on one line reads as well as one in nine; it must come to
+exactly 81 cells. It takes the place of the grid typed, the selection where it was, and the line
+says what it makes, as for one typed. Text that comes to any other count — words, a link, a grid
+under a numbered heading — puts nothing in, and the line says "No puzzle in what you copied." until
+the grid next changes; a clipboard that cannot be read, refused or missing, says "Couldn't read the
+clipboard." Paste reads the clipboard as it is pressed, so Safari and Firefox first show a Paste
+button of their own to press, and Chrome may ask leave the first time. Nothing asks before a paste
+replaces the grid: the whole grid changes in plain sight, and one of Your puzzles pasted over by
+mistake is kept as pasted once the editor closes, as any change is.
+
 As the numbers go in, the grid dots every clash, whatever the board's setting, and one line says
 what they make so far: the first of these that holds, its words the same for as long as it does,
 so a screen reader speaks only as it changes, never at every number.
@@ -367,7 +381,8 @@ so a screen reader speaks only as it changes, never at every number.
 | Exactly one solution                                                                             | "One solution: a Hard puzzle."                                  |
 
 **Play** waits for the last: until then it is marked unavailable — not disabled, so it keeps focus
-and, focused, says why. The puzzle is checked and graded exactly as a link's is, by the same
+and, focused, says why (just after a paste that came to nothing, it says that instead, until the
+grid next changes). The puzzle is checked and graded exactly as a link's is, by the same
 `puzzleFromGivens`, so a friend who opens your link sees the label you saw; and it is named by its
 tier alone — Easy to Expert, or Beyond Expert for one that needs more than every technique the
 grader knows (see [How puzzles are made](#how-puzzles-are-made)). No check can tell a mistyped
@@ -396,7 +411,7 @@ your time with it, as for any puzzle.
 
 Every grid you type in is kept in Your puzzles, finished or not: one with too few numbers, a clash
 or more than one solution is kept as readily as a puzzle ready to play, to finish another time.
-**Save**, beside Play and Share…, keeps the grid as it is and stays in the editor, its label reading
+**Save**, between Share… and Paste, keeps the grid as it is and stays in the editor, its label reading
 "Saved" — unavailable — for as long as the grid is as kept, and "Saved to Your puzzles." spoken as
 it is pressed; Play keeps it too, as it starts the game, and Share… as it shares it; and closing the
 editor — Escape, the close button or a tap outside — keeps a grid that has changed since it was last
@@ -1252,7 +1267,11 @@ are taken.
   from Space, 0 or a dot; Backspace on a number and on an empty cell; Delete; the arrows at the
   edges, left and right running on round the rows; a number or a blank held down going in once;
   every Ctrl and Cmd chord let through), the pad filling in place, its line keeping its words while
-  the same thing holds, and Play and Share… unavailable, saying why, until there is one solution;
+  the same thing holds, and Play and Share… unavailable, saying why, until there is one solution; a
+  grid pasted in read however it is laid out, a dot or a 0 for a blank, and only at exactly 81 cells
+  — never a link — and put in place of the grid typed, the selection kept, from Ctrl or Cmd+V on the
+  grid and from Paste, which reads the clipboard within the press; and a paste with no grid in it,
+  or a clipboard refused or missing, said so on the line, afresh each time, until the grid changes;
   through the main hook, Play puts a new puzzle behind Start as the player's own, unseen until its
   board shows and its time counted as a new puzzle's, setting the game behind aside — dropped if
   only glimpsed, a puzzle on its way cancelled — and resumes an unfinished attempt or offers a
@@ -1316,7 +1335,9 @@ are taken.
   from there as the puzzle alone and opened in another browser on the same board; shared from the
   editor's Share… as the puzzle alone, kept, back in the editor on the same grid with Share…
   focused, nothing started — the game behind carrying on as the list closes — and its link opening
-  the same board in another browser; and a clash and more than one solution named, with Play and
+  the same board in another browser; a Hard pasted in on the grid, as Ctrl or Cmd+V would, over what
+  was typed and played as the Hard it is, and from Paste with focus kept on the grid, words and a
+  clipboard refused said so on the line; and a clash and more than one solution named, with Play and
   Share… unavailable), Your puzzles (a half-typed puzzle saved and listed with its line, then
   edited, finished and played from the editor; one renamed, kept through a reload; one deleted; one
   shared from its row, focus back on its Share; a grid kept as the editor closes, back on its row's
@@ -1338,9 +1359,9 @@ are taken.
   their sides, a long right-to-left name kept inside Friends' rows, a merged friend's devices and
   the prompt's hint, every control 44px — the friend pickers and a merge's buttons among them — and
   History's foot giving Friends a row of its own at 320px; Enter a puzzle at 320×568, 568×320,
-  667×375 and 844×390 with nothing to scroll, every button 44px, Play, Share… and Save on one line
-  with the hint in view under them, and every cell at least 24px — 22px on the shortest phone on its
-  side — and a tapped number landing in the cell tapped; Your puzzles at 320×568, 568×320 and
+  667×375 and 844×390 with nothing to scroll, every button 44px, Play, Share…, Save and Paste on one
+  line with the hint in view under them, and every cell at least 24px — 22px on the shortest phone
+  on its side — and a tapped number landing in the cell tapped; Your puzzles at 320×568, 568×320 and
   844×390 with nothing to scroll sideways, a long right-to-left name inside its row, every button
   44px (a ready row's Share among them) and the rename field's text 16px; the offer of a new version
   lying over the switch row alone at 320×568 and on its side, its two buttons 44px and every other
@@ -1359,14 +1380,15 @@ are taken.
   a friend's solve, two solves compared, Share with the solve included, History with Friends at
   its foot, Friends with a merged friend's devices, a name being changed and two friends being
   merged, _Who sent this?_ with friends to choose from, Enter a puzzle at each step on the way to a
-  puzzle — empty, a clash, too few numbers, more than one solution, a Hard and a grid saved — and
-  Your puzzles empty, with rows, a name being changed and a delete being confirmed, upright and on
-  their sides on the phones, among them), each guide entry, a step hint's tinted houses and the
-  offer of a new version (a sheet on a phone held upright, a card on its side) — in both themes,
-  and the board (its tint included), the dialogs (Enter a puzzle and Your puzzles among them), the
-  menus, the calendar and the offer of a new version in High contrast, both chosen in Settings on a
-  dark device and from a dark system asking for more contrast, measuring its heavier lines and its
-  same-number ring kept off the digits — and allows no violations. Three projects:
+  puzzle — empty, a paste with no puzzle in it, a clash, too few numbers, more than one solution, a
+  Hard and a grid saved — and Your puzzles empty, with rows, a name being changed and a delete being
+  confirmed, upright and on their sides on the phones, among them), each guide entry, a step hint's
+  tinted houses and the offer of a new version (a sheet on a phone held upright, a card on its side)
+  — in both themes, and the board (its tint included), the dialogs (Enter a puzzle and Your puzzles
+  among them), the menus, the calendar and the offer of a new version in High contrast, both chosen
+  in Settings on a dark device and from a dark system asking for more contrast, measuring its
+  heavier lines and its same-number ring kept off the digits — and allows no violations. Three
+  projects:
 
   | Project    | Device         | Engine   | Specs                                                                   |
   | ---------- | -------------- | -------- | ----------------------------------------------------------------------- |
@@ -1436,6 +1458,7 @@ serve the old page for a while after a deploy, the page learns of the new one at
 | New game, or today's puzzles   | —                                                                                                                          | The + button                                                                |
 | Daily calendar and streaks     | Arrow keys, Home/End, Page Up/Page Down in the month                                                                       | The calendar in the header, or +                                            |
 | Enter a puzzle                 | <kbd>1</kbd>–<kbd>9</kbd> fill and move on, <kbd>Space</kbd> or <kbd>0</kbd> leave a blank, <kbd>Backspace</kbd> goes back | New game › Your puzzles… › Enter a new puzzle, then tap a cell and a number |
+| Paste a puzzle in              | <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>V</kbd> on the grid                                                                      | Paste, in Enter a puzzle                                                    |
 | History, share, settings, help | —                                                                                                                          | The header (on a phone, the ☰ menu)                                        |
 | Friends                        | —                                                                                                                          | Friends, at the foot of History                                             |
 | Solving techniques             | —                                                                                                                          | The header, or a hint's question                                            |

@@ -1,5 +1,13 @@
 import { useCallback, useId, useMemo, useState } from 'react';
-import { COL, ROW, assessGivens, type Direction, type GridString, type Puzzle } from '../../core';
+import {
+  COL,
+  ROW,
+  assessGivens,
+  readGrid,
+  type Direction,
+  type GridString,
+  type Puzzle,
+} from '../../core';
 import { GivensGrid, type GivensGridSettings } from '../GivensGrid';
 import { EraseIcon } from '../icons';
 import { keepFocus } from '../keepFocus';
@@ -123,6 +131,7 @@ function countsOf(cells: GridString): number[] {
   return counts;
 }
 
+/** A message, keyed afresh each time it is said, so the same words twice are announced twice. */
 interface Status {
   text: string;
   id: number;
@@ -138,6 +147,12 @@ interface Status {
  * Play and Share… wait for one solution. The hint under the buttons warns
  * that the checks cannot catch everything — a number mistyped can still
  * make a puzzle, just not the one in the paper.
+ *
+ * A grid copied from elsewhere pastes in whole, in place of the one typed,
+ * by Ctrl or Cmd+V on the grid or by Paste (see `readGrid`); what it makes is
+ * the status line's to say, as for one typed. A paste with no grid in it, or
+ * a clipboard that cannot be read, says so on that line instead, until the
+ * grid next changes.
  *
  * What is typed is the dialog's own, from the grid it opened with. Save
  * hands it up to be kept in Your puzzles, finished or not, and says Saved
@@ -165,6 +180,9 @@ export function EnterDialog({
     selected: initialSelected,
   }));
   const [status, setStatus] = useState<Status | null>(null);
+  // Said on the status line in place of what the numbers make: a paste that
+  // came to nothing.
+  const [notice, setNotice] = useState<Status | null>(null);
   const statusId = useId();
   const hintId = useId();
   const { cells, selected } = draft;
@@ -179,13 +197,59 @@ export function EnterDialog({
     [],
   );
 
+  /** Say `text` on the status line, in place of what the numbers make, until the grid changes. */
+  const notify = (text: string) => setNotice((previous) => ({ text, id: (previous?.id ?? 0) + 1 }));
+
+  /** The draft as it is to be: the line goes back to what the numbers make as the grid changes. */
+  const change = (next: Draft) => {
+    if (next.cells !== cells) setNotice(null);
+    setDraft(next);
+  };
+
   const handleKey = (event: React.KeyboardEvent) => {
     const key = typed(event, draft);
     if (key === null) return;
     // Even a repeat ignored is ours: a held Space must not scroll the dialog.
     event.preventDefault();
     if (event.repeat && !key.repeats) return;
-    setDraft(key.next);
+    change(key.next);
+  };
+
+  /**
+   * Text pasted in: the grid it holds, in place of the one typed and the
+   * selection where it was — or a word on the line that it holds none.
+   */
+  const paste = (text: string) => {
+    const grid = readGrid(text);
+    if (grid === null) {
+      notify('No puzzle in what you copied.');
+      return;
+    }
+    setNotice(null);
+    setDraft((previous) => ({ ...previous, cells: grid }));
+  };
+
+  // Every paste on the grid is the editor's: there is nothing else in it to
+  // paste into.
+  const handlePaste = (event: React.ClipboardEvent) => {
+    event.preventDefault();
+    paste(event.clipboardData.getData('text/plain'));
+  };
+
+  /** Paste, the button: the clipboard's text, read as a paste on the grid is. */
+  const pasteFromClipboard = async () => {
+    let text: string;
+    try {
+      // The clipboard before anything else is awaited: Safari and Firefox
+      // only offer their Paste bubble while the press that asked is under way.
+      text = await navigator.clipboard.readText();
+    } catch {
+      // No clipboard to read (an insecure page, an older browser), or the
+      // read refused: the bubble dismissed, or permission denied.
+      notify("Couldn't read the clipboard.");
+      return;
+    }
+    paste(text);
   };
 
   const save = () => {
@@ -210,27 +274,30 @@ export function EnterDialog({
               settings={settings}
               onSelect={select}
               onKeyDown={handleKey}
+              onPaste={handlePaste}
               isAutofocus={!isBackFromShare}
             />
           </div>
         </div>
 
         <div className="enter__panel">
+          {/* A notice keyed, so a paste that comes to nothing twice is
+              announced twice. */}
           <p className="enter__status" role="status" id={statusId}>
-            {describeGivens(assessment)}
+            {notice ? <span key={notice.id}>{notice.text}</span> : describeGivens(assessment)}
           </p>
           <div className="enter__pad">
             <NumberPad
               mode="normal"
               counts={counts}
               isDisabled={false}
-              onDigit={(digit) => setDraft(put(draft, selected, digit))}
+              onDigit={(digit) => change(put(draft, selected, digit))}
             />
             <button
               type="button"
               className="control control--erase"
               onMouseDown={keepFocus}
-              onClick={() => setDraft(put(draft, selected, 0))}
+              onClick={() => change(put(draft, selected, 0))}
             >
               <EraseIcon />
               <span className="control__label">Erase</span>
@@ -240,7 +307,7 @@ export function EnterDialog({
               changes. Unavailable rather than disabled when there is nothing
               to do: a disabled button drops the focus it holds to the page.
               Focused, Play and Share… say why they are unavailable; pressed,
-              any of them does nothing. */}
+              any of them does nothing. Paste always has something to do. */}
           <div className="enter__actions">
             <button
               type="button"
@@ -265,7 +332,8 @@ export function EnterDialog({
             >
               Share…
             </button>
-            {/* Staying in the editor, so a mouse leaves focus on the grid. */}
+            {/* Save and Paste stay in the editor, so a mouse leaves focus on
+                the grid. */}
             <button
               type="button"
               className="button enter__save"
@@ -274,6 +342,14 @@ export function EnterDialog({
               onClick={save}
             >
               {isSaved ? 'Saved' : 'Save'}
+            </button>
+            <button
+              type="button"
+              className="button enter__paste"
+              onMouseDown={keepFocus}
+              onClick={() => void pasteFromClipboard()}
+            >
+              Paste
             </button>
           </div>
           <p className="enter__hint" id={hintId}>

@@ -3548,11 +3548,11 @@
    Enter a puzzle
 
    A board to type a puzzle into, then the line saying what its numbers
-   make so far, the pad, Play, Share… and Save, and the hint under them —
-   one under another, or the board beside the rest on a phone on its side.
-   None of it scrolls: the board takes the height the rest leaves. So there
-   is no footer, whose rule and padding would cost the board most of a row
-   on a phone, and the board is drawn from a size of its own with the
+   make so far, the pad, Play, Share…, Save and Paste, and the hint under
+   them — one under another, or the board beside the rest on a phone on its
+   side. None of it scrolls: the board takes the height the rest leaves. So
+   there is no footer, whose rule and padding would cost the board most of a
+   row on a phone, and the board is drawn from a size of its own with the
    game's geometry, as a playback's is.
    ========================================================================== */
 
@@ -3641,9 +3641,9 @@
   font-size: min(1.5rem, calc(var(--enter-key) * 0.56));
 }
 
-/* Play, Share… and Save in equal shares of the row, whatever their words,
-   so the row keeps still as Save's changes, and every word fits a 320px
-   phone's. */
+/* Play, Share…, Save and Paste in equal shares of the row, whatever their
+   words, so the row keeps still as Save's changes, and every word fits a
+   320px phone's. */
 .enter__actions {
   display: flex;
   gap: 6px;

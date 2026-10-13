@@ -1,5 +1,5 @@
-import { MIN_GIVENS } from './codec';
-import { assessGivens, puzzleFromGivens } from './entry';
+import { MIN_GIVENS, encodeGivens } from './codec';
+import { assessGivens, puzzleFromGivens, readGrid } from './entry';
 import { rate } from './grader';
 import { formatGrid, gridValues, parseGrid } from './grid';
 import type { Level } from './types';
@@ -153,5 +153,35 @@ describe('assessGivens', () => {
       kind: 'ok',
       puzzle: { givens: fixture.givens, solution: fixture.solution, difficulty: level },
     });
+  });
+});
+
+describe('readGrid', () => {
+  it('reads a grid laid out as a book prints it, a dot for each blank', () => {
+    expect(readGrid(WIKIPEDIA_PUZZLE)).toBe(PUZZLE);
+  });
+
+  it('reads a grid on one line, a 0 for each blank, and one drawn with bars and dashes', () => {
+    expect(readGrid(PUZZLE)).toBe(PUZZLE);
+    const drawn = PUZZLE.match(/.{9}/g)!
+      .map((row) => `| ${row.slice(0, 3)} | ${row.slice(3, 6)} | ${row.slice(6)} |`)
+      .join('\n+-----+-----+-----+\n');
+    expect(readGrid(`${drawn}\r\n`)).toBe(PUZZLE);
+  });
+
+  it('reads a full grid, and an empty one, leaving what they make to the editor', () => {
+    expect(readGrid(WIKIPEDIA_SOLUTION)).toBe(SOLUTION);
+    expect(readGrid('.'.repeat(81))).toBe(EMPTY);
+  });
+
+  it.each<[string, string]>([
+    ['nothing', ''],
+    ['words', 'hello'],
+    ['a cell short', PUZZLE.slice(1)],
+    ['a cell over', `${PUZZLE}0`],
+    ['a grid under a numbered heading', `Puzzle 12\n${PUZZLE}`],
+    ['a link to it', `https://example.com/sudoku/?p=${encodeGivens(PUZZLE)}`],
+  ])('reads no grid in %s', (_, text) => {
+    expect(readGrid(text)).toBeNull();
   });
 });

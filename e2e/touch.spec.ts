@@ -1550,11 +1550,12 @@ for (const viewport of [
  * Enter a puzzle at each phone size, upright and on its side: on screen with
  * nothing to scroll either way, for the board takes the height the rest
  * leaves; every button a finger's 44px (the pad's nine keys, Erase, Play,
- * Share…, Save and the close button), Play, Share… and Save side by side
- * with the hint in view under them; and every cell at least WCAG's 24px, but
- * on the shortest phone on its side, which leaves the board room for 22px
- * (upright, it has 25px). A tap on a cell, then on the pad, puts the number
- * in that cell and leaves it selected, for a correction to land there too.
+ * Share…, Save, Paste and the close button), Play, Share…, Save and Paste
+ * side by side with the hint in view under them; and every cell at least
+ * WCAG's 24px, but on the shortest phone on its side, which leaves the board
+ * room for 22px (upright, it has 25px). A tap on a cell, then on the pad,
+ * puts the number in that cell and leaves it selected, for a correction to
+ * land there too.
  */
 for (const viewport of [
   { width: 320, height: 568 },
@@ -1581,16 +1582,16 @@ for (const viewport of [
       expect(await body.evaluate((el) => el.scrollHeight - el.clientHeight)).toBeLessThanOrEqual(1);
 
       const buttons = await dialog.getByRole('button').all();
-      expect(buttons).toHaveLength(14);
+      expect(buttons).toHaveLength(15);
       for (const button of buttons) {
         const size = (await button.boundingBox())!;
         const label = (await button.getAttribute('aria-label')) ?? (await button.innerText());
         expect(size.height, label).toBeGreaterThanOrEqual(44);
         expect(size.width, label).toBeGreaterThanOrEqual(44);
       }
-      // Play, Share… and Save on one line, the hint under them and on screen.
+      // Play, Share…, Save and Paste on one line, the hint under them and on screen.
       const tops = await Promise.all(
-        ['Play', 'Share…', 'Save'].map(async (name) =>
+        ['Play', 'Share…', 'Save', 'Paste'].map(async (name) =>
           Math.round((await dialog.getByRole('button', { name }).boundingBox())!.y),
         ),
       );

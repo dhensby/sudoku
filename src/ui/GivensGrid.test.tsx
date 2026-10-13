@@ -12,6 +12,7 @@ function renderGrid(overrides: Partial<GivensGridProps> = {}) {
     settings: { highlightRowColumn: true, highlightBox: true },
     onSelect: vi.fn(),
     onKeyDown: vi.fn(),
+    onPaste: vi.fn(),
     ...overrides,
   };
   const view = render(<GivensGrid {...props} />);
@@ -124,5 +125,14 @@ describe('GivensGrid', () => {
     fireEvent.keyDown(grid(), { key: 'ArrowUp' });
     expect(props.onKeyDown).toHaveBeenCalledTimes(2);
     expect(vi.mocked(props.onKeyDown).mock.calls[0][0]).toMatchObject({ key: '5' });
+  });
+
+  it('hands a paste on a cell on, as Ctrl or Cmd+V fires it there', () => {
+    const { props } = renderGrid();
+    fireEvent.paste(cellAt(40), { clipboardData: { getData: () => '53' } });
+    expect(props.onPaste).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(props.onPaste).mock.calls[0][0].clipboardData.getData('text/plain')).toBe(
+      '53',
+    );
   });
 });

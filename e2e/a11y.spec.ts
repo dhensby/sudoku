@@ -32,6 +32,7 @@ import {
   solveWithAMistake,
   startButton,
   startPuzzle,
+  stubClipboard,
   timer,
   typeDigits,
   updateOffer,
@@ -357,10 +358,11 @@ async function friendsList(page: Page, before?: () => Promise<void>): Promise<vo
 
 /**
  * Enter a puzzle at each step on the way to a puzzle, its line saying so,
- * typed over an emptied grid: empty; two 5s in a row, both dotted; too few
- * numbers; more than one solution; and a Hard with one — Play and Share…
- * unavailable until then, and faded, as Save is on the empty grid. `where`
- * names the layout in a failure.
+ * typed over an emptied grid: empty; a paste with no puzzle in it, its line
+ * saying that instead (the clipboard as `enterPuzzleStates` stubs it); two
+ * 5s in a row, both dotted; too few numbers; more than one solution; and a
+ * Hard with one — Play and Share… unavailable until then, and faded, as Save
+ * is on the empty grid. `where` names the layout in a failure.
  */
 async function scanEnterPuzzle(page: Page, editor: Locator, where = ''): Promise<void> {
   const status = enterStatus(editor);
@@ -371,6 +373,10 @@ async function scanEnterPuzzle(page: Page, editor: Locator, where = ''): Promise
     'true',
   );
   await expectAccessible(page, `Enter a puzzle, empty${where}`);
+
+  await editor.getByRole('button', { name: 'Paste' }).click();
+  await expect(status).toHaveText('No puzzle in what you copied.');
+  await expectAccessible(page, `Enter a puzzle with a paste of no puzzle${where}`);
 
   await enterGivens(editor, '55');
   await expect(status).toHaveText('Two 5s in row 1.');
@@ -471,13 +477,16 @@ async function yourPuzzlesStates(
 
 /**
  * Enter a puzzle opened over a game, its first cell focused, and scanned at
- * each step (see `scanEnterPuzzle`), then saved. `before` runs first, on the game it
- * opens over (to choose High contrast, say). Returns the dialog, still open.
+ * each step (see `scanEnterPuzzle`), then saved; the clipboard holds words
+ * with no puzzle in them, for Paste to say so. `before` runs first, on the
+ * game it opens over (to choose High contrast, say). Returns the dialog,
+ * still open.
  */
 async function enterPuzzleStates(
   page: Page,
   { before, where = '' }: { before?: () => Promise<void>; where?: string } = {},
 ): Promise<Locator> {
+  await stubClipboard(page, { pasted: 'Sudoku, by the paper' });
   await page.goto('/');
   await waitForPlaying(page);
   if (before !== undefined) await before();

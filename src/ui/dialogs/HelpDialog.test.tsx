@@ -353,6 +353,20 @@ describe('HelpDialog', () => {
     );
   });
 
+  it('says how to paste a puzzle in, and what is read of it', () => {
+    render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={vi.fn()} />);
+    const section = screen.getByRole('heading', { name: 'Your own puzzles' }).closest('section')!;
+    expect(section).toHaveTextContent(
+      /To paste one in whole, copied from a page or a file, press Paste or Ctrl\+V \(⌘\+V on a Mac\) on the grid\. Its 81 cells are read in order — a number for each given, a 0 or a dot for each blank, anything else skipped — and put in place of what you've typed\./,
+    );
+    const row = within(screen.getByRole('table')).getByRole('row', { name: /^Paste a puzzle in/ });
+    expect(row).toHaveTextContent('Ctrl+V on the grid');
+    expect(row).toHaveTextContent('Paste, in Enter a puzzle');
+    expect(screen.getByText(/^On a Mac, undo with/)).toHaveTextContent(
+      'On a Mac, undo with ⌘+Z, redo with ⌘+Shift+Z and paste with ⌘+V.',
+    );
+  });
+
   it('says every grid typed in is kept, how, and what can be done with it there', () => {
     render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={vi.fn()} />);
     const section = screen.getByRole('heading', { name: 'Your own puzzles' }).closest('section')!;

@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { encodeGivens } from '../src/core';
 import {
   PUZZLES,
@@ -21,13 +21,13 @@ import {
 
 /**
  * Enter a puzzle: a puzzle from the paper typed in from New game's Your
- * puzzles, checked as it goes in, then played and shared like any other — a
- * Hard typed in plays as the Hard it is, and its link opens it elsewhere as a
- * friend's would, shared from its Start card or from the editor without a
- * game of it — and kept in Your puzzles, finished or not, to edit, name,
- * play, share or delete there, and to carry to another browser in History's
- * export. Everything in the editor is found through its dialog: the board
- * and the pad behind it stay on the page.
+ * puzzles, or pasted in, checked as it goes in, then played and shared like
+ * any other — a Hard typed in plays as the Hard it is, and its link opens it
+ * elsewhere as a friend's would, shared from its Start card or from the
+ * editor without a game of it — and kept in Your puzzles, finished or not,
+ * to edit, name, play, share or delete there, and to carry to another
+ * browser in History's export. Everything in the editor is found through its
+ * dialog: the board and the pad behind it stay on the page.
  *
  * Runs on Chromium (desktop layout).
  */
@@ -38,6 +38,40 @@ const HARD = PUZZLES.hard;
 async function openGame(page: Page): Promise<void> {
   await page.goto('/');
   await waitForPlaying(page);
+}
+
+/** What the editor's grid holds, '0' for an empty cell, read from its cells' names. */
+async function typedIn(editor: Locator): Promise<string> {
+  return editor
+    .getByRole('gridcell')
+    .evaluateAll((cells) =>
+      cells
+        .map((cell) => /^(\d), given/.exec(cell.getAttribute('aria-label')!)?.[1] ?? '0')
+        .join(''),
+    );
+}
+
+/** `givens` as a page prints them: nine lines, the boxes spaced, a dot for a blank. */
+function printed(givens: string): string {
+  return givens
+    .replaceAll('0', '.')
+    .match(/.{9}/g)!
+    .map((row) => row.match(/.{3}/g)!.join(' '))
+    .join('\n');
+}
+
+/**
+ * Paste `text` on the focused cell as Ctrl or Cmd+V would: dispatched, for
+ * the real clipboard is shared between test workers (and the developer).
+ */
+async function pasteOnGrid(page: Page, text: string): Promise<void> {
+  await page.evaluate((copied) => {
+    const clipboardData = new DataTransfer();
+    clipboardData.setData('text/plain', copied);
+    document.activeElement!.dispatchEvent(
+      new ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true }),
+    );
+  }, text);
 }
 
 test('types a Hard in, and plays it from its Start card as the Hard it is', async ({ page }) => {
@@ -124,14 +158,7 @@ test('shares it from the editor as the puzzle alone, starting nothing, and its l
   const again = page.getByRole('dialog', { name: 'Enter a puzzle' });
   await expect(again.getByRole('button', { name: 'Share…' })).toBeFocused();
   await expect(again.getByRole('button', { name: 'Saved' })).toBeVisible();
-  const typed = await again
-    .getByRole('gridcell')
-    .evaluateAll((cells) =>
-      cells
-        .map((cell) => /^(\d), given/.exec(cell.getAttribute('aria-label')!)?.[1] ?? '0')
-        .join(''),
-    );
-  expect(typed).toBe(HARD.givens);
+  expect(await typedIn(again)).toBe(HARD.givens);
   // Nothing was started: Escape twice, and the game behind carries on.
   await page.keyboard.press('Escape');
   const library = page.getByRole('dialog', { name: 'Your puzzles' });
@@ -190,6 +217,51 @@ test('names a clash, and more than one solution, and keeps Play and Share… una
   await page.keyboard.press('Escape');
   await expect(library).toBeHidden();
   await waitForPlaying(page);
+});
+
+test('pastes a puzzle in on the grid, as Ctrl or Cmd+V does, and says when there is none', async ({
+  page,
+}) => {
+  await openGame(page);
+  const editor = await openEnterPuzzle(page);
+  await enterGivens(editor, '53');
+  await pasteOnGrid(page, 'Sudoku, by the paper');
+  await expect(enterStatus(editor)).toHaveText('No puzzle in what you copied.');
+  expect(await typedIn(editor)).toBe('53'.padEnd(81, '0'));
+
+  // In place of what was typed, the selection where it was, and played as any typed in.
+  await pasteOnGrid(page, printed(HARD.givens));
+  await expect(enterStatus(editor)).toHaveText('One solution: a Hard puzzle.');
+  expect(await typedIn(editor)).toBe(HARD.givens);
+  await expect(editor.getByRole('gridcell').nth(2)).toBeFocused();
+  await editor.getByRole('button', { name: 'Play' }).click();
+  await expect(boardArea(page)).toContainText('Your Hard puzzle is ready.');
+  await startButton(page).click();
+  await waitForPlaying(page);
+  expect(await readBoard(page)).toBe(HARD.givens);
+});
+
+test('pastes a puzzle in from Paste, focus staying on the grid', async ({ page }) => {
+  await stubClipboard(page, { pasted: printed(HARD.givens) });
+  await openGame(page);
+  const editor = await openEnterPuzzle(page);
+  await editor.getByRole('button', { name: 'Paste' }).click();
+  await expect(enterStatus(editor)).toHaveText('One solution: a Hard puzzle.');
+  expect(await typedIn(editor)).toBe(HARD.givens);
+  await expect(editor.getByRole('gridcell').first()).toBeFocused();
+});
+
+test('says when the clipboard cannot be read, the grid as it was', async ({ page }) => {
+  await stubClipboard(page, { pasted: 'fails' });
+  await openGame(page);
+  const editor = await openEnterPuzzle(page);
+  await enterGivens(editor, '53');
+  await editor.getByRole('button', { name: 'Paste' }).click();
+  await expect(enterStatus(editor)).toHaveText("Couldn't read the clipboard.");
+  expect(await typedIn(editor)).toBe('53'.padEnd(81, '0'));
+  // A number in, and the line says what the numbers make again.
+  await page.keyboard.type('7');
+  await expect(enterStatus(editor)).toHaveText('A puzzle needs at least 17 numbers.');
 });
 
 test('keeps a puzzle half typed in, to finish another time and play from where it was left', async ({

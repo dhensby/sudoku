@@ -16,6 +16,8 @@ export interface GivensGridProps {
   onSelect: (index: number) => void;
   /** A key pressed on the grid (on a cell of it, usually): the editor's to act on. */
   onKeyDown: (event: React.KeyboardEvent) => void;
+  /** A paste on the grid — Ctrl or Cmd+V on a cell of it, usually: the editor's to read. */
+  onPaste: (event: React.ClipboardEvent) => void;
   /**
    * Whether the selected cell is where the dialog's focus lands as it opens:
    * it is, unless the dialog marks another control (back from Share, its
@@ -40,10 +42,12 @@ const ignore = () => {};
  * place as they copy a row out.
  *
  * Keys go to `onKeyDown`, on the grid itself, so they only count while a
- * cell has focus: Space and Enter on the pad's keys, Play, Share… or Save
- * keep their meaning. As on the board, focus follows the selection while the
- * grid has it, and the selected cell is where the dialog's focus lands as it
- * opens (see `isAutofocus`).
+ * cell has focus: Space and Enter on the pad's keys, Play, Share…, Save or
+ * Paste keep their meaning. A paste goes to `onPaste` the same way, from
+ * Ctrl or Cmd+V — a chord the keys leave to the browser, which fires the
+ * paste on the focused cell. As on the board, focus follows the selection
+ * while the grid has it, and the selected cell is where the dialog's focus
+ * lands as it opens (see `isAutofocus`).
  */
 export function GivensGrid({
   cells,
@@ -51,6 +55,7 @@ export function GivensGrid({
   settings,
   onSelect,
   onKeyDown,
+  onPaste,
   isAutofocus = true,
 }: GivensGridProps) {
   const gridRef = useRef<HTMLDivElement>(null);
@@ -88,6 +93,7 @@ export function GivensGrid({
       tabIndex={-1}
       ref={gridRef}
       onKeyDown={onKeyDown}
+      onPaste={onPaste}
     >
       {LINES.map((row) => (
         <div className="board__row" role="row" aria-rowindex={row + 1} key={row}>

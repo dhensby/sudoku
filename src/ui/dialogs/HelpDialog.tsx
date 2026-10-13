@@ -110,6 +110,15 @@ const CONTROLS: readonly Control[] = [
     pointer: 'New game › Your puzzles… › Enter a new puzzle, then tap a cell and a number',
   },
   {
+    action: 'Paste a puzzle in',
+    keyboard: (
+      <>
+        <Combo keys={['Ctrl', 'V']} /> on the grid
+      </>
+    ),
+    pointer: 'Paste, in Enter a puzzle',
+  },
+  {
     action: 'Watch your solve',
     keyboard: (
       <>
@@ -213,6 +222,12 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
               number, and the arrow keys move — left and right from the end of a row to the start of
               the next, as typing does. Or tap a cell, then a number on the pad, which goes in where
               you tapped.
+            </li>
+            <li>
+              To paste one in whole, copied from a page or a file, press <strong>Paste</strong> or{' '}
+              <Combo keys={['Ctrl', 'V']} /> (<Combo keys={['⌘', 'V']} /> on a Mac) on the grid. Its
+              81 cells are read in order — a number for each given, a 0 or a dot for each blank,
+              anything else skipped — and put in place of what you&apos;ve typed.
             </li>
             <li>
               A number twice in a row, column or box is marked at once, and a line by the grid says
@@ -562,8 +577,8 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
             </table>
           </div>
           <p className="help__note">
-            On a Mac, undo with <Combo keys={['⌘', 'Z']} /> and redo with{' '}
-            <Combo keys={['⌘', 'Shift', 'Z']} />.
+            On a Mac, undo with <Combo keys={['⌘', 'Z']} />, redo with{' '}
+            <Combo keys={['⌘', 'Shift', 'Z']} /> and paste with <Combo keys={['⌘', 'V']} />.
           </p>
         </section>
 

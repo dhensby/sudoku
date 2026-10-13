@@ -367,14 +367,18 @@ export async function setVisibility(page: Page, state: 'hidden' | 'visible'): Pr
  * Stand in for the clipboard and the share sheet. The real clipboard is
  * shared between test workers (and with the developer), and a real share
  * sheet would wait for a person. Whatever is written is kept on
- * `window.copied`, for `copiedText` to read back.
+ * `window.copied`, for `copiedText` to read back. `pasted` is what the
+ * clipboard holds to be read, or 'fails' for a read refused; left out, it
+ * cannot be read at all, as an older browser's cannot. (Granting the real
+ * clipboard leave to be read would not do: it is shared too, and WebKit
+ * throws at the grant.)
  */
 export async function stubClipboard(
   page: Page,
-  options: { clipboard?: 'works' | 'fails'; share?: boolean } = {},
+  options: { clipboard?: 'works' | 'fails'; share?: boolean; pasted?: string } = {},
 ): Promise<void> {
   await page.addInitScript(
-    ({ clipboard, share }) => {
+    ({ clipboard, share, pasted }) => {
       const w = window as unknown as { copied: string[]; shared: unknown[] };
       w.copied = [];
       w.shared = [];
@@ -385,6 +389,13 @@ export async function stubClipboard(
             if (clipboard === 'fails') throw new DOMException('Denied', 'NotAllowedError');
             w.copied.push(text);
           },
+          readText:
+            pasted === null
+              ? undefined
+              : async () => {
+                  if (pasted === 'fails') throw new DOMException('Denied', 'NotAllowedError');
+                  return pasted;
+                },
         },
       });
       Object.defineProperty(navigator, 'share', {
@@ -396,7 +407,12 @@ export async function stubClipboard(
         value: share ? () => true : undefined,
       });
     },
-    { clipboard: options.clipboard ?? 'works', share: options.share ?? false },
+    {
+      clipboard: options.clipboard ?? 'works',
+      share: options.share ?? false,
+      // Null rather than left out: an init script's argument goes as JSON.
+      pasted: options.pasted ?? null,
+    },
   );
 }
 
