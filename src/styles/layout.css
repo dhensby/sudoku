@@ -1022,7 +1022,9 @@
   color: var(--accent);
 }
 
-.hint-bar__dismiss {
+/* The update toast's Dismiss is the same button (see below). */
+.hint-bar__dismiss,
+.update-toast__dismiss {
   display: inline-grid;
   flex: none;
   place-items: center;
@@ -1035,14 +1037,16 @@
   color: var(--text-muted);
 }
 
-.hint-bar__dismiss .icon {
+.hint-bar__dismiss .icon,
+.update-toast__dismiss .icon {
   width: 16px;
   height: 16px;
 }
 
 /* A full-size target for a finger, without making the bar any taller. */
 @media (pointer: coarse) {
-  .hint-bar__dismiss {
+  .hint-bar__dismiss,
+  .update-toast__dismiss {
     width: 44px;
     height: 44px;
     margin: -8px -6px -8px -4px;
@@ -1050,13 +1054,15 @@
 }
 
 @media (hover: hover) {
-  .hint-bar__dismiss:hover {
+  .hint-bar__dismiss:hover,
+  .update-toast__dismiss:hover {
     background: var(--key-bg);
     color: var(--text);
   }
 }
 
-.hint-bar__dismiss:active {
+.hint-bar__dismiss:active,
+.update-toast__dismiss:active {
   background: var(--key-bg-active);
   color: var(--text);
 }
@@ -1340,9 +1346,90 @@
 
   /* Held down, Dismiss keeps its face and gains a ring, as the keys do
      (controls.css): its Highlight fill would sit under ButtonText. */
-  .hint-bar__dismiss:active {
+  .hint-bar__dismiss:active,
+  .update-toast__dismiss:active {
     background: ButtonFace;
     outline: 2px solid Highlight;
     outline-offset: -2px;
+  }
+}
+
+/* ==========================================================================
+   The update toast
+
+   "A new version of Sudoku is ready", with Refresh and Dismiss (UpdateToast).
+   Out of the column, so the page never scrolls for it and the board keeps
+   its size. On a phone held upright it is a sheet at the foot of the screen,
+   as the dialogs are there, lying over the controls' last row — the Auto
+   Candidate switch and "…", which wait (a keyboard can still Tab to them)
+   until it is answered — and the padding under it; at the default text size
+   it never reaches the keys. On a wider screen it is a card, as the board's
+   are: at the foot of the column, or, where the controls stand beside the
+   board, at the foot of the screen under them, as wide as they are and its
+   right edge on theirs — over the hint under them, on a phone on its side,
+   until it is answered. Over the board and the controls; under the menus
+   (z-index 50) and the dialogs (100), though while a dialog is open it does
+   not show at all.
+   ========================================================================== */
+
+.update-toast {
+  position: fixed;
+  z-index: 40;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: calc(var(--row-height) + var(--main-pad-bottom) + var(--safe-bottom));
+  padding: 2px calc(var(--gutter) + var(--safe-right)) calc(2px + var(--safe-bottom))
+    calc(var(--gutter) + 4px + var(--safe-left));
+  border: 1px solid var(--border);
+  border-bottom: 0;
+  border-radius: calc(var(--radius) * 3) calc(var(--radius) * 3) 0 0;
+  background: var(--surface-raised);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  font-size: var(--hint-font);
+  line-height: var(--hint-line);
+}
+
+.update-toast__text {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  font-weight: 600;
+}
+
+@media (min-width: 500px) {
+  .update-toast {
+    bottom: calc(var(--safe-bottom) + var(--main-pad-bottom));
+    width: var(--play-width);
+    min-height: var(--row-height);
+    margin: 0 auto;
+    padding: 2px 6px 2px 12px;
+    border-bottom: 1px solid var(--border);
+    border-radius: calc(var(--radius) * 2);
+  }
+}
+
+@media (min-width: 850px), (orientation: landscape) and (max-height: 500px) {
+  .update-toast {
+    right: max(calc(var(--gutter) + var(--safe-right)), calc((100% - var(--play-width)) / 2));
+    left: auto;
+    width: var(--controls-width);
+  }
+}
+
+@keyframes update-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .update-toast {
+    animation: update-toast-in 200ms ease-out;
   }
 }

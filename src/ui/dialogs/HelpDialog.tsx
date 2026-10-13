@@ -475,6 +475,10 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
             </li>
             <li>Your game is saved as you play, and reopens paused after a reload.</li>
             <li>
+              When a new version of the game is out, a note at the foot of the screen says so, and{' '}
+              <strong>Refresh</strong> loads it: your game reopens paused, as after any reload.
+            </li>
+            <li>
               In History, <strong>Resume</strong> carries on with a game you haven&apos;t finished,
               and <strong>Play again</strong> starts a solved puzzle afresh. A game you only glanced
               at, without entering anything, isn&apos;t kept.

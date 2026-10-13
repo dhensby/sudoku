@@ -190,6 +190,13 @@ your browser.
   on a phone on its side they sit beside the timer, one over the other, and a large phone's row of
   seven buttons folds into the ☰ menu to make room for them);
   touch targets are at least 44px; and the game can be added to your home screen.
+- **Told of a new version** — a game left open, an installed one above all, learns when a new
+  version has been deployed — as it opens, as you come back to it after a while, and every ten
+  minutes or so while it is on screen — and says so at the foot of the screen: "A new version of
+  Sudoku is ready", with **Refresh**, which loads it (your game is saved, and reopens paused as
+  after any reload), and a cross that puts it away until a newer one still. It waits for an open
+  dialog to close, never takes focus from the board, and is spoken once to a screen reader (see
+  [New versions](#new-versions)).
 - **Broadsheet, a theme drawn for clarity** — the puzzle page of a morning paper: warm newsprint,
   ink-black box lines, one ultramarine spot colour, the selected cell printed as a solid block,
   givens typeset in a slab and your own numbers in a grotesque. Givens and your own numbers hold
@@ -252,6 +259,9 @@ The design keeps a hard line between logic and presentation:
   days dealt by engines since replaced (and the rules for keeping it), and the store the app
   asks for a day's puzzles, which deals them in the worker and keeps them.
 - **`src/worker/`** — the module Web Worker that generates puzzles off the main thread.
+- **`src/update/`** — how a page left open learns of a newer deploy: the version stamped in the
+  page, and the look at the page deployed now (see [New versions](#new-versions)). The stamp is
+  made by the build's own Vite plugin, in `plugins/`.
 - **`src/ui/`** — React components and hooks that render the engine's state and turn input into
   actions, plus the dialogs in `src/ui/dialogs/`.
 
@@ -1035,7 +1045,8 @@ last 112, so they need not be dealt again). A game raced against a link that
 carried a solve keeps it with the challenge, inside its record, held on reading back to the shape
 and length of a log in a link (at most 4,000 characters; some 200–1,100 in practice). There are no
 accounts and no tracking: the player ID is random, and travels only in links you share with a
-time.
+time. Now and then the game fetches its own page again, to see whether a new version has been
+deployed ([New versions](#new-versions)); nothing goes with it that a reload would not send.
 
 Every game in the history, finished or not, keeps its **move log** (see
 [The move log](#the-move-log)) under a key of its own, `sudoku.moves.<id>`, listed in
@@ -1195,6 +1206,14 @@ of the logs here were shed, none of the file's logs are taken.
   a puzzle on its way cancelled — and resumes an unfinished attempt or offers a solved puzzle again
   instead; and its record keeps `entered` only as `true`, through a save, an export, an import and a
   tab from before it.
+  The version stamp is held to change with any file a build ships, its contents or its name, public
+  files included, and with nothing else (`plugins/version.test.ts`); the look for a newer version to
+  its timing — as the page opens, as it comes back after ten minutes or more, every ten minutes or
+  so while on show, counted from the last look however it came and by the wall clock, never while
+  hidden — to the page's own address, past the HTTP cache, and to learning nothing from a page it
+  could not have (a 404, a server error, a page with no stamp, no network); and its offer to
+  waiting for a dialog to close, being spoken once, leaving focus on the board, and staying away
+  once dismissed until a newer version still.
   Coverage thresholds are enforced in CI, with the engine held to 100%.
 - **End-to-end** (`e2e/`, Playwright): full journeys against the built app — playing and solving,
   pausing and reloading, share links between two browsers (a solve with a mistake shared, opened in
@@ -1241,10 +1260,16 @@ of the logs here were shed, none of the file's logs are taken.
   the prompt's hint, every control 44px — the friend pickers and a merge's buttons among them — and
   History's foot giving Friends a row of its own at 320px; Enter a puzzle at 320×568, 568×320,
   667×375 and 844×390 with nothing to scroll, every button 44px and every cell at least 24px — 22px
-  on the shortest phone on its side — and a tapped number landing in the cell tapped; and a
-  desktop's header with a daily Medium and help at its widest). Help taken stays on show through a
-  pause, its count the only one the
-  hidden board leaves beside the timer's. An accessibility pass (`a11y.spec.ts`) runs axe-core's WCAG 2.2 A and AA rules over the main states — the board with
+  on the shortest phone on its side — and a tapped number landing in the cell tapped; the offer of
+  a new version lying over the switch row alone at 320×568 and on its side, its two buttons 44px
+  and every other control still there to press; and a desktop's header with a daily Medium and
+  help at its widest). Help taken stays on show through a pause, its count the only one the
+  hidden board leaves beside the timer's. A new version (`update.spec.ts`) is deployed to a
+  stand-in for GitHub Pages (`e2e/pages-server.ts`: the app under `/sudoku/`, real 404s, and ten
+  minutes of HTTP caching on everything): a page left open offers it ten minutes on, and Refresh
+  loads it with the game kept, paused; and a page the HTTP cache kept from before the deploy offers
+  it as it opens (on Chromium: Playwright's WebKit keeps no HTTP cache on disk, and the first look
+  displaces the copy it keeps in memory, so it is never handed an old page). An accessibility pass (`a11y.spec.ts`) runs axe-core's WCAG 2.2 A and AA rules over the main states — the board with
   every kind of mark, the error counter and help taken in both their places, the Ready and Paused
   cards, the menus (the "…" menu's "Hint (1 used)" among them),
   every dialog (Show me's, the daily calendar's, a solve played back, the warning before watching
@@ -1252,17 +1277,18 @@ of the logs here were shed, none of the file's logs are taken.
   its foot, Friends with a merged friend's devices, a name being changed and two friends being
   merged, _Who sent this?_ with friends to choose from, and Enter a puzzle at each step on the way
   to a puzzle — empty, a clash, too few numbers, more than one solution and a Hard — upright and on
-  its side on the phones, among them), each guide entry and a step hint's tinted houses — in both
-  themes, and the board (its tint included), the dialogs (Enter a puzzle among them), the menus and
-  the calendar in High contrast, both chosen in
+  its side on the phones, among them), each guide entry, a step hint's tinted houses and the offer
+  of a new version (a sheet on a phone held upright, a card on its side) — in both themes, and the board
+  (its tint included), the dialogs (Enter a puzzle among them), the menus, the calendar and the
+  offer of a new version in High contrast, both chosen in
   Settings on a dark device and from a dark system asking for more contrast, measuring its heavier
   lines and its same-number ring kept off the digits — and allows no violations. Three projects:
 
-  | Project    | Device         | Engine   | Specs                                                 |
-  | ---------- | -------------- | -------- | ----------------------------------------------------- |
-  | `chromium` | Desktop Chrome | Chromium | everything except the touch suite                     |
-  | `iphone`   | iPhone 15      | WebKit   | `touch.spec.ts`, and the phone pass of `a11y.spec.ts` |
-  | `android`  | Pixel 7        | Chromium | `touch.spec.ts`, and the phone pass of `a11y.spec.ts` |
+  | Project    | Device         | Engine   | Specs                                                                   |
+  | ---------- | -------------- | -------- | ----------------------------------------------------------------------- |
+  | `chromium` | Desktop Chrome | Chromium | everything except the touch suite                                       |
+  | `iphone`   | iPhone 15      | WebKit   | `touch.spec.ts`, the phone pass of `a11y.spec.ts`, and `update.spec.ts` |
+  | `android`  | Pixel 7        | Chromium | `touch.spec.ts`, and the phone pass of `a11y.spec.ts`                   |
 
   `npm run test:e2e` serves its build on a port of its own for each checkout, picked from the
   checkout's path, so separate clones and git worktrees can run the suite at the same time, and a
@@ -1282,6 +1308,30 @@ To set it up on a new repository, enable Pages once: in **Settings → Pages**, 
 
 The Pages build sets Vite's `base` to `/<repository-name>/` automatically. If you rename the repo,
 no change is needed — the base is derived from the repository name at build time.
+
+### New versions
+
+There is no service worker, so a page keeps running the code it loaded until it is reloaded: a
+game left open — an installed one above all, which never navigates — would never see a deploy.
+So each build stamps its page with its version, `<meta name="version">`: a hash of the finished
+bundle's files, names and contents, and of the public files, made by
+[`plugins/version.ts`](plugins/version.ts) once the bundle is complete. And the page fetches its
+own address now and then and compares the stamp there with its own
+([`src/update/check.ts`](src/update/check.ts)): as it opens, as it comes back into view, and every
+ten minutes or so while it is on screen — never within ten minutes of its last look, by the wall
+clock (which runs on while a phone sleeps), and never while hidden. A different stamp is a
+new version, which the page offers at the foot of the screen with **Refresh** (see
+[`UpdateToast`](src/ui/UpdateToast.tsx)). A page with no stamp — the dev server's, or a test's —
+never looks.
+
+Builds are deterministic, so a merge that changes only docs or tests deploys the same files under
+the same stamp, and offers nothing. GitHub Pages lets a browser keep any file for ten minutes
+(`Cache-Control: max-age=600`), which is why the page looks at the page itself rather than at a
+file of its own: the look revalidates the browser's copy of the page, so the app opened again
+within those ten minutes — from a home screen, say — gets the new version too, and a page opened
+from that cache before the look finds out as it opens. A reload asks the server for the page
+whatever the cache holds, so Refresh loads the new version either way. Should Pages' own cache
+serve the old page for a while after a deploy, the page learns of the new one at a later look.
 
 ## Controls
 

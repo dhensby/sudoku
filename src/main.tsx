@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './ui/App.tsx';
+import { watchForUpdates } from './update/check.ts';
 /*
  * The two typefaces, self-hosted: Vite bundles the font files with the app,
  * so no font service ever learns who is playing (Help promises no
@@ -24,3 +25,6 @@ createRoot(rootElement).render(
     <App />
   </StrictMode>,
 );
+
+// Outside React: once for the page, whatever renders twice (StrictMode).
+watchForUpdates();

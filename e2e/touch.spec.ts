@@ -3,6 +3,7 @@ import {
   NEARLY_DONE,
   PUZZLES,
   cell,
+  deployNewerVersion,
   emptyCells,
   expectHeaderWhole,
   getStuck,
@@ -18,6 +19,7 @@ import {
   startButton,
   stubClipboard,
   typeDigits,
+  updateOffer,
   waitForPlaying,
 } from './helpers';
 import { BEYOND_THE_SET } from '../src/test/logic-fixtures';
@@ -158,6 +160,35 @@ async function expectWholeGameOnScreen(page: Page): Promise<void> {
   expect(await overflow(page)).toEqual({ x: 0, y: 0 });
   await expectOnScreen(page, grid(page));
   for (const control of playControls(page)) await expectOnScreen(page, control);
+}
+
+/**
+ * With the offer of a new version up, at the foot of the screen: nothing to
+ * scroll, its two buttons a finger's size and on screen, and every play
+ * control but the two it lies over — the Auto Candidate switch and the "…"
+ * menu — still there to press, each found by hit-testing at its middle.
+ */
+async function expectOfferClearOfPlay(page: Page): Promise<void> {
+  await expect(updateOffer(page)).toBeVisible();
+  await settle(page);
+  expect(await overflow(page)).toEqual({ x: 0, y: 0 });
+  for (const name of ['Refresh', 'Dismiss']) {
+    const button = page.getByRole('button', { name });
+    await expectOnScreen(page, button);
+    const box = (await button.boundingBox())!;
+    expect(box.width, name).toBeGreaterThanOrEqual(44);
+    expect(box.height, name).toBeGreaterThanOrEqual(44);
+  }
+  const covered = ['Auto Candidate Mode', 'More'];
+  for (const control of playControls(page)) {
+    const name = (await control.getAttribute('aria-label')) ?? (await control.innerText());
+    const isPressable = await control.evaluate((target) => {
+      const box = target.getBoundingClientRect();
+      const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+      return target.contains(hit);
+    });
+    expect(isPressable, name).toBe(!covered.includes(name));
+  }
 }
 
 /**
@@ -629,6 +660,14 @@ test.describe('a 320×568 phone', () => {
   test('fits the whole game with nothing to scroll', async ({ page }) => {
     await tapStart(page);
     await expectWholeGameOnScreen(page);
+  });
+
+  test('offers a new version over the switch row alone, its buttons finger-sized', async ({
+    page,
+  }) => {
+    await deployNewerVersion(page);
+    await tapStart(page);
+    await expectOfferClearOfPlay(page);
   });
 
   /*
@@ -1577,5 +1616,13 @@ test.describe('a 568×320 phone on its side', () => {
     await tapStart(page);
     await expectWholeGameOnScreen(page);
     await expectTouchTargets(page);
+  });
+
+  test('offers a new version over the switch row alone, its buttons finger-sized', async ({
+    page,
+  }) => {
+    await deployNewerVersion(page);
+    await tapStart(page);
+    await expectOfferClearOfPlay(page);
   });
 });
