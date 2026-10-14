@@ -98,7 +98,7 @@ describe('HelpDialog', () => {
     expect(section).toHaveTextContent(/it's off until you turn it on/);
     // Product text, not an example: no sample name.
     expect(section).toHaveTextContent(
-      /offers Watch your friend's solve \(with their name, if you or their link gave one\) beside Start/,
+      /offers Watch your friend's solve \(with their name, if you or their link gave one\) with Start/,
     );
     expect(section).not.toHaveTextContent(/Dan/);
     expect(section).toHaveTextContent(/Once you've solved the puzzle yourself, watching is free/);

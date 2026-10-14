@@ -192,8 +192,10 @@ your browser.
   menu so the header stays one row (help taken, once you take any, and the error counter, when it
   is on, share a line of their own above the controls, and the board gives up that line's height;
   on a phone on its side they sit beside the timer, one over the other, and a large phone's row of
-  seven buttons folds into the ☰ menu to make room for them);
-  touch targets are at least 44px; and the game can be added to your home screen.
+  seven buttons folds into the ☰ menu to make room for them); the Start card of a friend's link
+  fits too, their time to beat with a puzzle's name of up to 40 characters, on the smallest phone
+  on its side, and their solve to watch with a name from a common phone on its side up; touch
+  targets are at least 44px; and the game can be added to your home screen.
 - **Told of a new version** — a game left open, an installed one above all, learns when a new
   version has been deployed — as it opens, as you come back to it after a while, and every ten
   minutes or so while it is on screen — and says so at the foot of the screen: "A new version of
@@ -860,12 +862,13 @@ by a newer version, which says so under the board: "This solve needs a newer ver
 to watch." A solve that checks out is kept with the challenge (`Challenge.log`).
 
 - **Watching before solving.** The Ready card offers **Watch Dan's solve** (the name you gave the
-  friend, if you have, else their link's; "Watch your friend's solve" for a link with no name) beside Start, and the Paused card beside Resume, for an attempt
-  reopened from the link. For a puzzle the player has not solved, it asks first, focus on the
-  safe choice: "Watch Dan's solve? — This shows every number Dan placed. You haven't solved this
-  puzzle yet: if you watch now, you won't be able to record a time for it, now or later." with
-  **Play it first** (which starts or resumes the game) and **Watch anyway**. Escape leaves it
-  as it was.
+  friend, if you have, else their link's; "Watch your friend's solve" for a link with no name) with
+  Start — under it where the card is too narrow for both, as on a phone — and the Paused card with
+  Resume, for an attempt reopened from the link. For a puzzle the player has not solved, it asks
+  first, focus on the safe choice: "Watch Dan's solve? — This shows every number Dan placed. You
+  haven't solved this puzzle yet: if you watch now, you won't be able to record a time for it, now
+  or later." with **Play it first** (which starts or resumes the game) and **Watch anyway**. Escape
+  leaves it as it was.
 - **The spoiler rule.** Watching anyway remembers the puzzle as watched (`sudoku.watched`, its
   share code, up to 2,000 like the puzzles seen, outliving its records) and flags every
   unfinished attempt at it (`GameRecord.watched`) — the game on screen and any in History — and
@@ -1406,9 +1409,11 @@ are taken.
   on its side — and a tapped number landing in the cell tapped; Your puzzles at 320×568, 568×320 and
   844×390 with nothing to scroll sideways, a long right-to-left name inside its row, every button
   44px (a ready row's Share among them) and the rename field's text 16px; a link's 40-character
-  puzzle name kept inside its Ready card and Share's preview at 320px; the offer of a new version
-  lying over the switch row alone at 320×568 and on its side, its two buttons 44px and every other
-  control still there to press; and a desktop's header with a daily Medium and help at its widest).
+  puzzle name kept inside its Ready card and Share's preview at 320px; a friend's time with a
+  40-character name whole on the Ready card at 568×320 and 640×360, and at 640×360 their solve to
+  watch with a name too, on the Ready and Paused cards; the offer of a new version lying over the
+  switch row alone at 320×568 and on its side, its two buttons 44px and every other control still
+  there to press; and a desktop's header with a daily Medium and help at its widest).
   Help taken stays on show through a pause, its count the only one the hidden board leaves beside
   the timer's. A new version (`update.spec.ts`) is deployed to a stand-in for GitHub Pages
   (`e2e/pages-server.ts`: the app under `/sudoku/`, real 404s, and ten minutes of HTTP caching on

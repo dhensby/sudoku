@@ -413,7 +413,7 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
             </li>
             <li>
               A link with a solve offers <strong>Watch your friend&apos;s solve</strong> (with their
-              name, if you or their link gave one) beside <strong>Start</strong>. Once you&apos;ve
+              name, if you or their link gave one) with <strong>Start</strong>. Once you&apos;ve
               solved the puzzle yourself, watching is free: the Solved dialog and History offer it
               too.
             </li>

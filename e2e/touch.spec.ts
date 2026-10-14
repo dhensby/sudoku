@@ -12,6 +12,8 @@ import {
   modeButton,
   openTodaysDaily,
   padKey,
+  placedSolve,
+  puzzleLink,
   resumeButton,
   seedFriends,
   seedPuzzles,
@@ -1768,3 +1770,77 @@ test.describe('a 568×320 phone on its side', () => {
     await expectOfferClearOfPlay(page);
   });
 });
+
+/** A card on the board, whole and still: nothing to scroll inside it, and its top where it arrived. */
+async function expectCardWhole(page: Page, heading: string): Promise<void> {
+  const card = page.locator('.board-overlay__card');
+  await settle(page);
+  expect(await overflow(page)).toEqual({ x: 0, y: 0 });
+  expect(
+    await card.evaluate((el) => ({
+      x: el.scrollWidth - el.clientWidth,
+      y: el.scrollHeight - el.clientHeight,
+      top: el.scrollTop,
+    })),
+  ).toEqual({ x: 0, y: 0, top: 0 });
+  await expectOnScreen(page, card.getByRole('heading', { name: heading }));
+}
+
+/*
+ * The Start card of a friend's link, on the smallest board of each of its
+ * size steps: a 568×320 phone on its side, and the 640×360 board of a common
+ * phone on its side (an Android's about 360 tall, a 667×375 iPhone's).
+ * Their time to beat with a puzzle's name at its longest fits whole on
+ * both, with nothing to scroll inside the card; and on the larger, so does
+ * their solve to watch with a name, on the Start card and, after Start, the
+ * Paused card. (A solve to watch with a name still scrolls inside the card
+ * at 568×320: accepted, its title and Start still in view.)
+ */
+for (const viewport of [
+  { width: 568, height: 320 },
+  { width: 640, height: 360 },
+]) {
+  test.describe(`a ${viewport.width}×${viewport.height} phone on its side, opening a friend's link`, () => {
+    test.use({ viewport });
+
+    test('fits their time and a 40-character puzzle name on the Start card, with nothing to scroll', async ({
+      page,
+    }) => {
+      const title = 'Supercalifragilisticexpialidocious #1234';
+      expect([...title]).toHaveLength(40);
+      await gotoPuzzle(page, EASY.givens, {
+        challenge: { seconds: 323, name: 'Dan', assists: 'm0' },
+        title,
+      });
+      await expect(page.locator('.board-overlay__name')).toHaveText(title);
+      await expectCardWhole(page, 'Ready?');
+      await expectOnScreen(page, startButton(page));
+      await expectFingerSized(startButton(page));
+    });
+
+    if (viewport.height < 360) return;
+
+    test('fits their solve to watch and a puzzle name on the Start and Paused cards', async ({
+      page,
+    }) => {
+      const { log, seconds } = placedSolve(NEARLY_DONE);
+      await page.goto(
+        `${puzzleLink(NEARLY_DONE.givens, { seconds, name: 'Dan', assists: 'm0' }, 'The Times #1,234')}&s=${log}`,
+      );
+      const watch = page.getByRole('main').getByRole('button', { name: "Watch Dan's solve" });
+      await expect(watch).toBeVisible();
+      await expectCardWhole(page, 'Ready?');
+      for (const button of [startButton(page), watch]) {
+        await expectOnScreen(page, button);
+        await expectFingerSized(button);
+      }
+
+      await startButton(page).tap();
+      await waitForPlaying(page);
+      await page.getByRole('banner').getByRole('button', { name: 'Pause' }).tap();
+      await expect(resumeButton(page)).toBeVisible();
+      await expectCardWhole(page, 'Paused');
+      for (const button of [resumeButton(page), watch]) await expectOnScreen(page, button);
+    });
+  });
+}

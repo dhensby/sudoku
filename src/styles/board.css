@@ -538,10 +538,14 @@
   text-align: center;
 }
 
-/* Never larger than the frame it sits in: on the smallest boards a long
-   challenge scrolls inside the card rather than spilling over the edge, as
-   does any challenge with a puzzle's name, or a name at its widest, on a
-   phone on its side (an iPhone SE's, 568×320). */
+/* Never larger than the frame it sits in. On small boards its spacing steps
+   down (below), so that a friend's time to beat with a puzzle's name of up
+   to 40 characters fits whole on every phone, an iPhone SE's on its side
+   (568×320) included, and so does their solve to watch with a name on a
+   common phone on its side (from 640×360). What is still too tall scrolls
+   inside the card rather than spilling over the edge: at 568×320, a solve
+   to watch with a puzzle's name, or a name beside a friend's name at its
+   longest; anywhere, everything at once. */
 .board-overlay__card {
   display: flex;
   flex-direction: column;
@@ -595,11 +599,10 @@
   line-height: 1.4;
 }
 
+/* The cards' buttons are sized by `.button`; this only spaces one that
+   stands alone (the failed card's Try again). */
 .board-overlay__button {
-  min-height: 48px;
   margin-top: 6px;
-  padding: 0 30px;
-  font-size: 1rem;
 }
 
 /* Start (or Resume) and, when a link carried one, "Watch Dan's solve" beside
@@ -616,11 +619,6 @@
   margin-top: 0;
 }
 
-/* The second choice: an outlined button, sized to its words. */
-.board-overlay__button--secondary {
-  padding: 0 18px;
-}
-
 .board-overlay__button .icon {
   width: 16px;
   height: 16px;
@@ -631,12 +629,17 @@
 /* Small boards — a short phone, or one on its side — step the card down. */
 @container board-column (max-width: 359.98px) {
   .board-overlay {
-    padding: 12px;
+    padding: 8px;
   }
 
   .board-overlay__card {
-    gap: 8px;
-    padding: 18px 16px;
+    gap: 6px;
+    padding: 14px 16px;
+  }
+
+  .board-overlay__actions {
+    margin-top: 2px;
+    row-gap: 6px;
   }
 
   .board-overlay__title {
@@ -653,15 +656,17 @@
   }
 }
 
-/* The smallest (an iPhone SE): the card has to fit in a 240px square. */
+/* The smallest (an iPhone SE's, 232px on its side to 268px upright): the
+   card takes all of the board but a 2px inset, as a 4px one wraps a nine-
+   letter friend's challenge onto a third line. */
 @container board-column (max-width: 289.98px) {
   .board-overlay {
-    padding: 8px;
+    padding: 2px;
   }
 
   .board-overlay__card {
-    gap: 6px;
-    padding: 12px;
+    gap: 4px;
+    padding: 8px;
   }
 
   .board-overlay__title {
@@ -682,12 +687,12 @@
   }
 
   .board-overlay__button {
-    min-height: 44px;
     margin-top: 2px;
   }
 
   .board-overlay__actions {
-    margin-top: 2px;
+    margin-top: 0;
+    row-gap: 4px;
   }
 }
 
