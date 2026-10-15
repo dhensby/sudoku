@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { focusQuietly } from '../keepFocus';
+import { isPlainEnter } from '../keyboard';
 
 /**
  * For everything in an edit's group that can have focus: Escape backs out of
@@ -63,8 +64,8 @@ export function NameForm({
   const handleEscape = escapeTo(onCancel);
 
   const handleFieldKey = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    // Enter while composing picks the candidate a keyboard offers, and no more.
-    if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
+    // An input method's Enter picks or confirms its candidate, and no more.
+    if (isPlainEnter(event.nativeEvent)) {
       event.preventDefault();
       onSave(name);
       return;
