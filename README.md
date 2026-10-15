@@ -349,10 +349,11 @@ left and right in reading order, as typing does, from the end of a row to the st
 and back, so a row that ends in blanks is left with an arrow, and up and down stopping at the
 edges. A number is read by its key's place, as on the board, so Shift, Alt, the numpad and an
 AZERTY keyboard all type it, and a number or a blank held down goes in once; every Ctrl or Cmd
-chord is left to the browser. On a phone, tap a cell, then a number on the pad (or Erase): it goes
-in where you tapped, moving nothing, so a correction lands in the same cell. Every number typed in
-is set as a given — it will be one — and the selected cell's row, column and box are tinted as
-Settings has the board's.
+chord is left to the browser. On a phone the pad copies a puzzle out the same way: tap a cell,
+then numbers on the pad, each filling the selected cell and moving on, as a typed one does; tap a
+cell to skip past blanks or to put one right, and Erase erases where it is, as Delete does. Every
+number typed in is set as a given — it will be one — and the selected cell's row, column and box
+are tinted as Settings has the board's.
 
 A puzzle already written out — on a puzzle site, in a file, in a message — can be pasted in whole
 instead, with **Paste**, last in the row of buttons, or <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>V</kbd> on
@@ -1302,8 +1303,9 @@ are taken.
   further than the last cell, by its key's place with Shift or Alt held and on the numpad; a blank
   from Space, 0 or a dot; Backspace on a number and on an empty cell; Delete; the arrows at the
   edges, left and right running on round the rows; a number or a blank held down going in once;
-  every Ctrl and Cmd chord let through), the pad filling in place, its line keeping its words while
-  the same thing holds, and Play and Share… unavailable, saying why, until there is one solution; a
+  every Ctrl and Cmd chord let through), the pad filling and moving on as a key does, focus going
+  on with the selection, and Erase erasing in place, its line keeping its words while the same
+  thing holds, and Play and Share… unavailable, saying why, until there is one solution; a
   grid pasted in read however it is laid out, a dot or a 0 for a blank, and only at exactly 81 cells
   — never a link — and put in place of the grid typed, the selection kept, from Ctrl or Cmd+V on the
   grid and from Paste, which reads the clipboard within the press; and a paste with no grid in it,
@@ -1406,8 +1408,9 @@ are taken.
   History's foot giving Friends a row of its own at 320px; Enter a puzzle at 320×568, 568×320,
   667×375 and 844×390 with nothing to scroll, every button 44px, Play, Share…, Save and Paste on one
   line with the hint in view under them, and every cell at least 24px — 22px on the shortest phone
-  on its side — and a tapped number landing in the cell tapped; Your puzzles at 320×568, 568×320 and
-  844×390 with nothing to scroll sideways, a long right-to-left name inside its row, every button
+  on its side — and a tapped number landing in the cell tapped and moving on to the next, which the
+  next tapped number fills; Your puzzles at 320×568, 568×320 and 844×390 with nothing to scroll
+  sideways, a long right-to-left name inside its row, every button
   44px (a ready row's Share among them) and the rename field's text 16px; a link's 40-character
   puzzle name kept inside its Ready card and Share's preview at 320px; a friend's time with a
   40-character name whole on the Ready card at 568×320 and 640×360, and at 640×360 their solve to

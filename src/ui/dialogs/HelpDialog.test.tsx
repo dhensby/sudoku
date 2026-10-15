@@ -325,8 +325,10 @@ describe('HelpDialog', () => {
     expect(section).toHaveTextContent(
       /a number fills a cell and moves on, Space, 0 or a dot leaves a cell blank, Backspace takes back the last number/,
     );
-    // A touch correction lands where it was tapped.
-    expect(section).toHaveTextContent(/a number on the pad, which goes in where you tapped/);
+    // A finger copies a puzzle out as the keys do.
+    expect(section).toHaveTextContent(
+      /tap a cell, then numbers on the pad: each fills a cell and moves on, as one typed does/,
+    );
     expect(section).toHaveTextContent(
       /“One solution: a Hard puzzle\.” Only then can you play or share it\./,
     );
