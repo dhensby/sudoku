@@ -1,4 +1,4 @@
-import { useCallback, useId, useMemo, useState } from 'react';
+import { useCallback, useId, useMemo, useRef, useState } from 'react';
 import {
   COL,
   ROW,
@@ -8,14 +8,15 @@ import {
   type GridString,
   type Puzzle,
 } from '../../core';
+import { normaliseTitle } from '../../storage/storage';
 import { GivensGrid, type GivensGridSettings } from '../GivensGrid';
 import { EraseIcon } from '../icons';
-import { keepFocus } from '../keepFocus';
-import { commandForKey, type KeyInput } from '../keyboard';
+import { focusQuietly, keepFocus } from '../keepFocus';
+import { commandForKey, isPlainEnter, type KeyInput } from '../keyboard';
 import { NumberPad } from '../NumberPad';
 import { BLANK_GRID } from '../puzzles';
 import { Dialog } from './Dialog';
-import { describeGivens } from './text';
+import { TITLE_INPUT_MAX, describeGivens } from './text';
 
 export interface EnterDialogProps {
   /** How the grid is tinted around the selection, as the board is. */
@@ -34,18 +35,27 @@ export interface EnterDialogProps {
    * grid matches it.
    */
   savedCells: GridString | null;
-  /** Play the puzzle typed in: checked, with one solution, and labelled (see `assessGivens`). */
-  onPlay: (puzzle: Puzzle) => void;
+  /**
+   * The name as kept in Your puzzles, tidied, '' for none: what Name opens
+   * with (read once), and what Save says Saved against, with the grid.
+   */
+  savedTitle: string;
+  /**
+   * Play the puzzle typed in: checked, with one solution, and labelled (see
+   * `assessGivens`). `title`, here and below, is Name's raw text, which the
+   * parent tidies.
+   */
+  onPlay: (puzzle: Puzzle, title: string) => void;
   /**
    * Share the puzzle typed in alone, checked and labelled as Play has it,
    * without a game of it: `selected` is the cell selected, for the editor to
    * open on again as Share closes.
    */
-  onShare: (puzzle: Puzzle, selected: number) => void;
+  onShare: (puzzle: Puzzle, selected: number, title: string) => void;
   /** Keep the grid as it is in Your puzzles, staying in the editor. Never called with no number in. */
-  onSave: (cells: GridString) => void;
-  /** Closed, any way — the close button, Escape, the scrim: with the grid as it was left. */
-  onClose: (cells: GridString) => void;
+  onSave: (cells: GridString, title: string) => void;
+  /** Closed, any way — the close button, Escape, the scrim: with the grid and name as they were left. */
+  onClose: (cells: GridString, title: string) => void;
   /** Back from sharing the puzzle: focus goes back to Share…, not to the selected cell. */
   isBackFromShare?: boolean;
 }
@@ -157,19 +167,29 @@ interface Status {
  *
  * What is typed is the dialog's own, from the grid it opened with. Save
  * hands it up to be kept in Your puzzles, finished or not, and says Saved
- * for as long as the grid is as saved; Play hands the puzzle on as checked
- * and labelled here, which is how its link will be (see `puzzleFromGivens`),
- * to be kept as it is played; Share… hands it on the same way, to be kept
- * and shared without a game of it, the editor opening again as Share closes;
- * and closing hands the grid up, to be kept if it has changed (see
- * `closeEditor`). No footer: the board needs its height on a phone, so the
+ * for as long as the grid and its name are as saved; Play hands the puzzle
+ * on as checked and labelled here, which is how its link will be (see
+ * `puzzleFromGivens`), to be kept as it is played; Share… hands it on the
+ * same way, to be kept and shared without a game of it, the editor opening
+ * again as Share closes; and closing hands the grid up, to be kept if it or
+ * its name has changed (see `closeEditor`). No footer: the board needs its height on a phone, so the
  * buttons sit last in the body, the hint on a line under them.
+ *
+ * The puzzle's name — the paper's, say, and its number — goes in Name, in
+ * the header in the title's place, as tall as the close button on a phone,
+ * so the board loses none of its height to it. The editor still opens on the
+ * grid, so numbers typed at once go in and a phone's keyboard stays down
+ * until Name is tapped; Enter there goes back to the selected cell, as a tap
+ * on the grid does. The name is the dialog's own as the grid is, handed up
+ * with it however it is left and kept with it — but only with a number in,
+ * so a name typed over an empty grid is not kept, as the grid is not.
  */
 export function EnterDialog({
   settings,
   initialCells,
   initialSelected,
   savedCells,
+  savedTitle,
   onPlay,
   onShare,
   onSave,
@@ -180,17 +200,22 @@ export function EnterDialog({
     cells: initialCells,
     selected: initialSelected,
   }));
+  // Name's own copy, tidied only when it loses focus, as NameForm's is: on
+  // every keystroke it would eat the space between two words.
+  const [name, setName] = useState(savedTitle);
   const [status, setStatus] = useState<Status | null>(null);
   // Said on the status line in place of what the numbers make: a paste that
   // came to nothing.
   const [notice, setNotice] = useState<Status | null>(null);
   const statusId = useId();
   const hintId = useId();
+  const nameId = useId();
+  const boardRef = useRef<HTMLDivElement>(null);
   const { cells, selected } = draft;
   const assessment = useMemo(() => assessGivens(cells), [cells]);
   const counts = useMemo(() => countsOf(cells), [cells]);
-  // Nothing to keep: no number in, or the grid as it was saved.
-  const isSaved = cells === savedCells;
+  // Nothing to keep: no number in, or the grid and its name as they were saved.
+  const isSaved = cells === savedCells && normaliseTitle(name) === savedTitle;
   const canSave = cells !== BLANK_GRID && !isSaved;
 
   const select = useCallback(
@@ -253,21 +278,53 @@ export function EnterDialog({
     paste(text);
   };
 
+  /**
+   * Enter in Name, once the name is done: back to the selected cell, to type
+   * the numbers in — but not an input method's Enter, which picks or confirms
+   * its candidate, and no more (see `isPlainEnter`): the rest of the name
+   * would go in the grid.
+   */
+  const handleNameKey = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!isPlainEnter(event.nativeEvent)) return;
+    event.preventDefault();
+    focusQuietly(boardRef.current!.querySelector<HTMLElement>('[aria-selected="true"]'));
+  };
+
   const save = () => {
     if (!canSave) return;
-    onSave(cells);
+    onSave(cells, name);
     setStatus((previous) => ({ text: 'Saved to Your puzzles.', id: (previous?.id ?? 0) + 1 }));
   };
 
   return (
     <Dialog
       title="Enter a puzzle"
-      onClose={() => onClose(cells)}
+      headerControl={
+        <div className="enter__name">
+          <label className="field__label" htmlFor={nameId}>
+            Name
+          </label>
+          <input
+            id={nameId}
+            className="field__input"
+            type="text"
+            value={name}
+            maxLength={TITLE_INPUT_MAX}
+            autoComplete="off"
+            spellCheck={false}
+            enterKeyHint="done"
+            onChange={(event) => setName(event.target.value)}
+            onBlur={() => setName(normaliseTitle(name))}
+            onKeyDown={handleNameKey}
+          />
+        </div>
+      }
+      onClose={() => onClose(cells, name)}
       className="dialog--enter"
       describedBy={`${statusId} ${hintId}`}
     >
       <div className="enter">
-        <div className="enter__board">
+        <div className="enter__board" ref={boardRef}>
           <div className="board-area">
             <GivensGrid
               cells={cells}
@@ -316,7 +373,7 @@ export function EnterDialog({
               aria-disabled={assessment.kind === 'ok' ? undefined : true}
               aria-describedby={statusId}
               onClick={() => {
-                if (assessment.kind === 'ok') onPlay(assessment.puzzle);
+                if (assessment.kind === 'ok') onPlay(assessment.puzzle, name);
               }}
             >
               Play
@@ -328,13 +385,13 @@ export function EnterDialog({
               aria-describedby={statusId}
               data-autofocus={isBackFromShare || undefined}
               onClick={() => {
-                if (assessment.kind === 'ok') onShare(assessment.puzzle, selected);
+                if (assessment.kind === 'ok') onShare(assessment.puzzle, selected, name);
               }}
             >
               Share…
             </button>
-            {/* Save and Paste stay in the editor, so a mouse leaves focus on
-                the grid. */}
+            {/* Save and Paste stay in the editor, so a mouse leaves focus
+                where it was: on the grid, or in Name. */}
             <button
               type="button"
               className="button enter__save"

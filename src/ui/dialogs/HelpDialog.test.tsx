@@ -378,6 +378,9 @@ describe('HelpDialog', () => {
     expect(section).toHaveTextContent(
       /Play or Share one that's ready, Edit one to carry on typing or put a number right, Rename one to tell it apart, or Delete it — its games stay in your history\./,
     );
+    expect(section).toHaveTextContent(
+      /Give it a name in Name, above the grid — “The Times #5,123”, say — to tell it apart in the list\. It's kept with the grid, and goes with its link\./,
+    );
   });
 
   it("says the list of puzzles leaves this browser only in History's export, and a name with its link", () => {
@@ -392,7 +395,7 @@ describe('HelpDialog', () => {
     render(<HelpDialog onBrowseTechniques={vi.fn()} onClose={vi.fn()} />);
     const section = screen.getByRole('heading', { name: 'Racing friends' }).closest('section')!;
     expect(within(section).getByText(/^A puzzle you've named/)).toHaveTextContent(
-      "A puzzle you've named in Your puzzles sends its name with its link, solved or not: your friend sees it on the Start card and in their history, and it goes on with their link.",
+      "A puzzle you've named, as you typed it in or in Your puzzles, sends its name with its link, solved or not: your friend sees it on the Start card and in their history, and it goes on with their link.",
     );
   });
 

@@ -981,6 +981,21 @@ describe('Enter a puzzle', () => {
     expect(rule(DIALOGS, '.enter__pad')).toMatch(/grid-auto-rows:\s*var\(--enter-key\)/);
   });
 
+  it('sets Name in the header as any field, its own 44px, so a phone’s header is no taller for it', () => {
+    const name = rule(DIALOGS, '.enter__name');
+    expect(name).toMatch(/display:\s*flex/);
+    expect(name).toMatch(/flex:\s*1;/);
+    expect(name).toMatch(/min-width:\s*0/);
+    expect(name).not.toMatch(/margin|padding/);
+    const field = rule(DIALOGS, '.enter__name .field__input');
+    expect(field).toMatch(/flex:\s*1;/);
+    expect(field).toMatch(/min-width:\s*0/);
+    // Nothing that would make it taller or shorter than the close button on a phone.
+    expect(field).not.toMatch(/height|padding|font|margin|border/);
+    expect(rule(DIALOGS, '.field__input')).toMatch(/min-height:\s*44px/);
+    expect(rule(DIALOGS, '.field__input')).toMatch(/font-size:\s*16px/);
+  });
+
   it('lays the pad out as a phone’s, two rows of five, Erase the tenth key', () => {
     expect(rule(DIALOGS, '.enter__pad')).toMatch(
       /grid-template-areas:\s*'d1 d2 d3 d4 d5'\s*'d6 d7 d8 d9 erase'/,

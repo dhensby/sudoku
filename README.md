@@ -46,9 +46,9 @@ your browser.
   any puzzle is: "One solution: a Hard puzzle." Play puts it behind a Start card, to share as it is
   or to start when you are ready, and its time counts as a new puzzle's; Share… sends a friend its
   link without starting it. Every grid typed in is kept in **Your puzzles**, finished or not — by
-  Save, as Play starts it, as Share… shares it and as the editor closes — to play, share, edit and
-  name again; a name goes with its link, so a friend sees which puzzle it is (see
-  [Entering a puzzle](#entering-a-puzzle)).
+  Save, as Play starts it, as Share… shares it and as the editor closes — under the name typed
+  above its grid, if any, to play, share, edit and name again; a name goes with its link, so a
+  friend sees which puzzle it is (see [Entering a puzzle](#entering-a-puzzle)).
 - **Plays like the NYT game** — Normal and Candidate modes (<kbd>Space</kbd> to switch, or hold
   <kbd>Shift</kbd>/<kbd>Alt</kbd> to switch while held), the two-step erase, highlighting of the
   row, column, box and matching numbers, a red dot on every conflict, givens on grey, and clicking
@@ -355,6 +355,16 @@ cell to skip past blanks or to put one right, and Erase erases where it is, as D
 number typed in is set as a given — it will be one — and the selected cell's row, column and box
 are tinted as Settings has the board's.
 
+**Name**, at the top in the title's place beside the close button, is for the puzzle's name — the
+paper's and its number, say: "The Times #5,123" — empty for a new puzzle, and holding the name of
+one opened again with Edit. The editor still opens on the grid, so numbers typed at once go in and a
+phone's keyboard stays down until you tap Name; <kbd>Enter</kbd> (Done on a phone) goes from the
+name back to the selected cell, as a tap or a click on the grid does, while a press on the pad puts
+its number in and leaves the keyboard in Name. The name is tidied as Rename tidies it (see
+[Your puzzles](#your-puzzles)) and kept with the grid however the grid is kept — but only with a
+number in, so a name typed over an empty grid is not kept, as the grid is not. The field is as tall
+as the close button on a phone, so the grid loses none of its height to it.
+
 A puzzle already written out — on a puzzle site, in a file, in a message — can be pasted in whole
 instead, with **Paste**, last in the row of buttons, or <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>V</kbd> on
 the grid. What is read is the grid in the text copied (see `readGrid`): its digits in reading order,
@@ -405,41 +415,44 @@ says so and offers to play it again, as its link would.
 
 To send it to a friend without playing it, press **Share…**, between Play and Save: unavailable
 until Play is, it keeps the puzzle as Play does and opens Share on the puzzle alone, a link with
-only `?p=` — and its name, if you have given it one (see [Your puzzles](#your-puzzles)) — labelled
-as Play would label it. Closing Share gives the editor back on the grid as kept, the selection where
-it was and focus on Share…; no game of it is started, and the one behind stays paused. **Share** in
-the header (in the ☰ menu on a phone) shares it the same way while it waits behind its Start card,
-once Play has put it there; and once you have solved it, Share sends your time with it, as for any
-puzzle.
+only `?p=` — and its name, if you have given it one (in Name, or with Rename in
+[Your puzzles](#your-puzzles)) — labelled as Play would label it. Closing Share gives the editor
+back on the grid and name as kept, the selection where it was and focus on Share…; no game of it is
+started, and the one behind stays paused. **Share** in the header (in the ☰ menu on a phone) shares
+it the same way while it waits behind its Start card, once Play has put it there; and once you have
+solved it, Share sends your time with it, as for any puzzle.
 
 ### Your puzzles
 
 Every grid you type in is kept in Your puzzles, finished or not: one with too few numbers, a clash
 or more than one solution is kept as readily as a puzzle ready to play, to finish another time.
-**Save**, between Share… and Paste, keeps the grid as it is and stays in the editor, its label reading
-"Saved" — unavailable — for as long as the grid is as kept, and "Saved to Your puzzles." spoken as
-it is pressed; Play keeps it too, as it starts the game, and Share… as it shares it; and closing the
-editor — Escape, the close button or a tap outside — keeps a grid that has changed since it was last
-kept, then goes back to the list, focus on that puzzle's Edit. A grid with no number in is never
-kept, so a new puzzle closed untouched leaves nothing behind, and a puzzle erased to nothing keeps
-the numbers it had. Each grid is kept once: typing in one already in the list, number for number, is
-that puzzle, name and all, and editing one into another's numbers makes the two one, keeping the
-name either had.
+**Save**, between Share… and Paste, keeps the grid and its name as they are and stays in the editor,
+its label reading "Saved" — unavailable — for as long as both are as kept, and "Saved to Your
+puzzles." spoken as it is pressed; Play keeps them too, as it starts the game, and Share… as it
+shares it; and closing the editor — Escape, the close button or a tap outside, Escape in Name
+included — keeps a grid or a name that has changed since it was last kept, then goes back to the
+list, focus on that puzzle's Edit. A grid with no number in is never kept, nor a name typed over
+one, so a new puzzle closed with no number in leaves nothing behind, and a puzzle erased to nothing
+keeps the numbers and the name it had. Each grid is kept once: typing in one already in the list,
+number for number, is that puzzle, name and all — a name typed in Name replaces its name, and an
+empty Name leaves it as it was — and editing one into another's numbers makes the two one, keeping
+the name either had. A name is written only when you change it in Name, so one left as it opened
+never undoes a rename made meanwhile in another tab.
 
 Each row gives the puzzle's name, or "Untitled puzzle", when it was first kept, and the line the
 editor would say of its numbers — "One solution: a Hard puzzle.", "A puzzle needs at least 17
 numbers." — worked out afresh once a visit rather than stored, so a puzzle is always labelled as
 its link would be today. Then **Play**, for one ready to play, as the editor's Play does;
 **Share**, for one ready to play too, which shares the puzzle alone as the editor's Share… does,
-focus back on the row's Share as it closes; **Edit**, to open it in the editor again, the selection
-just after its last number, to carry on typing; **Rename**, to give it a name of up to 40
-characters, tidied as a player's name is (empty for none), which its field's hint says is "Sent
-with its link, for friends to see."; and **Delete**, which asks first.
-Editing a puzzle changes it where it is: its games in History are of the numbers they were played
-with, and stay as they were. The list is in the order the puzzles were first kept, the latest
-first, so neither an edit nor a rename moves a row. It keeps up to 1,000 — as many as History keeps
-games — and saving one more past that forgets the one changed longest ago, never the one saved.
-Escape goes from the editor back to the list, and from the list back to the game, which stays
+focus back on the row's Share as it closes; **Edit**, to open it in the editor again, its name in
+Name and the selection just after its last number, to carry on typing or rename it there;
+**Rename**, to name it without opening it, up to 40 characters, tidied as a player's name is (empty
+for none), its field's hint saying "Sent with its link, for friends to see."; and **Delete**, which
+asks first. Editing a puzzle changes it where it is: its games in History are of the numbers they
+were played with, and stay as they were. The list is in the order the puzzles were first kept, the
+latest first, so neither an edit nor a rename moves a row. It keeps up to 1,000 — as many as History
+keeps games — and saving one more past that forgets the one changed longest ago, never the one
+saved. Escape goes from the editor back to the list, and from the list back to the game, which stays
 paused until then; Share, opened from the editor or the list, closes back to where it was opened.
 
 A puzzle's name goes with its link (`&l=`), however it is shared — from the editor, its row, its
@@ -1328,11 +1341,17 @@ are taken.
   only takes one away); its names to a newspaper's length, tidied as a player's are and short enough
   for an older tab to carry; the list to its rows' words, their buttons by readiness, each named
   with its row, a rename and a delete in place with focus back where it was, as it is on a row's
-  Share back from Share; the editor's Save to what it says when, and its Share… to the puzzle Play
-  would play, the cell selected kept to come back to, focus going back to Share… rather than to the
-  grid as the editor opens again; and, through the main hook, Save staying in the editor; Play,
-  Share… and closing keeping the grid (a blank one never, an entry erased to nothing keeping its
-  numbers); closing going back to the row's Edit, Share… — the puzzle alone, making no player ID —
+  Share back from Share; the editor's Name to its place in the header, the title read but not
+  shown, to every key its own and none the grid's, to Enter going back to the selected cell but not
+  an IME's Enter, a pad pressed with the mouse leaving focus in it, and to its tidying as it loses
+  focus; the editor's Save to what it says when, a name changed alone counted in, and its Share… to
+  the puzzle Play would play, the cell selected kept to come back to, focus going back to Share…
+  rather than to the grid as the editor opens again; and, through the main hook, Save staying in
+  the editor; Play, Share… and closing keeping the grid with the name typed (a blank one never, nor
+  a name typed over one, an entry erased to nothing keeping its numbers and name), the name written
+  only when Name changed it — one left as it opened leaving another tab's rename, or the name of the
+  puzzle a grid typed afresh proves to be, as it was — and put back on an entry deleted in another
+  tab; closing going back to the row's Edit, Share… — the puzzle alone, making no player ID —
   back to the editor on the same grid and cell, focus on Share…, and a row's Share, writing nothing,
   back on its Share with the list as stored; with the game behind paused throughout. A puzzle's
   name in a link (`l=`) is held to its place — after the result and before the solve, with a time
@@ -1382,9 +1401,11 @@ are taken.
   from there as the puzzle alone and opened in another browser on the same board; shared from the
   editor's Share… as the puzzle alone, kept, back in the editor on the same grid with Share…
   focused, nothing started — the game behind carrying on as the list closes — and its link opening
-  the same board in another browser; a Hard pasted in on the grid, as Ctrl or Cmd+V would, over what
-  was typed and played as the Hard it is, and from Paste with focus kept on the grid, words and a
-  clipboard refused said so on the line; and a clash and more than one solution named, with Play and
+  the same board in another browser; one named in Name as it is typed in, the name on its link, back
+  in Name from Share and on its row, nothing to scroll at a desktop's 1280×720 for the header Name
+  makes taller; a Hard pasted in on the grid, as Ctrl or Cmd+V would, over what was typed and played
+  as the Hard it is, and from Paste with focus kept on the grid, words and a clipboard refused said
+  so on the line; and a clash and more than one solution named, with Play and
   Share… unavailable), Your puzzles (a half-typed puzzle saved and listed with its line, then
   edited, finished and played from the editor; one renamed, kept through a reload; one deleted; one
   shared from its row, focus back on its Share; a grid kept as the editor closes, back on its row's
@@ -1407,10 +1428,11 @@ are taken.
   the prompt's hint, every control 44px — the friend pickers and a merge's buttons among them — and
   History's foot giving Friends a row of its own at 320px; Enter a puzzle at 320×568, 568×320,
   667×375 and 844×390 with nothing to scroll, every button 44px, Play, Share…, Save and Paste on one
-  line with the hint in view under them, and every cell at least 24px — 22px on the shortest phone
-  on its side — and a tapped number landing in the cell tapped and moving on to the next, which the
-  next tapped number fills; Your puzzles at 320×568, 568×320 and 844×390 with nothing to scroll
-  sideways, a long right-to-left name inside its row, every button
+  line with the hint in view under them, Name level with the close button and as tall, its text
+  16px, and every cell at least 24px — 22px on the shortest phone on its side — and a tapped number
+  landing in the cell tapped, focus back from Name, and moving on to the next, which the next tapped
+  number fills; Your puzzles at 320×568, 568×320 and 844×390 with nothing to scroll sideways, a long
+  right-to-left name inside its row, every button
   44px (a ready row's Share among them) and the rename field's text 16px; a link's 40-character
   puzzle name kept inside its Ready card and Share's preview at 320px; a friend's time with a
   40-character name whole on the Ready card at 568×320 and 640×360, and at 640×360 their solve to
@@ -1431,14 +1453,15 @@ are taken.
   solves compared, Share with the solve included, History with Friends at its foot, Friends with a
   merged friend's devices, a name being changed and two friends being merged, _Who sent this?_ with
   friends to choose from, Enter a puzzle at each step on the way to a puzzle — empty, a paste with
-  no puzzle in it, a clash, too few numbers, more than one solution, a Hard and a grid saved — and
-  Your puzzles empty, with rows, a name being changed and a delete being confirmed, upright and on
-  their sides on the phones, among them), each guide entry, a step hint's tinted houses and the
-  offer of a new version (a sheet on a phone held upright, a card on its side) — in both themes, and
-  the board (its tint included), the dialogs (Enter a puzzle and Your puzzles among them), the
-  menus, the calendar and the offer of a new version in High contrast, both chosen in Settings on a
-  dark device and from a dark system asking for more contrast, measuring its heavier lines and its
-  same-number ring kept off the digits — and allows no violations. Three projects:
+  no puzzle in it, a clash, too few numbers, more than one solution, a Hard, a right-to-left name
+  being typed and a grid saved — and Your puzzles empty, with rows, a name being changed and a
+  delete being confirmed, upright and on their sides on the phones, among them), each guide entry, a
+  step hint's tinted houses and the offer of a new version (a sheet on a phone held upright, a card
+  on its side) — in both themes, and the board (its tint included), the dialogs (Enter a puzzle and
+  Your puzzles among them), the menus, the calendar and the offer of a new version in High contrast,
+  both chosen in Settings on a dark device and from a dark system asking for more contrast,
+  measuring its heavier lines and its same-number ring kept off the digits — and allows no
+  violations. Three projects:
 
   | Project    | Device         | Engine   | Specs                                                                   |
   | ---------- | -------------- | -------- | ----------------------------------------------------------------------- |

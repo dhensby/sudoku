@@ -257,6 +257,10 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
               kept.
             </li>
             <li>
+              Give it a name in <strong>Name</strong>, above the grid — “The Times #5,123”, say — to
+              tell it apart in the list. It&apos;s kept with the grid, and goes with its link.
+            </li>
+            <li>
               From the list, <strong>Play</strong> or <strong>Share</strong> one that&apos;s ready,{' '}
               <strong>Edit</strong> one to carry on typing or put a number right,{' '}
               <strong>Rename</strong> one to tell it apart, or <strong>Delete</strong> it — its
@@ -521,9 +525,9 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
               friend&apos;s game can tell your times from anyone else&apos;s.
             </li>
             <li>
-              A puzzle you&apos;ve named in Your puzzles sends its name with its link, solved or
-              not: your friend sees it on the Start card and in their history, and it goes on with
-              their link.
+              A puzzle you&apos;ve named, as you typed it in or in Your puzzles, sends its name with
+              its link, solved or not: your friend sees it on the Start card and in their history,
+              and it goes on with their link.
             </li>
             <li>
               <strong>Friends</strong>, at the foot of History, lists everyone who has sent you a

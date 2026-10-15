@@ -28,9 +28,9 @@ import {
 export const NAME_INPUT_MAX = 64;
 
 /**
- * How much a puzzle's name field takes while typing, in Your puzzles: as
- * generous as a person's, for the same reasons, and matching the puzzle
- * names' own UTF-16 ceiling (see `normaliseTitle`).
+ * How much a puzzle's name field takes while typing, in Your puzzles and the
+ * editor's Name: as generous as a person's, for the same reasons, and
+ * matching the puzzle names' own UTF-16 ceiling (see `normaliseTitle`).
  */
 export const TITLE_INPUT_MAX = 80;
 

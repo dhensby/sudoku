@@ -362,7 +362,8 @@ async function friendsList(page: Page, before?: () => Promise<void>): Promise<vo
  * saying that instead (the clipboard as `enterPuzzleStates` stubs it); two
  * 5s in a row, both dotted; too few numbers; more than one solution; and a
  * Hard with one — Play and Share… unavailable until then, and faded, as Save
- * is on the empty grid. `where` names the layout in a failure.
+ * is on the empty grid — then Name focused, a right-to-left name typed in.
+ * `where` names the layout in a failure.
  */
 async function scanEnterPuzzle(page: Page, editor: Locator, where = ''): Promise<void> {
   const status = enterStatus(editor);
@@ -398,6 +399,11 @@ async function scanEnterPuzzle(page: Page, editor: Locator, where = ''): Promise
     await expect(editor.getByRole('button', { name })).not.toHaveAttribute('aria-disabled');
   }
   await expectAccessible(page, `Enter a puzzle with a Hard typed in${where}`);
+
+  const name = editor.getByRole('textbox', { name: 'Name' });
+  await name.fill('סודוקו של יום שבת');
+  await expect(name).toBeFocused();
+  await expectAccessible(page, `Enter a puzzle with a name being typed${where}`);
 }
 
 /**

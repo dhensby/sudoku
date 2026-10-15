@@ -14,6 +14,7 @@ interface EditorOptions {
   initialCells?: GridString;
   initialSelected?: number;
   savedCells?: GridString | null;
+  savedTitle?: string;
   isBackFromShare?: boolean;
 }
 
@@ -22,6 +23,7 @@ function renderEditor({
   initialCells = BLANK,
   initialSelected = 0,
   savedCells = null,
+  savedTitle = '',
   isBackFromShare,
 }: EditorOptions = {}) {
   const onPlay = vi.fn();
@@ -33,6 +35,7 @@ function renderEditor({
     initialCells,
     initialSelected,
     savedCells,
+    savedTitle,
     onPlay,
     onShare,
     onSave,
@@ -55,6 +58,7 @@ const play = () => within(dialog()).getByRole('button', { name: 'Play' });
 const share = () => within(dialog()).getByRole('button', { name: 'Share…' });
 const save = () => within(dialog()).getByRole('button', { name: /^Saved?$/ });
 const pasteButton = () => within(dialog()).getByRole('button', { name: 'Paste' });
+const nameField = () => within(dialog()).getByRole('textbox', { name: 'Name' });
 const padKey = (digit: number) =>
   within(dialog()).getByRole('button', { name: new RegExp(`^${digit}(, all placed)?$`) });
 
@@ -133,10 +137,10 @@ describe('EnterDialog', () => {
     const { onClose } = renderEditor();
     type('53');
     fireEvent.click(within(dialog()).getByRole('button', { name: 'Close' }));
-    expect(onClose).toHaveBeenLastCalledWith('53'.padEnd(81, '0'));
+    expect(onClose).toHaveBeenLastCalledWith('53'.padEnd(81, '0'), '');
     type('7');
     press('Escape');
-    expect(onClose).toHaveBeenLastCalledWith('537'.padEnd(81, '0'));
+    expect(onClose).toHaveBeenLastCalledWith('537'.padEnd(81, '0'), '');
     expect(onClose).toHaveBeenCalledTimes(2);
   });
 
@@ -301,9 +305,9 @@ describe('EnterDialog', () => {
       expect(onClose).toHaveBeenCalledTimes(1);
     });
 
-    it('count only on the grid: Space on Play, Share…, Save, Paste or a pad key presses it as ever', () => {
+    it('count only on the grid: Space on Name, Play, Share…, Save, Paste or a pad key is theirs as ever', () => {
       renderEditor();
-      for (const target of [play(), share(), save(), pasteButton(), padKey(5)]) {
+      for (const target of [nameField(), play(), share(), save(), pasteButton(), padKey(5)]) {
         target.focus();
         expect(press(' ')).toBe(true);
       }
@@ -469,7 +473,7 @@ describe('EnterDialog', () => {
       fireEvent.click(play());
       const checked = puzzleFromGivens(HARD);
       expect(checked.ok).toBe(true);
-      expect(onPlay).toHaveBeenCalledWith(checked.ok && checked.puzzle);
+      expect(onPlay).toHaveBeenCalledWith(checked.ok && checked.puzzle, '');
     });
 
     it('is unavailable again once a number spoils the puzzle', () => {
@@ -504,7 +508,7 @@ describe('EnterDialog', () => {
       fireEvent.click(share());
       const checked = puzzleFromGivens(HARD);
       expect(checked.ok).toBe(true);
-      expect(onShare).toHaveBeenCalledExactlyOnceWith(checked.ok && checked.puzzle, 30);
+      expect(onShare).toHaveBeenCalledExactlyOnceWith(checked.ok && checked.puzzle, 30, '');
       // Kept by the parent as it shares: Save is not pressed for it, nor Play.
       expect(onSave).not.toHaveBeenCalled();
       expect(onPlay).not.toHaveBeenCalled();
@@ -551,7 +555,7 @@ describe('EnterDialog', () => {
       expect(save()).not.toHaveAttribute('aria-disabled');
       expect(saveStatus()).toBeEmptyDOMElement();
       fireEvent.click(save());
-      expect(onSave).toHaveBeenCalledWith('55'.padEnd(81, '0'));
+      expect(onSave).toHaveBeenCalledWith('55'.padEnd(81, '0'), '');
       expect(saveStatus()).toHaveTextContent(/^Saved to Your puzzles\.$/);
       // The line about the numbers keeps its words.
       expect(status()).toHaveTextContent('Two 5s in row 1.');
@@ -590,13 +594,44 @@ describe('EnterDialog', () => {
         type(digit);
         fireEvent.click(save());
         const now = typed();
-        expect(onSave).toHaveBeenLastCalledWith(now);
+        expect(onSave).toHaveBeenLastCalledWith(now, '');
         rerender(<EnterDialog {...props} savedCells={now} />);
         expect(saveStatus()).toHaveTextContent(/^Saved to Your puzzles\.$/);
         said.push(saveStatus().firstElementChild!);
       }
       // A fresh message each time, though the words are the same, so each is announced.
       expect(said[1]).not.toBe(said[0]);
+    });
+
+    it('says Save once only the name changes on a grid as kept, and Saved once it is kept or put back', () => {
+      const kept = '6'.padEnd(81, '0');
+      const { onSave, props, rerender } = renderEditor({
+        initialCells: kept,
+        initialSelected: 1,
+        savedCells: kept,
+        savedTitle: 'The Times',
+      });
+      expect(save()).toHaveTextContent(/^Saved$/);
+      fireEvent.change(nameField(), { target: { value: 'The Guardian' } });
+      expect(save()).toHaveTextContent(/^Save$/);
+      expect(save()).not.toHaveAttribute('aria-disabled');
+      // As the name tidies, it is the name kept.
+      fireEvent.change(nameField(), { target: { value: ' The  Times ' } });
+      expect(save()).toHaveTextContent(/^Saved$/);
+      fireEvent.change(nameField(), { target: { value: 'X' } });
+      fireEvent.click(save());
+      expect(onSave).toHaveBeenCalledExactlyOnceWith(kept, 'X');
+      rerender(<EnterDialog {...props} savedTitle="X" />);
+      expect(save()).toHaveTextContent(/^Saved$/);
+    });
+
+    it('stays unavailable for a name typed over an empty grid, and does nothing pressed', () => {
+      const { onSave } = renderEditor();
+      fireEvent.change(nameField(), { target: { value: 'The Times' } });
+      expect(save()).toHaveTextContent(/^Save$/);
+      expect(save()).toHaveAttribute('aria-disabled', 'true');
+      fireEvent.click(save());
+      expect(onSave).not.toHaveBeenCalled();
     });
 
     it('is still unavailable on a grid kept that is erased to nothing', () => {
@@ -607,6 +642,103 @@ describe('EnterDialog', () => {
       expect(save()).toHaveAttribute('aria-disabled', 'true');
       fireEvent.click(save());
       expect(onSave).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('the name', () => {
+    it("sits in the header in the title's place, labelled Name, the grid focused as it opens", () => {
+      renderEditor();
+      expect(nameField()).toHaveValue('');
+      expect(nameField().closest('.dialog__header')).not.toBeNull();
+      expect(cell(0)).toHaveFocus();
+      // The title is read, not shown: still the dialog's name and heading.
+      expect(within(dialog()).getByRole('heading', { name: 'Enter a puzzle' })).toHaveClass(
+        'visually-hidden',
+      );
+    });
+
+    it('opens with the name kept, focus still on the grid, or on Share… back from Share', () => {
+      const { unmount } = renderEditor({
+        initialCells: HARD,
+        initialSelected: 30,
+        savedCells: HARD,
+        savedTitle: 'The Times',
+      });
+      expect(nameField()).toHaveValue('The Times');
+      expect(cell(30)).toHaveFocus();
+      unmount();
+      renderEditor({
+        initialCells: HARD,
+        initialSelected: 30,
+        savedCells: HARD,
+        savedTitle: 'The Times',
+        isBackFromShare: true,
+      });
+      expect(nameField()).toHaveValue('The Times');
+      expect(share()).toHaveFocus();
+    });
+
+    it('keeps its own keys: digits, Space, a dot, Backspace, Delete, the arrows and a paste go to the name, never the grid', () => {
+      renderEditor();
+      nameField().focus();
+      for (const key of ['5', ' ', '0', '.', 'Backspace', 'Delete', 'ArrowLeft', 'ArrowDown']) {
+        expect(press(key), key).toBe(true);
+      }
+      expect(pasteText(PUZZLE)).toBe(true);
+      expect(typed()).toBe(BLANK);
+      expect(selected()).toBe(0);
+      expect(nameField()).toHaveFocus();
+    });
+
+    it('leaves focus in Name as a mouse presses a pad key, the number still going in the selected cell', () => {
+      renderEditor();
+      fireEvent.click(cell(40));
+      nameField().focus();
+      fireEvent.change(nameField(), { target: { value: 'The Times' } });
+      expect(fireEvent.mouseDown(padKey(5))).toBe(false);
+      fireEvent.click(padKey(5));
+      expect(cell(40)).toHaveAccessibleName('5, given');
+      expect(nameField()).toHaveFocus();
+      expect(nameField()).toHaveValue('The Times');
+    });
+
+    it("goes back to the selected cell on Enter, but not on an input method's", () => {
+      renderEditor();
+      fireEvent.click(cell(40));
+      nameField().focus();
+      fireEvent.keyDown(nameField(), { key: 'Enter', isComposing: true });
+      expect(nameField()).toHaveFocus();
+      // Safari's, confirming it: the composition already over, the key still the input method's.
+      expect(fireEvent.keyDown(nameField(), { key: 'Enter', keyCode: 229 })).toBe(true);
+      expect(nameField()).toHaveFocus();
+      expect(fireEvent.keyDown(nameField(), { key: 'Enter' })).toBe(false);
+      expect(cell(40)).toHaveFocus();
+    });
+
+    it('tidies the name as it loses focus', () => {
+      renderEditor();
+      fireEvent.change(nameField(), { target: { value: '  The   Times ' } });
+      fireEvent.blur(nameField());
+      expect(nameField()).toHaveValue('The Times');
+    });
+
+    it('hands the name up raw with the grid, however the editor is left', () => {
+      const { onPlay, onShare, onSave, onClose } = renderEditor();
+      type(HARD);
+      const checked = puzzleFromGivens(HARD);
+      expect(checked.ok).toBe(true);
+      const puzzle = checked.ok && checked.puzzle;
+      fireEvent.change(nameField(), { target: { value: ' The Times ' } });
+      fireEvent.click(save());
+      expect(onSave).toHaveBeenCalledExactlyOnceWith(HARD, ' The Times ');
+      fireEvent.click(play());
+      expect(onPlay).toHaveBeenCalledExactlyOnceWith(puzzle, ' The Times ');
+      fireEvent.click(share());
+      expect(onShare).toHaveBeenCalledExactlyOnceWith(puzzle, 80, ' The Times ');
+      // Escape in Name closes the editor, as anywhere in it.
+      nameField().focus();
+      press('Escape');
+      expect(onClose).toHaveBeenCalledExactlyOnceWith(HARD, ' The Times ');
     });
   });
 

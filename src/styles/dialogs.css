@@ -3559,17 +3559,37 @@
 /* ==========================================================================
    Enter a puzzle
 
-   A board to type a puzzle into, then the line saying what its numbers
-   make so far, the pad, Play, Share…, Save and Paste, and the hint under
-   them — one under another, or the board beside the rest on a phone on its
-   side. None of it scrolls: the board takes the height the rest leaves. So
-   there is no footer, whose rule and padding would cost the board most of a
-   row on a phone, and the board is drawn from a size of its own with the
-   game's geometry, as a playback's is.
+   The puzzle's name in the header, in the title's place; a board to type a
+   puzzle into, then the line saying what its numbers make so far, the pad,
+   Play, Share…, Save and Paste, and the hint under them — one under
+   another, or the board beside the rest on a phone on its side. None of it
+   scrolls: the board takes the height the rest leaves. So there is no
+   footer, whose rule and padding would cost the board most of a row on a
+   phone, and the board is drawn from a size of its own with the game's
+   geometry, as a playback's is.
    ========================================================================== */
 
 .dialog--enter {
   max-width: 460px;
+}
+
+/* The puzzle's name, in the header in the title's place: a label and a field
+   as any form's, the field taking the room the close button leaves. Its own
+   44px, which a phone's close button matches, so on a phone the header is no
+   taller for it; with a mouse the field is 8px taller than the close
+   button's 36px, and so the header too, which the board's 234px allows for.
+   Nothing here may change the field's height, padding or type. */
+.enter__name {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.enter__name .field__input {
+  flex: 1;
+  min-width: 0;
 }
 
 .enter {
@@ -3583,10 +3603,12 @@
 
 .enter__board {
   /* As large as the card allows: by the width inside the body's padding, and
-     by the height the rest leaves — the scrim, the header (its close button
-     a finger's 44px), the body's padding, the status line, the buttons, the
-     hint, the gaps between them (some 234px in all) and the pad's two rows
-     of keys. */
+     by the height the rest leaves — the scrim, the header (its 44px Name
+     field on any pointer, and its close button too on a phone, inside its
+     own padding), the body's padding, the status line, the buttons, the hint, the
+     gaps between them (some 234px in all: 234.9px on the shortest phone,
+     where rounding the cells down takes up the rest, and under 232px with a
+     mouse, whose buttons are 40px) and the pad's two rows of keys. */
   --board-size: clamp(
     200px,
     min(
@@ -3677,9 +3699,10 @@
 }
 
 /* Unavailable while there is nothing to do — Play and Share… until the
-   numbers make a puzzle, Save while the grid is empty or as saved — as a
-   disabled button looks (see EnterDialog for why they are not disabled),
-   and as still under the pointer and the press, each in its own colour. */
+   numbers make a puzzle, Save while the grid is empty or it and its name
+   are as saved — as a disabled button looks (see EnterDialog for why they
+   are not disabled), and as still under the pointer and the press, each in
+   its own colour. */
 .enter__actions .button[aria-disabled='true'],
 .enter__actions .button[aria-disabled='true']:hover,
 .enter__actions .button[aria-disabled='true']:active {
