@@ -229,6 +229,9 @@ describe('FriendsDialog', () => {
       fireEvent.change(field(), { target: { value: 'Zed' } });
       fireEvent.keyDown(field(), { key: 'Enter', isComposing: true });
       expect(props.onRename).not.toHaveBeenCalled();
+      // Safari's, confirming it: the composition already over, the key still the input method's.
+      fireEvent.keyDown(field(), { key: 'Enter', keyCode: 229 });
+      expect(props.onRename).not.toHaveBeenCalled();
       fireEvent.keyDown(field(), { key: 'Enter' });
       expect(props.onRename).toHaveBeenCalledExactlyOnceWith('z8c2m5r1to', 'Zed');
       expect(within(row('No name')).getByRole('button', { name: /^Rename/ })).toHaveFocus();

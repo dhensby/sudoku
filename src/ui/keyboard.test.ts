@@ -1,6 +1,7 @@
 import {
   commandForKey,
   isModeModifierKey,
+  isPlainEnter,
   isRepeatable,
   type KeyCommand,
   type KeyInput,
@@ -143,4 +144,21 @@ describe('isModeModifierKey', () => {
   ])('says %s flips the mode: %s', (key, expected) => {
     expect(isModeModifierKey(key)).toBe(expected);
   });
+});
+
+describe('isPlainEnter', () => {
+  it.each([
+    ['Enter', false, 13, true],
+    // Picking a candidate, as most browsers send it.
+    ['Enter', true, 229, false],
+    // Confirming it in Safari, the composition already ended.
+    ['Enter', false, 229, false],
+    ['a', false, 65, false],
+    ['Escape', false, 27, false],
+  ])(
+    'says %s (composing: %s, keyCode %i) is Enter to act on: %s',
+    (key, isComposing, keyCode, expected) => {
+      expect(isPlainEnter({ key, isComposing, keyCode })).toBe(expected);
+    },
+  );
 });

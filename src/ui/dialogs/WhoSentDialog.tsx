@@ -1,6 +1,7 @@
 import { useId, useState } from 'react';
 import { byRecency, friendKey, type Friend } from '../../storage/friends';
 import { normaliseName } from '../../storage/storage';
+import { isPlainEnter } from '../keyboard';
 import type { LinkSharer } from '../session';
 import { Dialog } from './Dialog';
 import { NAME_INPUT_MAX, friendOption } from './text';
@@ -61,8 +62,8 @@ export function WhoSentDialog({ sharer, friends, onSave, onClose }: WhoSentDialo
     onSave(choice === '' ? { kind: 'name', name } : { kind: 'sameAs', friendId: choice });
 
   const handleFieldKey = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    // Enter while composing picks the candidate a keyboard offers, and no more.
-    if (event.key !== 'Enter' || event.nativeEvent.isComposing) return;
+    // An input method's Enter picks or confirms its candidate, and no more.
+    if (!isPlainEnter(event.nativeEvent)) return;
     event.preventDefault();
     save();
   };

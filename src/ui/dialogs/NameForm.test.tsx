@@ -51,6 +51,14 @@ describe('NameForm', () => {
     expect(props.onSave).toHaveBeenNthCalledWith(2, ' Mine ');
   });
 
+  it('leaves the Enter an input method takes to it, picking or confirming a candidate', () => {
+    const props = renderForm();
+    expect(fireEvent.keyDown(field(), { key: 'Enter', isComposing: true })).toBe(true);
+    // Safari's, confirming it: the composition already over, the key still the input method's.
+    expect(fireEvent.keyDown(field(), { key: 'Enter', keyCode: 229 })).toBe(true);
+    expect(props.onSave).not.toHaveBeenCalled();
+  });
+
   it('claims Escape, so the dialog stays open, and cancels', () => {
     const props = renderForm();
     expect(fireEvent.keyDown(field(), { key: 'Escape' })).toBe(false);

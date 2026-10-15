@@ -114,6 +114,9 @@ describe('WhoSentDialog', () => {
     fireEvent.change(field(), { target: { value: 'アリー' } });
     fireEvent.keyDown(field(), { key: 'Enter', isComposing: true });
     expect(props.onSave).not.toHaveBeenCalled();
+    // Safari's, confirming it: the composition already over, the key still the input method's.
+    expect(fireEvent.keyDown(field(), { key: 'Enter', keyCode: 229 })).toBe(true);
+    expect(props.onSave).not.toHaveBeenCalled();
     fireEvent.keyDown(field(), { key: 'a' });
     expect(props.onSave).not.toHaveBeenCalled();
     const enter = fireEvent.keyDown(field(), { key: 'Enter' });

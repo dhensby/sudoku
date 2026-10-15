@@ -136,3 +136,17 @@ export function isRepeatable(command: KeyCommand): boolean {
 export function isModeModifierKey(key: string): boolean {
   return key === 'Shift' || key === 'Alt';
 }
+
+/**
+ * Whether a key pressed in a text field is Enter to act on — to save a name,
+ * say — and not the Enter an input method takes to pick a candidate or to
+ * confirm what it has composed. Most browsers say that one is composing.
+ * Safari ends the composition just before the keydown of the Enter that
+ * confirms it, so says so only with the keyCode 229 every browser gives a
+ * key an input method has taken.
+ */
+export function isPlainEnter(
+  event: Pick<KeyboardEvent, 'key' | 'isComposing' | 'keyCode'>,
+): boolean {
+  return event.key === 'Enter' && !event.isComposing && event.keyCode !== 229;
+}
