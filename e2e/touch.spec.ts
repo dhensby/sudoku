@@ -1591,11 +1591,12 @@ for (const viewport of [
  * nothing to scroll either way, for the board takes the height the rest
  * leaves; every button a finger's 44px (the pad's nine keys, Erase, Play,
  * Share…, Save, Paste and the close button), Play, Share…, Save and Paste
- * side by side with the hint in view under them; and every cell at least
- * WCAG's 24px, but on the shortest phone on its side, which leaves the board
- * room for 22px (upright, it has 25px). A tap on a cell, then on the pad,
- * puts the number in that cell and moves on to the next, as typing does, so
- * the next tap on the pad fills that one.
+ * side by side with the hint in view under them; Name level with the close
+ * button, as tall, in 16px type so iOS does not zoom to it; and every cell
+ * at least WCAG's 24px, but on the shortest phone on its side, which leaves
+ * the board room for 22px (upright, it has 25px). A tap on a cell — focus
+ * back from Name — then on the pad, puts the number in that cell and moves
+ * on to the next, as typing does, so the next tap on the pad fills that one.
  */
 for (const viewport of [
   { width: 320, height: 568 },
@@ -1629,6 +1630,14 @@ for (const viewport of [
         expect(size.height, label).toBeGreaterThanOrEqual(44);
         expect(size.width, label).toBeGreaterThanOrEqual(44);
       }
+      // Name on the close button's row, as tall: the header no taller for it.
+      const nameField = dialog.getByRole('textbox', { name: 'Name' });
+      const nameBox = (await nameField.boundingBox())!;
+      const closeBox = (await dialog.getByRole('button', { name: 'Close' }).boundingBox())!;
+      expect(nameBox.height).toBeGreaterThanOrEqual(44);
+      expect(Math.abs(nameBox.y - closeBox.y)).toBeLessThanOrEqual(0.5);
+      expect(Math.abs(nameBox.height - closeBox.height)).toBeLessThanOrEqual(0.5);
+      expect(await nameField.evaluate((el) => getComputedStyle(el).fontSize)).toBe('16px');
       // Play, Share…, Save and Paste on one line, the hint under them and on screen.
       const tops = await Promise.all(
         ['Play', 'Share…', 'Save', 'Paste'].map(async (name) =>
@@ -1649,9 +1658,13 @@ for (const viewport of [
       );
       expect(smallest).toBeGreaterThanOrEqual(viewport.height === 320 ? 22 : 24);
 
+      // A name typed, then a tap on a cell takes focus back to the grid.
+      await nameField.fill('The Times #5,123');
+      await expect(nameField).toBeFocused();
       const target = dialog.getByRole('gridcell').nth(40);
       const next = dialog.getByRole('gridcell').nth(41);
       await target.tap();
+      await expect(target).toBeFocused();
       await dialog.getByRole('button', { name: '5', exact: true }).tap();
       await expect(target).toHaveAccessibleName('5, given');
       await expect(next).toHaveAttribute('aria-selected', 'true');

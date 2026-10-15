@@ -623,13 +623,16 @@ export function App({ options }: AppProps = {}) {
             initialCells={dialog.cells}
             initialSelected={dialog.selected}
             savedCells={dialog.id === null ? null : dialog.cells}
-            onPlay={(puzzle) => {
+            savedTitle={dialog.title}
+            onPlay={(puzzle, title) => {
               requestBoardFocus();
-              actions.playFromEditor(dialog, puzzle);
+              actions.playFromEditor(dialog, puzzle, title);
             }}
-            onShare={(puzzle, selected) => actions.shareFromEditor(dialog, puzzle, selected)}
-            onSave={(cells) => actions.saveEntry(dialog, cells)}
-            onClose={(cells) => actions.closeEditor(dialog, cells)}
+            onShare={(puzzle, selected, title) =>
+              actions.shareFromEditor(dialog, puzzle, selected, title)
+            }
+            onSave={(cells, title) => actions.saveEntry(dialog, cells, title)}
+            onClose={(cells, title) => actions.closeEditor(dialog, cells, title)}
             isBackFromShare={dialog.isBackFromShare}
           />
         )}

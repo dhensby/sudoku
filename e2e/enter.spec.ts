@@ -13,6 +13,7 @@ import {
   readBoard,
   resumeButton,
   seedPuzzles,
+  settle,
   solutionOf,
   startButton,
   stubClipboard,
@@ -25,9 +26,10 @@ import {
  * any other — a Hard typed in plays as the Hard it is, and its link opens it
  * elsewhere as a friend's would, shared from its Start card or from the
  * editor without a game of it — and kept in Your puzzles, finished or not,
- * to edit, name, play, share or delete there, and to carry to another
- * browser in History's export. Everything in the editor is found through its
- * dialog: the board and the pad behind it stay on the page.
+ * named as it is typed in or there, to edit, play, share or delete there,
+ * and to carry to another browser in History's export. Everything in the
+ * editor is found through its dialog: the board and the pad behind it stay
+ * on the page.
  *
  * Runs on Chromium (desktop layout).
  */
@@ -175,6 +177,51 @@ test('shares it from the editor as the puzzle alone, starting nothing, and its l
     await waitForPlaying(other);
     expect(await readBoard(other)).toBe(HARD.givens);
   });
+});
+
+test('names a puzzle as it is typed in: the name on its link, in Name back from Share, and on its row', async ({
+  page,
+}) => {
+  await stubClipboard(page);
+  await openGame(page);
+  const editor = await openEnterPuzzle(page);
+  await expect(editor.getByRole('gridcell').first()).toBeFocused();
+  // Name sits in the header, before Close: two stops back from the grid.
+  await page.keyboard.press('Shift+Tab');
+  await page.keyboard.press('Shift+Tab');
+  const name = editor.getByRole('textbox', { name: 'Name' });
+  await expect(name).toBeFocused();
+  await page.keyboard.type('The Times #5,123');
+  await page.keyboard.press('Enter');
+  await expect(editor.getByRole('gridcell').first()).toBeFocused();
+  await page.keyboard.type(HARD.givens);
+  expect(await typedIn(editor)).toBe(HARD.givens);
+  // With a mouse, Name makes the header 8px taller than the close button
+  // alone would: the board still fits, with nothing to scroll. Measured once
+  // the card has risen into place: the keys can all be typed before it has.
+  await settle(page);
+  expect((await name.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  const body = editor.locator('.dialog__body');
+  expect(await body.evaluate((el) => el.scrollHeight - el.clientHeight)).toBeLessThanOrEqual(1);
+
+  await editor.getByRole('button', { name: 'Share…' }).click();
+  const share = page.getByRole('dialog', { name: 'Share this puzzle' });
+  await share.getByRole('button', { name: 'Copy', exact: true }).click();
+  await expect(share.getByRole('status')).toHaveText('Copied to clipboard');
+  const [message] = await copiedText(page);
+  const lines = message.split('\n');
+  expect(lines.slice(0, 2)).toEqual(['Try this Hard Sudoku!', 'The Times #5,123']);
+  expect(new URL(lines.at(-1)!).searchParams.get('l')).toBe('The Times #5,123');
+  await page.keyboard.press('Escape');
+
+  // Back in the editor, Name on the name as kept.
+  const again = page.getByRole('dialog', { name: 'Enter a puzzle' });
+  await expect(again.getByRole('textbox', { name: 'Name' })).toHaveValue('The Times #5,123');
+  await expect(again.getByRole('button', { name: 'Saved' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  const library = page.getByRole('dialog', { name: 'Your puzzles' });
+  await expect(library.locator('bdi')).toHaveText(['The Times #5,123']);
+  await expect(library.getByRole('button', { name: /^Edit The Times #5,123, from/ })).toBeFocused();
 });
 
 test('names a clash, and more than one solution, and keeps Play and Share… unavailable', async ({

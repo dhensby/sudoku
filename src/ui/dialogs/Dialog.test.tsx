@@ -33,6 +33,23 @@ describe('Dialog', () => {
     );
   });
 
+  it("shows a header control in the title's place, the title still its name and heading, read but not shown", () => {
+    render(
+      <Dialog title="Test" onClose={vi.fn()} headerControl={<input aria-label="Thing" />}>
+        <p>Body</p>
+      </Dialog>,
+    );
+    const dialog = screen.getByRole('dialog', { name: 'Test' });
+    const heading = screen.getByRole('heading', { name: 'Test' });
+    expect(heading.id).toBe(dialog.getAttribute('aria-labelledby'));
+    expect(heading).toHaveClass('visually-hidden');
+    expect(heading).not.toHaveClass('dialog__title');
+    const control = screen.getByRole('textbox', { name: 'Thing' });
+    expect(control.closest('.dialog__header')).not.toBeNull();
+    // Before Close in the header: with no nominee, the dialog opens on it.
+    expect(control).toHaveFocus();
+  });
+
   it('renders a footer only when given one', () => {
     const { rerender } = renderDialog();
     expect(document.querySelector('.dialog__footer')).toBeNull();

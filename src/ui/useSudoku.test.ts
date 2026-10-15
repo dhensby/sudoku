@@ -41,7 +41,7 @@ import {
 } from '../storage/history';
 import { loadEncodedMoveLog, loadMoveLog, readMoveLogIds, storeMoveLog } from '../storage/moveLogs';
 import { loadPreferences, setLastDifficulty } from '../storage/prefs';
-import { retitlePuzzle, savePuzzle } from '../storage/puzzles';
+import { deletePuzzle, retitlePuzzle, savePuzzle } from '../storage/puzzles';
 import { memoryStorage, type StorageLike } from '../storage/storage';
 import {
   BEYOND_THE_SET,
@@ -725,11 +725,12 @@ describe('useSudoku', () => {
         kind: 'enter',
         id: null,
         cells: '0'.repeat(81),
+        title: '',
         selected: 0,
       });
       expect(result.current.pauseReason).toBe('dialog');
       // Closed with nothing typed: nothing kept, and no row to go back to.
-      act(() => result.current.actions.closeEditor(editor(result), '0'.repeat(81)));
+      act(() => result.current.actions.closeEditor(editor(result), '0'.repeat(81), ''));
       expect(result.current.dialog).toEqual({ kind: 'puzzles' });
       expect(loadPuzzles(storage)).toEqual([]);
       expect(result.current.pauseReason).toBe('dialog');
@@ -745,6 +746,7 @@ describe('useSudoku', () => {
         kind: 'enter',
         id: 'kept-0000',
         cells: HALF,
+        title: '',
         selected: HALF.replace(/0+$/, '').length,
       });
       // A grid with its last cell filled keeps the selection there.
@@ -755,7 +757,7 @@ describe('useSudoku', () => {
     it('saves a grid unfinished, staying in the editor as the entry it is now', async () => {
       const { result, storage } = await library();
       act(() => result.current.actions.openEditor(null));
-      act(() => result.current.actions.saveEntry(editor(result), HALF));
+      act(() => result.current.actions.saveEntry(editor(result), HALF, ''));
       const [entry] = loadPuzzles(storage);
       expect(entry).toMatchObject({ cells: HALF, createdAt: NOW, updatedAt: NOW });
       expect(entry).not.toHaveProperty('title');
@@ -764,10 +766,11 @@ describe('useSudoku', () => {
         kind: 'enter',
         id: entry.id,
         cells: HALF,
+        title: '',
         selected: 0,
       });
       // Saved again changed: the same entry, its numbers moved on.
-      act(() => result.current.actions.saveEntry(editor(result), HARD));
+      act(() => result.current.actions.saveEntry(editor(result), HARD, ''));
       expect(loadPuzzles(storage)).toMatchObject([{ id: entry.id, cells: HARD }]);
       expect(result.current.dialog).toMatchObject({ kind: 'enter', id: entry.id, cells: HARD });
     });
@@ -776,7 +779,7 @@ describe('useSudoku', () => {
       const { result, storage } = await library([HALF]);
       updatePuzzles(storage, (list) => retitlePuzzle(list, 'kept-0000', 'Half', 5));
       act(() => result.current.actions.openEditor(null));
-      act(() => result.current.actions.saveEntry(editor(result), HALF));
+      act(() => result.current.actions.saveEntry(editor(result), HALF, ''));
       expect(loadPuzzles(storage)).toMatchObject([{ id: 'kept-0000', cells: HALF, title: 'Half' }]);
       expect(result.current.dialog).toMatchObject({ id: 'kept-0000' });
     });
@@ -784,7 +787,7 @@ describe('useSudoku', () => {
     it('keeps the puzzle as Play starts it, as Save would', async () => {
       const { result, storage } = await library();
       act(() => result.current.actions.openEditor(null));
-      act(() => result.current.actions.playFromEditor(editor(result), typedIn(HARD)));
+      act(() => result.current.actions.playFromEditor(editor(result), typedIn(HARD), ''));
       expect(result.current.dialog).toBeNull();
       expect(result.current.phase).toBe('ready');
       expect(result.current.record).toMatchObject({ givens: HARD, entered: true });
@@ -795,7 +798,7 @@ describe('useSudoku', () => {
       const { result, storage } = await library([HARD]);
       act(() => result.current.actions.openEditor(result.current.puzzles[0]));
       const writes = vi.spyOn(storage, 'setItem');
-      act(() => result.current.actions.playFromEditor(editor(result), typedIn(HARD)));
+      act(() => result.current.actions.playFromEditor(editor(result), typedIn(HARD), ''));
       expect(writes.mock.calls.filter(([key]) => key === 'sudoku.puzzles')).toEqual([]);
       expect(result.current.phase).toBe('ready');
     });
@@ -803,7 +806,7 @@ describe('useSudoku', () => {
     it('keeps a changed grid as it closes, back on its row', async () => {
       const { result, storage } = await library([HALF]);
       act(() => result.current.actions.openEditor(result.current.puzzles[0]));
-      act(() => result.current.actions.closeEditor(editor(result), HARD));
+      act(() => result.current.actions.closeEditor(editor(result), HARD, ''));
       expect(loadPuzzles(storage)).toMatchObject([{ id: 'kept-0000', cells: HARD }]);
       expect(result.current.dialog).toEqual({
         kind: 'puzzles',
@@ -815,7 +818,7 @@ describe('useSudoku', () => {
     it('keeps a new grid with a number in as it closes, back on its new row', async () => {
       const { result, storage } = await library();
       act(() => result.current.actions.openEditor(null));
-      act(() => result.current.actions.closeEditor(editor(result), '5'.padEnd(81, '0')));
+      act(() => result.current.actions.closeEditor(editor(result), '5'.padEnd(81, '0'), ''));
       const [entry] = loadPuzzles(storage);
       expect(entry.cells).toBe('5'.padEnd(81, '0'));
       expect(result.current.dialog).toEqual({
@@ -829,7 +832,7 @@ describe('useSudoku', () => {
       const writes = vi.spyOn(storage, 'setItem');
       for (const cells of [HALF, '0'.repeat(81)]) {
         act(() => result.current.actions.openEditor(result.current.puzzles[0]));
-        act(() => result.current.actions.closeEditor(editor(result), cells));
+        act(() => result.current.actions.closeEditor(editor(result), cells, ''));
         expect(result.current.dialog).toEqual({
           kind: 'puzzles',
           place: { id: 'kept-0000', control: 'edit' },
@@ -844,7 +847,7 @@ describe('useSudoku', () => {
       const { result, storage } = await library([HALF]);
       act(() => result.current.actions.openEditor(null));
       updatePuzzles(storage, (list) => savePuzzle(list, { id: 'other-0001', cells: HARD }, 9).list);
-      act(() => result.current.actions.closeEditor(editor(result), '0'.repeat(81)));
+      act(() => result.current.actions.closeEditor(editor(result), '0'.repeat(81), ''));
       expect(result.current.puzzles.map((entry) => entry.id)).toEqual(['other-0001', 'kept-0000']);
     });
 
@@ -864,13 +867,14 @@ describe('useSudoku', () => {
       const { result, storage } = await library();
       act(() => result.current.actions.openEditor(null));
       const writes = vi.spyOn(storage, 'setItem');
-      act(() => result.current.actions.shareFromEditor(editor(result), typedIn(HARD), 30));
+      act(() => result.current.actions.shareFromEditor(editor(result), typedIn(HARD), 30, ''));
       const [entry] = loadPuzzles(storage);
       expect(entry.cells).toBe(HARD);
       const back = {
         kind: 'enter',
         id: entry.id,
         cells: HARD,
+        title: '',
         selected: 30,
         isBackFromShare: true,
       };
@@ -895,7 +899,7 @@ describe('useSudoku', () => {
       expect(result.current.pauseReason).toBe('dialog');
       // Kept as it was shared: closing the editor now writes nothing more.
       writes.mockClear();
-      act(() => result.current.actions.closeEditor(editor(result), HARD));
+      act(() => result.current.actions.closeEditor(editor(result), HARD, ''));
       expect(writes.mock.calls.filter(([key]) => key === 'sudoku.puzzles')).toEqual([]);
       expect(result.current.dialog).toEqual({
         kind: 'puzzles',
@@ -1028,14 +1032,120 @@ describe('useSudoku', () => {
         expect(result.current.dialog).toMatchObject({ kind: 'share', target: { title: TITLE } });
         act(() => result.current.actions.closeDialog());
         act(() => result.current.actions.openEditor(result.current.puzzles[0]));
-        // Renamed in another tab while the editor was open: the name it keeps
-        // as Share… keeps it goes, not the one the list last read.
+        // Renamed in another tab while the editor was open, Name left as it
+        // opened: the name it keeps as Share… keeps it goes, not the one the
+        // list last read, nor the one Name still shows.
         named(storage, HARD, 'The Sunday Times');
-        act(() => result.current.actions.shareFromEditor(editor(result), typedIn(HARD), 3));
+        act(() => result.current.actions.shareFromEditor(editor(result), typedIn(HARD), 3, TITLE));
         expect(result.current.dialog).toMatchObject({
           kind: 'share',
           target: { title: 'The Sunday Times' },
         });
+      });
+
+      it('keeps the name typed in the editor with the grid, tidied, and a name changed alone, its row not moving', async () => {
+        const { result, storage } = await library([HALF]);
+        act(() => result.current.actions.openEditor(null));
+        act(() => result.current.actions.saveEntry(editor(result), HARD, '  The   Times  '));
+        const [entry] = loadPuzzles(storage);
+        expect(entry).toMatchObject({ cells: HARD, title: 'The Times' });
+        expect(result.current.dialog).toMatchObject({
+          kind: 'enter',
+          id: entry.id,
+          cells: HARD,
+          title: 'The Times',
+        });
+        act(() => result.current.actions.saveEntry(editor(result), HARD, 'The Guardian'));
+        expect(loadPuzzles(storage).map((kept) => [kept.cells, kept.title ?? null])).toEqual([
+          [HARD, 'The Guardian'],
+          [HALF, null],
+        ]);
+        expect(result.current.dialog).toMatchObject({ title: 'The Guardian' });
+      });
+
+      it('takes a name off for an empty Name, and leaves one alone that Name never changed', async () => {
+        const storage = memoryStorage();
+        named(storage, HALF, TITLE);
+        const { result } = await started({ storage });
+        act(() => result.current.actions.openDialog('puzzles'));
+        act(() => result.current.actions.openEditor(result.current.puzzles[0]));
+        expect(editor(result).title).toBe(TITLE);
+        // Renamed in another tab, Name left as it opened: that name stands.
+        named(storage, HALF, 'The Sunday Times');
+        act(() => result.current.actions.saveEntry(editor(result), HARD, TITLE));
+        expect(loadPuzzles(storage)).toMatchObject([
+          { id: 'kept-0000', cells: HARD, title: 'The Sunday Times' },
+        ]);
+        act(() => result.current.actions.saveEntry(editor(result), HARD, ''));
+        expect(loadPuzzles(storage)[0]).not.toHaveProperty('title');
+        expect(result.current.dialog).toMatchObject({ title: '' });
+      });
+
+      it('names a grid typed in afresh that is kept already by the name typed, if any', async () => {
+        const { result, storage } = await library([HALF]);
+        updatePuzzles(storage, (list) => retitlePuzzle(list, 'kept-0000', 'Half', 5));
+        act(() => result.current.actions.openEditor(null));
+        // Name left empty: the puzzle it proves to be keeps its name, Name reading Saved.
+        act(() => result.current.actions.saveEntry(editor(result), HALF, ''));
+        expect(loadPuzzles(storage)).toMatchObject([{ id: 'kept-0000', title: 'Half' }]);
+        expect(result.current.dialog).toMatchObject({ id: 'kept-0000', title: '' });
+        act(() => result.current.actions.saveEntry(editor(result), HALF, TITLE));
+        expect(loadPuzzles(storage)).toMatchObject([{ id: 'kept-0000', title: TITLE }]);
+      });
+
+      it('keeps a name changed alone as the editor closes, but none typed over an empty grid', async () => {
+        const { result, storage } = await library([HALF]);
+        act(() => result.current.actions.openEditor(result.current.puzzles[0]));
+        act(() => result.current.actions.closeEditor(editor(result), HALF, ' The Times '));
+        expect(loadPuzzles(storage)).toMatchObject([
+          { id: 'kept-0000', cells: HALF, title: 'The Times' },
+        ]);
+        expect(result.current.dialog).toEqual({
+          kind: 'puzzles',
+          place: { id: 'kept-0000', control: 'edit' },
+        });
+        const writes = vi.spyOn(storage, 'setItem');
+        act(() => result.current.actions.openEditor(null));
+        act(() => result.current.actions.closeEditor(editor(result), '0'.repeat(81), TITLE));
+        expect(result.current.dialog).toEqual({ kind: 'puzzles' });
+        // An entry erased to nothing keeps its numbers, and its name too.
+        act(() => result.current.actions.openEditor(result.current.puzzles[0]));
+        act(() => result.current.actions.closeEditor(editor(result), '0'.repeat(81), TITLE));
+        expect(writes.mock.calls.filter(([key]) => key === 'sudoku.puzzles')).toEqual([]);
+        expect(loadPuzzles(storage)).toMatchObject([{ cells: HALF, title: 'The Times' }]);
+      });
+
+      it('shares and plays a puzzle typed in under the name typed, writing it once', async () => {
+        const { result, storage } = await library();
+        act(() => result.current.actions.openEditor(null));
+        act(() =>
+          result.current.actions.shareFromEditor(editor(result), typedIn(HARD), 30, ' The Times '),
+        );
+        expect(result.current.dialog).toMatchObject({
+          kind: 'share',
+          target: { title: 'The Times' },
+          returnTo: { kind: 'enter', title: 'The Times' },
+        });
+        act(() => result.current.actions.closeDialog());
+        // Name as it came back from Share: nothing more to write as Play starts it.
+        const writes = vi.spyOn(storage, 'setItem');
+        act(() =>
+          result.current.actions.playFromEditor(editor(result), typedIn(HARD), 'The Times'),
+        );
+        expect(writes.mock.calls.filter(([key]) => key === 'sudoku.puzzles')).toEqual([]);
+        expect(result.current.phase).toBe('ready');
+        expect(result.current.title).toBe('The Times');
+        expect(result.current.record).not.toHaveProperty('title');
+      });
+
+      it('puts a name changed in the editor back on an entry deleted in another tab', async () => {
+        const { result, storage } = await library([HALF]);
+        act(() => result.current.actions.openEditor(result.current.puzzles[0]));
+        updatePuzzles(storage, (list) => deletePuzzle(list, 'kept-0000'));
+        act(() => result.current.actions.saveEntry(editor(result), HALF, TITLE));
+        expect(loadPuzzles(storage)).toMatchObject([
+          { id: 'kept-0000', cells: HALF, title: TITLE },
+        ]);
       });
 
       it('plays a solved puzzle again from its link under the name the link gave', async () => {

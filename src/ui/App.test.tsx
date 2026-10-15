@@ -969,6 +969,42 @@ describe('App', () => {
       expect(loadPuzzles(storage)).toMatchObject([{ cells: HARD, title: 'The Times #5,123' }]);
     });
 
+    it('names a puzzle as it is typed in: on its Start card, its row, and in Name as Edit opens it again', async () => {
+      const { storage } = await startApp();
+      const editor = openEditor();
+      const name = within(editor).getByRole('textbox', { name: 'Name' });
+      name.focus();
+      expect(name).toHaveFocus();
+      fireEvent.change(name, { target: { value: 'The Times #5,123' } });
+      fireEvent.keyDown(name, { key: 'Enter' });
+      // Back on the grid, to type the numbers in.
+      expect(within(editor).getAllByRole('gridcell')[0]).toHaveFocus();
+      typeIn(HARD);
+      fireEvent.click(within(editor).getByRole('button', { name: 'Play' }));
+      await settle();
+      expect(document.querySelector('.board-overlay__name')).toHaveTextContent(
+        /^The Times #5,123$/,
+      );
+      expect(loadPuzzles(storage)).toMatchObject([{ cells: HARD, title: 'The Times #5,123' }]);
+      const library = openLibrary();
+      fireEvent.click(
+        within(library).getByRole('button', { name: /^Edit The Times #5,123, from Today/ }),
+      );
+      const again = screen.getByRole('dialog', { name: 'Enter a puzzle' });
+      const renamed = within(again).getByRole('textbox', { name: 'Name' });
+      expect(renamed).toHaveValue('The Times #5,123');
+      expect(within(again).getByRole('button', { name: 'Saved' })).toBeInTheDocument();
+      // Renamed there alone, and kept as the editor closes.
+      fireEvent.change(renamed, { target: { value: 'The Times #5,124' } });
+      fireEvent.keyDown(document, { key: 'Escape' });
+      expect(loadPuzzles(storage)).toMatchObject([{ cells: HARD, title: 'The Times #5,124' }]);
+      expect(
+        within(screen.getByRole('dialog', { name: 'Your puzzles' })).getByRole('button', {
+          name: /^Edit The Times #5,124, from Today/,
+        }),
+      ).toHaveFocus();
+    });
+
     it('keeps a puzzle as Play starts it, to play again from Your puzzles', async () => {
       const { storage } = await startApp();
       openEditor();

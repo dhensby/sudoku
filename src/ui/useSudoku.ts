@@ -100,7 +100,7 @@ import {
   updateSettings,
   type Settings,
 } from '../storage/prefs';
-import { DIFFICULTIES, browserStorage, type StorageLike } from '../storage/storage';
+import { DIFFICULTIES, browserStorage, normaliseTitle, type StorageLike } from '../storage/storage';
 import type { DailyLedger } from '../storage/streaks';
 import {
   describeCharge,
@@ -342,6 +342,9 @@ export interface PuzzlesView {
  * grid it opens with and, while it has an `id`, the grid last saved — what
  * is typed is the dialog's own until it is saved (see `saveEntry`), played
  * (`playFromEditor`), shared (`shareFromEditor`) or closed (`closeEditor`).
+ * `title` is the name in Name as it opens — the entry's own, '' for none —
+ * and, after a Save, the name as Name had it then: a name handed up that
+ * tidies to anything else is the player's own, to keep (see `isRenamed`).
  * `selected` is the cell selected as it opens; `isBackFromShare`, back from
  * sharing the puzzle, so focus goes back to Share… rather than to that cell.
  */
@@ -349,6 +352,7 @@ export interface EnterView {
   kind: 'enter';
   id: string | null;
   cells: GridString;
+  title: string;
   selected: number;
   isBackFromShare?: boolean;
 }
@@ -533,25 +537,27 @@ export interface SudokuActions {
   /**
    * From Enter a puzzle (`view`, the editor on show): keep the grid as it is
    * in Your puzzles (see `savePuzzle`) — the entry it was opened on, or the
-   * one with these numbers, or a new one — staying in the editor.
+   * one with these numbers, or a new one — staying in the editor. `title`,
+   * here and below, is Name's raw text, tidied here: the entry is called it
+   * if the player changed it (see `isRenamed`).
    */
-  saveEntry: (view: EnterView, cells: GridString) => void;
+  saveEntry: (view: EnterView, cells: GridString, title: string) => void;
   /** From Enter a puzzle: keep the puzzle typed in, as Save does, and play it (see `playEntered`). */
-  playFromEditor: (view: EnterView, puzzle: Puzzle) => void;
+  playFromEditor: (view: EnterView, puzzle: Puzzle, title: string) => void;
   /**
    * From Enter a puzzle: keep the puzzle typed in, as Save does, and share it
    * alone, without a game of it — back to the editor as Share closes, focus
    * on Share…, on the grid as kept and the cell `selected` as it was.
    */
-  shareFromEditor: (view: EnterView, puzzle: Puzzle, selected: number) => void;
+  shareFromEditor: (view: EnterView, puzzle: Puzzle, selected: number, title: string) => void;
   /**
-   * Enter a puzzle closed, the grid as it was left: kept as Save keeps it if
-   * it has a number in and has changed since it was last saved (an entry
-   * erased to nothing keeps the numbers it had), then back to Your puzzles,
-   * focus on the row's Edit — or on Enter a new puzzle, for a grid never
-   * kept.
+   * Enter a puzzle closed, the grid and name as they were left: kept as Save
+   * keeps them if the grid has a number in and either has changed since they
+   * were last saved (an entry erased to nothing keeps the numbers and name it
+   * had), then back to Your puzzles, focus on the row's Edit — or on Enter a
+   * new puzzle, for a grid never kept.
    */
-  closeEditor: (view: EnterView, cells: GridString) => void;
+  closeEditor: (view: EnterView, cells: GridString, title: string) => void;
   /** From Your puzzles: the entry `id` is called `title`, tidied; '' takes the name off (see `retitlePuzzle`). */
   renameEntry: (id: string, title: string) => void;
   /** From Your puzzles: the entry `id` goes, its games in History staying. */
@@ -1074,6 +1080,17 @@ function isFullButWrong(game: GameState): boolean {
 }
 
 /**
+ * Whether the name handed up from the editor is one the player typed there:
+ * tidied, not the name in `view`. One that is not leaves the entry's name as
+ * it is — which another tab may have changed since the editor opened, or
+ * which a grid typed in afresh may have brought from the puzzle it proves to
+ * be (see `savePuzzle`).
+ */
+function isRenamed(view: EnterView, title: string): boolean {
+  return normaliseTitle(title) !== view.title;
+}
+
+/**
  * The game: everything between the page loading and a puzzle being solved,
  * plus the history around it.
  *
@@ -1412,16 +1429,20 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
   });
 
   /**
-   * Keep `cells` in Your puzzles, as the entry `id` if it is still there (null
-   * for a grid saved as none yet), by the one rule for every save (see
-   * `savePuzzle`), and give back the entry they are kept as.
+   * Keep `cells` in Your puzzles, as the entry the editor `view` is on if it
+   * is still there (none for a grid saved as none yet), by the one rule for
+   * every save (see `savePuzzle`) — named `title`, in the same write, if the
+   * player changed the name in the editor (see `isRenamed`) — and give back
+   * the entry they are kept as.
    */
-  const keep = (id: string | null, cells: GridString): SavedPuzzle => {
+  const keep = (view: EnterView, cells: GridString, title: string): SavedPuzzle => {
     const wall = now();
-    const list = updatePuzzles(
-      storage,
-      (stored) => savePuzzle(stored, { id: id ?? createGameId(wall), cells }, wall).list,
-    );
+    const list = updatePuzzles(storage, (stored) => {
+      const saved = savePuzzle(stored, { id: view.id ?? createGameId(wall), cells }, wall);
+      return isRenamed(view, title)
+        ? retitlePuzzle(saved.list, saved.entry.id, title, wall)
+        : saved.list;
+    });
     setPuzzles(list);
     // No two entries have the same numbers: these are the ones just kept.
     return list.find((entry) => entry.cells === cells)!;
@@ -2452,38 +2473,51 @@ export function useSudoku(options: UseSudokuOptions = {}): Sudoku {
       // Your puzzles paused the game already: the editor keeps it so.
       setDialog(
         entry === null
-          ? { kind: 'enter', id: null, cells: BLANK_GRID, selected: 0 }
+          ? { kind: 'enter', id: null, cells: BLANK_GRID, title: '', selected: 0 }
           : {
               kind: 'enter',
               id: entry.id,
               cells: entry.cells,
+              title: entry.title ?? '',
               // On from the last number, as typing left it.
               selected: Math.min(entry.cells.replace(/0+$/, '').length, 80),
             },
       ),
-    saveEntry: (view, cells) => {
-      const { id } = keep(view.id, cells);
-      setDialog({ ...view, id, cells });
+    saveEntry: (view, cells, title) => {
+      const { id } = keep(view, cells, title);
+      // The name as Name has it, not the entry's: a grid typed in afresh that
+      // proves to be a named puzzle keeps that name (see `isRenamed`), Name
+      // left empty reading Saved, and showing it the next time the editor
+      // opens on the puzzle.
+      setDialog({ ...view, id, cells, title: normaliseTitle(title) });
     },
-    playFromEditor: (view, puzzle) => {
-      keep(view.id, puzzle.givens);
+    playFromEditor: (view, puzzle, title) => {
+      keep(view, puzzle.givens, title);
       actions.playEntered(puzzle);
     },
-    shareFromEditor: (view, puzzle, selected) => {
-      const { id, title } = keep(view.id, puzzle.givens);
+    shareFromEditor: (view, puzzle, selected, title) => {
+      const { id, title: kept } = keep(view, puzzle.givens, title);
       // The game behind stays paused, Share taking the editor's place and
-      // giving it back as it closes.
+      // giving it back as it closes, Name on the name as kept.
       openShare(
         shareTargetOfPuzzle(puzzle),
-        { kind: 'enter', id, cells: puzzle.givens, selected, isBackFromShare: true },
-        title ?? null,
+        {
+          kind: 'enter',
+          id,
+          cells: puzzle.givens,
+          title: kept ?? '',
+          selected,
+          isBackFromShare: true,
+        },
+        kept ?? null,
       );
     },
-    closeEditor: (view, cells) => {
+    closeEditor: (view, cells, title) => {
       // Saved as it closes, however it closes, as a game is saved as it is
-      // played — but not a grid with nothing in, nor one as it was saved.
-      const isChanged = cells !== BLANK_GRID && cells !== view.cells;
-      const id = isChanged ? keep(view.id, cells).id : view.id;
+      // played — but not a grid with nothing in, nor the name typed over
+      // one, nor one as it was saved under the name it had.
+      const isChanged = cells !== BLANK_GRID && (cells !== view.cells || isRenamed(view, title));
+      const id = isChanged ? keep(view, cells, title).id : view.id;
       // Back to the list as stored, with whatever another tab has saved since
       // (a save reads it afresh already), the game behind still paused until
       // the list closes.
