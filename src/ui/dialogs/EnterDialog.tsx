@@ -140,9 +140,10 @@ interface Status {
 /**
  * Enter a puzzle: one from elsewhere — a newspaper's, a book's — typed into
  * an empty grid, or one kept in Your puzzles opened again, to play as any
- * other. The keyboard copies a puzzle out row by row (see `typed`); a finger
- * taps a cell, then a number on the pad, which goes in where it is, so a
- * correction lands in the same cell. Clashes are dotted as they go in, and
+ * other. The keyboard copies a puzzle out row by row (see `typed`), and so
+ * does a finger: a number on the pad fills the selection and moves on, as one
+ * typed does, a tap on a cell says where the next goes, and Erase erases
+ * where it is, as Delete does. Clashes are dotted as they go in, and
  * the status line says what the numbers make so far (see `assessGivens`):
  * Play and Share… wait for one solution. The hint under the buttons warns
  * that the checks cannot catch everything — a number mistyped can still
@@ -291,7 +292,7 @@ export function EnterDialog({
               mode="normal"
               counts={counts}
               isDisabled={false}
-              onDigit={(digit) => change(put(draft, selected, digit))}
+              onDigit={(digit) => change(put(draft, selected, digit, onward(draft)))}
             />
             <button
               type="button"

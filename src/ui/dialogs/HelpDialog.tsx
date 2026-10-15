@@ -220,8 +220,8 @@ export function HelpDialog({ onBrowseTechniques, onClose }: HelpDialogProps) {
               Type it in row by row: a number fills a cell and moves on, <kbd>Space</kbd>,{' '}
               <kbd>0</kbd> or a dot leaves a cell blank, <kbd>Backspace</kbd> takes back the last
               number, and the arrow keys move — left and right from the end of a row to the start of
-              the next, as typing does. Or tap a cell, then a number on the pad, which goes in where
-              you tapped.
+              the next, as typing does. Or tap a cell, then numbers on the pad: each fills a cell
+              and moves on, as one typed does.
             </li>
             <li>
               To paste one in whole, copied from a page or a file, press <strong>Paste</strong> or{' '}

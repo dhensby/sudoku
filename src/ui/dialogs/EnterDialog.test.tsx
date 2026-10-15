@@ -312,18 +312,58 @@ describe('EnterDialog', () => {
   });
 
   describe('the pad', () => {
-    it('puts a number in the selected cell, and Erase takes it out, moving nothing', () => {
+    it('puts a number in the selected cell and moves on, as typing does, on to the next row and no further than the last', () => {
       renderEditor();
-      fireEvent.click(cell(40));
+      fireEvent.click(cell(8));
       fireEvent.click(padKey(5));
-      expect(cell(40)).toHaveAccessibleName('5, given');
-      expect(selected()).toBe(40);
-      // A correction lands in the same cell.
+      expect(cell(8)).toHaveAccessibleName('5, given');
+      expect(selected()).toBe(9);
       fireEvent.click(padKey(6));
-      expect(cell(40)).toHaveAccessibleName('6, given');
-      fireEvent.click(within(dialog()).getByRole('button', { name: 'Erase' }));
-      expect(cell(40)).toHaveAccessibleName('empty');
-      expect(selected()).toBe(40);
+      expect(cell(9)).toHaveAccessibleName('6, given');
+      expect(selected()).toBe(10);
+      // A correction lands in the cell tapped.
+      fireEvent.click(cell(8));
+      fireEvent.click(padKey(7));
+      expect(cell(8)).toHaveAccessibleName('7, given');
+      expect(selected()).toBe(9);
+      fireEvent.click(cell(80));
+      fireEvent.click(padKey(1));
+      fireEvent.click(padKey(2));
+      expect(cell(80)).toHaveAccessibleName('2, given');
+      expect(selected()).toBe(80);
+    });
+
+    it('erases where it is with Erase, as Delete does', () => {
+      renderEditor({ initialCells: '56'.padEnd(81, '0'), initialSelected: 2 });
+      const erase = within(dialog()).getByRole('button', { name: 'Erase' });
+      // Nothing in the selection: nothing erased, the one before kept.
+      fireEvent.click(erase);
+      expect(typed()).toBe('56'.padEnd(81, '0'));
+      expect(selected()).toBe(2);
+      fireEvent.click(cell(1));
+      fireEvent.click(erase);
+      expect(typed()).toBe('5'.padEnd(81, '0'));
+      expect(selected()).toBe(1);
+    });
+
+    it('moves focus on with the selection while the grid has it, for the keys to carry on from there', () => {
+      renderEditor();
+      expect(cell(0)).toHaveFocus();
+      // A mouse's press keeps focus on the grid (see the next test).
+      fireEvent.click(padKey(5));
+      expect(cell(1)).toHaveFocus();
+      type('6');
+      expect(typed()).toBe('56'.padEnd(81, '0'));
+    });
+
+    it('leaves focus on a key pressed from the keyboard, for the next press to fill the next cell', () => {
+      renderEditor();
+      padKey(5).focus();
+      fireEvent.click(padKey(5));
+      expect(selected()).toBe(1);
+      expect(padKey(5)).toHaveFocus();
+      fireEvent.click(padKey(5));
+      expect(typed()).toBe('55'.padEnd(81, '0'));
     });
 
     it('keeps focus on the grid as a mouse presses its keys, Save or Paste', () => {

@@ -1594,8 +1594,8 @@ for (const viewport of [
  * side by side with the hint in view under them; and every cell at least
  * WCAG's 24px, but on the shortest phone on its side, which leaves the board
  * room for 22px (upright, it has 25px). A tap on a cell, then on the pad,
- * puts the number in that cell and leaves it selected, for a correction to
- * land there too.
+ * puts the number in that cell and moves on to the next, as typing does, so
+ * the next tap on the pad fills that one.
  */
 for (const viewport of [
   { width: 320, height: 568 },
@@ -1650,10 +1650,13 @@ for (const viewport of [
       expect(smallest).toBeGreaterThanOrEqual(viewport.height === 320 ? 22 : 24);
 
       const target = dialog.getByRole('gridcell').nth(40);
+      const next = dialog.getByRole('gridcell').nth(41);
       await target.tap();
       await dialog.getByRole('button', { name: '5', exact: true }).tap();
       await expect(target).toHaveAccessibleName('5, given');
-      await expect(target).toHaveAttribute('aria-selected', 'true');
+      await expect(next).toHaveAttribute('aria-selected', 'true');
+      await dialog.getByRole('button', { name: '6', exact: true }).tap();
+      await expect(next).toHaveAccessibleName('6, given');
     });
   });
 }
