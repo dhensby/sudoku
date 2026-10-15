@@ -5,9 +5,17 @@ import { FocusHomeContext, focusQuietly, isUsingKeyboard } from '../keepFocus';
 export interface DialogProps {
   /**
    * The heading, which also names the dialog for assistive technology. Words,
-   * or words with a name from a link kept apart in a <bdi>.
+   * or words with a name from a link kept apart in a <bdi>. On screen unless
+   * `headerControl` takes its place.
    */
   title: ReactNode;
+  /**
+   * A control in the header in the title's place on screen — the editor's
+   * Name field. The title is then read but not shown: still the dialog's
+   * name and heading for assistive technology, and still what labels a
+   * scrolling body.
+   */
+  headerControl?: ReactNode;
   onClose: () => void;
   children: ReactNode;
   /**
@@ -67,8 +75,9 @@ function isUsable(element: Element | null): element is HTMLElement {
 
 /**
  * The modal every dialog is built on: a card on a translucent scrim, with a
- * title, a close button, a scrolling body and optional pinned actions. Under
- * 500px wide it becomes a bottom sheet (see dialogs.css).
+ * title (or, in its place on screen, a control of the dialog's own), a close
+ * button, a scrolling body and optional pinned actions. Under 500px wide it
+ * becomes a bottom sheet (see dialogs.css).
  *
  * Behaviour is minesweeper's: focus moves in on open (to the element marked
  * `data-autofocus`, else the first focusable one — without scrolling the
@@ -89,7 +98,15 @@ function isUsable(element: Element | null): element is HTMLElement {
  * so the keyboard can scroll it: with nothing focusable inside (Help), it
  * would otherwise be out of reach.
  */
-export function Dialog({ title, onClose, children, footer, className, describedBy }: DialogProps) {
+export function Dialog({
+  title,
+  headerControl,
+  onClose,
+  children,
+  footer,
+  className,
+  describedBy,
+}: DialogProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
@@ -217,9 +234,13 @@ export function Dialog({ title, onClose, children, footer, className, describedB
         tabIndex={-1}
       >
         <div className="dialog__header">
-          <h2 className="dialog__title" id={titleId}>
+          <h2
+            className={headerControl === undefined ? 'dialog__title' : 'visually-hidden'}
+            id={titleId}
+          >
             {title}
           </h2>
+          {headerControl}
           <button type="button" className="dialog__close" aria-label="Close" onClick={onClose}>
             <CloseIcon />
           </button>
